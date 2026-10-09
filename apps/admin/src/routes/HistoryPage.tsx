@@ -60,10 +60,8 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
   if (detail.error) return <Alert severity="error">{errorMessage(detail.error)}</Alert>;
 
   const treeName = (treeId: string) => structure?.trees.find((t) => t.id === treeId)?.name ?? treeId;
-  const nodeName = (treeId: string, nodeId: string | null) => {
+  const nodeName = (nodeId: string | null) => {
     if (nodeId === null) return "最上位";
-    const node = structure?.trees.find((t) => t.id === treeId)?.nodes.find((n) => n.nodeId === nodeId);
-    if (node?.kind === "folder") return node.title!;
     return structure?.pages[nodeId]?.title ?? nodeId;
   };
   const describe = (c: StructureChange): string => {
@@ -73,15 +71,13 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
       case "tree_removed":
         return "ツリーを削除";
       case "node_added":
-        return `追加: ${c.node.title ?? nodeName(c.treeId, c.node.nodeId)} → ${nodeName(c.treeId, c.node.parentNodeId)}`;
+        return `追加: ${nodeName(c.node.nodeId)} → ${nodeName(c.node.parentNodeId)}`;
       case "node_removed":
-        return `削除: ${c.node.title ?? nodeName(c.treeId, c.node.nodeId)}`;
+        return `削除: ${nodeName(c.node.nodeId)}`;
       case "node_moved":
-        return `移動: ${nodeName(c.treeId, c.nodeId)}（${nodeName(c.treeId, c.from)} → ${nodeName(c.treeId, c.to)}）`;
+        return `移動: ${nodeName(c.nodeId)}（${nodeName(c.from)} → ${nodeName(c.to)}）`;
       case "node_reordered":
-        return `並び替え: ${nodeName(c.treeId, c.nodeId)}`;
-      case "node_renamed":
-        return `改名: ${c.from} → ${c.to}`;
+        return `並び替え: ${nodeName(c.nodeId)}`;
     }
   };
 

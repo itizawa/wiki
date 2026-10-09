@@ -12,6 +12,8 @@ export const createPageInput = z.object({
   title: z.string().trim().min(1).max(200),
   slug: z.string().refine(isValidSlug, "invalid slug").optional(),
   bodyMd: z.string().max(500_000).default(""),
+  /** この下に置く親ページ。省略またはnullなら最上位。どちらも兄弟の末尾に置く。 */
+  parentPageId: z.string().min(1).max(64).nullable().optional(),
 });
 export type CreatePageInput = z.infer<typeof createPageInput>;
 

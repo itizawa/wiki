@@ -6,7 +6,7 @@ function containsNode(item: NavItem, nodeId: string | undefined): boolean {
   return item.nodeId === nodeId || item.children.some((c) => containsNode(c, nodeId));
 }
 
-/** ツリーナビ（アイランド）。現在地を含むfolderは開いた状態で始まる。 */
+/** ツリーナビ（アイランド）。現在地を含むページは開いた状態で始まる。 */
 export default function TreeNav({ items, current }: { items: NavItem[]; current?: string }) {
   return (
     <ul className={s.nav}>
@@ -30,13 +30,9 @@ function Node({ item, current, depth }: { item: NavItem; current?: string; depth
         ) : (
           <span className={s.twisty} />
         )}
-        {item.href ? (
-          <a href={item.href} aria-current={item.nodeId === current ? "page" : undefined}>
-            {item.title}
-          </a>
-        ) : (
-          <span className={s.folder}>{item.title}</span>
-        )}
+        <a href={item.href} aria-current={item.nodeId === current ? "page" : undefined}>
+          {item.title}
+        </a>
       </div>
       {hasChildren && open && (
         <ul>

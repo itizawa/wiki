@@ -30,7 +30,7 @@ export const structureRoutes = new Hono<AppEnv>()
     const { state } = await loadCommit(db, branch.headCommitId);
     const tree = await getPrimaryTree(db);
     const nodes = state.trees[tree.id]?.nodes ?? [];
-    const pageIds = [...new Set(nodes.flatMap((n) => (n.pageId ? [n.pageId] : [])))];
+    const pageIds = nodes.map((n) => n.pageId);
     const pageRows =
       pageIds.length === 0
         ? []

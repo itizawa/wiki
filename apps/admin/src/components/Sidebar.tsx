@@ -12,20 +12,17 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import CreateNewFolderOutlinedIcon from "@mui/icons-material/CreateNewFolderOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
-import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
-import InboxOutlinedIcon from "@mui/icons-material/InboxOutlined";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import SearchIcon from "@mui/icons-material/Search";
-import TuneIcon from "@mui/icons-material/Tune";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import InputBase from "@mui/material/InputBase";
@@ -36,7 +33,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { childrenByParent, INBOX_NODE_ID, type StructureOpInput, type TreeNode } from "@wiki/shared";
+import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
 import { useMemo, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { usePersistentState } from "../lib/storage";
@@ -85,19 +82,9 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
     },
   });
 
-  // ページは作成時にサーバーが Inbox へ入れる。置き場所の指定があれば、続けてそこへ移す
+  // 親ページの指定があればその下、無ければ最上位の末尾に作る
   const create = useMutation({
-    mutationFn: async (parentNodeId: string | null) => {
-      const page = await api.createPage({ title: UNTITLED });
-      if (parentNodeId !== null && parentNodeId !== INBOX_NODE_ID) {
-        const latest = await api.structure();
-        await api.commit({
-          expectedHeadCommitId: latest.headCommitId,
-          ops: [{ type: "move", treeId: latest.trees[0]!.id, nodeId: page.id, newParentNodeId: parentNodeId }],
-        });
-      }
-      return page;
-    },
+    mutationFn: (parentPageId: string | null) => api.createPage({ title: UNTITLED, parentPageId }),
     onSettled: () => {
       refreshStructure();
       void qc.invalidateQueries({ queryKey: ["pages"] });
@@ -183,26 +170,16 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
             <NavItem to="/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴
             </NavItem>
-            <NavItem to="/tree" icon={<TuneIcon fontSize="small" />} onClick={props.onNavigate}>
-              ツリーの整理
-            </NavItem>
 
             <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
               <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
                 ドキュメント
               </Typography>
-              <Tooltip title="最上位にフォルダを追加">
+              {tree && <TreeSettings tree={tree} />}
+              <Tooltip title="最上位に新しいページ">
                 <span>
-                  <IconButton
-                    size="small"
-                    aria-label="最上位にフォルダを追加"
-                    disabled={!tree || commit.isPending}
-                    onClick={() => {
-                      const title = prompt("フォルダ名");
-                      if (title) commit.mutate([{ type: "create_folder", treeId: tree!.id, title, parentNodeId: null }]);
-                    }}
-                  >
-                    <CreateNewFolderOutlinedIcon sx={{ fontSize: 18 }} />
+                  <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
+                    <AddIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 </span>
               </Tooltip>
@@ -252,7 +229,7 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
   );
 }
 
-function NavItem(props: { to: "/" | "/calendar" | "/history" | "/tree"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
+function NavItem(props: { to: "/" | "/calendar" | "/history"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
   return (
     <RouterLink to={props.to} activeOptions={{ exact: props.exact }} onClick={props.onClick} underline="none" sx={rowSx}>
       {props.icon}
@@ -282,8 +259,41 @@ function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }
   );
 }
 
+/** ツリーそのものの設定（表示名と、公開サイトに出すか）。 */
+function TreeSettings({ tree }: { tree: StructureTree }) {
+  const qc = useQueryClient();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const update = useMutation({
+    mutationFn: (input: Parameters<typeof api.updateTree>[1]) => api.updateTree(tree.id, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["structure"] }),
+  });
+  return (
+    <>
+      <Tooltip title={update.error ? errorMessage(update.error) : "ツリーの設定"}>
+        <IconButton size="small" aria-label="ツリーの設定" color={update.error ? "error" : "default"} onClick={(e) => setAnchor(e.currentTarget)}>
+          <MoreHorizIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
+      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            const name = prompt("表示名", tree.name);
+            if (name && name !== tree.name) update.mutate({ name });
+          }}
+        >
+          名前を変更
+        </MenuItem>
+        <MenuItem disabled={update.isPending} onClick={() => update.mutate({ isPublic: !tree.isPublic })}>
+          <Checkbox size="small" edge="start" checked={tree.isPublic} tabIndex={-1} disableRipple sx={{ p: 0, mr: 1 }} />
+          公開サイトに表示
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
 type TreeContext = {
-  treeId: string;
   childrenOf: ReadonlyMap<string | null, TreeNode[]>;
   label: (node: TreeNode) => string;
   activePageId: string | undefined;
@@ -291,7 +301,6 @@ type TreeContext = {
   toggle: (nodeId: string) => void;
   expand: (nodeId: string) => void;
   onCreatePage: (parentNodeId: string) => void;
-  onMenu: (anchor: HTMLElement, node: TreeNode) => void;
   onNavigate?: () => void;
 };
 
@@ -305,15 +314,14 @@ function DocumentTree(props: {
 }) {
   const { tree, data, run } = props;
   const { pageId: activePageId } = useParams({ strict: false });
-  // 既定は全展開。畳んだものだけを覚えておく（後から増えたフォルダも開いた状態で出る）
+  // 既定は全展開。畳んだものだけを覚えておく（後から増えたページも開いた状態で出る）
   const [collapsedIds, setCollapsedIds] = usePersistentState<string[]>("wiki.sidebar.collapsed", []);
   const collapsed = useMemo(() => new Set(collapsedIds), [collapsedIds]);
   const [dragging, setDragging] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ anchor: HTMLElement; node: TreeNode } | null>(null);
   const childrenOf = useMemo(() => childrenByParent(tree.nodes), [tree.nodes]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  const label = (n: TreeNode) => (n.kind === "folder" ? n.title! : data.pages[n.pageId!]?.title ?? n.pageId!);
+  const label = (n: TreeNode) => data.pages[n.pageId]?.title ?? n.pageId;
   const expand = (nodeId: string) => {
     if (collapsed.has(nodeId)) setCollapsedIds(collapsedIds.filter((id) => id !== nodeId));
   };
@@ -330,7 +338,6 @@ function DocumentTree(props: {
   };
 
   const ctx: TreeContext = {
-    treeId: tree.id,
     childrenOf,
     label,
     activePageId,
@@ -342,13 +349,8 @@ function DocumentTree(props: {
       expand(parentNodeId);
       props.onCreatePage(parentNodeId);
     },
-    onMenu: (anchor, node) => setMenu({ anchor, node }),
     onNavigate: props.onNavigate,
   };
-
-  const menuNode = menu?.node;
-  const menuHasChildren = menuNode ? (childrenOf.get(menuNode.nodeId)?.length ?? 0) > 0 : false;
-  const closeMenu = () => setMenu(null);
 
   return (
     <DndContext
@@ -372,69 +374,22 @@ function DocumentTree(props: {
           </Paper>
         )}
       </DragOverlay>
-
-      <Menu open={menu !== null} anchorEl={menu?.anchor} onClose={closeMenu} slotProps={{ list: { dense: true } }}>
-        {menuNode?.kind === "folder" && (
-          <MenuItem
-            onClick={() => {
-              closeMenu();
-              const title = prompt("フォルダ名", menuNode.title ?? "");
-              if (title && title !== menuNode.title) run([{ type: "rename_folder", treeId: tree.id, nodeId: menuNode.nodeId, title }]);
-            }}
-          >
-            名前を変更
-          </MenuItem>
-        )}
-        <MenuItem
-          onClick={() => {
-            closeMenu();
-            const title = prompt("フォルダ名");
-            if (!title || !menuNode) return;
-            expand(menuNode.nodeId);
-            run([{ type: "create_folder", treeId: tree.id, title, parentNodeId: menuNode.nodeId }]);
-          }}
-        >
-          子フォルダを追加
-        </MenuItem>
-        <Tooltip title={menuHasChildren ? "子を移動してから外せます" : ""} placement="right">
-          <span>
-            <MenuItem
-              disabled={menuHasChildren}
-              sx={{ color: "error.main" }}
-              onClick={() => {
-                closeMenu();
-                if (menuNode) run([{ type: "remove_node", treeId: tree.id, nodeId: menuNode.nodeId }]);
-              }}
-            >
-              {menuNode?.kind === "page" ? "ツリーから外す（ページは残る）" : "フォルダを削除"}
-            </MenuItem>
-          </span>
-        </Tooltip>
-      </Menu>
     </DndContext>
   );
 }
 
-/** ドロップ判定用の領域。行の上35%で「前へ」、残りで「中へ」 */
+/** ドロップ判定用の領域。行の上35%で「前へ」、残りで「このページの下へ」 */
 const dropZone = { position: "absolute", left: 0, right: 0, pointerEvents: "none" } as const;
 
 function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: TreeContext }) {
   const kids = ctx.childrenOf.get(node.nodeId) ?? [];
-  const isInbox = node.nodeId === INBOX_NODE_ID;
   const isOpen = !ctx.collapsed.has(node.nodeId);
-  const isActive = node.kind === "page" && node.pageId === ctx.activePageId;
-  const drag = useDraggable({ id: node.nodeId, disabled: isInbox });
-  const before = useDroppable({ id: encodeDropTarget({ kind: "before", nodeId: node.nodeId }), disabled: isInbox });
+  const isActive = node.pageId === ctx.activePageId;
+  const drag = useDraggable({ id: node.nodeId });
+  const before = useDroppable({ id: encodeDropTarget({ kind: "before", nodeId: node.nodeId }) });
   const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
   const title = ctx.label(node);
 
-  const icon = isInbox ? (
-    <InboxOutlinedIcon sx={{ fontSize: 18 }} />
-  ) : node.kind === "folder" ? (
-    <FolderOutlinedIcon sx={{ fontSize: 18 }} />
-  ) : (
-    <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
-  );
   const labelSx = { ...ellipsis, display: "flex", alignItems: "center", gap: 0.75, color: "inherit", textDecoration: "none" };
 
   return (
@@ -469,39 +424,13 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
         >
           <ChevronRightIcon sx={{ fontSize: 18, transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
-        {node.kind === "page" ? (
-          <RouterLink
-            to="/pages/$pageId"
-            params={{ pageId: node.pageId! }}
-            draggable={false}
-            onClick={ctx.onNavigate}
-            underline="none"
-            sx={labelSx}
-          >
-            {icon}
-            <Box component="span" sx={ellipsis}>
-              {title}
-            </Box>
-          </RouterLink>
-        ) : (
-          <Box
-            component="button"
-            type="button"
-            onClick={() => ctx.toggle(node.nodeId)}
-            sx={{ ...labelSx, p: 0, border: 0, bgcolor: "transparent", font: "inherit", textAlign: "left", cursor: "pointer" }}
-          >
-            {icon}
-            <Box component="span" sx={ellipsis}>
-              {title}
-            </Box>
+        <RouterLink to="/pages/$pageId" params={{ pageId: node.pageId }} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
+          <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
+          <Box component="span" sx={ellipsis}>
+            {title}
           </Box>
-        )}
+        </RouterLink>
         <Box className="row-actions" sx={{ flexShrink: 0 }}>
-          {!isInbox && (
-            <IconButton size="small" aria-label={`「${title}」のメニュー`} onClick={(e) => ctx.onMenu(e.currentTarget, node)} sx={{ p: 0.25 }}>
-              <MoreHorizIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          )}
           <Tooltip title="この下に新しいページ">
             <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={{ p: 0.25 }}>
               <AddIcon sx={{ fontSize: 18 }} />

@@ -4,11 +4,10 @@ import { isValidPosition } from "./position";
 const id = z.string().min(1).max(64);
 /** 省略時は兄弟の末尾に置く。 */
 const position = z.string().max(64).refine(isValidPosition, "invalid position").optional();
-const folderTitle = z.string().trim().min(1).max(200);
 
 /**
  * 構造操作。管理画面の手動操作と、ルールからの配置提案で共通。
- * ツリーは1本だけなので、ツリー自体を作る・消す操作は無い。
+ * ツリーは1本だけなので、ツリー自体を作る・消す操作は無い。ノードはすべてページなので、フォルダの操作も無い。
  */
 export const structureOpSchema = z.discriminatedUnion("type", [
   z.object({
@@ -19,33 +18,11 @@ export const structureOpSchema = z.discriminatedUnion("type", [
     position,
   }),
   z.object({
-    type: z.literal("rename_folder"),
-    treeId: id,
-    nodeId: id,
-    title: folderTitle,
-  }),
-  z.object({
-    type: z.literal("create_folder"),
-    treeId: id,
-    nodeId: id.optional(),
-    title: folderTitle,
-    parentNodeId: id.nullable(),
-    position,
-  }),
-  z.object({
     type: z.literal("add_to_tree"),
     treeId: id,
     pageId: id,
     parentNodeId: id.nullable(),
     position,
-  }),
-  z.object({
-    type: z.literal("split_folder"),
-    treeId: id,
-    nodeId: id,
-    groups: z
-      .array(z.object({ title: folderTitle, nodeIds: z.array(id).min(1) }))
-      .min(1),
   }),
   z.object({
     type: z.literal("merge_candidate"),

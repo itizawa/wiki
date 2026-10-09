@@ -1,6 +1,5 @@
 import {
   createPageInput,
-  INBOX_NODE_ID,
   newPageId,
   savePageInput,
   slugify,
@@ -105,10 +104,10 @@ export const pageRoutes = new Hono<AppEnv>()
         authorType: "human",
       });
       await replaceLinks(tx, id, input.bodyMd);
-      // 新しいページはInboxに入れる（あとでツリーUIで整理する）
+      // 指定された親ページの下（無ければ最上位）の末尾に置く
       await commitOps(tx, {
-        message: `「${input.title}」をInboxに追加`,
-        ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx)).id, pageId: id, parentNodeId: INBOX_NODE_ID }],
+        message: `「${input.title}」を追加`,
+        ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
       });
     });
     return c.json(await getDetail(db, id), 201);

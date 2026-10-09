@@ -1,7 +1,6 @@
 import {
   applyOps,
   childrenByParent,
-  INBOX_NODE_ID,
   newTreeId,
   type StructureOp,
   type StructureState,
@@ -59,9 +58,7 @@ export async function loadCommit(db: Db, commitId: string): Promise<LoadedCommit
 function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
   return {
     nodeId: n.nodeId,
-    kind: n.kind,
     pageId: n.pageId,
-    title: n.title,
     parentNodeId: n.parentNodeId,
     position: n.position,
   };
@@ -179,10 +176,7 @@ function referencedPageIds(op: StructureOp): string[] {
 
 const OP_LABELS: Record<StructureOp["type"], string> = {
   move: "移動",
-  rename_folder: "フォルダ名を変更",
-  create_folder: "フォルダを作成",
   add_to_tree: "ツリーに追加",
-  split_folder: "フォルダを分割",
   merge_candidate: "統合候補",
   remove_node: "ツリーから外す",
 };
@@ -193,7 +187,7 @@ function describeOps(ops: StructureOp[]): string {
 }
 
 /**
- * 初回起動時に primary ツリー（Inboxのみ）と main ブランチを作る。何度呼んでもよい。
+ * 初回起動時に primary ツリー（空）と main ブランチを作る。何度呼んでもよい。
  */
 export async function bootstrapStructure(db: Db): Promise<void> {
   await db.transaction(async (tx) => {
@@ -202,16 +196,7 @@ export async function bootstrapStructure(db: Db): Promise<void> {
     if (existing) return;
     const treeId = newTreeId();
     await tx.insert(trees).values({ id: treeId, key: "main", name: "メイン", isPublic: true, isPrimary: true });
-    const state: StructureState = {
-      trees: {
-        [treeId]: {
-          treeId,
-          nodes: [
-            { nodeId: INBOX_NODE_ID, kind: "folder", pageId: null, title: "Inbox", parentNodeId: null, position: "a0" },
-          ],
-        },
-      },
-    };
+    const state: StructureState = { trees: { [treeId]: { treeId, nodes: [] } } };
     const commitId = await writeCommit(tx, {
       parents: [],
       message: "初期コミット",
@@ -221,6 +206,26 @@ export async function bootstrapStructure(db: Db): Promise<void> {
       previousSnapshots: new Map(),
     });
     await tx.insert(structureBranches).values({ name: MAIN_BRANCH, headCommitId: commitId, kind: "main" });
+  });
+}
+
+/**
+ * ツリーに無い（削除されていない）ページを最上位の末尾に入れる。何度呼んでもよい。
+ * ページは必ずツリーのどこかにある、という前提を保つためにマイグレーション時に呼ぶ。
+ */
+export async function adoptUnplacedPages(db: Db): Promise<void> {
+  await db.transaction(async (tx) => {
+    const branch = await getBranch(tx, MAIN_BRANCH);
+    const tree = await getPrimaryTree(tx);
+    const { state } = await loadCommit(tx, branch.headCommitId);
+    const placed = new Set((state.trees[tree.id]?.nodes ?? []).map((n) => n.pageId));
+    const live = await tx.select({ id: pages.id }).from(pages).where(isNull(pages.deletedAt)).orderBy(pages.createdAt, pages.id);
+    const unplaced = live.filter((p) => !placed.has(p.id));
+    if (unplaced.length === 0) return;
+    await commitOps(tx, {
+      message: `ツリーに無いページを最上位に追加（${unplaced.length}件）`,
+      ops: unplaced.map((p) => ({ type: "add_to_tree", treeId: tree.id, pageId: p.id, parentNodeId: null })),
+    });
   });
 }
 

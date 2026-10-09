@@ -1,12 +1,10 @@
-export type NodeKind = "page" | "folder";
-
-/** ツリー内の1ノード。page種別は nodeId = pageId とする（ツリー内で移動してもURLが変わらない）。 */
+/**
+ * ツリー内の1ノード。ノードはすべてページで、ページの下にページをぶら下げて階層を作る。
+ * nodeId = pageId とする（ツリー内で移動してもURLが変わらない）。
+ */
 export type TreeNode = {
   nodeId: string;
-  kind: NodeKind;
-  pageId: string | null;
-  /** folder用の表示名。page種別ではnull（ページタイトルを使う）。 */
-  title: string | null;
+  pageId: string;
   /** nullなら最上位。 */
   parentNodeId: string | null;
   /** fractional index。兄弟内の並び順（バイト順で比較）。 */

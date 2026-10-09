@@ -30,7 +30,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
             {crumbs.map((c, i) => (
               <>
                 {i > 0 && " / "}
-                {c.kind === "folder" ? c.title : <a href={pagesById.get(c.pageId!)?.path}>{titleOf(c.pageId!)}</a>}
+                <a href={pagesById.get(c.pageId)?.path}>{titleOf(c.pageId)}</a>
               </>
             ))}
           </nav>

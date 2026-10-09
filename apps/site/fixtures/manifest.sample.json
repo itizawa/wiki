@@ -39,9 +39,8 @@
       "name": "メイン",
       "isPrimary": true,
       "nodes": [
-        { "nodeId": "f_guide", "kind": "folder", "pageId": null, "title": "ガイド", "parentNodeId": null, "position": "a0" },
-        { "nodeId": "aaaaaaaaa1", "kind": "page", "pageId": "aaaaaaaaa1", "title": null, "parentNodeId": "f_guide", "position": "a0" },
-        { "nodeId": "aaaaaaaaa2", "kind": "page", "pageId": "aaaaaaaaa2", "title": null, "parentNodeId": null, "position": "a1" }
+        { "nodeId": "aaaaaaaaa1", "pageId": "aaaaaaaaa1", "parentNodeId": null, "position": "a0" },
+        { "nodeId": "aaaaaaaaa2", "pageId": "aaaaaaaaa2", "parentNodeId": "aaaaaaaaa1", "position": "a0" }
       ]
     },
     {
@@ -49,7 +48,7 @@
       "name": "テーマ別",
       "isPrimary": false,
       "nodes": [
-        { "nodeId": "aaaaaaaaa2", "kind": "page", "pageId": "aaaaaaaaa2", "title": null, "parentNodeId": null, "position": "a0" }
+        { "nodeId": "aaaaaaaaa2", "pageId": "aaaaaaaaa2", "parentNodeId": null, "position": "a0" }
       ]
     }
   ],

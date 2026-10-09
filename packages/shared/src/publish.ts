@@ -84,9 +84,7 @@ export type ManifestUnlistedPage = {
 
 export type ManifestTreeNode = {
   nodeId: string;
-  kind: "page" | "folder";
-  pageId: string | null;
-  title: string | null;
+  pageId: string;
   parentNodeId: string | null;
   position: string;
 };

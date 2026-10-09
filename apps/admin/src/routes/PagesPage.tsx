@@ -39,7 +39,7 @@ export function PagesPage() {
         >
           <TextField value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル" sx={{ flex: 1, minWidth: 0 }} />
           <Button type="submit" variant="contained" size="medium" disabled={!title.trim() || create.isPending}>
-            作成してInboxに追加
+            作成
           </Button>
         </Row>
         {create.error && (

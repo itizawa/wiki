@@ -57,7 +57,7 @@ export const api = {
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", `/admin/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`),
-  createPage: (input: { title: string; bodyMd?: string }) => request<PageDetail>("POST", "/admin/pages", input),
+  createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", "/admin/pages", input),
   getPage: (id: string) => request<PageDetail>("GET", `/admin/pages/${id}`),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string; slug?: string }) =>
     request<PageDetail>("PUT", `/admin/pages/${id}`, input),

@@ -1,6 +1,5 @@
 import {
   childrenByParent,
-  INBOX_NODE_ID,
   pagePath,
   unlistedPath,
   type ManifestPage,
@@ -93,32 +92,17 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
 
 /**
  * 公開ツリーのノードを公開ページだけに絞る。
- * - Inbox（未整理）は公開しない
- * - 非公開ページのノードは除き、その子は最も近い残る祖先の下へ繰り上げる
- * - 公開ページを1つも含まないfolderは除く
+ * 非公開ページのノードは除き、その子は最も近い残る祖先の下（無ければ最上位）へ繰り上げる。
  */
 export function publicTreeNodes(nodes: readonly TreeNode[], publicIds: ReadonlySet<string>): ManifestTreeNode[] {
   const children = childrenByParent(nodes);
   const out: ManifestTreeNode[] = [];
-  // 戻り値：この部分木に公開ページがあるか
-  const walk = (parent: string | null, keptParent: string | null): boolean => {
-    let any = false;
+  const walk = (parent: string | null, keptParent: string | null) => {
     for (const node of children.get(parent) ?? []) {
-      if (node.nodeId === INBOX_NODE_ID) continue;
-      if (node.kind === "page" && !publicIds.has(node.pageId!)) {
-        any = walk(node.nodeId, keptParent) || any;
-        continue;
-      }
-      const index = out.length;
-      out.push({ ...node, parentNodeId: keptParent });
-      const hasDescendants = walk(node.nodeId, node.nodeId);
-      if (node.kind === "folder" && !hasDescendants) {
-        out.splice(index, out.length - index);
-        continue;
-      }
-      any = true;
+      const isPublic = publicIds.has(node.pageId);
+      if (isPublic) out.push({ ...node, parentNodeId: keptParent });
+      walk(node.nodeId, isPublic ? node.nodeId : keptParent);
     }
-    return any;
   };
   walk(null, null);
   return out;

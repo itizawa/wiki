@@ -234,7 +234,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
   );
 }
 
-/** ツリー上の置き場所（親フォルダの並び）とタイトル。 */
+/** ツリー上の置き場所（親ページの並び）とタイトル。 */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const ancestors = useMemo(() => {
@@ -245,7 +245,7 @@ function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
     for (let cur = byId.get(pageId)?.parentNodeId ?? null; cur !== null; cur = byId.get(cur)?.parentNodeId ?? null) {
       const node = byId.get(cur);
       if (!node) break;
-      names.unshift(node.kind === "folder" ? node.title! : data?.pages[node.pageId!]?.title ?? node.pageId!);
+      names.unshift(data?.pages[node.pageId]?.title ?? node.pageId);
     }
     return names;
   }, [structure.data, pageId]);
