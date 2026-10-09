@@ -1,0 +1,22 @@
+{
+  "name": "@wiki/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fractional-indexing": "^3.2.0",
+    "nanoid": "^5.1.6",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
