@@ -15,7 +15,7 @@ import { pageLinks, pages, pageVersions, scheduledActions, slugHistory } from ".
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
-import { commitOps, loadCommit, getBranch, MAIN_BRANCH, opsToRemovePage, primaryTreeId } from "../structure/repo";
+import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePage } from "../structure/repo";
 import { parseJson } from "../validation";
 
 type PageRow = typeof pages.$inferSelect;
@@ -105,11 +105,10 @@ export const pageRoutes = new Hono<AppEnv>()
         authorType: "human",
       });
       await replaceLinks(tx, id, input.bodyMd);
-      // 新しいページはprimaryツリーのInboxに入れる（あとでツリーUIで整理する）
+      // 新しいページはInboxに入れる（あとでツリーUIで整理する）
       await commitOps(tx, {
-        branch: MAIN_BRANCH,
         message: `「${input.title}」をInboxに追加`,
-        ops: [{ type: "add_to_tree", treeId: await primaryTreeId(tx), pageId: id, parentNodeId: INBOX_NODE_ID }],
+        ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx)).id, pageId: id, parentNodeId: INBOX_NODE_ID }],
       });
     });
     return c.json(await getDetail(db, id), 201);
@@ -169,7 +168,7 @@ export const pageRoutes = new Hono<AppEnv>()
       const main = await getBranch(tx, MAIN_BRANCH);
       const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
       if (ops.length > 0) {
-        await commitOps(tx, { branch: MAIN_BRANCH, message: `「${page.title}」の削除に伴いツリーから外す`, ops });
+        await commitOps(tx, { message: `「${page.title}」の削除に伴いツリーから外す`, ops });
       }
       await tx
         .update(pages)

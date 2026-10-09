@@ -16,23 +16,20 @@ import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { SimpleTreeView } from "@mui/x-tree-view/SimpleTreeView";
 import { TreeItem, treeItemClasses } from "@mui/x-tree-view/TreeItem";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { childrenByParent, INBOX_NODE_ID, TREE_KEY_PATTERN, type StructureOpInput, type TreeNode } from "@wiki/shared";
+import { childrenByParent, INBOX_NODE_ID, type StructureOpInput, type TreeNode } from "@wiki/shared";
 import { useMemo, useState } from "react";
-import { Mono, Muted, RouterLink, Row, Section, StatusChip, WithSidebar } from "../components/ui";
+import { Mono, Muted, RouterLink, Row, Section, WithSidebar } from "../components/ui";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 
 export function TreePage() {
   const qc = useQueryClient();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
-  const [activeTreeId, setActiveTreeId] = useState<string | null>(null);
 
   const commit = useMutation({
     mutationFn: (input: { ops: StructureOpInput[]; message?: string }) =>
@@ -48,7 +45,7 @@ export function TreePage() {
   if (structure.isPending) return <Muted>読み込み中…</Muted>;
   if (structure.error) return <Alert severity="error">{errorMessage(structure.error)}</Alert>;
   const data = structure.data;
-  const tree = data.trees.find((t) => t.id === activeTreeId) ?? data.trees[0]!;
+  const tree = data.trees[0]!;
 
   const run = (ops: StructureOpInput[], message?: string) => {
     commit.reset();
@@ -57,44 +54,15 @@ export function TreePage() {
 
   return (
     <Stack spacing={1.5}>
-      <Row>
-        <Tabs
-          value={tree.id}
-          onChange={(_e, id: string) => setActiveTreeId(id)}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{ flex: 1, minWidth: 0 }}
-        >
-          {data.trees.map((t) => (
-            <Tab key={t.id} value={t.id} label={t.isPrimary ? `${t.name} ★` : t.name} />
-          ))}
-        </Tabs>
-        <Button
-          variant="outlined"
-          onClick={() => {
-            const key = prompt("ツリーのキー（URLに使う英小文字・数字・ハイフン。例: by-theme）");
-            if (!key) return;
-            if (!TREE_KEY_PATTERN.test(key)) return alert("キーは英小文字・数字・ハイフンで入力してください");
-            const name = prompt("表示名", key);
-            if (name) run([{ type: "create_tree", treeKey: key, name }], `ツリー「${name}」を追加`);
-          }}
-        >
-          ＋ ツリー
-        </Button>
-        <Tooltip title="ブランチの作成・マージはフェーズ3で対応">
-          <StatusChip label={`ブランチ: ${data.branch}`} />
-        </Tooltip>
-      </Row>
-
       {commit.error && <Alert severity="error">{errorMessage(commit.error)}</Alert>}
 
-      <TreeHeader tree={tree} onDelete={() => run([{ type: "delete_tree", treeId: tree.id }], `ツリー「${tree.name}」を削除`)} />
-      <TreeEditor key={tree.id} tree={tree} data={data} busy={commit.isPending} run={run} />
+      <TreeHeader tree={tree} />
+      <TreeEditor tree={tree} data={data} busy={commit.isPending} run={run} />
     </Stack>
   );
 }
 
-function TreeHeader({ tree, onDelete }: { tree: StructureTree; onDelete: () => void }) {
+function TreeHeader({ tree }: { tree: StructureTree }) {
   const qc = useQueryClient();
   const update = useMutation({
     mutationFn: (input: Parameters<typeof api.updateTree>[1]) => api.updateTree(tree.id, input),
@@ -105,7 +73,7 @@ function TreeHeader({ tree, onDelete }: { tree: StructureTree; onDelete: () => v
       <Row sx={{ typography: "body2" }}>
         <Mono sx={{ color: "text.secondary" }}>/t/{tree.key}/</Mono>
         <FormControlLabel
-          label="公開ツリー"
+          label="公開サイトに表示"
           slotProps={{ typography: { variant: "body2" } }}
           sx={{ mx: 0 }}
           control={
@@ -126,18 +94,6 @@ function TreeHeader({ tree, onDelete }: { tree: StructureTree; onDelete: () => v
         >
           名前を変更
         </Button>
-        {tree.isPrimary ? (
-          <Muted component="span">primary（パンくず・既定ナビ）</Muted>
-        ) : (
-          <>
-            <Button variant="text" onClick={() => update.mutate({ isPrimary: true })}>
-              primaryにする
-            </Button>
-            <Button variant="text" color="error" onClick={() => confirm(`ツリー「${tree.name}」を削除しますか？`) && onDelete()}>
-              ツリーを削除
-            </Button>
-          </>
-        )}
         {update.error && (
           <Typography variant="body2" color="error">
             {errorMessage(update.error)}
@@ -247,10 +203,9 @@ function TreeEditor(props: {
 
       <Section>
         <Typography variant="subtitle1" component="h3">
-          このツリーに無いページ
+          ツリーに無いページ
         </Typography>
-        <Muted>1つのページを複数のツリーの別々の位置に置けます。</Muted>
-        {unplaced.length === 0 && <Muted>すべてのページがこのツリーにあります。</Muted>}
+        {unplaced.length === 0 && <Muted>すべてのページがツリーにあります。</Muted>}
         <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0, mt: 1 }}>
           {unplaced.map((p) => (
             <Row component="li" key={p.id}>
@@ -354,7 +309,7 @@ function TreeNodeItem(props: {
               <Button variant="text" onClick={() => handlers.onAddFolder(node)}>
                 ＋子フォルダ
               </Button>
-              <Tooltip title={childCount > 0 ? "子を移動してから外せます" : node.kind === "page" ? "このツリーから外す（ページは残る）" : "フォルダを削除"}>
+              <Tooltip title={childCount > 0 ? "子を移動してから外せます" : node.kind === "page" ? "ツリーから外す（ページは残る）" : "フォルダを削除"}>
                 <span>
                   <Button variant="text" color="error" disabled={childCount > 0} onClick={() => handlers.onRemove(node)}>
                     {node.kind === "page" ? "外す" : "削除"}

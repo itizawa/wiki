@@ -12,7 +12,7 @@ import {
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pages, pageVersions, slugHistory } from "../db/schema";
-import { getBranch, listTreeMeta, loadCommit, MAIN_BRANCH } from "../structure/repo";
+import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
 
 /**
  * 公開ビルド用マニフェスト。含めるのは
@@ -57,16 +57,17 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
 
   const main = await getBranch(db, MAIN_BRANCH);
   const { state } = await loadCommit(db, main.headCommitId);
-  const meta = await listTreeMeta(db);
-  const trees: ManifestTree[] = meta
-    .filter((t) => t.isPublic && state.trees[t.id])
-    .map((t) => ({
-      key: t.key,
-      name: t.name,
-      isPrimary: t.isPrimary,
-      nodes: publicTreeNodes(state.trees[t.id]!.nodes, publicIds),
-    }))
-    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || (a.key < b.key ? -1 : 1));
+  const tree = await getPrimaryTree(db);
+  const trees: ManifestTree[] = tree.isPublic
+    ? [
+        {
+          key: tree.key,
+          name: tree.name,
+          isPrimary: true,
+          nodes: publicTreeNodes(state.trees[tree.id]?.nodes ?? [], publicIds),
+        },
+      ]
+    : [];
 
   const history =
     publicIds.size === 0

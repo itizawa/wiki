@@ -67,8 +67,11 @@ function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
   };
 }
 
-export async function listTreeMeta(db: Db): Promise<TreeMeta[]> {
-  return db.select().from(trees);
+/** ツリーは1本（primary）だけを扱う。複数ツリー時代の行が残っていても参照しない。 */
+export async function getPrimaryTree(db: Db): Promise<TreeMeta> {
+  const [tree] = await db.select().from(trees).where(eq(trees.isPrimary, true));
+  if (!tree) throw new Error("primary tree is missing; run bootstrapStructure first");
+  return tree;
 }
 
 async function insertSnapshot(db: Db, treeId: string, nodes: readonly TreeNode[]): Promise<string> {
@@ -84,13 +87,12 @@ async function insertSnapshot(db: Db, treeId: string, nodes: readonly TreeNode[]
 export type CommitResult = { commitId: string; state: StructureState };
 
 /**
- * ブランチのheadに構造操作を適用して新しいコミットを作る。
+ * headに構造操作を適用して新しいコミットを作る。
  * expectedHeadCommitId と現在のheadが異なる場合は 409（楽観ロック）。
  */
 export async function commitOps(
   db: Db,
   input: {
-    branch: string;
     /** 省略時は現在のheadに積む（サーバー内部の操作用） */
     expectedHeadCommitId?: string;
     ops: StructureOp[];
@@ -102,17 +104,16 @@ export async function commitOps(
     const [branch] = await tx
       .select()
       .from(structureBranches)
-      .where(eq(structureBranches.name, input.branch))
+      .where(eq(structureBranches.name, MAIN_BRANCH))
       .for("update");
-    if (!branch) throw notFound(`branch ${input.branch}`);
+    if (!branch) throw notFound(`branch ${MAIN_BRANCH}`);
     if (input.expectedHeadCommitId !== undefined && branch.headCommitId !== input.expectedHeadCommitId) {
-      throw new HttpError(409, "head_moved", "the branch has moved since you loaded it", {
+      throw new HttpError(409, "head_moved", "the tree has changed since you loaded it", {
         headCommitId: branch.headCommitId,
       });
     }
 
     const head = await loadCommit(tx, branch.headCommitId);
-    const meta = await listTreeMeta(tx);
     const referenced = [...new Set(input.ops.flatMap(referencedPageIds))];
     const livePages = new Set(
       referenced.length === 0
@@ -125,18 +126,7 @@ export async function commitOps(
           ).map((p) => p.id),
     );
 
-    const result = applyOps(head.state, input.ops, {
-      pageExists: (id) => livePages.has(id),
-      findTreeIdByKey: (key) => meta.find((t) => t.key === key)?.id,
-      isPrimaryTree: (id) => meta.find((t) => t.id === id)?.isPrimary ?? false,
-    });
-
-    for (const t of result.createdTrees) {
-      await tx
-        .insert(trees)
-        .values({ id: t.id, key: t.key, name: t.name, isPublic: t.isPublic })
-        .onConflictDoUpdate({ target: trees.id, set: { name: t.name, isPublic: t.isPublic } });
-    }
+    const result = applyOps(head.state, input.ops, { pageExists: (id) => livePages.has(id) });
 
     const commitId = await writeCommit(tx, {
       parents: [branch.headCommitId],
@@ -146,7 +136,7 @@ export async function commitOps(
       changedTreeIds: new Set(result.changedTreeIds),
       previousSnapshots: head.snapshots,
     });
-    await tx.update(structureBranches).set({ headCommitId: commitId }).where(eq(structureBranches.name, input.branch));
+    await tx.update(structureBranches).set({ headCommitId: commitId }).where(eq(structureBranches.name, MAIN_BRANCH));
     return { commitId, state: result.state };
   });
 }
@@ -184,14 +174,7 @@ async function writeCommit(
 }
 
 function referencedPageIds(op: StructureOp): string[] {
-  switch (op.type) {
-    case "add_to_tree":
-      return [op.pageId];
-    case "create_tree":
-      return op.initialNodes.flatMap((n) => (n.pageId ? [n.pageId] : []));
-    default:
-      return [];
-  }
+  return op.type === "add_to_tree" ? [op.pageId] : [];
 }
 
 const OP_LABELS: Record<StructureOp["type"], string> = {
@@ -199,11 +182,9 @@ const OP_LABELS: Record<StructureOp["type"], string> = {
   rename_folder: "フォルダ名を変更",
   create_folder: "フォルダを作成",
   add_to_tree: "ツリーに追加",
-  create_tree: "ツリーを作成",
   split_folder: "フォルダを分割",
   merge_candidate: "統合候補",
   remove_node: "ツリーから外す",
-  delete_tree: "ツリーを削除",
 };
 
 function describeOps(ops: StructureOp[]): string {
@@ -243,13 +224,7 @@ export async function bootstrapStructure(db: Db): Promise<void> {
   });
 }
 
-export async function primaryTreeId(db: Db): Promise<string> {
-  const [t] = await db.select({ id: trees.id }).from(trees).where(eq(trees.isPrimary, true));
-  if (!t) throw new Error("primary tree is missing; run bootstrapStructure first");
-  return t.id;
-}
-
-/** 第1親を辿ってブランチの履歴を返す（新しい順）。 */
+/** 第1親を辿って履歴を返す（新しい順）。 */
 export async function listHistory(db: Db, headCommitId: string, limit: number) {
   type Row = { id: string; message: string | null; author_type: string; created_at: string | Date; parent_ids: string[] | null };
   const result = await db.execute(sql`
@@ -298,7 +273,7 @@ export async function getCommit(db: Db, commitId: string) {
 }
 
 /**
- * ページを全ツリーから外す操作列を作る（子ノードはそのページの親へ繰り上げる）。
+ * ページをツリーから外す操作列を作る（子ノードはそのページの親へ繰り上げる）。
  * ページ削除時に使う。
  */
 export function opsToRemovePage(state: StructureState, pageId: string): StructureOp[] {
