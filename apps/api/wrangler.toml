@@ -26,8 +26,8 @@ id = "REPLACE_WITH_HYPERDRIVE_ID"
 NODE_ENV = "production"
 # この Worker 自身のオリジン（CSRF検査と OAuth のコールバックURLに使う。末尾のスラッシュなし）
 ADMIN_ORIGIN = "https://wiki-admin.hatchery-works.com"
-# 公開サイト（Cloudflare Pages）のオリジン。サブドメインが決まったら置き換える
-SITE_ORIGIN = "https://REPLACE_WITH_SUBDOMAIN.hatchery-works.com"
+# 公開サイト（Cloudflare Pages）のオリジン
+SITE_ORIGIN = "https://wiki.hatchery-works.com"
 
 [observability]
 enabled = true
