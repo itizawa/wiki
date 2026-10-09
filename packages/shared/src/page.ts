@@ -1,0 +1,52 @@
+import { z } from "zod";
+import { isValidSlug } from "./slug";
+
+export const visibilitySchema = z.enum(["public", "unlisted", "private"]);
+export type Visibility = z.infer<typeof visibilitySchema>;
+
+export const pageOriginSchema = z.enum(["human", "ai_draft"]);
+export const authorTypeSchema = z.enum(["human", "ai"]);
+export type AuthorType = z.infer<typeof authorTypeSchema>;
+
+export const createPageInput = z.object({
+  title: z.string().trim().min(1).max(200),
+  slug: z.string().refine(isValidSlug, "invalid slug").optional(),
+  bodyMd: z.string().max(500_000).default(""),
+});
+export type CreatePageInput = z.infer<typeof createPageInput>;
+
+/** 本文の保存。baseVersionIdが現在のheadと一致する場合のみ保存できる（楽観ロック）。 */
+export const savePageInput = z.object({
+  baseVersionId: z.string().uuid(),
+  title: z.string().trim().min(1).max(200),
+  bodyMd: z.string().max(500_000),
+  slug: z.string().refine(isValidSlug, "invalid slug").optional(),
+});
+export type SavePageInput = z.infer<typeof savePageInput>;
+
+export const publishPageInput = z.object({
+  versionId: z.string().uuid(),
+});
+
+export type PageSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  headVersionId: string;
+  publishedVersionId: string | null;
+  visibility: Visibility;
+  origin: "human" | "ai_draft";
+  updatedAt: string;
+};
+
+export type PageVersion = {
+  id: string;
+  pageId: string;
+  baseVersionId: string | null;
+  title: string;
+  bodyMd: string;
+  authorType: AuthorType;
+  createdAt: string;
+};
+
+export type PageDetail = PageSummary & { head: PageVersion };
