@@ -1,20 +1,28 @@
+import MenuIcon from "@mui/icons-material/Menu";
 import Alert from "@mui/material/Alert";
-import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import Drawer from "@mui/material/Drawer";
+import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
-import Toolbar from "@mui/material/Toolbar";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
-import type { ReactNode } from "react";
-import { Muted, RouterLink, Section } from "../components/ui";
+import { useState, type ReactNode } from "react";
+import { Sidebar } from "../components/Sidebar";
+import { Muted, Section } from "../components/ui";
 import { api, ApiError } from "../lib/api";
+import { usePersistentState } from "../lib/storage";
 
 export function Layout() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
+  const wide = useMediaQuery((t) => t.breakpoints.up("md"));
+  const [open, setOpen] = usePersistentState("wiki.sidebar.open", true);
+  const [drawer, setDrawer] = useState(false);
 
   if (me.isPending) {
     return (
@@ -34,43 +42,35 @@ export function Layout() {
     );
   }
 
+  const logout = async () => {
+    await api.logout();
+    qc.clear();
+    await qc.invalidateQueries({ queryKey: ["me"] });
+  };
+
   return (
-    <div>
-      <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
-        <Toolbar variant="dense" sx={{ gap: 2 }}>
-          <Typography component="strong" sx={{ fontWeight: 700 }}>
-            wiki 管理
-          </Typography>
-          <Stack
-            component="nav"
-            direction="row"
-            spacing={1.75}
-            sx={{ flexGrow: 1, '& a[data-status="active"]': { fontWeight: 600, color: "text.primary" } }}
-          >
-            <RouterLink to="/" activeOptions={{ exact: true }}>
-              ページ
-            </RouterLink>
-            <RouterLink to="/tree">ツリー</RouterLink>
-            <RouterLink to="/calendar">編集カレンダー</RouterLink>
-            <RouterLink to="/history">構造の履歴</RouterLink>
-          </Stack>
-          <Muted>{me.data.email}</Muted>
-          <Button
-            variant="text"
-            onClick={async () => {
-              await api.logout();
-              qc.clear();
-              await qc.invalidateQueries({ queryKey: ["me"] });
-            }}
-          >
-            ログアウト
-          </Button>
-        </Toolbar>
-      </AppBar>
-      <Box component="main" sx={{ p: 2.5, maxWidth: 1400, mx: "auto" }}>
+    <Box sx={{ display: "flex", height: "100vh", bgcolor: "background.paper" }}>
+      {wide && open ? (
+        <Box sx={{ flexShrink: 0, borderRight: 1, borderColor: "divider" }}>
+          <Sidebar email={me.data.email} onCollapse={() => setOpen(false)} onLogout={logout} />
+        </Box>
+      ) : (
+        <Box sx={{ flexShrink: 0, width: 44, pt: 1.25, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
+          <Tooltip title="サイドバーを開く" placement="right">
+            <IconButton size="small" aria-label="サイドバーを開く" onClick={() => (wide ? setOpen(true) : setDrawer(true))}>
+              <MenuIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+      {/* 狭い画面では、サイドバーを本文に重ねて出す */}
+      <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
+        <Sidebar email={me.data.email} onNavigate={() => setDrawer(false)} onLogout={logout} />
+      </Drawer>
+      <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
-    </div>
+    </Box>
   );
 }
 
