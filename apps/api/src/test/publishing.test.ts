@@ -67,22 +67,18 @@ describe("publish / unpublish", () => {
 });
 
 describe("manifest", () => {
-  it("adds 301s for old slugs and 410 for deleted articles", async () => {
+  it("serves pages at /p/{id} and lists deleted articles as gone", async () => {
     ctx = await setup();
     const page = await newPage("Hello");
     await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
-    await ctx.call("PUT", `/admin/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "Hello", bodyMd: "", slug: "renamed" });
     const gone = await newPage("Gone");
     await ctx.call("POST", `/admin/pages/${gone.id}/publish`, { versionId: gone.headVersionId, visibility: "public" });
     await ctx.call("DELETE", `/admin/pages/${gone.id}`);
 
     const m = await buildManifest(ctx.db);
-    expect(m.redirects).toEqual(
-      expect.arrayContaining([
-        { from: `/p/${page.id}-hello`, to: `/p/${page.id}-renamed` },
-        { from: `/p/${page.id}`, to: `/p/${page.id}-renamed` },
-      ]),
-    );
+    expect(m.pages.map((p) => p.path)).toEqual([`/p/${page.id}`]);
+    expect(m.pages[0]).not.toHaveProperty("slug");
+    expect(m).not.toHaveProperty("redirects");
     expect(m.gone).toEqual([gone.id]);
   });
 

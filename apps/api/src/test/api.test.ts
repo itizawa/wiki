@@ -77,7 +77,7 @@ describe("pages", () => {
     ctx = await setup();
     const created = await ctx.call("POST", "/admin/pages", { title: "はじめに", bodyMd: "# hi" });
     expect(created.status).toBe(201);
-    expect(created.body.slug).toBe("はじめに");
+    expect(created.body).not.toHaveProperty("slug");
     expect(created.body.visibility).toBe("private");
     const id = created.body.id;
 
@@ -90,11 +90,10 @@ describe("pages", () => {
       baseVersionId: created.body.headVersionId,
       title: "はじめに 改",
       bodyMd: "# hi\n\nmore",
-      slug: "intro",
     });
     expect(saved.status).toBe(200);
     expect(saved.body.head.baseVersionId).toBe(created.body.headVersionId);
-    expect(saved.body.slug).toBe("intro");
+    expect(saved.body.title).toBe("はじめに 改");
 
     const versions = await ctx.call("GET", `/admin/pages/${id}/versions`);
     expect(versions.body.versions).toHaveLength(2);
