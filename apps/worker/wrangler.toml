@@ -1,16 +1,19 @@
 name = "wiki-worker"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
+# API は同じゾーンの別の Worker。公開URL経由で呼べるようにする（無いと Worker を通らずに失敗する）
+compatibility_flags = ["global_fetch_strictly_public"]
 
 # 予約公開の許容遅延 = Cron間隔 + デバウンス + ビルド時間（既定：5分 + 2分 + ビルド）
 [triggers]
 crons = ["*/5 * * * *"]
 
 [vars]
-API_ORIGIN = "https://api.example.com"
+# apps/api/wrangler.toml の ADMIN_ORIGIN と同じ値（/internal/* を呼ぶ）
+API_ORIGIN = "https://wiki-admin.hatchery-works.com"
 BUILD_DEBOUNCE_SEC = "120"
 
-# secrets（wrangler secret put で設定）
+# secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
 # INTERNAL_TOKEN        API の /internal/* 用トークン
 # PAGES_DEPLOY_HOOK_URL Cloudflare Pages のデプロイフックURL
 # NOTIFY_WEBHOOK_URL    予約の最終失敗を通知する Slack 互換 Incoming Webhook（任意）

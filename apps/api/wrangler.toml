@@ -1,0 +1,40 @@
+# 管理画面（静的アセット）と API を1つの Worker で同一オリジンに出す。
+# アセットは apps/admin/dist。先に `pnpm --filter @wiki/admin build` が必要。
+name = "wiki-admin"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+# 独自ドメインだけで出す（DNSレコードと証明書はデプロイ時に Cloudflare が作る）
+routes = [{ pattern = "wiki-admin.hatchery-works.com", custom_domain = true }]
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "../admin/dist"
+# 管理画面はSPAなので、ファイルに無いパスは index.html を返す
+not_found_handling = "single-page-application"
+# API の経路はアセットより先に Worker へ渡す（OAuth のコールバックは画面遷移なので、指定しないと index.html が返る）
+run_worker_first = ["/api/*", "/export/*", "/internal/*", "/health"]
+
+# DB（PostgreSQL）へは Hyperdrive 経由でつなぐ
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "24df08d8191143e5aae33847792525cc"
+
+[vars]
+# 開発用ログインを無効にし、Cookie を Secure にする
+NODE_ENV = "production"
+# この Worker 自身のオリジン（CSRF検査と OAuth のコールバックURLに使う。末尾のスラッシュなし）
+ADMIN_ORIGIN = "https://wiki-admin.hatchery-works.com"
+# 公開サイト（Cloudflare Pages）のオリジン
+SITE_ORIGIN = "https://wiki.hatchery-works.com"
+
+[observability]
+enabled = true
+
+# secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
+# SESSION_SECRET        セッションCookieの署名鍵（32文字以上）
+# ADMIN_EMAILS          管理者として許可するGoogleアカウント（カンマ区切り）
+# GOOGLE_CLIENT_ID      Google OAuth クライアント
+# GOOGLE_CLIENT_SECRET
+# INTERNAL_TOKEN        /export/public と /internal/* 用トークン（ワーカー・サイトのビルドと同じ値）
