@@ -19,6 +19,8 @@ export const testConfig: AppConfig = {
   googleRedirectUri: "http://admin.test/api/auth/google/callback",
   google: null,
   secureCookies: false,
+  siteOrigin: "http://site.test",
+  internalToken: "internal-token",
 };
 
 export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig> } = {}) {

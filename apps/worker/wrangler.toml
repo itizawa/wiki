@@ -1,0 +1,16 @@
+name = "wiki-worker"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# 予約公開の許容遅延 = Cron間隔 + デバウンス + ビルド時間（既定：5分 + 2分 + ビルド）
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+API_ORIGIN = "https://api.example.com"
+BUILD_DEBOUNCE_SEC = "120"
+
+# secrets（wrangler secret put で設定）
+# INTERNAL_TOKEN        API の /internal/* 用トークン
+# PAGES_DEPLOY_HOOK_URL Cloudflare Pages のデプロイフックURL
+# NOTIFY_WEBHOOK_URL    予約の最終失敗を通知する Slack 互換 Incoming Webhook（任意）

@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { Layout } from "./routes/Layout";
+import { CalendarPage } from "./routes/CalendarPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { PagesPage } from "./routes/PagesPage";
@@ -17,11 +18,12 @@ const editorRoute = createRoute({
   },
 });
 const treeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tree", component: TreePage });
+const calendarRoute = createRoute({ getParentRoute: () => rootRoute, path: "/calendar", component: CalendarPage });
 const historyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/history", component: HistoryPage });
 // ログイン失敗時のリダイレクト先。Layout がログイン画面を出す
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: PagesPage });
 
-const routeTree = rootRoute.addChildren([pagesRoute, editorRoute, treeRoute, historyRoute, loginRoute]);
+const routeTree = rootRoute.addChildren([pagesRoute, editorRoute, treeRoute, calendarRoute, historyRoute, loginRoute]);
 
 export const router = createRouter({ routeTree });
 

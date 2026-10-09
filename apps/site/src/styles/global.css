@@ -1,0 +1,25 @@
+/* デザイントークンと要素の既定スタイルだけを置く。クラスは各コンポーネントの *.module.css に書く */
+:root {
+  --bg: #fdfdfc;
+  --text: #1f2328;
+  --muted: #687080;
+  --border: #e4e6ea;
+  --accent: #2257c5;
+  --mark: #fff3a8;
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171b;
+    --text: #e6e8ec;
+    --muted: #9aa1b0;
+    --border: #2c3038;
+    --accent: #7aa5ff;
+    --mark: #5b4f10;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); line-height: 1.8; }
+a { color: var(--accent); }

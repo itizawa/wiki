@@ -1,4 +1,14 @@
-import type { PageDetail, PageSummary, PageVersion, StructureChange, StructureOpInput, TreeMeta, TreeNode } from "@wiki/shared";
+import type {
+  PageDetail,
+  PageSummary,
+  PageVersion,
+  PublishVisibility,
+  ScheduledAction,
+  StructureChange,
+  StructureOpInput,
+  TreeMeta,
+  TreeNode,
+} from "@wiki/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -44,6 +54,7 @@ export const api = {
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
   me: () => request<{ email: string }>("GET", "/admin/me"),
+  settings: () => request<{ siteOrigin: string }>("GET", "/admin/settings"),
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", `/admin/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`),
@@ -54,6 +65,23 @@ export const api = {
   deletePage: (id: string) => request<{ ok: true }>("DELETE", `/admin/pages/${id}`),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", `/admin/pages/${id}/versions`),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", `/admin/pages/${id}/versions/${versionId}`),
+
+  publish: (id: string, input: { versionId: string; visibility: PublishVisibility }) =>
+    request<{ ok: true }>("POST", `/admin/pages/${id}/publish`, input),
+  unpublish: (id: string) => request<{ ok: true }>("POST", `/admin/pages/${id}/unpublish`),
+  rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", `/admin/pages/${id}/unlisted-key`),
+
+  listSchedule: (params: { from?: string; to?: string; pageId?: string; status?: string } = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+    return request<{ actions: ScheduledAction[] }>("GET", `/admin/schedule${q.size ? `?${q}` : ""}`);
+  },
+  createSchedule: (
+    input:
+      | { actionType: "publish_page"; pageId: string; versionId: string; targetVisibility: PublishVisibility; runAt: string; batchId?: string }
+      | { actionType: "unpublish_page"; pageId: string; runAt: string; batchId?: string },
+  ) => request<ScheduledAction>("POST", "/admin/schedule", input),
+  reschedule: (id: string, runAt: string) => request<ScheduledAction>("PATCH", `/admin/schedule/${id}`, { runAt }),
+  cancelSchedule: (id: string) => request<ScheduledAction>("POST", `/admin/schedule/${id}/cancel`),
 
   structure: () => request<StructureResponse>("GET", "/admin/structure"),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
@@ -74,6 +102,10 @@ export function errorMessage(err: unknown): string {
         return "ツリーが別の操作で更新されました。最新の状態を読み込みました。もう一度操作してください。";
       case "has_children":
         return "子があるため外せません。先に子を移動してください。";
+      case "run_at_in_past":
+        return "過去の日時は指定できません。";
+      case "not_scheduled":
+        return "実行中または実行済みのため変更できません。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
       default:

@@ -11,6 +11,10 @@ export type AppConfig = {
   /** ローカル開発専用。Googleを経由せずこのメールでログインできる（production では無視） */
   devLoginEmail?: string;
   secureCookies: boolean;
+  /** 公開サイトのオリジン（管理画面に公開URLを表示する） */
+  siteOrigin: string;
+  /** /export/public と /internal/* 用のトークン（ワーカー・サイトのビルドが使う）。未設定なら無効 */
+  internalToken?: string;
 };
 
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
@@ -37,5 +41,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
         : null,
     devLoginEmail: isProduction ? undefined : env.DEV_LOGIN_EMAIL?.toLowerCase(),
     secureCookies: isProduction || adminOrigin.startsWith("https://"),
+    siteOrigin: env.SITE_ORIGIN ?? "http://localhost:4321",
+    internalToken: env.INTERNAL_TOKEN || undefined,
   };
 }

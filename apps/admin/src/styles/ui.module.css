@@ -1,0 +1,55 @@
+/* 画面をまたいで使う部品（カード・ボタン・バッジ・レイアウト補助） */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.small { font-size: 0.85rem; }
+.muted { color: var(--muted); }
+.error { color: var(--danger); }
+.warn { color: var(--warn); }
+.breakAll { word-break: break-all; }
+.grow { flex: 1; min-width: 0; }
+.spacer { flex: 1; }
+.center { display: grid; place-items: center; min-height: 100vh; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.cardWarn { composes: card; border-color: var(--warn); }
+.invalid { border-color: var(--danger) !important; }
+
+/* 本文＋右サイドバー（320px）の2カラム */
+.withSidebar { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+@media (max-width: 900px) {
+  .withSidebar { grid-template-columns: 1fr; }
+}
+
+.button {
+  display: inline-block; font: inherit; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+.button:disabled { opacity: 0.5; cursor: default; }
+.buttonPrimary { composes: button; background: var(--accent); border-color: var(--accent); color: #fff; }
+.buttonDanger { composes: button; color: var(--danger); }
+
+.link { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; }
+.link:disabled { color: var(--muted); cursor: default; }
+.linkActive { composes: link; font-weight: 600; }
+.linkDanger { composes: link; color: var(--danger); }
+
+.badge {
+  display: inline-block; font-size: 0.75rem; padding: 1px 6px; margin-left: 6px;
+  border-radius: 999px; border: 1px solid var(--border); color: var(--muted);
+}
+/* 公開範囲・予約状態の色分け */
+.badge.public { color: var(--ok); border-color: currentColor; }
+.badge.unlisted { color: var(--warn); border-color: currentColor; }
+.badge.scheduled { color: var(--accent); border-color: currentColor; }
+.badge.failed { color: var(--danger); border-color: currentColor; }
+
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab {
+  font: inherit; padding: 4px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+}
+.tabActive { composes: tab; background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.plainList { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.table { width: 100%; border-collapse: collapse; }
+.table td { padding: 8px 6px; border-top: 1px solid var(--border); }

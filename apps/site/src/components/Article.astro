@@ -1,0 +1,31 @@
+---
+import s from "./Article.module.css";
+import { renderMarkdown } from "../lib/markdown";
+
+interface Props {
+  title: string;
+  bodyMd: string;
+  firstPublishedAt?: string;
+  revisedAt: string;
+  monetization?: Record<string, unknown> | null;
+  publicPaths: ReadonlyMap<string, string>;
+}
+
+const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths } = Astro.props;
+// 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
+const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
+const html = renderMarkdown(bodyMd, { publicPaths, sponsored });
+const fmt = (iso: string) =>
+  new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "long" }).format(new Date(iso));
+const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
+---
+
+<article class={s.article}>
+  <h1>{title}</h1>
+  <div class={s.meta}>
+    {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
+    {revised && <span>（{fmt(revisedAt)} 更新）</span>}
+    {sponsored && <span class={s.adNotice}>広告を含みます</span>}
+  </div>
+  <div class={s.body} set:html={html} />
+</article>

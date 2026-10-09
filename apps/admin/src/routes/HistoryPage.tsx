@@ -3,45 +3,48 @@ import type { StructureChange } from "@wiki/shared";
 import { useState } from "react";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { cx } from "../lib/cx";
+import ui from "../styles/ui.module.css";
+import s from "./HistoryPage.module.css";
 
 export function HistoryPage() {
   const history = useQuery({ queryKey: ["history"], queryFn: api.history });
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const [selected, setSelected] = useState<string | null>(null);
 
-  if (history.isPending) return <p className="muted">読み込み中…</p>;
-  if (history.error) return <p className="error">{errorMessage(history.error)}</p>;
+  if (history.isPending) return <p className={ui.muted}>読み込み中…</p>;
+  if (history.error) return <p className={ui.error}>{errorMessage(history.error)}</p>;
 
   return (
-    <div className="tree-layout">
-      <section className="card">
+    <div className={ui.withSidebar}>
+      <section className={ui.card}>
         <h2>構造の履歴（main）</h2>
-        <p className="muted small">ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</p>
-        <ul className="plain commits">
+        <p className={cx(ui.muted, ui.small)}>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</p>
+        <ul className={ui.plainList}>
           {history.data.commits.map((c, i) => (
             <li key={c.id}>
-              <button className={`link ${selected === c.id ? "active" : ""}`} onClick={() => setSelected(c.id)}>
+              <button className={selected === c.id ? ui.linkActive : ui.link} onClick={() => setSelected(c.id)}>
                 {c.message ?? "(no message)"}
               </button>
-              {i === 0 && <span className="badge">head</span>}
-              {c.authorType === "ai" && <span className="badge">AI</span>}
-              {c.parentIds.length > 1 && <span className="badge">merge</span>}
-              <div className="muted small">
-                {formatDateTime(c.createdAt)} · <span className="mono">{c.id.slice(0, 8)}</span>
+              {i === 0 && <span className={ui.badge}>head</span>}
+              {c.authorType === "ai" && <span className={ui.badge}>AI</span>}
+              {c.parentIds.length > 1 && <span className={ui.badge}>merge</span>}
+              <div className={cx(ui.muted, ui.small)}>
+                {formatDateTime(c.createdAt)} · <span className={ui.mono}>{c.id.slice(0, 8)}</span>
               </div>
             </li>
           ))}
         </ul>
       </section>
-      <section className="card">{selected ? <CommitDetail id={selected} structure={structure.data} /> : <p className="muted">コミットを選ぶと差分を表示します。</p>}</section>
+      <section className={ui.card}>{selected ? <CommitDetail id={selected} structure={structure.data} /> : <p className={ui.muted}>コミットを選ぶと差分を表示します。</p>}</section>
     </div>
   );
 }
 
 function CommitDetail({ id, structure }: { id: string; structure?: StructureResponse }) {
   const detail = useQuery({ queryKey: ["commit", id], queryFn: () => api.commitDetail(id) });
-  if (detail.isPending) return <p className="muted">読み込み中…</p>;
-  if (detail.error) return <p className="error">{errorMessage(detail.error)}</p>;
+  if (detail.isPending) return <p className={ui.muted}>読み込み中…</p>;
+  if (detail.error) return <p className={ui.error}>{errorMessage(detail.error)}</p>;
 
   const treeName = (treeId: string) => structure?.trees.find((t) => t.id === treeId)?.name ?? treeId;
   const nodeName = (treeId: string, nodeId: string | null) => {
@@ -73,15 +76,15 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
   for (const c of detail.data.changes) byTree.set(c.treeId, [...(byTree.get(c.treeId) ?? []), c]);
 
   return (
-    <div className="stack">
+    <div className={ui.stack}>
       <h3>{detail.data.commit.message}</h3>
-      {byTree.size === 0 && <p className="muted">構造の変更はありません。</p>}
+      {byTree.size === 0 && <p className={ui.muted}>構造の変更はありません。</p>}
       {[...byTree].map(([treeId, changes]) => (
         <div key={treeId}>
           <h4>{treeName(treeId)}</h4>
-          <ul className="changes">
+          <ul className={s.changes}>
             {changes.map((c, i) => (
-              <li key={i} className={c.kind}>
+              <li key={i} className={c.kind === "node_added" || c.kind === "tree_added" ? s.added : c.kind === "node_removed" || c.kind === "tree_removed" ? s.removed : undefined}>
                 {describe(c)}
               </li>
             ))}

@@ -1,0 +1,9 @@
+.article h1 { line-height: 1.4; margin: 0 0 4px; }
+.meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.adNotice { font-size: 0.8rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; }
+/* Markdownから生成した本文（クラスを付けられないので :global で当てる） */
+.body :global(pre) { overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.body :global(img) { max-width: 100%; }
+.body :global(table) { border-collapse: collapse; }
+.body :global(th),
+.body :global(td) { border: 1px solid var(--border); padding: 4px 8px; }

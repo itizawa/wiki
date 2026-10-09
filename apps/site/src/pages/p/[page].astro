@@ -1,0 +1,56 @@
+---
+import layout from "../../styles/page.module.css";
+import type { ManifestPage } from "@wiki/shared";
+import Article from "../../components/Article.astro";
+import TreeNav from "../../components/TreeNav";
+import Base from "../../layouts/Base.astro";
+import { siteData } from "../../lib/manifest";
+import { excerpt } from "../../lib/markdown";
+import { ancestors, navItems } from "../../lib/tree";
+
+export async function getStaticPaths() {
+  const { manifest } = await siteData();
+  return manifest.pages.map((page) => ({ params: { page: `${page.id}-${page.slug}` }, props: { page } }));
+}
+
+const { page } = Astro.props as { page: ManifestPage };
+const { pagesById, primaryTree } = await siteData();
+const publicPaths = new Map([...pagesById].map(([id, p]) => [id, p.path]));
+const titleOf = (id: string) => pagesById.get(id)?.title;
+const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
+const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
+---
+
+<Base title={page.title} description={excerpt(page.bodyMd)} canonical={page.path}>
+  <div class={layout.withNav}>
+    <main data-pagefind-body>
+      {
+        crumbs.length > 0 && (
+          <nav class={layout.breadcrumbs} data-pagefind-ignore>
+            {crumbs.map((c, i) => (
+              <>
+                {i > 0 && " / "}
+                {c.kind === "folder" ? c.title : <a href={pagesById.get(c.pageId!)?.path}>{titleOf(c.pageId!)}</a>}
+              </>
+            ))}
+          </nav>
+        )
+      }
+      <Article
+        title={page.title}
+        bodyMd={page.bodyMd}
+        firstPublishedAt={page.firstPublishedAt}
+        revisedAt={page.revisedAt}
+        monetization={page.monetization}
+        publicPaths={publicPaths}
+      />
+    </main>
+    {
+      primaryTree && (
+        <aside data-pagefind-ignore>
+          <TreeNav client:idle items={navItems(primaryTree, titleOf)} current={inPrimary ? page.id : undefined} />
+        </aside>
+      )
+    }
+  </div>
+</Base>

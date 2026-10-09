@@ -1,0 +1,6 @@
+.calendar { display: flex; flex-direction: column; gap: 4px; }
+.day { border-top: 1px solid var(--border); padding: 8px 0; }
+.day h4 { margin: 0 0 4px; font-size: 0.9rem; }
+.today { composes: day; }
+.today h4 { color: var(--accent); }
+.past { composes: day; opacity: 0.7; }
