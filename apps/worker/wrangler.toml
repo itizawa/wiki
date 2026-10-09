@@ -15,5 +15,5 @@ BUILD_DEBOUNCE_SEC = "120"
 
 # secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
 # INTERNAL_TOKEN        API の /internal/* 用トークン
-# PAGES_DEPLOY_HOOK_URL Cloudflare Pages のデプロイフックURL
+# SITE_DEPLOY_HOOK_URL  公開サイト（wiki-site）の Workers Builds のデプロイフックURL
 # NOTIFY_WEBHOOK_URL    予約の最終失敗を通知する Slack 互換 Incoming Webhook（任意）

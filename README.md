@@ -26,7 +26,7 @@
 apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite）
 apps/api         API（Hono + Drizzle + PostgreSQL）
 apps/worker      Cron Triggers：予約公開の実行・公開ビルドの起動（ルールの実行はフェーズ3b以降）
-apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Pages）
+apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
 
@@ -50,19 +50,19 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 - 公開パイプライン：操作ごとに `publish_events` を記録 → ワーカーがデバウンスしてビルド起動（`contentHash` が同じなら省略）→ サイトが `/export/public` を取得して静的出力 → Pagefind
 - 公開サイト（`apps/site`）：記事・ツリー経由の閲覧（`/t/`、canonicalは `/p/`）・新着一覧・検索（Pagefind、遅延ロード）・RSS・サイトマップ
   - 内部リンクは公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
-  - slug つきの旧URL（`/p/{id}-{slug}`）は `/p/{id}` へ 301（Pages Functions）、削除記事は 410
+  - slug つきの旧URL（`/p/{id}-{slug}`）は `/p/{id}` へ 301（`apps/site/worker`）、削除記事は 410
   - `monetization` が立った記事は「広告を含みます」を表示し、外部リンクに `rel="sponsored"`
 - 管理画面：エディタ横の公開パネル（公開/非公開化/限定公開URL/予約）、編集カレンダー（公開済み・予約・AI下書き、予約ストック警告、失敗一覧）
 
 ## デプロイ
 
-`main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare Pages が Git 連携でビルドする。
+`main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
 
 | 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
 | Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔） | `apps/worker/wrangler.toml` |
-| 公開サイト | Cloudflare Pages（Git 連携。記事の公開時はワーカーがデプロイフックを叩く） | Pages のダッシュボード |
+| 公開サイト | Cloudflare Workers `wiki-site`（静的アセット。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 
 管理画面と API は同じ Worker が同一オリジンで出す（`/api/*` が API、それ以外は管理画面）。サイトのビルドとワーカーが使う `/export/*` `/internal/*` も同じオリジンにある。
@@ -72,8 +72,10 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 1. **PostgreSQL** を用意し、接続文字列を控える（プーラーを通さない直接接続のもの。`channel_binding=require` は付けない）
 2. **Hyperdrive** をその接続文字列で作り（キャッシュは無効にする）、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
 3. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `https://wiki-admin.hatchery-works.com/api/auth/google/callback` を登録する
-4. **Cloudflare Pages** のプロジェクトを Git 連携で作る：ルート `apps/site`、ビルドコマンド `pnpm build`、出力 `dist`。
-   環境変数は `API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`INTERNAL_TOKEN` `SITE_ORIGIN`（`https://wiki.hatchery-works.com`）`SITE_NAME`。プレビューのデプロイは無効にする。作ったら独自ドメイン `wiki.hatchery-works.com` を紐づけ、デプロイフックを発行する
+4. **公開サイトの Worker**（`wiki-site`）を Cloudflare の Workers Builds（Git 連携）につなぐ。Worker の名前は `apps/site/wrangler.toml` の `name` と一致させる
+   - ルートディレクトリ `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ブランチ `main`
+   - ビルドの環境変数：`API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`INTERNAL_TOKEN` `SITE_ORIGIN`（`https://wiki.hatchery-works.com`）`SITE_NAME`
+   - つないだらデプロイフック（Settings → Builds → Deploy Hooks、ブランチ `main`）を発行する
 5. GitHub の Settings → Secrets and variables → Actions に次を登録する
 
    | Secret | 内容 |
@@ -84,8 +86,8 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
    | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
    | `ADMIN_EMAILS` | 管理者として許可する Google アカウント（カンマ区切り） |
    | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順3のクライアント |
-   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。Pages の環境変数と同じ値 |
-   | `PAGES_DEPLOY_HOOK_URL` | 手順4のデプロイフックURL |
+   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数と同じ値 |
+   | `SITE_DEPLOY_HOOK_URL` | 手順4のデプロイフックURL |
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗を通知する Slack 互換 Incoming Webhook |
 
 6. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）

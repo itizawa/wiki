@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * ビルド後に Cloudflare Pages 用のファイルを出力する。
+ * ビルド後に Cloudflare（静的アセット）用のファイルを出力する。
  * - _headers：限定公開ページに noindex / no-referrer
- * - page-routes.json：functions/_middleware.ts が使う（slug つきの旧URLの301、削除記事の410）
+ * - page-routes.json：worker/index.ts が使う（slug つきの旧URLの301、削除記事の410）
  * @returns {import("astro").AstroIntegration}
  */
 export function publicFiles() {

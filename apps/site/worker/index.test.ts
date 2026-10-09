@@ -2,7 +2,7 @@ import type { PublicRoutes } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import worker from "./index";
 
-const routes: PublicRoutes = { canonical: { abc123: "/p/abc123" }, gone: ["gone99"] };
+const routes: PublicRoutes = { canonical: { abcdefghij: "/p/abcdefghij" }, gone: ["zzzzzzzzzz"] };
 
 /** 静的アセットの代わり。files にあるパスだけ 200、他は 404 ページを返す。 */
 function env(files: Record<string, string>) {
@@ -18,45 +18,45 @@ function env(files: Record<string, string>) {
   return { env: { ASSETS }, requested };
 }
 
-const files = { "/p/abc123": "<h1>記事</h1>", "/page-routes.json": JSON.stringify(routes) };
+const files = { "/p/abcdefghij": "<h1>記事</h1>", "/page-routes.json": JSON.stringify(routes) };
 const get = (path: string, e = env(files)) => worker.fetch(new Request(`https://wiki.test${path}`), e.env);
 
 describe("site worker", () => {
   it("serves static files as they are", async () => {
     const e = env(files);
-    const res = await get("/p/abc123", e);
+    const res = await get("/p/abcdefghij", e);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("<h1>記事</h1>");
     // 静的ファイルがあるときはルート表を読まない
-    expect(e.requested).toEqual(["/p/abc123"]);
+    expect(e.requested).toEqual(["/p/abcdefghij"]);
   });
 
   it("redirects a legacy slug URL to the canonical /p/{id}", async () => {
-    const res = await get("/p/abc123-old-slug");
+    const res = await get("/p/abcdefghij-old-slug");
     expect(res.status).toBe(301);
-    expect(res.headers.get("location")).toBe("https://wiki.test/p/abc123");
+    expect(res.headers.get("location")).toBe("https://wiki.test/p/abcdefghij");
   });
 
   it("answers 410 for a page that was deleted after being published", async () => {
-    const res = await get("/p/gone99");
+    const res = await get("/p/zzzzzzzzzz");
     expect(res.status).toBe(410);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(await res.text()).toContain("noindex");
   });
 
   it("keeps the 404 page for unknown pages and for paths outside /p/", async () => {
-    const unknown = await get("/p/nothere");
+    const unknown = await get("/p/yyyyyyyyyy");
     expect(unknown.status).toBe(404);
     expect(await unknown.text()).toBe("not found page");
 
     const e = env(files);
-    const other = await get("/t/main/gone99", e);
+    const other = await get("/t/main/zzzzzzzzzz", e);
     expect(other.status).toBe(404);
-    expect(e.requested).toEqual(["/t/main/gone99"]);
+    expect(e.requested).toEqual(["/t/main/zzzzzzzzzz"]);
   });
 
   it("falls back to the 404 page when the route table is missing", async () => {
-    const res = await get("/p/abc123-old-slug", env({}));
+    const res = await get("/p/abcdefghij-old-slug", env({}));
     expect(res.status).toBe(404);
   });
 });
