@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { NavItem } from "../lib/tree";
+import s from "./TreeNav.module.css";
 
 function containsNode(item: NavItem, nodeId: string | undefined): boolean {
   return item.nodeId === nodeId || item.children.some((c) => containsNode(c, nodeId));
@@ -8,7 +9,7 @@ function containsNode(item: NavItem, nodeId: string | undefined): boolean {
 /** ツリーナビ（アイランド）。現在地を含むfolderは開いた状態で始まる。 */
 export default function TreeNav({ items, current }: { items: NavItem[]; current?: string }) {
   return (
-    <ul className="tree-nav">
+    <ul className={s.nav}>
       {items.map((item) => (
         <Node key={item.nodeId} item={item} current={current} depth={0} />
       ))}
@@ -21,20 +22,20 @@ function Node({ item, current, depth }: { item: NavItem; current?: string; depth
   const hasChildren = item.children.length > 0;
   return (
     <li>
-      <div className={`tree-item ${item.nodeId === current ? "current" : ""}`}>
+      <div className={item.nodeId === current ? s.current : s.item}>
         {hasChildren ? (
-          <button className="twisty" aria-expanded={open} aria-label={open ? "閉じる" : "開く"} onClick={() => setOpen(!open)}>
+          <button className={s.twisty} aria-expanded={open} aria-label={open ? "閉じる" : "開く"} onClick={() => setOpen(!open)}>
             {open ? "▾" : "▸"}
           </button>
         ) : (
-          <span className="twisty" />
+          <span className={s.twisty} />
         )}
         {item.href ? (
           <a href={item.href} aria-current={item.nodeId === current ? "page" : undefined}>
             {item.title}
           </a>
         ) : (
-          <span className="folder">{item.title}</span>
+          <span className={s.folder}>{item.title}</span>
         )}
       </div>
       {hasChildren && open && (

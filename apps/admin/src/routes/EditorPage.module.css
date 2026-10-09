@@ -1,0 +1,19 @@
+.titleInput { font-size: 1.4rem; font-weight: 600; }
+.panes { display: grid; gap: 12px; min-height: 60vh; }
+.panesSplit { composes: panes; grid-template-columns: 1fr 1fr; }
+@media (max-width: 900px) {
+  .panesSplit { grid-template-columns: 1fr; }
+}
+.bodyInput { width: 100%; min-height: 60vh; resize: vertical; line-height: 1.6; }
+.preview {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px 16px; overflow: auto; line-height: 1.7;
+}
+.preview pre { background: var(--bg); padding: 8px; border-radius: 6px; overflow: auto; }
+.versionList { list-style: none; padding: 0; margin: 0; max-height: 240px; overflow: auto; }
+.versionList li { padding: 3px 0; }
+.diff { font-size: 0.8rem; max-height: 320px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
+.diff > span { display: block; }
+.added { background: var(--added); }
+.removed { background: var(--removed); }
+.same { color: var(--muted); }

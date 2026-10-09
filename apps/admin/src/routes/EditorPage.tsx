@@ -8,6 +8,9 @@ import { formatDateTime } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import { PublishPanel } from "../components/PublishPanel";
 import { visibilityLabel } from "./PagesPage";
+import { cx } from "../lib/cx";
+import ui from "../styles/ui.module.css";
+import s from "./EditorPage.module.css";
 
 type Draft = { title: string; slug: string; bodyMd: string };
 
@@ -85,39 +88,39 @@ export function EditorPage({ pageId }: { pageId: string }) {
 
   const preview = useMemo(() => (draft ? renderMarkdown(draft.bodyMd) : ""), [draft?.bodyMd]);
 
-  if (page.isPending || !draft) return <p className="muted">読み込み中…</p>;
-  if (page.error) return <p className="error">{errorMessage(page.error)}</p>;
+  if (page.isPending || !draft) return <p className={ui.muted}>読み込み中…</p>;
+  if (page.error) return <p className={ui.error}>{errorMessage(page.error)}</p>;
   const p = page.data;
 
   return (
-    <div className="editor-layout">
-      <div className="stack">
-        <div className="row">
+    <div className={ui.withSidebar}>
+      <div className={ui.stack}>
+        <div className={ui.row}>
           <input
-            className="title-input grow"
+            className={cx(s.titleInput, ui.grow)}
             value={draft.title}
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             placeholder="タイトル"
           />
-          <button className="button primary" disabled={!canSave} onClick={() => save.mutate()}>
+          <button className={ui.buttonPrimary} disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
           </button>
         </div>
-        <div className="row small">
-          <label className="muted">slug</label>
+        <div className={cx(ui.row, ui.small)}>
+          <label className={ui.muted}>slug</label>
           <input
-            className={`mono grow ${isValidSlug(draft.slug) ? "" : "invalid"}`}
+            className={cx(ui.mono, ui.grow, !isValidSlug(draft.slug) && ui.invalid)}
             value={draft.slug}
             onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
           />
-          <span className="muted mono">{pagePath(p.id, draft.slug)}</span>
-          <span className={`badge ${p.visibility}`}>{visibilityLabel[p.visibility]}</span>
+          <span className={cx(ui.muted, ui.mono)}>{pagePath(p.id, draft.slug)}</span>
+          <span className={cx(ui.badge, ui[p.visibility])}>{visibilityLabel[p.visibility]}</span>
         </div>
         {save.error && (
-          <p className="error">
+          <p className={ui.error}>
             {errorMessage(save.error)}{" "}
             <button
-              className="link"
+              className={ui.link}
               onClick={async () => {
                 // 競合時：サーバーの最新版を読み直す（ローカルの編集は破棄される）
                 const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
@@ -130,28 +133,28 @@ export function EditorPage({ pageId }: { pageId: string }) {
             </button>
           </p>
         )}
-        <div className="tabs">
+        <div className={ui.tabs}>
           {(["split", "edit", "preview"] as const).map((m) => (
-            <button key={m} className={mode === m ? "active" : ""} onClick={() => setMode(m)}>
+            <button key={m} className={mode === m ? ui.tabActive : ui.tab} onClick={() => setMode(m)}>
               {{ split: "分割", edit: "編集", preview: "プレビュー" }[m]}
             </button>
           ))}
         </div>
-        <div className={`editor-panes ${mode}`}>
+        <div className={mode === "split" ? s.panesSplit : s.panes}>
           {mode !== "preview" && (
             <textarea
-              className="body-input mono"
+              className={cx(s.bodyInput, ui.mono)}
               value={draft.bodyMd}
               onChange={(e) => setDraft({ ...draft, bodyMd: e.target.value })}
               placeholder="Markdownで本文を書く"
               spellCheck={false}
             />
           )}
-          {mode !== "edit" && <article className="preview markdown" dangerouslySetInnerHTML={{ __html: preview }} />}
+          {mode !== "edit" && <article className={s.preview} dangerouslySetInnerHTML={{ __html: preview }} />}
         </div>
       </div>
 
-      <aside className="stack">
+      <aside className={ui.stack}>
         <VersionPanel
           pageId={pageId}
           headVersionId={p.headVersionId}
@@ -161,11 +164,11 @@ export function EditorPage({ pageId }: { pageId: string }) {
           onRestore={(v) => setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd })}
         />
         <PublishPanel page={p} dirty={dirty} />
-        <section className="card">
+        <section className={ui.card}>
           <h3>ページ</h3>
-          <p className="muted small mono">id: {p.id}</p>
+          <p className={cx(ui.muted, ui.small, ui.mono)}>id: {p.id}</p>
           <button
-            className="button danger"
+            className={ui.buttonDanger}
             disabled={remove.isPending}
             onClick={() => {
               if (confirm(`「${p.title}」を削除しますか？（全ツリーから外れます）`)) remove.mutate();
@@ -173,7 +176,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           >
             削除
           </button>
-          {remove.error && <p className="error">{errorMessage(remove.error)}</p>}
+          {remove.error && <p className={ui.error}>{errorMessage(remove.error)}</p>}
         </section>
       </aside>
     </div>
@@ -196,27 +199,27 @@ function VersionPanel(props: {
   });
 
   return (
-    <section className="card">
+    <section className={ui.card}>
       <h3>版履歴</h3>
-      <ul className="version-list">
+      <ul className={s.versionList}>
         {versions.data?.versions.map((v, i) => (
           <li key={v.id}>
             <button
-              className={`link ${props.selected === v.id ? "active" : ""}`}
+              className={props.selected === v.id ? ui.linkActive : ui.link}
               onClick={() => props.onSelect(props.selected === v.id ? null : v.id)}
             >
               {formatDateTime(v.createdAt)}
             </button>
-            {i === 0 && <span className="badge">head</span>}
-            {v.authorType === "ai" && <span className="badge">AI</span>}
+            {i === 0 && <span className={ui.badge}>head</span>}
+            {v.authorType === "ai" && <span className={ui.badge}>AI</span>}
           </li>
         ))}
       </ul>
       {version.data && (
-        <div className="stack">
-          <p className="small muted">この版 → 編集中の内容 の差分</p>
+        <div className={ui.stack}>
+          <p className={cx(ui.small, ui.muted)}>この版 → 編集中の内容 の差分</p>
           <Diff before={`# ${version.data.title}\n\n${version.data.bodyMd}`} after={`# ${props.current.title}\n\n${props.current.bodyMd}`} />
-          <button className="button" onClick={() => props.onRestore(version.data!)}>
+          <button className={ui.button} onClick={() => props.onRestore(version.data!)}>
             この版の内容をエディタに戻す
           </button>
         </div>
@@ -227,11 +230,11 @@ function VersionPanel(props: {
 
 function Diff({ before, after }: { before: string; after: string }) {
   const parts = useMemo(() => diffLines(before, after), [before, after]);
-  if (parts.every((p) => !p.added && !p.removed)) return <p className="small muted">差分はありません。</p>;
+  if (parts.every((p) => !p.added && !p.removed)) return <p className={cx(ui.small, ui.muted)}>差分はありません。</p>;
   return (
-    <pre className="diff">
+    <pre className={s.diff}>
       {parts.map((p, i) => (
-        <span key={i} className={p.added ? "added" : p.removed ? "removed" : "same"}>
+        <span key={i} className={p.added ? s.added : p.removed ? s.removed : s.same}>
           {p.value
             .replace(/\n$/, "")
             .split("\n")

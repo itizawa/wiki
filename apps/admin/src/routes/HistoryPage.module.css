@@ -1,0 +1,3 @@
+.changes { margin: 0; padding-left: 18px; }
+.added { color: var(--ok); }
+.removed { color: var(--danger); }

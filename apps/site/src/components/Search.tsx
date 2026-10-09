@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import s from "./Search.module.css";
 
 type PagefindResult = { url: string; meta: { title?: string }; excerpt: string };
 type Pagefind = {
@@ -49,19 +50,20 @@ export default function Search() {
   }, [query]);
 
   return (
-    <div className="search">
+    <div>
       <input
         type="search"
+        className={s.input}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="キーワードで検索"
         aria-label="検索"
         autoFocus
       />
-      {error && <p className="muted">{error}</p>}
-      {results && results.length === 0 && <p className="muted">「{query}」に一致する記事はありませんでした。</p>}
+      {error && <p className={s.muted}>{error}</p>}
+      {results && results.length === 0 && <p className={s.muted}>「{query}」に一致する記事はありませんでした。</p>}
       {results && results.length > 0 && (
-        <ol className="search-results">
+        <ol className={s.results}>
           {results.map((r) => (
             <li key={r.url}>
               <a href={r.url}>{r.meta.title ?? r.url}</a>

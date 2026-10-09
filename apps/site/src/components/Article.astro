@@ -1,4 +1,5 @@
 ---
+import s from "./Article.module.css";
 import { renderMarkdown } from "../lib/markdown";
 
 interface Props {
@@ -19,12 +20,12 @@ const fmt = (iso: string) =>
 const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 ---
 
-<article>
+<article class={s.article}>
   <h1>{title}</h1>
-  <div class="meta">
+  <div class={s.meta}>
     {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
-    {sponsored && <span class="ad-notice">広告を含みます</span>}
+    {sponsored && <span class={s.adNotice}>広告を含みます</span>}
   </div>
-  <div set:html={html} />
+  <div class={s.body} set:html={html} />
 </article>

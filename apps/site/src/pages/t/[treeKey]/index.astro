@@ -1,4 +1,5 @@
 ---
+import layout from "../../../styles/page.module.css";
 import type { ManifestTree } from "@wiki/shared";
 import TreeNav from "../../../components/TreeNav";
 import Base from "../../../layouts/Base.astro";
@@ -16,6 +17,6 @@ const { pagesById } = await siteData();
 
 <Base title={tree.name}>
   <h1>{tree.name}</h1>
-  {tree.nodes.length === 0 && <p class="muted">まだ記事はありません。</p>}
+  {tree.nodes.length === 0 && <p class={layout.muted}>まだ記事はありません。</p>}
   <TreeNav client:idle items={navItems(tree, (id) => pagesById.get(id)?.title)} />
 </Base>

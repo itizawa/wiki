@@ -3,6 +3,8 @@ import { isoToJstLocal, jstLocalToIso, pagePath, unlistedPath, type PageDetail, 
 import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { cx } from "../lib/cx";
+import ui from "../styles/ui.module.css";
 
 const statusLabel: Record<ScheduledAction["status"], string> = {
   scheduled: "予約中",
@@ -48,35 +50,35 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
   const pending = (schedule.data?.actions ?? []).filter((a) => a.status === "scheduled" || a.status === "failed" || a.status === "running");
 
   return (
-    <section className="card stack">
+    <section className={cx(ui.card, ui.stack)}>
       <h3>公開</h3>
-      <div className="small">
-        {!published && <span className="badge private">非公開</span>}
-        {published && page.visibility === "public" && <span className="badge public">公開中</span>}
-        {published && page.visibility === "unlisted" && <span className="badge unlisted">限定公開中</span>}
+      <div className={ui.small}>
+        {!published && <span className={ui.badge}>非公開</span>}
+        {published && page.visibility === "public" && <span className={cx(ui.badge, ui.public)}>公開中</span>}
+        {published && page.visibility === "unlisted" && <span className={cx(ui.badge, ui.unlisted)}>限定公開中</span>}
         {published && page.publishedVersionId !== page.headVersionId && (
-          <p className="muted">公開版より新しい編集があります。反映するにはもう一度公開してください。</p>
+          <p className={ui.muted}>公開版より新しい編集があります。反映するにはもう一度公開してください。</p>
         )}
         {published && url && (
-          <p className="mono break">
+          <p className={cx(ui.mono, ui.breakAll)}>
             <a href={url} target="_blank" rel="noreferrer">
               {url}
             </a>
           </p>
         )}
         {published && page.visibility === "unlisted" && (
-          <p className="warn">このページはURLを知る人が閲覧できます。機密情報は載せないでください。</p>
+          <p className={ui.warn}>このページはURLを知る人が閲覧できます。機密情報は載せないでください。</p>
         )}
-        {published && <p className="muted">サイトへの反映は数分後（ビルド後）です。</p>}
+        {published && <p className={ui.muted}>サイトへの反映は数分後（ビルド後）です。</p>}
       </div>
 
-      <div className="row">
+      <div className={ui.row}>
         <select value={visibility} onChange={(e) => setVisibility(e.target.value as PublishVisibility)}>
           <option value="public">公開</option>
           <option value="unlisted">限定公開（URLを知る人のみ）</option>
         </select>
         <button
-          className="button primary"
+          className={ui.buttonPrimary}
           disabled={dirty || action.isPending}
           title={dirty ? "先に保存してください" : undefined}
           onClick={() => action.mutate(() => api.publish(page.id, { versionId: page.headVersionId, visibility }))}
@@ -84,10 +86,10 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
           {published ? "最新版で公開し直す" : "今すぐ公開"}
         </button>
       </div>
-      <div className="row">
+      <div className={ui.row}>
         {published && (
           <button
-            className="button"
+            className={ui.button}
             disabled={action.isPending}
             onClick={() => confirm("非公開にしますか？") && action.mutate(() => api.unpublish(page.id))}
           >
@@ -96,7 +98,7 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
         )}
         {page.visibility === "unlisted" && published && (
           <button
-            className="button"
+            className={ui.button}
             disabled={action.isPending}
             onClick={() =>
               confirm("限定公開URLを再発行しますか？旧URLは次のビルドで見られなくなります。") &&
@@ -109,17 +111,17 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
       </div>
 
       <h3>予約</h3>
-      <div className="stack small">
-        <div className="row">
+      <div className={cx(ui.stack, ui.small)}>
+        <div className={ui.row}>
           <select value={scheduleKind} onChange={(e) => setScheduleKind(e.target.value as typeof scheduleKind)}>
             <option value="publish_page">{visibility === "unlisted" ? "限定公開" : "公開"}を予約</option>
             <option value="unpublish_page">非公開化を予約</option>
           </select>
           <input type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)} />
-          <span className="muted">JST</span>
+          <span className={ui.muted}>JST</span>
         </div>
         <button
-          className="button"
+          className={ui.button}
           disabled={dirty || action.isPending || !runAt}
           title={dirty ? "先に保存してください" : undefined}
           onClick={() =>
@@ -134,27 +136,27 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
         >
           予約する
         </button>
-        <p className="muted">予約時点の版が公開されます。予約後の編集は含まれません。反映は予約時刻から数分以内です。</p>
+        <p className={ui.muted}>予約時点の版が公開されます。予約後の編集は含まれません。反映は予約時刻から数分以内です。</p>
       </div>
-      {action.error && <p className="error small">{errorMessage(action.error)}</p>}
+      {action.error && <p className={cx(ui.error, ui.small)}>{errorMessage(action.error)}</p>}
 
       {pending.length > 0 && (
-        <ul className="plain small">
+        <ul className={cx(ui.plainList, ui.small)}>
           {pending.map((a) => (
-            <li key={a.id} className="stack">
-              <div className="row">
-                <span className={`badge ${a.status}`}>{statusLabel[a.status]}</span>
-                <span className="grow">
+            <li key={a.id} className={ui.stack}>
+              <div className={ui.row}>
+                <span className={cx(ui.badge, ui[a.status])}>{statusLabel[a.status]}</span>
+                <span className={ui.grow}>
                   {formatDateTime(a.runAt)} に{actionLabel(a)}
                 </span>
                 {(a.status === "scheduled" || a.status === "failed") && (
-                  <button className="link danger" onClick={() => action.mutate(() => api.cancelSchedule(a.id))}>
+                  <button className={ui.linkDanger} onClick={() => action.mutate(() => api.cancelSchedule(a.id))}>
                     キャンセル
                   </button>
                 )}
               </div>
-              {a.editedAfterSchedule && <span className="warn">予約後に編集があります（予約内容には反映されません。反映するなら予約し直してください）</span>}
-              {a.lastError && <span className="error">{a.lastError}（{a.attempts}回試行）</span>}
+              {a.editedAfterSchedule && <span className={ui.warn}>予約後に編集があります（予約内容には反映されません。反映するなら予約し直してください）</span>}
+              {a.lastError && <span className={ui.error}>{a.lastError}（{a.attempts}回試行）</span>}
             </li>
           ))}
         </ul>

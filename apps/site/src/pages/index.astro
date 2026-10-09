@@ -1,4 +1,5 @@
 ---
+import page from "../styles/page.module.css";
 import Base from "../layouts/Base.astro";
 import { SITE_NAME, siteData } from "../lib/manifest";
 import { excerpt } from "../lib/markdown";
@@ -8,9 +9,9 @@ const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle
 ---
 
 <Base title={SITE_NAME} canonical="/">
-  <h1 class="visually-hidden">新着記事</h1>
-  {manifest.pages.length === 0 && <p class="muted">まだ記事はありません。</p>}
-  <ul class="post-list">
+  <h1 class={page.visuallyHidden}>新着記事</h1>
+  {manifest.pages.length === 0 && <p class={page.muted}>まだ記事はありません。</p>}
+  <ul class={page.postList}>
     {
       manifest.pages.map((p) => (
         <li>

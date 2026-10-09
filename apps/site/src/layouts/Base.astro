@@ -1,6 +1,7 @@
 ---
 import { SITE_NAME } from "../lib/manifest";
-import "../styles/site.css";
+import "../styles/global.css";
+import s from "./Base.module.css";
 
 interface Props {
   title: string;
@@ -36,20 +37,20 @@ const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
     }
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="/">{SITE_NAME}</a>
+    <header class={s.header}>
+      <a class={s.brand} href="/">{SITE_NAME}</a>
       {
         !noindex && (
-          <nav>
+          <nav class={s.nav}>
             <a href="/search">検索</a>
             <a href="/feed.xml">RSS</a>
           </nav>
         )
       }
     </header>
-    <div class="site-body">
+    <div class={s.body}>
       <slot />
     </div>
-    <footer class="site-footer">© {SITE_NAME}</footer>
+    <footer class={s.footer}>© {SITE_NAME}</footer>
   </body>
 </html>

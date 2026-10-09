@@ -4,6 +4,9 @@ import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wi
 import { useMemo, useState } from "react";
 import { actionLabel } from "../components/PublishPanel";
 import { api, errorMessage } from "../lib/api";
+import { cx } from "../lib/cx";
+import ui from "../styles/ui.module.css";
+import s from "./CalendarPage.module.css";
 
 const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
@@ -61,30 +64,30 @@ export function CalendarPage() {
   ).length;
   const today = jstDate(new Date(now).toISOString());
 
-  if (schedule.isPending || pages.isPending) return <p className="muted">読み込み中…</p>;
-  if (schedule.error) return <p className="error">{errorMessage(schedule.error)}</p>;
+  if (schedule.isPending || pages.isPending) return <p className={ui.muted}>読み込み中…</p>;
+  if (schedule.error) return <p className={ui.error}>{errorMessage(schedule.error)}</p>;
 
   return (
-    <div className="stack">
-      <section className={`card ${stock < STOCK_MIN ? "warn-card" : ""}`}>
+    <div className={ui.stack}>
+      <section className={stock < STOCK_MIN ? ui.cardWarn : ui.card}>
         <h2>予約ストック</h2>
         <p>
           今後{STOCK_DAYS}日の公開予約：<strong>{stock}件</strong>
-          {stock < STOCK_MIN && <span className="warn">　予約が少なくなっています。継続配信が途切れないよう記事を予約してください。</span>}
+          {stock < STOCK_MIN && <span className={ui.warn}>　予約が少なくなっています。継続配信が途切れないよう記事を予約してください。</span>}
         </p>
       </section>
 
       {(failed.data?.actions.length ?? 0) > 0 && (
-        <section className="card">
-          <h2 className="error">失敗した予約</h2>
-          <ul className="plain">
+        <section className={ui.card}>
+          <h2 className={ui.error}>失敗した予約</h2>
+          <ul className={ui.plainList}>
             {failed.data!.actions.map((a) => (
-              <li key={a.id} className="row">
-                <span className="grow">
+              <li key={a.id} className={ui.row}>
+                <span className={ui.grow}>
                   <PageLink action={a} /> {actionLabel(a)}（{isoToJstLocal(a.runAt).replace("T", " ")}）
-                  <span className="error small"> {a.lastError}</span>
+                  <span className={cx(ui.error, ui.small)}> {a.lastError}</span>
                 </span>
-                <button className="link danger" onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
+                <button className={ui.linkDanger} onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
                   キャンセル
                 </button>
               </li>
@@ -93,34 +96,34 @@ export function CalendarPage() {
         </section>
       )}
 
-      <section className="card">
+      <section className={ui.card}>
         <h2>編集カレンダー</h2>
-        <p className="muted small">過去14日〜60日先。時刻はJST。</p>
-        {mutate.error && <p className="error">{errorMessage(mutate.error)}</p>}
-        {days.length === 0 && <p className="muted">予定はありません。</p>}
-        <div className="calendar">
+        <p className={cx(ui.muted, ui.small)}>過去14日〜60日先。時刻はJST。</p>
+        {mutate.error && <p className={ui.error}>{errorMessage(mutate.error)}</p>}
+        {days.length === 0 && <p className={ui.muted}>予定はありません。</p>}
+        <div className={s.calendar}>
           {days.map(([day, entries]) => (
-            <div key={day} className={`calendar-day ${day === today ? "today" : ""} ${day < today ? "past" : ""}`}>
+            <div key={day} className={day === today ? s.today : day < today ? s.past : s.day}>
               <h4>
                 {day}
-                {day === today && <span className="badge">今日</span>}
+                {day === today && <span className={ui.badge}>今日</span>}
               </h4>
-              <ul className="plain small">
+              <ul className={cx(ui.plainList, ui.small)}>
                 {entries.map((e, i) => (
-                  <li key={i} className="row">
-                    <span className="mono muted">{isoToJstLocal(e.at).slice(11)}</span>
+                  <li key={i} className={ui.row}>
+                    <span className={cx(ui.mono, ui.muted)}>{isoToJstLocal(e.at).slice(11)}</span>
                     {e.kind === "action" && (
                       <>
-                        <span className={`badge ${e.action.status}`}>{actionLabel(e.action)}</span>
-                        <span className="grow">
+                        <span className={cx(ui.badge, ui[e.action.status])}>{actionLabel(e.action)}</span>
+                        <span className={ui.grow}>
                           <PageLink action={e.action} />
-                          {e.action.editedAfterSchedule && <span className="warn"> 予約後に編集あり</span>}
-                          {e.action.status === "done" && <span className="muted"> 実行済み</span>}
+                          {e.action.editedAfterSchedule && <span className={ui.warn}> 予約後に編集あり</span>}
+                          {e.action.status === "done" && <span className={ui.muted}> 実行済み</span>}
                         </span>
                         {e.action.status === "scheduled" && (
                           <>
                             <button
-                              className="link"
+                              className={ui.link}
                               onClick={() => {
                                 const next = prompt("新しい日時（JST, YYYY-MM-DDTHH:mm）", isoToJstLocal(e.action.runAt));
                                 if (next) mutate.mutate(() => api.reschedule(e.action.id, jstLocalToIso(next)));
@@ -128,7 +131,7 @@ export function CalendarPage() {
                             >
                               変更
                             </button>
-                            <button className="link danger" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))}>
+                            <button className={ui.linkDanger} onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))}>
                               キャンセル
                             </button>
                           </>
@@ -137,7 +140,7 @@ export function CalendarPage() {
                     )}
                     {e.kind === "published" && (
                       <>
-                        <span className={`badge ${e.unlisted ? "unlisted" : "public"}`}>{e.unlisted ? "限定公開済み" : "公開済み"}</span>
+                        <span className={cx(ui.badge, e.unlisted ? ui.unlisted : ui.public)}>{e.unlisted ? "限定公開済み" : "公開済み"}</span>
                         <Link to="/pages/$pageId" params={{ pageId: e.pageId }}>
                           {e.title}
                         </Link>
@@ -145,7 +148,7 @@ export function CalendarPage() {
                     )}
                     {e.kind === "draft" && (
                       <>
-                        <span className="badge">AI下書き</span>
+                        <span className={ui.badge}>AI下書き</span>
                         <Link to="/pages/$pageId" params={{ pageId: e.pageId }}>
                           {e.title}
                         </Link>

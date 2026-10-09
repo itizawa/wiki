@@ -4,7 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ApiError } from "./lib/api";
 import { router } from "./router";
-import "./styles.css";
+import "./styles/global.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {

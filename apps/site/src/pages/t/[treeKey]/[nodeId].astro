@@ -1,4 +1,5 @@
 ---
+import layout from "../../../styles/page.module.css";
 import type { ManifestPage, ManifestTree } from "@wiki/shared";
 import Article from "../../../components/Article.astro";
 import TreeNav from "../../../components/TreeNav";
@@ -26,9 +27,9 @@ const crumbs = ancestors(tree, page.id).slice(0, -1);
 ---
 
 <Base title={page.title} description={excerpt(page.bodyMd)} canonical={page.path}>
-  <div class="with-nav">
+  <div class={layout.withNav}>
     <main data-pagefind-ignore>
-      <nav class="breadcrumbs">
+      <nav class={layout.breadcrumbs}>
         <a href={`/t/${tree.key}/`}>{tree.name}</a>
         {
           crumbs.map((c) => (
