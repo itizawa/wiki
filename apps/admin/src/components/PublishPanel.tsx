@@ -5,7 +5,7 @@ import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import Tooltip from "@mui/material/Tooltip";
+import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstLocalToIso, pagePath, unlistedPath, type PageDetail, type PublishVisibility, type ScheduledAction } from "@wiki/shared";
