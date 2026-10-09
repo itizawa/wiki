@@ -4,7 +4,7 @@ import { tick, type Env } from "./tick";
 const env: Env = {
   API_ORIGIN: "https://api.test",
   INTERNAL_TOKEN: "t",
-  PAGES_DEPLOY_HOOK_URL: "https://hooks.test/deploy",
+  SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy",
   NOTIFY_WEBHOOK_URL: "https://hooks.test/notify",
 };
 
