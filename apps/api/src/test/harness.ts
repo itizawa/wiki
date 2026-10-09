@@ -49,3 +49,16 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
 
   return { app, db, client, config, call, close: () => client.close() };
 }
+
+/** 複数ツリー時代のデータを再現する：primary以外のツリーを現在のheadコミットに直接足す。 */
+export async function addLegacyTree(client: PGlite, key = "by-theme") {
+  const id = `t_${key}`;
+  await client.query(`insert into trees (id, key, name, is_public, is_primary) values ($1, $2, $3, true, false)`, [id, key, key]);
+  const snap = await client.query<{ id: string }>(`insert into tree_snapshots (tree_id) values ($1) returning id`, [id]);
+  await client.query(
+    `insert into commit_trees (commit_id, tree_id, snapshot_id)
+     select head_commit_id, $1, $2 from structure_branches where name = 'main'`,
+    [id, snap.rows[0]!.id],
+  );
+  return id;
+}

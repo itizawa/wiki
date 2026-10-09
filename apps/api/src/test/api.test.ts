@@ -1,7 +1,7 @@
 import { INBOX_NODE_ID } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE, signSession } from "../auth/session";
-import { setup } from "./harness";
+import { addLegacyTree, setup } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -114,7 +114,7 @@ describe("pages", () => {
     expect(saved.body.headVersionId).toBe(created.body.headVersionId);
   });
 
-  it("deletes a page and lifts its children in every tree", async () => {
+  it("deletes a page and lifts its children", async () => {
     ctx = await setup();
     const parent = (await ctx.call("POST", "/admin/pages", { title: "parent" })).body;
     const child = (await ctx.call("POST", "/admin/pages", { title: "child" })).body;
@@ -134,50 +134,39 @@ describe("pages", () => {
 });
 
 describe("structure commits", () => {
-  it("commits ops on main, reuses unchanged snapshots and records history", async () => {
+  it("commits ops and records history", async () => {
     ctx = await setup();
     const page = (await ctx.call("POST", "/admin/pages", { title: "p" })).body;
     let s = await structure();
-    const mainTree = s.trees[0].id;
+    expect(s).not.toHaveProperty("branch");
+    const treeId = s.trees[0].id;
 
     const res = await ctx.call("POST", "/admin/structure/commits", {
       expectedHeadCommitId: s.headCommitId,
-      message: "テーマ別ツリーを追加",
-      ops: [
-        { type: "create_tree", treeKey: "by-theme", name: "テーマ別", initialNodes: [{ nodeId: "f_t1", kind: "folder", title: "T1", parentNodeId: null }] },
-      ],
+      message: "Docsフォルダを追加",
+      ops: [{ type: "create_folder", treeId, nodeId: "f_docs", title: "Docs", parentNodeId: null }],
     });
     expect(res.status).toBe(201);
     s = await structure();
-    const theme = s.trees.find((t: any) => t.key === "by-theme");
-    expect(theme.nodes).toHaveLength(1);
 
-    // 同じページを別ツリーの別の位置へ
-    const add = await ctx.call("POST", "/admin/structure/commits", {
+    const move = await ctx.call("POST", "/admin/structure/commits", {
       expectedHeadCommitId: s.headCommitId,
-      ops: [{ type: "add_to_tree", treeId: theme.id, pageId: page.id, parentNodeId: "f_t1" }],
+      ops: [{ type: "move", treeId, nodeId: page.id, newParentNodeId: "f_docs" }],
     });
-    expect(add.status).toBe(201);
+    expect(move.status).toBe(201);
 
     const history = await ctx.call("GET", "/admin/structure/commits");
     expect(history.body.commits.map((c: any) => c.message)).toEqual([
-      "ツリーに追加",
-      "テーマ別ツリーを追加",
+      "移動",
+      "Docsフォルダを追加",
       "「p」をInboxに追加",
       "初期コミット",
     ]);
 
-    const detail = await ctx.call("GET", `/admin/structure/commits/${add.body.commitId}`);
+    const detail = await ctx.call("GET", `/admin/structure/commits/${move.body.commitId}`);
     expect(detail.body.changes).toEqual([
-      expect.objectContaining({ kind: "node_added", treeId: theme.id }),
+      expect.objectContaining({ kind: "node_moved", treeId, nodeId: page.id, to: "f_docs" }),
     ]);
-
-    // 変更していない main ツリーのスナップショットは使い回されている
-    const rows = await ctx.client.query<{ n: number }>(
-      `select count(distinct snapshot_id)::int as n from commit_trees where tree_id = $1`,
-      [mainTree],
-    );
-    expect(rows.rows[0]!.n).toBe(2); // Initial + Add to inbox
   });
 
   it("rejects commits based on a stale head", async () => {
@@ -204,28 +193,41 @@ describe("structure commits", () => {
     expect((await structure()).headCommitId).toBe(s.headCommitId);
   });
 
-  it("only allows the main branch in phase 1", async () => {
+  it("rejects operations that create or delete trees", async () => {
     ctx = await setup();
     const s = await structure();
-    const res = await ctx.call("POST", "/admin/structure/commits", {
-      branch: "try-theme-tree",
-      expectedHeadCommitId: s.headCommitId,
-      ops: [{ type: "create_folder", treeId: s.trees[0].id, title: "F", parentNodeId: null }],
-    });
-    expect(res.status).toBe(400);
+    for (const op of [
+      { type: "create_tree", treeKey: "second", name: "2nd" },
+      { type: "delete_tree", treeId: s.trees[0].id },
+    ]) {
+      const res = await ctx.call("POST", "/admin/structure/commits", { expectedHeadCommitId: s.headCommitId, ops: [op] });
+      expect(res.status).toBe(400);
+    }
+    expect((await structure()).headCommitId).toBe(s.headCommitId);
   });
 
-  it("keeps a single primary tree", async () => {
+  it("exposes only the primary tree even when legacy trees remain", async () => {
+    ctx = await setup();
+    await addLegacyTree(ctx.client);
+    const s = await structure();
+    expect(s.trees.map((t: any) => t.key)).toEqual(["main"]);
+    expect((await ctx.call("GET", "/admin/trees")).body.trees.map((t: any) => t.key)).toEqual(["main"]);
+  });
+
+  it("cannot switch the primary tree", async () => {
+    ctx = await setup();
+    const legacyId = await addLegacyTree(ctx.client);
+    const res = await ctx.call("PATCH", `/admin/trees/${legacyId}`, { isPrimary: true });
+    expect(res.status).toBe(404);
+    const rows = await ctx.client.query<{ key: string }>(`select key from trees where is_primary`);
+    expect(rows.rows.map((r) => r.key)).toEqual(["main"]);
+  });
+
+  it("renames the tree", async () => {
     ctx = await setup();
     const s = await structure();
-    await ctx.call("POST", "/admin/structure/commits", {
-      expectedHeadCommitId: s.headCommitId,
-      ops: [{ type: "create_tree", treeKey: "second", name: "2nd" }],
-    });
-    const trees = (await ctx.call("GET", "/admin/trees")).body.trees;
-    const second = trees.find((t: any) => t.key === "second");
-    await ctx.call("PATCH", `/admin/trees/${second.id}`, { isPrimary: true, name: "二番目" });
-    const after = (await ctx.call("GET", "/admin/trees")).body.trees;
-    expect(after.filter((t: any) => t.isPrimary).map((t: any) => t.key)).toEqual(["second"]);
+    const res = await ctx.call("PATCH", `/admin/trees/${s.trees[0].id}`, { name: "ブログ" });
+    expect(res.status).toBe(200);
+    expect((await structure()).trees[0].name).toBe("ブログ");
   });
 });
