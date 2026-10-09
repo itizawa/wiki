@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { TREE_KEY_PATTERN } from "../slug";
 import { isValidPosition } from "./position";
 
 const id = z.string().min(1).max(64);
@@ -7,18 +6,9 @@ const id = z.string().min(1).max(64);
 const position = z.string().max(64).refine(isValidPosition, "invalid position").optional();
 const folderTitle = z.string().trim().min(1).max(200);
 
-export const initialNodeSchema = z.object({
-  nodeId: id.optional(),
-  kind: z.enum(["page", "folder"]),
-  pageId: id.optional(),
-  title: folderTitle.optional(),
-  parentNodeId: id.nullable(),
-  position,
-});
-
 /**
- * 構造操作。AI提案（proposal_ops）と管理画面の手動操作で共通。
- * remove_node / delete_tree は設計書の一覧に無く、手動操作用に追加したもの。
+ * 構造操作。管理画面の手動操作と、ルールからの配置提案で共通。
+ * ツリーは1本だけなので、ツリー自体を作る・消す操作は無い。
  */
 export const structureOpSchema = z.discriminatedUnion("type", [
   z.object({
@@ -50,14 +40,6 @@ export const structureOpSchema = z.discriminatedUnion("type", [
     position,
   }),
   z.object({
-    type: z.literal("create_tree"),
-    treeId: id.optional(),
-    treeKey: z.string().min(1).max(64).regex(TREE_KEY_PATTERN),
-    name: z.string().trim().min(1).max(100),
-    isPublic: z.boolean().optional(),
-    initialNodes: z.array(initialNodeSchema).max(10_000).default([]),
-  }),
-  z.object({
     type: z.literal("split_folder"),
     treeId: id,
     nodeId: id,
@@ -75,10 +57,6 @@ export const structureOpSchema = z.discriminatedUnion("type", [
     treeId: id,
     nodeId: id,
   }),
-  z.object({
-    type: z.literal("delete_tree"),
-    treeId: id,
-  }),
 ]);
 
 export type StructureOp = z.infer<typeof structureOpSchema>;
@@ -86,8 +64,7 @@ export type StructureOpInput = z.input<typeof structureOpSchema>;
 export type StructureOpType = StructureOp["type"];
 
 export const commitStructureInput = z.object({
-  branch: z.string().min(1).default("main"),
-  /** 楽観ロック。ブランチのheadがこの値と一致する場合のみコミットする。 */
+  /** 楽観ロック。headがこの値と一致する場合のみコミットする。 */
   expectedHeadCommitId: z.string().uuid(),
   message: z.string().max(500).optional(),
   ops: z.array(structureOpSchema).min(1).max(1000),

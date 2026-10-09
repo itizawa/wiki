@@ -41,7 +41,6 @@ export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title"
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
-  branch: string;
   headCommitId: string;
   trees: StructureTree[];
   pages: Record<string, { id: string; title: string; slug: string; visibility: string; publishedVersionId: string | null }>;
@@ -85,11 +84,11 @@ export const api = {
 
   structure: () => request<StructureResponse>("GET", "/admin/structure"),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
-    request<{ commitId: string }>("POST", "/admin/structure/commits", { branch: "main", ...input }),
+    request<{ commitId: string }>("POST", "/admin/structure/commits", input),
   history: () => request<{ commits: CommitListItem[] }>("GET", "/admin/structure/commits"),
   commitDetail: (id: string) =>
     request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", `/admin/structure/commits/${id}`),
-  updateTree: (id: string, input: { name?: string; isPublic?: boolean; isPrimary?: true }) =>
+  updateTree: (id: string, input: { name?: string; isPublic?: boolean }) =>
     request<TreeMeta>("PATCH", `/admin/trees/${id}`, input),
 };
 

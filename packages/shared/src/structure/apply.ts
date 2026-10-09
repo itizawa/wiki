@@ -1,4 +1,4 @@
-import { INBOX_NODE_ID, newFolderNodeId, newTreeId } from "../ids";
+import { INBOX_NODE_ID, newFolderNodeId } from "../ids";
 import type { StructureOp } from "./ops";
 import { positionAfterLast, renumber } from "./position";
 import { childrenByParent, compareNodes, type StructureState, type TreeNode } from "./types";
@@ -23,24 +23,15 @@ export class StructureValidationError extends Error {
 }
 
 export type ApplyContext = {
-  /** add_to_tree / create_tree の参照先ページが存在するか。省略時は検査しない。 */
+  /** add_to_tree の参照先ページが存在するか。省略時は検査しない。 */
   pageExists?: (pageId: string) => boolean;
-  /** `trees` テーブル上で既に使われているキーのツリーID（再作成時に再利用する）。 */
-  findTreeIdByKey?: (key: string) => string | undefined;
-  /** 削除できないツリー（primary）か。 */
-  isPrimaryTree?: (treeId: string) => boolean;
   newFolderId?: () => string;
-  newTreeId?: () => string;
 };
-
-export type CreatedTree = { id: string; key: string; name: string; isPublic: boolean };
 
 export type ApplyResult = {
   state: StructureState;
-  /** 新しいスナップショットが必要なツリー（追加・変更されたもの）。 */
+  /** 新しいスナップショットが必要なツリー（変更されたもの）。 */
   changedTreeIds: string[];
-  removedTreeIds: string[];
-  createdTrees: CreatedTree[];
 };
 
 type WorkingTree = Map<string, TreeNode>;
@@ -59,10 +50,7 @@ export function applyOps(
     working.set(treeId, new Map(tree.nodes.map((n) => [n.nodeId, { ...n }])));
   }
   const changed = new Set<string>();
-  const removed = new Set<string>();
-  const createdTrees: CreatedTree[] = [];
   const genFolderId = ctx.newFolderId ?? newFolderNodeId;
-  const genTreeId = ctx.newTreeId ?? newTreeId;
 
   ops.forEach((op, index) => {
     const fail = (code: string, message: string): never => {
@@ -140,44 +128,6 @@ export function applyOps(
         changed.add(op.treeId);
         break;
       }
-      case "create_tree": {
-        const existing = ctx.findTreeIdByKey?.(op.treeKey);
-        const treeId = op.treeId ?? existing ?? genTreeId();
-        if (working.has(treeId)) fail("duplicate_tree", `tree ${op.treeKey} already exists`);
-        if (existing !== undefined && existing !== treeId) {
-          fail("duplicate_tree_key", `tree key ${op.treeKey} is used by another tree`);
-        }
-        const tree: WorkingTree = new Map();
-        working.set(treeId, tree);
-        removed.delete(treeId);
-        for (const n of op.initialNodes) {
-          if (n.kind === "page") {
-            if (!n.pageId) fail("invalid_node", "page node requires pageId");
-            requirePage(n.pageId!);
-            insert(tree, {
-              nodeId: n.pageId!,
-              kind: "page",
-              pageId: n.pageId!,
-              title: null,
-              parentNodeId: n.parentNodeId,
-              position: n.position,
-            });
-          } else {
-            if (!n.title) fail("invalid_node", "folder node requires title");
-            insert(tree, {
-              nodeId: n.nodeId ?? genFolderId(),
-              kind: "folder",
-              pageId: null,
-              title: n.title!,
-              parentNodeId: n.parentNodeId,
-              position: n.position,
-            });
-          }
-        }
-        createdTrees.push({ id: treeId, key: op.treeKey, name: op.name, isPublic: op.isPublic ?? true });
-        changed.add(treeId);
-        break;
-      }
       case "split_folder": {
         const tree = getTree(op.treeId);
         const folder = getNode(tree, op.nodeId);
@@ -224,14 +174,6 @@ export function applyOps(
         changed.add(op.treeId);
         break;
       }
-      case "delete_tree": {
-        getTree(op.treeId);
-        if (ctx.isPrimaryTree?.(op.treeId)) fail("primary_tree", "primary tree cannot be deleted");
-        working.delete(op.treeId);
-        changed.delete(op.treeId);
-        removed.add(op.treeId);
-        break;
-      }
     }
   });
 
@@ -245,12 +187,7 @@ export function applyOps(
   const issues = [...changed].flatMap((treeId) => validateTree(state.trees[treeId]!));
   if (issues.length > 0) throw new StructureValidationError(issues);
 
-  return {
-    state,
-    changedTreeIds: [...changed],
-    removedTreeIds: [...removed].filter((id) => id in input.trees),
-    createdTrees,
-  };
+  return { state, changedTreeIds: [...changed] };
 }
 
 /** target が node 自身またはその子孫か（= node を target の下へ移すと循環する）。 */

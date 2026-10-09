@@ -1,3 +1,14 @@
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { isValidSlug, pagePath, type PageDetail } from "@wiki/shared";
@@ -7,10 +18,9 @@ import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
 import { PublishPanel } from "../components/PublishPanel";
+import { Mono, Muted, Row, Section, StatusChip, WithSidebar } from "../components/ui";
+import { monoFont } from "../theme";
 import { visibilityLabel } from "./PagesPage";
-import { cx } from "../lib/cx";
-import ui from "../styles/ui.module.css";
-import s from "./EditorPage.module.css";
 
 type Draft = { title: string; slug: string; bodyMd: string };
 
@@ -88,73 +98,104 @@ export function EditorPage({ pageId }: { pageId: string }) {
 
   const preview = useMemo(() => (draft ? renderMarkdown(draft.bodyMd) : ""), [draft?.bodyMd]);
 
-  if (page.isPending || !draft) return <p className={ui.muted}>読み込み中…</p>;
-  if (page.error) return <p className={ui.error}>{errorMessage(page.error)}</p>;
+  if (page.isPending || !draft) return <Muted>読み込み中…</Muted>;
+  if (page.error) return <Alert severity="error">{errorMessage(page.error)}</Alert>;
   const p = page.data;
 
   return (
-    <div className={ui.withSidebar}>
-      <div className={ui.stack}>
-        <div className={ui.row}>
-          <input
-            className={cx(s.titleInput, ui.grow)}
+    <WithSidebar>
+      <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+        <Row>
+          <TextField
             value={draft.title}
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             placeholder="タイトル"
+            sx={{ flex: 1, minWidth: 0, "& input": { fontSize: "1.4rem", fontWeight: 600 } }}
           />
-          <button className={ui.buttonPrimary} disabled={!canSave} onClick={() => save.mutate()}>
+          <Button variant="contained" size="large" disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
-          </button>
-        </div>
-        <div className={cx(ui.row, ui.small)}>
-          <label className={ui.muted}>slug</label>
-          <input
-            className={cx(ui.mono, ui.grow, !isValidSlug(draft.slug) && ui.invalid)}
+          </Button>
+        </Row>
+        <Row>
+          <TextField
+            label="slug"
             value={draft.slug}
+            error={!isValidSlug(draft.slug)}
             onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+            sx={{ flex: 1, minWidth: 0, "& input": { fontFamily: monoFont, fontSize: "0.85rem" } }}
           />
-          <span className={cx(ui.muted, ui.mono)}>{pagePath(p.id, draft.slug)}</span>
-          <span className={cx(ui.badge, ui[p.visibility])}>{visibilityLabel[p.visibility]}</span>
-        </div>
+          <Muted component="span">
+            <Mono>{pagePath(p.id, draft.slug)}</Mono>
+          </Muted>
+          <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+        </Row>
         {save.error && (
-          <p className={ui.error}>
-            {errorMessage(save.error)}{" "}
-            <button
-              className={ui.link}
-              onClick={async () => {
-                // 競合時：サーバーの最新版を読み直す（ローカルの編集は破棄される）
-                const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
-                setDraft(draftOf(latest));
-                setBaseVersionId(latest.headVersionId);
-                save.reset();
-              }}
-            >
-              最新版を読み込む
-            </button>
-          </p>
+          <Alert
+            severity="error"
+            action={
+              <Button
+                color="inherit"
+                onClick={async () => {
+                  // 競合時：サーバーの最新版を読み直す（ローカルの編集は破棄される）
+                  const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+                  setDraft(draftOf(latest));
+                  setBaseVersionId(latest.headVersionId);
+                  save.reset();
+                }}
+              >
+                最新版を読み込む
+              </Button>
+            }
+          >
+            {errorMessage(save.error)}
+          </Alert>
         )}
-        <div className={ui.tabs}>
-          {(["split", "edit", "preview"] as const).map((m) => (
-            <button key={m} className={mode === m ? ui.tabActive : ui.tab} onClick={() => setMode(m)}>
-              {{ split: "分割", edit: "編集", preview: "プレビュー" }[m]}
-            </button>
-          ))}
-        </div>
-        <div className={mode === "split" ? s.panesSplit : s.panes}>
+        <ToggleButtonGroup size="small" exclusive value={mode} onChange={(_e, m: typeof mode | null) => m && setMode(m)}>
+          <ToggleButton value="split">分割</ToggleButton>
+          <ToggleButton value="edit">編集</ToggleButton>
+          <ToggleButton value="preview">プレビュー</ToggleButton>
+        </ToggleButtonGroup>
+        <Box
+          sx={{
+            display: "grid",
+            gap: 1.5,
+            minHeight: "60vh",
+            alignItems: "start",
+            gridTemplateColumns: mode === "split" ? { xs: "1fr", md: "1fr 1fr" } : "1fr",
+          }}
+        >
           {mode !== "preview" && (
-            <textarea
-              className={cx(s.bodyInput, ui.mono)}
+            <TextField
+              multiline
+              fullWidth
+              minRows={24}
               value={draft.bodyMd}
               onChange={(e) => setDraft({ ...draft, bodyMd: e.target.value })}
               placeholder="Markdownで本文を書く"
               spellCheck={false}
+              sx={{ "& textarea": { fontFamily: monoFont, lineHeight: 1.6 } }}
             />
           )}
-          {mode !== "edit" && <article className={s.preview} dangerouslySetInnerHTML={{ __html: preview }} />}
-        </div>
-      </div>
+          {mode !== "edit" && (
+            <Paper
+              component="article"
+              variant="outlined"
+              sx={{
+                px: 2,
+                py: 1.5,
+                overflow: "auto",
+                lineHeight: 1.7,
+                minHeight: "60vh",
+                "& pre": { bgcolor: "background.default", p: 1, borderRadius: 1, overflow: "auto" },
+                "& a": { color: "primary.main" },
+              }}
+              dangerouslySetInnerHTML={{ __html: preview }}
+            />
+          )}
+        </Box>
+      </Stack>
 
-      <aside className={ui.stack}>
+      <Stack component="aside" spacing={1.5} sx={{ minWidth: 0 }}>
         <VersionPanel
           pageId={pageId}
           headVersionId={p.headVersionId}
@@ -164,22 +205,29 @@ export function EditorPage({ pageId }: { pageId: string }) {
           onRestore={(v) => setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd })}
         />
         <PublishPanel page={p} dirty={dirty} />
-        <section className={ui.card}>
-          <h3>ページ</h3>
-          <p className={cx(ui.muted, ui.small, ui.mono)}>id: {p.id}</p>
-          <button
-            className={ui.buttonDanger}
-            disabled={remove.isPending}
-            onClick={() => {
-              if (confirm(`「${p.title}」を削除しますか？（全ツリーから外れます）`)) remove.mutate();
-            }}
-          >
-            削除
-          </button>
-          {remove.error && <p className={ui.error}>{errorMessage(remove.error)}</p>}
-        </section>
-      </aside>
-    </div>
+        <Section>
+          <Stack spacing={1} sx={{ alignItems: "flex-start" }}>
+            <Typography variant="subtitle1" component="h3">
+              ページ
+            </Typography>
+            <Muted>
+              <Mono>id: {p.id}</Mono>
+            </Muted>
+            <Button
+              variant="outlined"
+              color="error"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (confirm(`「${p.title}」を削除しますか？（全ツリーから外れます）`)) remove.mutate();
+              }}
+            >
+              削除
+            </Button>
+            {remove.error && <Alert severity="error">{errorMessage(remove.error)}</Alert>}
+          </Stack>
+        </Section>
+      </Stack>
+    </WithSidebar>
   );
 }
 
@@ -199,49 +247,58 @@ function VersionPanel(props: {
   });
 
   return (
-    <section className={ui.card}>
-      <h3>版履歴</h3>
-      <ul className={s.versionList}>
+    <Section>
+      <Typography variant="subtitle1" component="h3">
+        版履歴
+      </Typography>
+      <List dense disablePadding sx={{ maxHeight: 240, overflow: "auto", mx: -1 }}>
         {versions.data?.versions.map((v, i) => (
-          <li key={v.id}>
-            <button
-              className={props.selected === v.id ? ui.linkActive : ui.link}
-              onClick={() => props.onSelect(props.selected === v.id ? null : v.id)}
-            >
-              {formatDateTime(v.createdAt)}
-            </button>
-            {i === 0 && <span className={ui.badge}>head</span>}
-            {v.authorType === "ai" && <span className={ui.badge}>AI</span>}
-          </li>
+          <ListItemButton
+            key={v.id}
+            selected={props.selected === v.id}
+            onClick={() => props.onSelect(props.selected === v.id ? null : v.id)}
+            sx={{ px: 1, gap: 0.75, borderRadius: 1 }}
+          >
+            {formatDateTime(v.createdAt)}
+            {i === 0 && <StatusChip label="head" />}
+            {v.authorType === "ai" && <StatusChip label="AI" />}
+          </ListItemButton>
         ))}
-      </ul>
+      </List>
       {version.data && (
-        <div className={ui.stack}>
-          <p className={cx(ui.small, ui.muted)}>この版 → 編集中の内容 の差分</p>
+        <Stack spacing={1.5} sx={{ mt: 1.5, minWidth: 0 }}>
+          <Muted>この版 → 編集中の内容 の差分</Muted>
           <Diff before={`# ${version.data.title}\n\n${version.data.bodyMd}`} after={`# ${props.current.title}\n\n${props.current.bodyMd}`} />
-          <button className={ui.button} onClick={() => props.onRestore(version.data!)}>
+          <Button variant="outlined" onClick={() => props.onRestore(version.data!)}>
             この版の内容をエディタに戻す
-          </button>
-        </div>
+          </Button>
+        </Stack>
       )}
-    </section>
+    </Section>
   );
 }
 
 function Diff({ before, after }: { before: string; after: string }) {
   const parts = useMemo(() => diffLines(before, after), [before, after]);
-  if (parts.every((p) => !p.added && !p.removed)) return <p className={cx(ui.small, ui.muted)}>差分はありません。</p>;
+  if (parts.every((p) => !p.added && !p.removed)) return <Muted>差分はありません。</Muted>;
   return (
-    <pre className={s.diff}>
+    <Box
+      component="pre"
+      sx={{ fontFamily: monoFont, fontSize: "0.8rem", maxHeight: 320, overflow: "auto", m: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}
+    >
       {parts.map((p, i) => (
-        <span key={i} className={p.added ? s.added : p.removed ? s.removed : s.same}>
+        <Box
+          key={i}
+          component="span"
+          sx={{ display: "block", bgcolor: p.added ? "diff.added" : p.removed ? "diff.removed" : undefined, color: p.added || p.removed ? undefined : "text.secondary" }}
+        >
           {p.value
             .replace(/\n$/, "")
             .split("\n")
             .map((line) => `${p.added ? "+" : p.removed ? "-" : " "} ${line}`)
             .join("\n")}
-        </span>
+        </Box>
       ))}
-    </pre>
+    </Box>
   );
 }

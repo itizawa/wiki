@@ -9,20 +9,27 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
+import { SimpleTreeView } from "@mui/x-tree-view/SimpleTreeView";
+import { TreeItem, treeItemClasses } from "@mui/x-tree-view/TreeItem";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { INBOX_NODE_ID, TREE_KEY_PATTERN, type StructureOpInput, type TreeNode } from "@wiki/shared";
+import { childrenByParent, INBOX_NODE_ID, type StructureOpInput, type TreeNode } from "@wiki/shared";
 import { useMemo, useState } from "react";
+import { Mono, Muted, RouterLink, Row, Section, WithSidebar } from "../components/ui";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
-import { decodeDropTarget, encodeDropTarget, flatten, resolveDrop, type Row } from "../lib/tree";
-import { cx } from "../lib/cx";
-import ui from "../styles/ui.module.css";
-import s from "./TreePage.module.css";
+import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 
 export function TreePage() {
   const qc = useQueryClient();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
-  const [activeTreeId, setActiveTreeId] = useState<string | null>(null);
 
   const commit = useMutation({
     mutationFn: (input: { ops: StructureOpInput[]; message?: string }) =>
@@ -35,10 +42,10 @@ export function TreePage() {
     },
   });
 
-  if (structure.isPending) return <p className={ui.muted}>読み込み中…</p>;
-  if (structure.error) return <p className={ui.error}>{errorMessage(structure.error)}</p>;
+  if (structure.isPending) return <Muted>読み込み中…</Muted>;
+  if (structure.error) return <Alert severity="error">{errorMessage(structure.error)}</Alert>;
   const data = structure.data;
-  const tree = data.trees.find((t) => t.id === activeTreeId) ?? data.trees[0]!;
+  const tree = data.trees[0]!;
 
   const run = (ops: StructureOpInput[], message?: string) => {
     commit.reset();
@@ -46,82 +53,54 @@ export function TreePage() {
   };
 
   return (
-    <div className={ui.stack}>
-      <div className={ui.row}>
-        <div className={cx(ui.tabs, ui.grow)}>
-          {data.trees.map((t) => (
-            <button key={t.id} className={t.id === tree.id ? ui.tabActive : ui.tab} onClick={() => setActiveTreeId(t.id)}>
-              {t.name}
-              {t.isPrimary && " ★"}
-            </button>
-          ))}
-          <button
-            className={ui.tab}
-            onClick={() => {
-              const key = prompt("ツリーのキー（URLに使う英小文字・数字・ハイフン。例: by-theme）");
-              if (!key) return;
-              if (!TREE_KEY_PATTERN.test(key)) return alert("キーは英小文字・数字・ハイフンで入力してください");
-              const name = prompt("表示名", key);
-              if (name) run([{ type: "create_tree", treeKey: key, name }], `ツリー「${name}」を追加`);
-            }}
-          >
-            ＋ ツリー
-          </button>
-        </div>
-        <span className={ui.badge} title="ブランチの作成・マージはフェーズ3で対応">
-          ブランチ: {data.branch}
-        </span>
-      </div>
+    <Stack spacing={1.5}>
+      {commit.error && <Alert severity="error">{errorMessage(commit.error)}</Alert>}
 
-      {commit.error && <p className={ui.error}>{errorMessage(commit.error)}</p>}
-
-      <TreeHeader tree={tree} onDelete={() => run([{ type: "delete_tree", treeId: tree.id }], `ツリー「${tree.name}」を削除`)} />
-      <TreeEditor key={tree.id} tree={tree} data={data} busy={commit.isPending} run={run} />
-    </div>
+      <TreeHeader tree={tree} />
+      <TreeEditor tree={tree} data={data} busy={commit.isPending} run={run} />
+    </Stack>
   );
 }
 
-function TreeHeader({ tree, onDelete }: { tree: StructureTree; onDelete: () => void }) {
+function TreeHeader({ tree }: { tree: StructureTree }) {
   const qc = useQueryClient();
   const update = useMutation({
     mutationFn: (input: Parameters<typeof api.updateTree>[1]) => api.updateTree(tree.id, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["structure"] }),
   });
   return (
-    <div className={cx(ui.card, ui.row, ui.small)}>
-      <span className={cx(ui.mono, ui.muted)}>/t/{tree.key}/</span>
-      <label className={ui.row}>
-        <input
-          type="checkbox"
-          checked={tree.isPublic}
-          disabled={update.isPending}
-          onChange={(e) => update.mutate({ isPublic: e.target.checked })}
+    <Section sx={{ py: 1 }}>
+      <Row sx={{ typography: "body2" }}>
+        <Mono sx={{ color: "text.secondary" }}>/t/{tree.key}/</Mono>
+        <FormControlLabel
+          label="公開サイトに表示"
+          slotProps={{ typography: { variant: "body2" } }}
+          sx={{ mx: 0 }}
+          control={
+            <Checkbox
+              size="small"
+              checked={tree.isPublic}
+              disabled={update.isPending}
+              onChange={(e) => update.mutate({ isPublic: e.target.checked })}
+            />
+          }
         />
-        公開ツリー
-      </label>
-      <button
-        className={ui.link}
-        onClick={() => {
-          const name = prompt("表示名", tree.name);
-          if (name && name !== tree.name) update.mutate({ name });
-        }}
-      >
-        名前を変更
-      </button>
-      {tree.isPrimary ? (
-        <span className={ui.muted}>primary（パンくず・既定ナビ）</span>
-      ) : (
-        <>
-          <button className={ui.link} onClick={() => update.mutate({ isPrimary: true })}>
-            primaryにする
-          </button>
-          <button className={ui.linkDanger} onClick={() => confirm(`ツリー「${tree.name}」を削除しますか？`) && onDelete()}>
-            ツリーを削除
-          </button>
-        </>
-      )}
-      {update.error && <span className={ui.error}>{errorMessage(update.error)}</span>}
-    </div>
+        <Button
+          variant="text"
+          onClick={() => {
+            const name = prompt("表示名", tree.name);
+            if (name && name !== tree.name) update.mutate({ name });
+          }}
+        >
+          名前を変更
+        </Button>
+        {update.error && (
+          <Typography variant="body2" color="error">
+            {errorMessage(update.error)}
+          </Typography>
+        )}
+      </Row>
+    </Section>
   );
 }
 
@@ -134,7 +113,12 @@ function TreeEditor(props: {
   const { tree, data, run } = props;
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState<string | null>(null);
-  const rows = useMemo(() => flatten(tree.nodes, collapsed), [tree.nodes, collapsed]);
+  const children = useMemo(() => childrenByParent(tree.nodes), [tree.nodes]);
+  // 既定は全展開。畳んだものだけを覚えておく（後から増えたフォルダも開いた状態で出る）
+  const expanded = useMemo(
+    () => tree.nodes.filter((n) => children.has(n.nodeId) && !collapsed.has(n.nodeId)).map((n) => n.nodeId),
+    [tree.nodes, children, collapsed],
+  );
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const allPages = useQuery({ queryKey: ["pages", ""], queryFn: () => api.listPages() });
   const unplaced = (allPages.data?.pages ?? []).filter((p) => !tree.nodes.some((n) => n.pageId === p.id));
@@ -150,20 +134,26 @@ function TreeEditor(props: {
     if (move) run([{ type: "move", treeId: tree.id, nodeId, ...move }]);
   };
 
-  const toggle = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const handlers: NodeHandlers = {
+    label,
+    isCollapsed: (node) => collapsed.has(node.nodeId),
+    onRename: (node) => {
+      const title = prompt("フォルダ名", node.title ?? "");
+      if (title && title !== node.title) run([{ type: "rename_folder", treeId: tree.id, nodeId: node.nodeId, title }]);
+    },
+    onAddFolder: (node) => {
+      const title = prompt("フォルダ名");
+      if (title) run([{ type: "create_folder", treeId: tree.id, title, parentNodeId: node.nodeId }]);
+    },
+    onRemove: (node) => run([{ type: "remove_node", treeId: tree.id, nodeId: node.nodeId }]),
+  };
 
   return (
-    <div className={ui.withSidebar}>
-      <section className={ui.card}>
-        <div className={ui.row}>
-          <button
-            className={ui.button}
+    <WithSidebar>
+      <Section>
+        <Row>
+          <Button
+            variant="outlined"
             disabled={props.busy}
             onClick={() => {
               const title = prompt("フォルダ名");
@@ -171,9 +161,9 @@ function TreeEditor(props: {
             }}
           >
             ＋ フォルダ
-          </button>
-          <span className={cx(ui.muted, ui.small)}>ドラッグで移動。行の上端に落とすと「前へ」、行に重ねると「中へ」。</span>
-        </div>
+          </Button>
+          <Muted component="span">ドラッグで移動。行の上端に落とすと「前へ」、行に重ねると「中へ」。</Muted>
+        </Row>
         <DndContext
           sensors={sensors}
           collisionDetection={pointerWithin}
@@ -181,44 +171,47 @@ function TreeEditor(props: {
           onDragCancel={() => setDragging(null)}
           onDragEnd={onDragEnd}
         >
-          <ul className={cx(s.tree, props.busy && s.busy)}>
-            {rows.map((row) => (
-              <TreeRow
-                key={row.node.nodeId}
-                row={row}
-                label={label(row.node)}
-                collapsed={collapsed.has(row.node.nodeId)}
-                onToggle={() => toggle(row.node.nodeId)}
-                onRename={() => {
-                  const title = prompt("フォルダ名", row.node.title ?? "");
-                  if (title && title !== row.node.title)
-                    run([{ type: "rename_folder", treeId: tree.id, nodeId: row.node.nodeId, title }]);
-                }}
-                onAddFolder={() => {
-                  const title = prompt("フォルダ名");
-                  if (title) run([{ type: "create_folder", treeId: tree.id, title, parentNodeId: row.node.nodeId }]);
-                }}
-                onRemove={() => run([{ type: "remove_node", treeId: tree.id, nodeId: row.node.nodeId }])}
-              />
+          <SimpleTreeView
+            disableSelection
+            expansionTrigger="iconContainer"
+            itemChildrenIndentation={20}
+            expandedItems={expanded}
+            onItemExpansionToggle={(_e, itemId, isExpanded) =>
+              setCollapsed((prev) => {
+                const next = new Set(prev);
+                if (isExpanded) next.delete(itemId);
+                else next.add(itemId);
+                return next;
+              })
+            }
+            sx={[{ mt: 1.5 }, props.busy && { opacity: 0.6, pointerEvents: "none" }]}
+          >
+            {(children.get(null) ?? []).map((node) => (
+              <TreeNodeItem key={node.nodeId} node={node} childrenOf={children} handlers={handlers} />
             ))}
-            <RootEndZone />
-          </ul>
+          </SimpleTreeView>
+          <RootEndZone />
           <DragOverlay>
-            {dragging && <div className={s.overlay}>{label(tree.nodes.find((n) => n.nodeId === dragging)!)}</div>}
+            {dragging && (
+              <Paper variant="outlined" sx={{ px: 1, py: 0.5, borderColor: "primary.main", boxShadow: 3 }}>
+                {label(tree.nodes.find((n) => n.nodeId === dragging)!)}
+              </Paper>
+            )}
           </DragOverlay>
         </DndContext>
-      </section>
+      </Section>
 
-      <section className={ui.card}>
-        <h3>このツリーに無いページ</h3>
-        <p className={cx(ui.muted, ui.small)}>1つのページを複数のツリーの別々の位置に置けます。</p>
-        {unplaced.length === 0 && <p className={cx(ui.muted, ui.small)}>すべてのページがこのツリーにあります。</p>}
-        <ul className={ui.plainList}>
+      <Section>
+        <Typography variant="subtitle1" component="h3">
+          ツリーに無いページ
+        </Typography>
+        {unplaced.length === 0 && <Muted>すべてのページがツリーにあります。</Muted>}
+        <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0, mt: 1 }}>
           {unplaced.map((p) => (
-            <li key={p.id} className={ui.row}>
-              <span className={ui.grow}>{p.title}</span>
-              <button
-                className={ui.link}
+            <Row component="li" key={p.id}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>{p.title}</Box>
+              <Button
+                variant="text"
                 disabled={props.busy}
                 onClick={() =>
                   run([
@@ -232,82 +225,126 @@ function TreeEditor(props: {
                 }
               >
                 追加
-              </button>
-            </li>
+              </Button>
+            </Row>
           ))}
-        </ul>
-      </section>
-    </div>
+        </Stack>
+      </Section>
+    </WithSidebar>
   );
 }
 
-function TreeRow(props: {
-  row: Row;
-  label: string;
-  collapsed: boolean;
-  onToggle: () => void;
-  onRename: () => void;
-  onAddFolder: () => void;
-  onRemove: () => void;
+type NodeHandlers = {
+  label: (node: TreeNode) => string;
+  isCollapsed: (node: TreeNode) => boolean;
+  onRename: (node: TreeNode) => void;
+  onAddFolder: (node: TreeNode) => void;
+  onRemove: (node: TreeNode) => void;
+};
+
+/** ドロップ判定用の領域。行の上35%で「前へ」、残りで「中へ」 */
+const dropZone = { position: "absolute", left: 0, right: 0, pointerEvents: "none" } as const;
+
+function TreeNodeItem(props: {
+  node: TreeNode;
+  childrenOf: ReadonlyMap<string | null, TreeNode[]>;
+  handlers: NodeHandlers;
+  /** 畳まれた祖先の下にある。DOMには残るので、ドロップ先から外す */
+  hidden?: boolean;
 }) {
-  const { node, depth, childCount } = props.row;
+  const { node, childrenOf, handlers, hidden = false } = props;
+  const kids = childrenOf.get(node.nodeId) ?? [];
+  const childCount = kids.length;
   const isInbox = node.nodeId === INBOX_NODE_ID;
   const drag = useDraggable({ id: node.nodeId, disabled: isInbox });
-  const before = useDroppable({ id: encodeDropTarget({ kind: "before", nodeId: node.nodeId }), disabled: isInbox });
-  const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
+  const before = useDroppable({ id: encodeDropTarget({ kind: "before", nodeId: node.nodeId }), disabled: isInbox || hidden });
+  const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }), disabled: hidden });
 
   return (
-    <li
-      className={cx(s.row, drag.isDragging && s.dragging, into.isOver && s.overInto, before.isOver && s.overBefore)}
-      style={{ paddingLeft: 8 + depth * 20 }}
-    >
-      <div ref={before.setNodeRef} className={s.dropBefore} />
-      <div ref={into.setNodeRef} className={s.dropInto} />
-      <button className={s.twisty} onClick={props.onToggle} disabled={childCount === 0}>
-        {childCount === 0 ? "·" : props.collapsed ? "▸" : "▾"}
-      </button>
-      <span ref={drag.setNodeRef} {...drag.listeners} {...drag.attributes} className={node.kind === "folder" ? s.folder : s.label}>
-        {node.kind === "folder" ? "📁 " : "📄 "}
-        {node.kind === "page" ? (
-          <Link to="/pages/$pageId" params={{ pageId: node.pageId! }}>
-            {props.label}
-          </Link>
-        ) : (
-          props.label
-        )}
-        {childCount > 0 && <span className={cx(ui.muted, ui.small)}> ({childCount})</span>}
-      </span>
-      <span className={s.actions}>
-        {node.kind === "folder" && !isInbox && (
-          <button className={ui.link} onClick={props.onRename}>
-            名前変更
-          </button>
-        )}
-        {!isInbox && (
-          <button className={ui.link} onClick={props.onAddFolder}>
-            ＋子フォルダ
-          </button>
-        )}
-        {!isInbox && (
-          <button
-            className={ui.linkDanger}
-            disabled={childCount > 0}
-            title={childCount > 0 ? "子を移動してから外せます" : node.kind === "page" ? "このツリーから外す（ページは残る）" : "フォルダを削除"}
-            onClick={props.onRemove}
+    <TreeItem
+      itemId={node.nodeId}
+      sx={{
+        [`& > .${treeItemClasses.content}`]: {
+          cursor: "default",
+          borderTop: "2px solid",
+          borderTopColor: before.isOver ? "primary.main" : "transparent",
+          opacity: drag.isDragging ? 0.4 : 1,
+          ...(into.isOver && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
+          "&:hover .tree-actions, &:focus-within .tree-actions": { opacity: 1 },
+        },
+        // ドロップ領域を行全体（インデントやアイコンの部分も含む）に広げるため、基準を content にする
+        [`& > .${treeItemClasses.content} > .${treeItemClasses.label}`]: { position: "static", overflow: "visible" },
+      }}
+      label={
+        // 行内のボタンのキー操作を、ツリーのキーボード操作（Enterで開閉など）に取られないようにする
+        <Row spacing={0.75} onKeyDown={(e) => e.stopPropagation()} sx={{ flexWrap: "nowrap" }}>
+          <Box ref={before.setNodeRef} sx={{ ...dropZone, top: 0, height: "35%" }} />
+          <Box ref={into.setNodeRef} sx={{ ...dropZone, top: "35%", bottom: 0 }} />
+          <Box
+            component="span"
+            ref={drag.setNodeRef}
+            {...drag.listeners}
+            {...drag.attributes}
+            sx={{ cursor: isInbox ? "default" : "grab", userSelect: "none", fontWeight: node.kind === "folder" ? 500 : undefined }}
           >
-            {node.kind === "page" ? "外す" : "削除"}
-          </button>
-        )}
-      </span>
-    </li>
+            {node.kind === "folder" ? "📁 " : "📄 "}
+            {node.kind === "page" ? (
+              <RouterLink to="/pages/$pageId" params={{ pageId: node.pageId! }}>
+                {handlers.label(node)}
+              </RouterLink>
+            ) : (
+              handlers.label(node)
+            )}
+            {childCount > 0 && (
+              <Muted component="span"> ({childCount})</Muted>
+            )}
+          </Box>
+          {!isInbox && (
+            <Row className="tree-actions" spacing={0} sx={{ ml: "auto", flexWrap: "nowrap", opacity: 0 }}>
+              {node.kind === "folder" && (
+                <Button variant="text" onClick={() => handlers.onRename(node)}>
+                  名前変更
+                </Button>
+              )}
+              <Button variant="text" onClick={() => handlers.onAddFolder(node)}>
+                ＋子フォルダ
+              </Button>
+              <Tooltip title={childCount > 0 ? "子を移動してから外せます" : node.kind === "page" ? "ツリーから外す（ページは残る）" : "フォルダを削除"}>
+                <span>
+                  <Button variant="text" color="error" disabled={childCount > 0} onClick={() => handlers.onRemove(node)}>
+                    {node.kind === "page" ? "外す" : "削除"}
+                  </Button>
+                </span>
+              </Tooltip>
+            </Row>
+          )}
+        </Row>
+      }
+    >
+      {kids.map((kid) => (
+        <TreeNodeItem key={kid.nodeId} node={kid} childrenOf={childrenOf} handlers={handlers} hidden={hidden || handlers.isCollapsed(node)} />
+      ))}
+    </TreeItem>
   );
 }
 
 function RootEndZone() {
   const drop = useDroppable({ id: encodeDropTarget({ kind: "root-end" }) });
   return (
-    <li ref={drop.setNodeRef} className={drop.isOver ? s.endOver : s.end}>
+    <Box
+      ref={drop.setNodeRef}
+      sx={{
+        p: 1,
+        mt: 0.5,
+        border: "1px dashed",
+        borderColor: drop.isOver ? "primary.main" : "divider",
+        borderRadius: 1,
+        color: drop.isOver ? "primary.main" : "text.secondary",
+        fontSize: "0.8rem",
+        textAlign: "center",
+      }}
+    >
       最上位の末尾へ
-    </li>
+    </Box>
   );
 }

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { requestBuild } from "../publishing/builds";
 import { buildManifest, publicTreeNodes } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
-import { setup } from "./harness";
+import { addLegacyTree, setup } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -110,6 +110,13 @@ describe("manifest", () => {
     const nodes = m.trees[0]!.nodes;
     expect(nodes.map((n) => n.nodeId).sort()).toEqual([child.id, "f_docs", pub.id].sort());
     expect(nodes.find((n) => n.nodeId === child.id)!.parentNodeId).toBe("f_docs");
+  });
+
+  it("exports only the primary tree even when legacy trees remain", async () => {
+    ctx = await setup();
+    await addLegacyTree(ctx.client);
+    const m = await buildManifest(ctx.db);
+    expect(m.trees.map((t) => t.key)).toEqual(["main"]);
   });
 
   it("is served at /export/public only with the internal token", async () => {

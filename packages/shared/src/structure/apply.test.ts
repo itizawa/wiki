@@ -26,7 +26,7 @@ function base(): StructureState {
 
 const ops = (...input: StructureOpInput[]) => input.map((o) => structureOpSchema.parse(o));
 let seq = 0;
-const ctx = { newFolderId: () => `f_gen${++seq}`, newTreeId: () => `t_gen${++seq}` };
+const ctx = { newFolderId: () => `f_gen${++seq}` };
 const node = (s: StructureState, treeId: string, nodeId: string) =>
   s.trees[treeId]!.nodes.find((n) => n.nodeId === nodeId);
 
@@ -53,18 +53,9 @@ describe("applyOps", () => {
     expect(() => applyOps(base(), ops({ type: "add_to_tree", treeId: T, pageId: "p1", parentNodeId: null }), ctx)).toThrow(/already in tree/);
   });
 
-  it("lets one page live in several trees at different places", () => {
-    const { state, createdTrees } = applyOps(
-      base(),
-      ops(
-        { type: "create_tree", treeId: "t_theme", treeKey: "by-theme", name: "テーマ別", initialNodes: [{ nodeId: "f_x", kind: "folder", title: "X", parentNodeId: null }] },
-        { type: "add_to_tree", treeId: "t_theme", pageId: "p2", parentNodeId: "f_x" },
-      ),
-      ctx,
-    );
-    expect(createdTrees).toEqual([{ id: "t_theme", key: "by-theme", name: "テーマ別", isPublic: true }]);
-    expect(node(state, "t_theme", "p2")!.parentNodeId).toBe("f_x");
-    expect(node(state, T, "p2")!.parentNodeId).toBe("f_a");
+  it("no longer accepts operations that create or delete trees", () => {
+    expect(structureOpSchema.safeParse({ type: "create_tree", treeKey: "by-theme", name: "テーマ別" }).success).toBe(false);
+    expect(structureOpSchema.safeParse({ type: "delete_tree", treeId: T }).success).toBe(false);
   });
 
   it("protects the inbox", () => {
@@ -96,13 +87,6 @@ describe("applyOps", () => {
     const positions = childrenByParent(state.trees[T]!.nodes).get("f_a")!.map((n) => n.position);
     expect(new Set(positions).size).toBe(2);
   });
-
-  it("does not allow deleting the primary tree", () => {
-    expect(() => applyOps(base(), ops({ type: "delete_tree", treeId: T }), { ...ctx, isPrimaryTree: () => true })).toThrow(/primary/);
-    const r = applyOps(base(), ops({ type: "delete_tree", treeId: T }), ctx);
-    expect(r.removedTreeIds).toEqual([T]);
-    expect(r.state.trees[T]).toBeUndefined();
-  });
 });
 
 describe("validateTree", () => {
@@ -128,18 +112,17 @@ describe("validateTree", () => {
 });
 
 describe("diffStructures", () => {
-  it("reports moves, renames, additions and new trees", () => {
+  it("reports moves, renames and additions", () => {
     const { state } = applyOps(
       base(),
       ops(
         { type: "move", treeId: T, nodeId: "p1", newParentNodeId: "f_a" },
         { type: "rename_folder", treeId: T, nodeId: "f_a", title: "AA" },
         { type: "create_folder", treeId: T, nodeId: "f_new", title: "New", parentNodeId: null },
-        { type: "create_tree", treeId: "t_2", treeKey: "second", name: "2", initialNodes: [] },
       ),
       ctx,
     );
     const kinds = diffStructures(base(), state).map((c) => `${c.kind}:${"nodeId" in c ? c.nodeId : "node" in c ? c.node.nodeId : c.treeId}`);
-    expect(kinds).toEqual(expect.arrayContaining(["node_moved:p1", "node_renamed:f_a", "node_added:f_new", "tree_added:t_2"]));
+    expect(kinds).toEqual(expect.arrayContaining(["node_moved:p1", "node_renamed:f_a", "node_added:f_new"]));
   });
 });
