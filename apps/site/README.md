@@ -19,4 +19,4 @@ pnpm build:sample   # fixtures/manifest.sample.json でビルドし、scripts/ve
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
 
-Cloudflare Pages の設定：ルート `apps/site`、ビルドコマンド `pnpm build`、出力 `dist`、環境変数 `API_ORIGIN` `INTERNAL_TOKEN` `SITE_ORIGIN` `SITE_NAME`。
+Cloudflare Pages の設定：ルート `apps/site`、ビルドコマンド `pnpm build`、出力 `dist`、環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`INTERNAL_TOKEN` `SITE_ORIGIN` `SITE_NAME`。手順はルートの README「デプロイ」。

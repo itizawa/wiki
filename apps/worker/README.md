@@ -7,7 +7,7 @@ Cloudflare Workers（Cron Triggers、5分間隔）。1回の実行で次を行�
 3. `/internal/builds/request` で公開イベントをデバウンスし、必要なら Cloudflare Pages のデプロイフックを叩いて公開ビルドを起動
    （マニフェストの `contentHash` が前回と同じならビルドしない）
 
-設定は `wrangler.toml` の `[vars]` と、`wrangler secret put` で入れる `INTERNAL_TOKEN` / `PAGES_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL`。
+設定は `wrangler.toml` の `[vars]` と、シークレットの `INTERNAL_TOKEN` / `PAGES_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL`（デプロイ時に GitHub Actions が入れる。手順はルートの README「デプロイ」）。
 ローカルでは `pnpm dev` 後に `curl "http://localhost:8787/__scheduled"` で1回分を実行できる。
 
 構造提案ジョブ（AI）はフェーズ3で追加する。

@@ -54,13 +54,46 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - `monetization` が立った記事は「広告を含みます」を表示し、外部リンクに `rel="sponsored"`
 - 管理画面：エディタ横の公開パネル（公開/非公開化/限定公開URL/予約）、編集カレンダー（公開済み・予約・AI下書き、予約ストック警告、失敗一覧）
 
-## デプロイ構成（想定）
+## デプロイ
 
-| 対象 | 置き場所 | 必要な設定 |
+`main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare Pages が Git 連携でビルドする。
+
+| 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
-| API | Cloudflare Workers + Hyperdrive（またはNode） | `DATABASE_URL` `ADMIN_EMAILS` `SESSION_SECRET` `ADMIN_ORIGIN` `SITE_ORIGIN` `INTERNAL_TOKEN` Google OAuth |
-| 公開サイト | Cloudflare Pages（ルート `apps/site`、ビルド `pnpm build`、出力 `dist`） | `API_ORIGIN` `INTERNAL_TOKEN` `SITE_ORIGIN` `SITE_NAME` |
-| ワーカー | Cloudflare Workers（Cron 5分） | `API_ORIGIN` `INTERNAL_TOKEN` `PAGES_DEPLOY_HOOK_URL` `NOTIFY_WEBHOOK_URL`（任意） |
+| 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
+| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔） | `apps/worker/wrangler.toml` |
+| 公開サイト | Cloudflare Pages（Git 連携。記事の公開時はワーカーがデプロイフックを叩く） | Pages のダッシュボード |
+| DB | マネージド PostgreSQL（Neon など） | — |
+
+管理画面と API は同じ Worker が同一オリジンで出す（`/api/*` が API、それ以外は管理画面）。サイトのビルドとワーカーが使う `/export/*` `/internal/*` も同じオリジンにある。
+
+### 初回の準備
+
+1. **PostgreSQL** を用意し、接続文字列を控える（プーラーを通さない直接接続のもの。`channel_binding=require` は付けない）
+2. **Hyperdrive** をその接続文字列で作り、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
+3. `apps/api/wrangler.toml` の `ADMIN_ORIGIN` `SITE_ORIGIN` と、`apps/worker/wrangler.toml` の `API_ORIGIN`（`ADMIN_ORIGIN` と同じ値）を実際のオリジンにする
+4. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `{ADMIN_ORIGIN}/api/auth/google/callback` を登録する
+5. **Cloudflare Pages** のプロジェクトを Git 連携で作る：ルート `apps/site`、ビルドコマンド `pnpm build`、出力 `dist`。
+   環境変数は `API_ORIGIN`（= `ADMIN_ORIGIN`）`INTERNAL_TOKEN` `SITE_ORIGIN` `SITE_NAME`。プレビューのデプロイは無効にする。作ったらデプロイフックを発行する
+6. GitHub の Settings → Secrets and variables → Actions に次を登録する
+
+   | Secret | 内容 |
+   |---|---|
+   | `CLOUDFLARE_API_TOKEN` | 「Edit Cloudflare Workers」テンプレートの API トークン |
+   | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare のアカウントID |
+   | `DATABASE_URL` | 手順1の接続文字列（マイグレーション用） |
+   | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
+   | `ADMIN_EMAILS` | 管理者として許可する Google アカウント（カンマ区切り） |
+   | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順4のクライアント |
+   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。Pages の環境変数と同じ値 |
+   | `PAGES_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
+   | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗を通知する Slack 互換 Incoming Webhook |
+
+7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
+
+シークレットはデプロイのたびに GitHub から Worker へ入れ直す（値を変えたら Actions の「Deploy」を手動実行する）。独自ドメインを使う場合は各 `wrangler.toml` に `routes` を足し、オリジンの設定をそのドメインに合わせる。
+
+手元から出す場合は `wrangler login` のうえで `pnpm --filter @wiki/admin build && pnpm --filter @wiki/api deploy`、`pnpm --filter @wiki/worker deploy`。
 
 ## ローカル開発
 
@@ -98,7 +131,7 @@ pnpm test
 
 ## 既定として選んだこと（設計書の未決事項）
 
-- **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNodeで動かす。Workers用のエントリと `wrangler` 設定はデプロイ時に追加する
+- **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNode（`src/node.ts`）、本番は Workers（`src/worker.ts`）で動かす
 - **予約の通知先**：最終失敗は Slack 互換の Incoming Webhook（`NOTIFY_WEBHOOK_URL`）へ。メールは未対応
 - **予約の反映遅延**：Cron 5分 + デバウンス2分 + ビルド時間
 - **管理画面とAPIは同一オリジン**（管理画面の `/api/*` をAPIへ）。Cookieは `SameSite=Lax`、状態を変えるリクエストは `Origin` が管理画面と一致する場合のみ受け付ける
