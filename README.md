@@ -70,7 +70,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 ### 初回の準備
 
 1. **PostgreSQL** を用意し、接続文字列を控える（プーラーを通さない直接接続のもの。`channel_binding=require` は付けない）
-2. **Hyperdrive** をその接続文字列で作り、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
+2. **Hyperdrive** をその接続文字列で作り（キャッシュは無効にする）、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
 3. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `https://wiki-admin.hatchery-works.com/api/auth/google/callback` を登録する
 4. **Cloudflare Pages** のプロジェクトを Git 連携で作る：ルート `apps/site`、ビルドコマンド `pnpm build`、出力 `dist`。
    環境変数は `API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`INTERNAL_TOKEN` `SITE_ORIGIN`（`https://wiki.hatchery-works.com`）`SITE_NAME`。プレビューのデプロイは無効にする。作ったら独自ドメイン `wiki.hatchery-works.com` を紐づけ、デプロイフックを発行する
