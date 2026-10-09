@@ -1,0 +1,4 @@
+.link { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; }
+.link.danger { color: var(--danger); }
+.link.active { font-weight: 600; }
+.link:disabled { color: var(--muted); cursor: default; }

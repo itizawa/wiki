@@ -1,0 +1,20 @@
+.tree { list-style: none; padding: 0; margin: 12px 0 0; }
+.tree.busy { opacity: 0.6; pointer-events: none; }
+.treeRow {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: 6px; border-top: 2px solid transparent;
+}
+.treeRow:hover { background: var(--bg); }
+.treeRow.dragging { opacity: 0.4; }
+.treeRow.overInto { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.treeRow.overBefore { border-top-color: var(--accent); }
+.treeRow.overlay { background: var(--surface); border: 1px solid var(--accent); box-shadow: 0 4px 12px rgb(0 0 0 / 0.15); }
+.dropBefore { position: absolute; left: 0; right: 0; top: 0; height: 35%; pointer-events: none; }
+.dropInto { position: absolute; left: 0; right: 0; top: 35%; bottom: 0; pointer-events: none; }
+.twisty { width: 18px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; }
+.nodeLabel { cursor: grab; user-select: none; }
+.nodeLabel.folder { font-weight: 500; }
+.rowActions { margin-left: auto; display: flex; gap: 10px; font-size: 0.8rem; opacity: 0; }
+.treeRow:hover .rowActions { opacity: 1; }
+.treeEnd { list-style: none; padding: 8px; margin-top: 4px; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); font-size: 0.8rem; text-align: center; }
+.treeEnd.overInto { border-color: var(--accent); color: var(--accent); }

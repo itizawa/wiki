@@ -1,0 +1,3 @@
+.changes { margin: 0; padding-left: 18px; }
+.changes .node_added, .changes .tree_added { color: #1f8a4c; }
+.changes .node_removed, .changes .tree_removed { color: var(--danger); }

@@ -1,0 +1,2 @@
+.table { width: 100%; border-collapse: collapse; }
+.table td { padding: 8px 6px; border-top: 1px solid var(--border); }
