@@ -3,7 +3,9 @@ import { Hono } from "hono";
 import { authRoutes, requireAdmin } from "./auth/routes";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
+import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
+import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 
 export function createApp(deps: Deps) {
@@ -13,9 +15,11 @@ export function createApp(deps: Deps) {
     c.set("deps", deps);
     await next();
   });
-  // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）
+  // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
+  // /internal はCookieを使わずトークンで認証するので対象外
   app.use("*", async (c, next) => {
-    const safe = c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS";
+    const safe =
+      c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS" || c.req.path.startsWith("/internal/");
     if (!safe && c.req.header("origin") !== deps.config.adminOrigin) {
       throw new HttpError(403, "bad_origin", "cross-origin request rejected");
     }
@@ -24,11 +28,16 @@ export function createApp(deps: Deps) {
 
   app.get("/health", (c) => c.json({ ok: true }));
   app.route("/auth", authRoutes);
+  app.route("/export", exportRoutes);
+  app.route("/internal", internalRoutes);
 
   const admin = new Hono<AppEnv>();
   admin.use("*", requireAdmin);
   admin.get("/me", (c) => c.json({ email: c.get("adminEmail") }));
+  admin.get("/settings", (c) => c.json({ siteOrigin: deps.config.siteOrigin }));
   admin.route("/pages", pageRoutes);
+  admin.route("/pages", pagePublishRoutes);
+  admin.route("/schedule", scheduleRoutes);
   admin.route("/structure", structureRoutes);
   admin.route("/trees", treeRoutes);
   app.route("/admin", admin);

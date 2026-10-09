@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  bigserial,
   boolean,
   check,
   foreignKey,
@@ -212,3 +214,63 @@ export const structureBranches = pgTable(
   },
   (t) => [check("structure_branches_kind_check", sql`${t.kind} in ('main', 'manual', 'ai_proposal')`)],
 );
+
+// ---------------------------------------------------------------------------
+// 4.6 予約公開 ／ 7 公開パイプライン
+// ---------------------------------------------------------------------------
+
+export const scheduledActions = pgTable(
+  "scheduled_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actionType: text("action_type", { enum: ["publish_page", "unpublish_page", "merge_branch"] }).notNull(),
+    /** publish / unpublish */
+    pageId: text("page_id").references(() => pages.id),
+    /** publish時に固定する版（予約後の編集は含めない） */
+    versionId: uuid("version_id").references(() => pageVersions.id),
+    /** publish時の公開範囲（通常 'public'） */
+    targetVisibility: text("target_visibility", { enum: ["public", "unlisted"] }),
+    /** merge_branch（フェーズ3） */
+    branchName: text("branch_name"),
+    /** 同時公開グループ（シリーズ記事など）。同じ batch_id は1トランザクションで実行する */
+    batchId: uuid("batch_id"),
+    /** UTC保存。入出力はJST */
+    runAt: timestamp("run_at", { withTimezone: true }).notNull(),
+    status: text("status", { enum: ["scheduled", "running", "done", "failed", "canceled"] })
+      .notNull()
+      .default("scheduled"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      "scheduled_actions_action_type_check",
+      sql`${t.actionType} in ('publish_page', 'unpublish_page', 'merge_branch')`,
+    ),
+    check(
+      "scheduled_actions_status_check",
+      sql`${t.status} in ('scheduled', 'running', 'done', 'failed', 'canceled')`,
+    ),
+    index("scheduled_actions_due_idx").on(t.runAt).where(sql`${t.status} = 'scheduled'`),
+    index("scheduled_actions_page_idx").on(t.pageId),
+  ],
+);
+
+/** 公開状態に影響する操作の記録。ワーカーがデバウンスしてビルドを起動する。 */
+export const publishEvents = pgTable("publish_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  kind: text("kind").notNull(),
+  pageId: text("page_id"),
+  scheduledActionId: uuid("scheduled_action_id"),
+  createdAt: createdAt(),
+});
+
+/** 起動したビルド。last_event_id までの publish_events を反映済み。 */
+export const siteBuilds = pgTable("site_builds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  lastEventId: bigint("last_event_id", { mode: "number" }).notNull(),
+  contentHash: text("content_hash").notNull(),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+});

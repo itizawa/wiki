@@ -1,0 +1,55 @@
+---
+import { SITE_NAME } from "../lib/manifest";
+import "../styles/site.css";
+
+interface Props {
+  title: string;
+  description?: string;
+  /** 正規URL（/t/ の再掲ページは /p/ を指す） */
+  canonical?: string;
+  /** 限定公開ページ */
+  noindex?: boolean;
+}
+
+const { title, description, canonical, noindex = false } = Astro.props;
+const canonicalUrl = canonical && Astro.site ? new URL(canonical, Astro.site).href : undefined;
+const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    {
+      noindex ? (
+        <>
+          <meta name="robots" content="noindex, nofollow" />
+          <meta name="referrer" content="no-referrer" />
+        </>
+      ) : (
+        <link rel="alternate" type="application/rss+xml" title={SITE_NAME} href="/feed.xml" />
+      )
+    }
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">{SITE_NAME}</a>
+      {
+        !noindex && (
+          <nav>
+            <a href="/search">検索</a>
+            <a href="/feed.xml">RSS</a>
+          </nav>
+        )
+      }
+    </header>
+    <div class="site-body">
+      <slot />
+    </div>
+    <footer class="site-footer">© {SITE_NAME}</footer>
+  </body>
+</html>

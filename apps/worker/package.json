@@ -1,0 +1,17 @@
+{
+  "name": "@wiki/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx wrangler@4 dev --test-scheduled",
+    "deploy": "npx wrangler@4 deploy",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

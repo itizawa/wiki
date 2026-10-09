@@ -4,7 +4,11 @@ import { SESSION_COOKIE, signSession } from "../auth/session";
 import { setup } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
-afterEach(async () => ctx?.close());
+afterEach(async () => {
+  // 次のテストで閉じ済みのDBを二重に閉じないようにする
+  await ctx?.close();
+  ctx = undefined as unknown as typeof ctx;
+});
 
 async function structure() {
   const res = await ctx.call("GET", "/admin/structure");

@@ -19,3 +19,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm --filter @wiki/admin build
+      # サンプルのマニフェストで公開サイトをビルドし、限定公開の漏れ等を検査する
+      - run: pnpm --filter @wiki/site build:sample

@@ -11,7 +11,8 @@ import {
 import { and, desc, eq, ilike, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageLinks, pages, pageVersions, slugHistory } from "../db/schema";
+import { pageLinks, pages, pageVersions, scheduledActions, slugHistory } from "../db/schema";
+import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { commitOps, loadCommit, getBranch, MAIN_BRANCH, opsToRemovePage, primaryTreeId } from "../structure/repo";
@@ -28,6 +29,8 @@ const toSummary = (p: PageRow): PageSummary => ({
   publishedVersionId: p.publishedVersionId,
   visibility: p.visibility,
   origin: p.origin,
+  unlistedKey: p.unlistedKey,
+  firstPublishedAt: p.firstPublishedAt?.toISOString() ?? null,
   updatedAt: p.updatedAt.toISOString(),
 });
 
@@ -147,6 +150,8 @@ export const pageRoutes = new Hono<AppEnv>()
           .insert(slugHistory)
           .values({ pageId: id, slug: page.slug, validUntil: new Date() })
           .onConflictDoUpdate({ target: [slugHistory.pageId, slugHistory.slug], set: { validUntil: new Date() } });
+        // 公開中ならURLが変わるので再ビルドする（旧URLは301）
+        if (page.publishedVersionId) await recordPublishEvent(tx, "slug_change", { pageId: id });
       }
       await tx
         .update(pages)
@@ -166,7 +171,16 @@ export const pageRoutes = new Hono<AppEnv>()
       if (ops.length > 0) {
         await commitOps(tx, { branch: MAIN_BRANCH, message: `「${page.title}」の削除に伴いツリーから外す`, ops });
       }
-      await tx.update(pages).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(pages.id, id));
+      await tx
+        .update(pages)
+        .set({ deletedAt: new Date(), updatedAt: new Date(), publishedVersionId: null, visibility: "private" })
+        .where(eq(pages.id, id));
+      // 予約は無効にする。公開済みだった記事は再ビルドで410になる
+      await tx
+        .update(scheduledActions)
+        .set({ status: "canceled", lastError: "page deleted" })
+        .where(and(eq(scheduledActions.pageId, id), eq(scheduledActions.status, "scheduled")));
+      if (page.firstPublishedAt) await recordPublishEvent(tx, "delete", { pageId: id });
     });
     return c.json({ ok: true });
   })

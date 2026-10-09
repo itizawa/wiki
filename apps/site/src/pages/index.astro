@@ -1,0 +1,41 @@
+---
+import Base from "../layouts/Base.astro";
+import { SITE_NAME, siteData } from "../lib/manifest";
+import { excerpt } from "../lib/markdown";
+
+const { manifest } = await siteData();
+const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
+---
+
+<Base title={SITE_NAME} canonical="/">
+  <h1 class="visually-hidden">新着記事</h1>
+  {manifest.pages.length === 0 && <p class="muted">まだ記事はありません。</p>}
+  <ul class="post-list">
+    {
+      manifest.pages.map((p) => (
+        <li>
+          <h2>
+            <a href={p.path}>{p.title}</a>
+          </h2>
+          <p>
+            <time datetime={p.firstPublishedAt}>{fmt.format(new Date(p.firstPublishedAt))}</time> ・ {excerpt(p.bodyMd)}
+          </p>
+        </li>
+      ))
+    }
+  </ul>
+  {
+    manifest.trees.length > 0 && (
+      <section>
+        <h2>カテゴリから探す</h2>
+        <ul>
+          {manifest.trees.map((t) => (
+            <li>
+              <a href={`/t/${t.key}/`}>{t.name}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</Base>

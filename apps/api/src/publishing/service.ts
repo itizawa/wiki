@@ -1,0 +1,78 @@
+import { newUnlistedKey, type PublishVisibility } from "@wiki/shared";
+import { and, eq, isNull } from "drizzle-orm";
+import type { Db } from "../db/client";
+import { pages, pageVersions, publishEvents } from "../db/schema";
+import { HttpError, notFound } from "../errors";
+
+export async function recordPublishEvent(
+  db: Db,
+  kind: string,
+  refs: { pageId?: string; scheduledActionId?: string } = {},
+): Promise<void> {
+  await db.insert(publishEvents).values({ kind, pageId: refs.pageId, scheduledActionId: refs.scheduledActionId });
+}
+
+async function lockLivePage(db: Db, pageId: string) {
+  const [page] = await db
+    .select()
+    .from(pages)
+    .where(and(eq(pages.id, pageId), isNull(pages.deletedAt)))
+    .for("update");
+  if (!page) throw notFound(`page ${pageId}`);
+  return page;
+}
+
+/**
+ * 公開 = published_version_id を進める操作。
+ * first_published_at は初回だけ設定する（予約公開では予定時刻を入れ、RSSの並びを自然にする）。
+ */
+export async function publishPage(
+  db: Db,
+  input: {
+    pageId: string;
+    versionId: string;
+    visibility: PublishVisibility;
+    publishedAt?: Date;
+    scheduledActionId?: string;
+  },
+): Promise<void> {
+  const page = await lockLivePage(db, input.pageId);
+  const [version] = await db
+    .select({ id: pageVersions.id })
+    .from(pageVersions)
+    .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, input.pageId)));
+  if (!version) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
+  await db
+    .update(pages)
+    .set({
+      publishedVersionId: input.versionId,
+      visibility: input.visibility,
+      unlistedKey: input.visibility === "unlisted" ? (page.unlistedKey ?? newUnlistedKey()) : page.unlistedKey,
+      firstPublishedAt: page.firstPublishedAt ?? input.publishedAt ?? new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(pages.id, input.pageId));
+  await recordPublishEvent(db, "publish", { pageId: input.pageId, scheduledActionId: input.scheduledActionId });
+}
+
+/** 非公開化。再ビルドで静的ファイルが消える。 */
+export async function unpublishPage(db: Db, pageId: string, scheduledActionId?: string): Promise<void> {
+  await lockLivePage(db, pageId);
+  await db
+    .update(pages)
+    .set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() })
+    .where(eq(pages.id, pageId));
+  await recordPublishEvent(db, "unpublish", { pageId, scheduledActionId });
+}
+
+/** 限定公開URLの失効：キーを再発行してリビルドすると旧URLは404になる。 */
+export async function rotateUnlistedKey(db: Db, pageId: string): Promise<string> {
+  const page = await lockLivePage(db, pageId);
+  if (page.visibility !== "unlisted") {
+    throw new HttpError(400, "not_unlisted", "only unlisted pages have a key to rotate");
+  }
+  const key = newUnlistedKey();
+  await db.update(pages).set({ unlistedKey: key, updatedAt: new Date() }).where(eq(pages.id, pageId));
+  await recordPublishEvent(db, "rotate_unlisted_key", { pageId });
+  return key;
+}

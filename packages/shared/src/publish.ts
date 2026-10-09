@@ -1,0 +1,113 @@
+import { z } from "zod";
+
+/** 公開操作で選べる公開範囲（private は「非公開化」で扱う）。 */
+export const publishVisibilitySchema = z.enum(["public", "unlisted"]);
+export type PublishVisibility = z.infer<typeof publishVisibilitySchema>;
+
+export const publishPageInput = z.object({
+  versionId: z.string().uuid(),
+  visibility: publishVisibilitySchema,
+});
+export type PublishPageInput = z.infer<typeof publishPageInput>;
+
+const runAt = z
+  .string()
+  .datetime({ offset: true })
+  .transform((s) => new Date(s));
+
+/** 予約。publish_page は予約時点の版を固定する（予約後の編集は含めない）。 */
+export const scheduleActionInput = z.discriminatedUnion("actionType", [
+  z.object({
+    actionType: z.literal("publish_page"),
+    pageId: z.string().min(1),
+    versionId: z.string().uuid(),
+    targetVisibility: publishVisibilitySchema.default("public"),
+    runAt,
+    batchId: z.string().uuid().optional(),
+  }),
+  z.object({
+    actionType: z.literal("unpublish_page"),
+    pageId: z.string().min(1),
+    runAt,
+    batchId: z.string().uuid().optional(),
+  }),
+]);
+export type ScheduleActionInput = z.infer<typeof scheduleActionInput>;
+
+export const rescheduleInput = z.object({ runAt });
+
+export type ScheduledActionStatus = "scheduled" | "running" | "done" | "failed" | "canceled";
+
+export type ScheduledAction = {
+  id: string;
+  actionType: "publish_page" | "unpublish_page" | "merge_branch";
+  pageId: string | null;
+  pageTitle: string | null;
+  versionId: string | null;
+  targetVisibility: PublishVisibility | null;
+  branchName: string | null;
+  batchId: string | null;
+  runAt: string;
+  status: ScheduledActionStatus;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  executedAt: string | null;
+  /** 予約後にページが編集された（予約内容には反映されない） */
+  editedAfterSchedule: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// 公開ビルド用マニフェスト（/export/public）
+// ---------------------------------------------------------------------------
+
+export type ManifestPage = {
+  id: string;
+  slug: string;
+  path: string;
+  title: string;
+  bodyMd: string;
+  firstPublishedAt: string;
+  /** 公開版の作成日時（改訂日） */
+  revisedAt: string;
+  monetization: Record<string, unknown> | null;
+};
+
+/** 限定公開ページ。id は出さない（URLを知る人だけが到達できるようにする）。 */
+export type ManifestUnlistedPage = {
+  key: string;
+  path: string;
+  title: string;
+  bodyMd: string;
+  revisedAt: string;
+};
+
+export type ManifestTreeNode = {
+  nodeId: string;
+  kind: "page" | "folder";
+  pageId: string | null;
+  title: string | null;
+  parentNodeId: string | null;
+  position: string;
+};
+
+export type ManifestTree = {
+  key: string;
+  name: string;
+  isPrimary: boolean;
+  nodes: ManifestTreeNode[];
+};
+
+export type PublicManifest = {
+  generatedAt: string;
+  /** generatedAt を除いた内容のハッシュ。変わらなければビルドを省略できる */
+  contentHash: string;
+  headCommitId: string;
+  pages: ManifestPage[];
+  unlisted: ManifestUnlistedPage[];
+  trees: ManifestTree[];
+  /** 旧slug・slug無しURL → 正規URL（301） */
+  redirects: { from: string; to: string }[];
+  /** 公開後に削除された記事の id（410） */
+  gone: string[];
+};

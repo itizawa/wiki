@@ -19,6 +19,7 @@ export function Layout() {
         <nav>
           <Link to="/" activeOptions={{ exact: true }}>ページ</Link>
           <Link to="/tree">ツリー</Link>
+          <Link to="/calendar">編集カレンダー</Link>
           <Link to="/history">構造の履歴</Link>
         </nav>
         <span className="spacer" />

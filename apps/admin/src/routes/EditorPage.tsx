@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
+import { PublishPanel } from "../components/PublishPanel";
 import { visibilityLabel } from "./PagesPage";
 
 type Draft = { title: string; slug: string; bodyMd: string };
@@ -49,6 +50,8 @@ export function EditorPage({ pageId }: { pageId: string }) {
       void qc.invalidateQueries({ queryKey: ["versions", pageId] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
       void qc.invalidateQueries({ queryKey: ["structure"] });
+      // 「予約後に編集あり」の表示を更新する
+      void qc.invalidateQueries({ queryKey: ["schedule"] });
     },
   });
 
@@ -157,10 +160,10 @@ export function EditorPage({ pageId }: { pageId: string }) {
           current={draft}
           onRestore={(v) => setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd })}
         />
+        <PublishPanel page={p} dirty={dirty} />
         <section className="card">
           <h3>ページ</h3>
           <p className="muted small mono">id: {p.id}</p>
-          <p className="muted small">公開設定・予約公開はフェーズ2で追加します。</p>
           <button
             className="button danger"
             disabled={remove.isPending}

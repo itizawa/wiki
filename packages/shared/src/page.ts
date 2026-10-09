@@ -24,10 +24,6 @@ export const savePageInput = z.object({
 });
 export type SavePageInput = z.infer<typeof savePageInput>;
 
-export const publishPageInput = z.object({
-  versionId: z.string().uuid(),
-});
-
 export type PageSummary = {
   id: string;
   slug: string;
@@ -36,6 +32,8 @@ export type PageSummary = {
   publishedVersionId: string | null;
   visibility: Visibility;
   origin: "human" | "ai_draft";
+  unlistedKey: string | null;
+  firstPublishedAt: string | null;
   updatedAt: string;
 };
 
