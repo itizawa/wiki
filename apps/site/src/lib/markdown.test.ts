@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { excerpt, renderMarkdown } from "./markdown";
 
-const publicPaths = new Map([["abcdefghij", "/p/abcdefghij-hello"]]);
+const publicPaths = new Map([["abcdefghij", "/p/abcdefghij"]]);
 
 describe("renderMarkdown", () => {
   it("links public pages by canonical URL and flattens links to hidden pages", () => {
-    const html = renderMarkdown("[公開](/p/abcdefghij) と [非公開](/p/zzzzzzzzzz-x)", { publicPaths });
-    expect(html).toContain('<a href="/p/abcdefghij-hello">公開</a>');
+    const html = renderMarkdown("[公開](/p/abcdefghij-old-slug) と [非公開](/p/zzzzzzzzzz-x)", { publicPaths });
+    expect(html).toContain('<a href="/p/abcdefghij">公開</a>');
     expect(html).toContain("非公開");
     expect(html).not.toContain("zzzzzzzzzz");
   });

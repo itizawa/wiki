@@ -1,6 +1,5 @@
 import {
   childrenByParent,
-  INBOX_NODE_ID,
   pagePath,
   unlistedPath,
   type ManifestPage,
@@ -11,7 +10,7 @@ import {
 } from "@wiki/shared";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { pages, pageVersions, slugHistory } from "../db/schema";
+import { pages, pageVersions } from "../db/schema";
 import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
 
 /**
@@ -32,8 +31,7 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
     .filter((r) => r.page.visibility === "public")
     .map(({ page, version }) => ({
       id: page.id,
-      slug: page.slug,
-      path: pagePath(page.id, page.slug),
+      path: pagePath(page.id),
       title: version.title,
       bodyMd: version.bodyMd,
       firstPublishedAt: (page.firstPublishedAt ?? version.createdAt).toISOString(),
@@ -69,56 +67,29 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
       ]
     : [];
 
-  const history =
-    publicIds.size === 0
-      ? []
-      : await db.select().from(slugHistory).where(inArray(slugHistory.pageId, [...publicIds]));
-  const canonicalById = new Map(publicPages.map((p) => [p.id, p]));
-  const redirects = [
-    ...publicPages.map((p) => ({ from: `/p/${p.id}`, to: p.path })),
-    ...history
-      .filter((h) => h.slug !== canonicalById.get(h.pageId)!.slug)
-      .map((h) => ({ from: pagePath(h.pageId, h.slug), to: canonicalById.get(h.pageId)!.path })),
-  ].sort((a, b) => (a.from < b.from ? -1 : 1));
-
   const goneRows = await db
     .select({ id: pages.id })
     .from(pages)
     .where(and(isNotNull(pages.deletedAt), isNotNull(pages.firstPublishedAt)));
   const gone = goneRows.map((r) => r.id).sort();
 
-  const content = { headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, redirects, gone };
+  const content = { headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
   return { generatedAt: now.toISOString(), contentHash: await sha256(JSON.stringify(content)), ...content };
 }
 
 /**
  * 公開ツリーのノードを公開ページだけに絞る。
- * - Inbox（未整理）は公開しない
- * - 非公開ページのノードは除き、その子は最も近い残る祖先の下へ繰り上げる
- * - 公開ページを1つも含まないfolderは除く
+ * 非公開ページのノードは除き、その子は最も近い残る祖先の下（無ければ最上位）へ繰り上げる。
  */
 export function publicTreeNodes(nodes: readonly TreeNode[], publicIds: ReadonlySet<string>): ManifestTreeNode[] {
   const children = childrenByParent(nodes);
   const out: ManifestTreeNode[] = [];
-  // 戻り値：この部分木に公開ページがあるか
-  const walk = (parent: string | null, keptParent: string | null): boolean => {
-    let any = false;
+  const walk = (parent: string | null, keptParent: string | null) => {
     for (const node of children.get(parent) ?? []) {
-      if (node.nodeId === INBOX_NODE_ID) continue;
-      if (node.kind === "page" && !publicIds.has(node.pageId!)) {
-        any = walk(node.nodeId, keptParent) || any;
-        continue;
-      }
-      const index = out.length;
-      out.push({ ...node, parentNodeId: keptParent });
-      const hasDescendants = walk(node.nodeId, node.nodeId);
-      if (node.kind === "folder" && !hasDescendants) {
-        out.splice(index, out.length - index);
-        continue;
-      }
-      any = true;
+      const isPublic = publicIds.has(node.pageId);
+      if (isPublic) out.push({ ...node, parentNodeId: keptParent });
+      walk(node.nodeId, isPublic ? node.nodeId : keptParent);
     }
-    return any;
   };
   walk(null, null);
   return out;

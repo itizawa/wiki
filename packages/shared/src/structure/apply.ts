@@ -1,7 +1,6 @@
-import { INBOX_NODE_ID, newFolderNodeId } from "../ids";
 import type { StructureOp } from "./ops";
 import { positionAfterLast, renumber } from "./position";
-import { childrenByParent, compareNodes, type StructureState, type TreeNode } from "./types";
+import { childrenByParent, type StructureState, type TreeNode } from "./types";
 import { validateTree, type ValidationIssue } from "./validate";
 
 export class StructureOpError extends Error {
@@ -25,7 +24,6 @@ export class StructureValidationError extends Error {
 export type ApplyContext = {
   /** add_to_tree の参照先ページが存在するか。省略時は検査しない。 */
   pageExists?: (pageId: string) => boolean;
-  newFolderId?: () => string;
 };
 
 export type ApplyResult = {
@@ -50,7 +48,6 @@ export function applyOps(
     working.set(treeId, new Map(tree.nodes.map((n) => [n.nodeId, { ...n }])));
   }
   const changed = new Set<string>();
-  const genFolderId = ctx.newFolderId ?? newFolderNodeId;
 
   ops.forEach((op, index) => {
     const fail = (code: string, message: string): never => {
@@ -81,7 +78,6 @@ export function applyOps(
       case "move": {
         const tree = getTree(op.treeId);
         const node = getNode(tree, op.nodeId);
-        if (node.nodeId === INBOX_NODE_ID) fail("inbox_locked", "inbox cannot be moved");
         requireParent(tree, op.newParentNodeId);
         if (isSelfOrDescendant(tree, op.nodeId, op.newParentNodeId)) {
           fail("cycle", `cannot move ${op.nodeId} under itself or its descendant`);
@@ -91,72 +87,16 @@ export function applyOps(
         changed.add(op.treeId);
         break;
       }
-      case "rename_folder": {
-        const tree = getTree(op.treeId);
-        const node = getNode(tree, op.nodeId);
-        if (node.kind !== "folder") fail("not_folder", `node ${op.nodeId} is not a folder`);
-        if (node.nodeId === INBOX_NODE_ID) fail("inbox_locked", "inbox cannot be renamed");
-        node.title = op.title;
-        changed.add(op.treeId);
-        break;
-      }
-      case "create_folder": {
-        const tree = getTree(op.treeId);
-        insert(tree, {
-          nodeId: op.nodeId ?? genFolderId(),
-          kind: "folder",
-          pageId: null,
-          title: op.title,
-          parentNodeId: op.parentNodeId,
-          position: op.position,
-        });
-        changed.add(op.treeId);
-        break;
-      }
       case "add_to_tree": {
         const tree = getTree(op.treeId);
         requirePage(op.pageId);
         if (tree.has(op.pageId)) fail("duplicate_page", `page ${op.pageId} is already in tree ${op.treeId}`);
         insert(tree, {
           nodeId: op.pageId,
-          kind: "page",
           pageId: op.pageId,
-          title: null,
           parentNodeId: op.parentNodeId,
           position: op.position,
         });
-        changed.add(op.treeId);
-        break;
-      }
-      case "split_folder": {
-        const tree = getTree(op.treeId);
-        const folder = getNode(tree, op.nodeId);
-        if (folder.kind !== "folder") fail("not_folder", `node ${op.nodeId} is not a folder`);
-        const seen = new Set<string>();
-        for (const group of op.groups) {
-          const groupId = genFolderId();
-          insert(tree, {
-            nodeId: groupId,
-            kind: "folder",
-            pageId: null,
-            title: group.title,
-            parentNodeId: op.nodeId,
-          });
-          const members = group.nodeIds.map((nid) => {
-            if (seen.has(nid)) fail("duplicate_node", `node ${nid} appears in multiple groups`);
-            seen.add(nid);
-            const child = getNode(tree, nid);
-            if (child.parentNodeId !== op.nodeId) fail("not_child", `node ${nid} is not a child of ${op.nodeId}`);
-            return child;
-          });
-          // 元の並び順を保ったまま新しいfolderの下へ移す
-          members.sort(compareNodes);
-          const positions = renumber(members);
-          members.forEach((m, i) => {
-            m.parentNodeId = groupId;
-            m.position = positions[i]!;
-          });
-        }
         changed.add(op.treeId);
         break;
       }
@@ -166,7 +106,6 @@ export function applyOps(
       case "remove_node": {
         const tree = getTree(op.treeId);
         getNode(tree, op.nodeId);
-        if (op.nodeId === INBOX_NODE_ID) fail("inbox_locked", "inbox cannot be removed");
         if (siblingsOf(tree, op.nodeId).length > 0) {
           fail("has_children", `node ${op.nodeId} has children; move or remove them first`);
         }

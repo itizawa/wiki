@@ -2,20 +2,18 @@ import { childrenByParent, type TreeNode } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { resolveDrop } from "./tree";
 
-const folder = (nodeId: string, parentNodeId: string | null, position: string): TreeNode => ({
+const page = (nodeId: string, parentNodeId: string | null, position: string): TreeNode => ({
   nodeId,
-  kind: "folder",
-  pageId: null,
-  title: nodeId,
+  pageId: nodeId,
   parentNodeId,
   position,
 });
 
 const nodes: TreeNode[] = [
-  folder("a", null, "a0"),
-  folder("b", null, "a1"),
-  folder("a1", "a", "a0"),
-  folder("a2", "a", "a1"),
+  page("a", null, "a0"),
+  page("b", null, "a1"),
+  page("a1", "a", "a0"),
+  page("a2", "a", "a1"),
 ];
 
 function apply(id: string, r: ReturnType<typeof resolveDrop>): TreeNode[] {
@@ -28,7 +26,7 @@ describe("resolveDrop", () => {
     expect(childrenByParent(apply("a2", r)).get("a")!.map((n) => n.nodeId)).toEqual(["a2", "a1"]);
   });
 
-  it("moves into a folder at the end", () => {
+  it("moves under a page at the end", () => {
     const r = resolveDrop(nodes, "b", { kind: "into", nodeId: "a" });
     expect(childrenByParent(apply("b", r)).get("a")!.map((n) => n.nodeId)).toEqual(["a1", "a2", "b"]);
   });

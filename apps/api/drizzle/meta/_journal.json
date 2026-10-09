@@ -15,6 +15,20 @@
       "when": 1791552839875,
       "tag": "0001_phase2_publishing",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791556611875,
+      "tag": "0002_pages_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791556951596,
+      "tag": "0003_drop_slug",
+      "breakpoints": true
     }
   ]
 }

@@ -27,7 +27,6 @@ export const pages = pgTable(
   "pages",
   {
     id: text("id").primaryKey(),
-    slug: text("slug").notNull(),
     /** head版タイトルのキャッシュ */
     title: text("title").notNull(),
     headVersionId: uuid("head_version_id").notNull(),
@@ -77,18 +76,6 @@ export const pageVersions = pgTable(
   ],
 );
 
-export const slugHistory = pgTable(
-  "slug_history",
-  {
-    pageId: text("page_id")
-      .notNull()
-      .references(() => pages.id),
-    slug: text("slug").notNull(),
-    validUntil: timestamp("valid_until", { withTimezone: true }).notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.pageId, t.slug] })],
-);
-
 export const pageLinks = pgTable(
   "page_links",
   {
@@ -134,12 +121,11 @@ export const treeNodes = pgTable(
     snapshotId: uuid("snapshot_id")
       .notNull()
       .references(() => treeSnapshots.id),
-    /** ツリー内で安定。page種別は node_id = page_id */
+    /** ノードはすべてページ。node_id = page_id */
     nodeId: text("node_id").notNull(),
-    kind: text("kind", { enum: ["page", "folder"] }).notNull(),
-    pageId: text("page_id").references(() => pages.id),
-    /** folder用 */
-    title: text("title"),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
     /** nullなら最上位 */
     parentNodeId: text("parent_node_id"),
     /** fractional index */
@@ -148,11 +134,7 @@ export const treeNodes = pgTable(
   (t) => [
     primaryKey({ columns: [t.snapshotId, t.nodeId] }),
     unique("tree_nodes_snapshot_page_unique").on(t.snapshotId, t.pageId),
-    check("tree_nodes_kind_check", sql`${t.kind} in ('page', 'folder')`),
-    check(
-      "tree_nodes_shape_check",
-      sql`(${t.kind} = 'page' and ${t.pageId} is not null and ${t.nodeId} = ${t.pageId}) or (${t.kind} = 'folder' and ${t.pageId} is null and ${t.title} is not null)`,
-    ),
+    check("tree_nodes_page_check", sql`${t.nodeId} = ${t.pageId}`),
     index("tree_nodes_page_id_idx").on(t.pageId),
   ],
 );

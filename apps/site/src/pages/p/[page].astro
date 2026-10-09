@@ -10,7 +10,7 @@ import { ancestors, navItems } from "../../lib/tree";
 
 export async function getStaticPaths() {
   const { manifest } = await siteData();
-  return manifest.pages.map((page) => ({ params: { page: `${page.id}-${page.slug}` }, props: { page } }));
+  return manifest.pages.map((page) => ({ params: { page: page.id }, props: { page } }));
 }
 
 const { page } = Astro.props as { page: ManifestPage };
@@ -30,7 +30,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
             {crumbs.map((c, i) => (
               <>
                 {i > 0 && " / "}
-                {c.kind === "folder" ? c.title : <a href={pagesById.get(c.pageId!)?.path}>{titleOf(c.pageId!)}</a>}
+                <a href={pagesById.get(c.pageId)?.path}>{titleOf(c.pageId)}</a>
               </>
             ))}
           </nav>

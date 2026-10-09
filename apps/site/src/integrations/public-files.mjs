@@ -5,9 +5,8 @@ import { fileURLToPath } from "node:url";
 
 /**
  * ビルド後に Cloudflare Pages 用のファイルを出力する。
- * - _redirects：旧slug・slug無しURL → 正規URL（301）
  * - _headers：限定公開ページに noindex / no-referrer
- * - page-routes.json：functions/_middleware.ts が使う（任意のslug違いの301、削除記事の410）
+ * - page-routes.json：functions/_middleware.ts が使う（slug つきの旧URLの301、削除記事の410）
  * @returns {import("astro").AstroIntegration}
  */
 export function publicFiles() {
@@ -17,8 +16,6 @@ export function publicFiles() {
       "astro:build:done": async ({ dir }) => {
         const outDir = fileURLToPath(dir);
         const manifest = await loadManifestForIntegration();
-        const redirects = manifest.redirects.map((r) => `${r.from} ${r.to} 301`).join("\n");
-        await writeFile(resolve(outDir, "_redirects"), redirects ? `${redirects}\n` : "");
         await writeFile(
           resolve(outDir, "_headers"),
           ["/u/*", "  X-Robots-Tag: noindex, nofollow", "  Referrer-Policy: no-referrer", ""].join("\n"),

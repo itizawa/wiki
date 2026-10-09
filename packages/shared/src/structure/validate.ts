@@ -1,4 +1,3 @@
-import { INBOX_NODE_ID } from "../ids";
 import type { TreeState } from "./types";
 
 export type ValidationIssue = {
@@ -8,10 +7,8 @@ export type ValidationIssue = {
     | "duplicate_node"
     | "duplicate_page"
     | "invalid_page_node"
-    | "invalid_folder_node"
     | "orphan"
-    | "cycle"
-    | "invalid_inbox";
+    | "cycle";
   message: string;
 };
 
@@ -26,20 +23,11 @@ export function validateTree(tree: TreeState): ValidationIssue[] {
   for (const n of tree.nodes) {
     if (byId.has(n.nodeId)) add("duplicate_node", `node ${n.nodeId} appears twice`, n.nodeId);
     byId.set(n.nodeId, n);
-    if (n.kind === "page") {
-      if (!n.pageId || n.nodeId !== n.pageId) add("invalid_page_node", "page node must have nodeId = pageId", n.nodeId);
-      if (n.pageId) {
-        if (pages.has(n.pageId)) add("duplicate_page", `page ${n.pageId} appears twice`, n.nodeId);
-        pages.add(n.pageId);
-      }
-    } else if (n.pageId !== null || !n.title) {
-      add("invalid_folder_node", "folder node must have a title and no pageId", n.nodeId);
+    if (!n.pageId || n.nodeId !== n.pageId) add("invalid_page_node", "node must have nodeId = pageId", n.nodeId);
+    if (n.pageId) {
+      if (pages.has(n.pageId)) add("duplicate_page", `page ${n.pageId} appears twice`, n.nodeId);
+      pages.add(n.pageId);
     }
-  }
-
-  const inbox = byId.get(INBOX_NODE_ID);
-  if (inbox && (inbox.kind !== "folder" || inbox.parentNodeId !== null)) {
-    add("invalid_inbox", "inbox must be a top-level folder", INBOX_NODE_ID);
   }
 
   for (const n of byId.values()) {

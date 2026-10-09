@@ -1,4 +1,3 @@
-import { INBOX_NODE_ID } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { requestBuild } from "../publishing/builds";
 import { buildManifest, publicTreeNodes } from "../publishing/manifest";
@@ -31,7 +30,7 @@ describe("publish / unpublish", () => {
     const manifest = await buildManifest(ctx.db);
     expect(manifest.pages).toHaveLength(1);
     expect(manifest.pages[0]!.bodyMd).toBe("v1");
-    expect(manifest.pages[0]!.path).toBe(`/p/${page.id}-${encodeURIComponent("記事")}`);
+    expect(manifest.pages[0]!.path).toBe(`/p/${page.id}`);
 
     const detail = (await ctx.call("GET", `/admin/pages/${page.id}`)).body;
     expect(detail.visibility).toBe("public");
@@ -68,48 +67,46 @@ describe("publish / unpublish", () => {
 });
 
 describe("manifest", () => {
-  it("adds 301s for old slugs and 410 for deleted articles", async () => {
+  it("serves pages at /p/{id} and lists deleted articles as gone", async () => {
     ctx = await setup();
     const page = await newPage("Hello");
     await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
-    await ctx.call("PUT", `/admin/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "Hello", bodyMd: "", slug: "renamed" });
     const gone = await newPage("Gone");
     await ctx.call("POST", `/admin/pages/${gone.id}/publish`, { versionId: gone.headVersionId, visibility: "public" });
     await ctx.call("DELETE", `/admin/pages/${gone.id}`);
 
     const m = await buildManifest(ctx.db);
-    expect(m.redirects).toEqual(
-      expect.arrayContaining([
-        { from: `/p/${page.id}-hello`, to: `/p/${page.id}-renamed` },
-        { from: `/p/${page.id}`, to: `/p/${page.id}-renamed` },
-      ]),
-    );
+    expect(m.pages.map((p) => p.path)).toEqual([`/p/${page.id}`]);
+    expect(m.pages[0]).not.toHaveProperty("slug");
+    expect(m).not.toHaveProperty("redirects");
     expect(m.gone).toEqual([gone.id]);
   });
 
-  it("only exposes the public part of public trees", async () => {
+  it("only exposes the public part of the tree", async () => {
     ctx = await setup();
+    const docs = await newPage("docs");
     const pub = await newPage("pub");
     const priv = await newPage("priv");
     const child = await newPage("child");
-    await ctx.call("POST", `/admin/pages/${pub.id}/publish`, { versionId: pub.headVersionId, visibility: "public" });
-    await ctx.call("POST", `/admin/pages/${child.id}/publish`, { versionId: child.headVersionId, visibility: "public" });
+    for (const p of [docs, pub, child]) {
+      await ctx.call("POST", `/admin/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
+    }
     const s = (await ctx.call("GET", "/admin/structure")).body;
     const treeId = s.trees[0].id;
     await ctx.call("POST", "/admin/structure/commits", {
       expectedHeadCommitId: s.headCommitId,
       ops: [
-        { type: "create_folder", treeId, nodeId: "f_docs", title: "Docs", parentNodeId: null },
-        { type: "create_folder", treeId, nodeId: "f_empty", title: "Empty", parentNodeId: null },
-        { type: "move", treeId, nodeId: pub.id, newParentNodeId: "f_docs" },
-        { type: "move", treeId, nodeId: priv.id, newParentNodeId: "f_docs" },
+        { type: "move", treeId, nodeId: pub.id, newParentNodeId: docs.id },
+        { type: "move", treeId, nodeId: priv.id, newParentNodeId: docs.id },
         { type: "move", treeId, nodeId: child.id, newParentNodeId: priv.id },
       ],
     });
     const m = await buildManifest(ctx.db);
     const nodes = m.trees[0]!.nodes;
-    expect(nodes.map((n) => n.nodeId).sort()).toEqual([child.id, "f_docs", pub.id].sort());
-    expect(nodes.find((n) => n.nodeId === child.id)!.parentNodeId).toBe("f_docs");
+    // 非公開ページは出さず、その子は最も近い公開の祖先へ繰り上げる
+    expect(nodes.map((n) => n.nodeId).sort()).toEqual([child.id, docs.id, pub.id].sort());
+    expect(nodes.find((n) => n.nodeId === child.id)!.parentNodeId).toBe(docs.id);
+    expect(nodes[0]).not.toHaveProperty("kind");
   });
 
   it("exports only the primary tree even when legacy trees remain", async () => {
@@ -129,15 +126,15 @@ describe("manifest", () => {
 });
 
 describe("publicTreeNodes", () => {
-  it("drops the inbox", () => {
+  it("lifts public pages out of a non-public top-level page", () => {
     const nodes = publicTreeNodes(
       [
-        { nodeId: INBOX_NODE_ID, kind: "folder", pageId: null, title: "Inbox", parentNodeId: null, position: "a0" },
-        { nodeId: "p1", kind: "page", pageId: "p1", title: null, parentNodeId: INBOX_NODE_ID, position: "a0" },
+        { nodeId: "p0", pageId: "p0", parentNodeId: null, position: "a0" },
+        { nodeId: "p1", pageId: "p1", parentNodeId: "p0", position: "a0" },
       ],
       new Set(["p1"]),
     );
-    expect(nodes).toEqual([]);
+    expect(nodes).toEqual([{ nodeId: "p1", pageId: "p1", parentNodeId: null, position: "a0" }]);
   });
 });
 

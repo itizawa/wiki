@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { isValidSlug } from "./slug";
 
 export const visibilitySchema = z.enum(["public", "unlisted", "private"]);
 export type Visibility = z.infer<typeof visibilitySchema>;
@@ -10,8 +9,9 @@ export type AuthorType = z.infer<typeof authorTypeSchema>;
 
 export const createPageInput = z.object({
   title: z.string().trim().min(1).max(200),
-  slug: z.string().refine(isValidSlug, "invalid slug").optional(),
   bodyMd: z.string().max(500_000).default(""),
+  /** この下に置く親ページ。省略またはnullなら最上位。どちらも兄弟の末尾に置く。 */
+  parentPageId: z.string().min(1).max(64).nullable().optional(),
 });
 export type CreatePageInput = z.infer<typeof createPageInput>;
 
@@ -20,13 +20,11 @@ export const savePageInput = z.object({
   baseVersionId: z.string().uuid(),
   title: z.string().trim().min(1).max(200),
   bodyMd: z.string().max(500_000),
-  slug: z.string().refine(isValidSlug, "invalid slug").optional(),
 });
 export type SavePageInput = z.infer<typeof savePageInput>;
 
 export type PageSummary = {
   id: string;
-  slug: string;
   title: string;
   headVersionId: string;
   publishedVersionId: string | null;

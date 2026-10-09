@@ -1,56 +1,69 @@
 import { describe, expect, it } from "vitest";
-import { INBOX_NODE_ID } from "../ids";
 import { applyOps, StructureOpError, StructureValidationError } from "./apply";
 import { diffStructures } from "./diff";
 import { structureOpSchema, type StructureOpInput } from "./ops";
-import { childrenByParent, type StructureState } from "./types";
+import { childrenByParent, type StructureState, type TreeNode } from "./types";
 import { validateTree } from "./validate";
 
 const T = "t_main";
+
+const page = (id: string, parentNodeId: string | null, position: string): TreeNode => ({
+  nodeId: id,
+  pageId: id,
+  parentNodeId,
+  position,
+});
 
 function base(): StructureState {
   return {
     trees: {
       [T]: {
         treeId: T,
-        nodes: [
-          { nodeId: INBOX_NODE_ID, kind: "folder", pageId: null, title: "Inbox", parentNodeId: null, position: "a0" },
-          { nodeId: "f_a", kind: "folder", pageId: null, title: "A", parentNodeId: null, position: "a1" },
-          { nodeId: "p1", kind: "page", pageId: "p1", title: null, parentNodeId: INBOX_NODE_ID, position: "a0" },
-          { nodeId: "p2", kind: "page", pageId: "p2", title: null, parentNodeId: "f_a", position: "a0" },
-        ],
+        nodes: [page("a", null, "a0"), page("b", null, "a1"), page("a1", "a", "a0"), page("b1", "b", "a0")],
       },
     },
   };
 }
 
 const ops = (...input: StructureOpInput[]) => input.map((o) => structureOpSchema.parse(o));
-let seq = 0;
-const ctx = { newFolderId: () => `f_gen${++seq}` };
 const node = (s: StructureState, treeId: string, nodeId: string) =>
   s.trees[treeId]!.nodes.find((n) => n.nodeId === nodeId);
+const kidsOf = (s: StructureState, parent: string | null) =>
+  (childrenByParent(s.trees[T]!.nodes).get(parent) ?? []).map((n) => n.nodeId);
 
 describe("applyOps", () => {
-  it("moves a page out of the inbox and appends it after existing siblings", () => {
-    const { state, changedTreeIds } = applyOps(base(), ops({ type: "move", treeId: T, nodeId: "p1", newParentNodeId: "f_a" }), ctx);
-    const kids = childrenByParent(state.trees[T]!.nodes).get("f_a")!.map((n) => n.nodeId);
-    expect(kids).toEqual(["p2", "p1"]);
+  it("moves a page under another page and appends it after existing children", () => {
+    const { state, changedTreeIds } = applyOps(base(), ops({ type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b" }));
+    expect(kidsOf(state, "b")).toEqual(["b1", "a1"]);
+    expect(kidsOf(state, "a")).toEqual([]);
     expect(changedTreeIds).toEqual([T]);
+  });
+
+  it("moves a page together with its children", () => {
+    const { state } = applyOps(base(), ops({ type: "move", treeId: T, nodeId: "a", newParentNodeId: "b1" }));
+    expect(node(state, T, "a")!.parentNodeId).toBe("b1");
+    expect(node(state, T, "a1")!.parentNodeId).toBe("a");
   });
 
   it("does not mutate the input state", () => {
     const input = base();
-    applyOps(input, ops({ type: "move", treeId: T, nodeId: "p1", newParentNodeId: "f_a" }), ctx);
-    expect(node(input, T, "p1")!.parentNodeId).toBe(INBOX_NODE_ID);
+    applyOps(input, ops({ type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b" }));
+    expect(node(input, T, "a1")!.parentNodeId).toBe("a");
   });
 
-  it("rejects moving a folder under its own descendant", () => {
-    const s = applyOps(base(), ops({ type: "create_folder", treeId: T, nodeId: "f_b", title: "B", parentNodeId: "f_a" }), ctx).state;
-    expect(() => applyOps(s, ops({ type: "move", treeId: T, nodeId: "f_a", newParentNodeId: "f_b" }), ctx)).toThrow(StructureOpError);
+  it("rejects moving a page under itself or its own descendant", () => {
+    expect(() => applyOps(base(), ops({ type: "move", treeId: T, nodeId: "a", newParentNodeId: "a1" }))).toThrow(StructureOpError);
+    expect(() => applyOps(base(), ops({ type: "move", treeId: T, nodeId: "a", newParentNodeId: "a" }))).toThrow(StructureOpError);
+  });
+
+  it("adds a page under another page", () => {
+    const { state } = applyOps(base(), ops({ type: "add_to_tree", treeId: T, pageId: "c", parentNodeId: "a" }));
+    expect(node(state, T, "c")).toEqual(expect.objectContaining({ nodeId: "c", pageId: "c", parentNodeId: "a" }));
+    expect(kidsOf(state, "a")).toEqual(["a1", "c"]);
   });
 
   it("rejects adding the same page twice to a tree", () => {
-    expect(() => applyOps(base(), ops({ type: "add_to_tree", treeId: T, pageId: "p1", parentNodeId: null }), ctx)).toThrow(/already in tree/);
+    expect(() => applyOps(base(), ops({ type: "add_to_tree", treeId: T, pageId: "a1", parentNodeId: null }))).toThrow(/already in tree/);
   });
 
   it("no longer accepts operations that create or delete trees", () => {
@@ -58,71 +71,72 @@ describe("applyOps", () => {
     expect(structureOpSchema.safeParse({ type: "delete_tree", treeId: T }).success).toBe(false);
   });
 
-  it("protects the inbox", () => {
-    expect(() => applyOps(base(), ops({ type: "remove_node", treeId: T, nodeId: INBOX_NODE_ID }), ctx)).toThrow(/inbox/);
-    expect(() => applyOps(base(), ops({ type: "rename_folder", treeId: T, nodeId: INBOX_NODE_ID, title: "x" }), ctx)).toThrow(/inbox/);
+  it("no longer accepts folder operations", () => {
+    for (const op of [
+      { type: "create_folder", treeId: T, title: "F", parentNodeId: null },
+      { type: "rename_folder", treeId: T, nodeId: "a", title: "F" },
+      { type: "split_folder", treeId: T, nodeId: "a", groups: [{ title: "G", nodeIds: ["a1"] }] },
+    ]) {
+      expect(structureOpSchema.safeParse(op).success).toBe(false);
+    }
   });
 
-  it("refuses to remove a folder that still has children", () => {
-    expect(() => applyOps(base(), ops({ type: "remove_node", treeId: T, nodeId: "f_a" }), ctx)).toThrow(/children/);
+  it("refuses to remove a page that still has children", () => {
+    expect(() => applyOps(base(), ops({ type: "remove_node", treeId: T, nodeId: "a" }))).toThrow(/children/);
+  });
+
+  it("removes a leaf page", () => {
+    const { state } = applyOps(base(), ops({ type: "remove_node", treeId: T, nodeId: "a1" }));
+    expect(node(state, T, "a1")).toBeUndefined();
   });
 
   it("checks page existence through the context", () => {
     expect(() =>
-      applyOps(base(), ops({ type: "add_to_tree", treeId: T, pageId: "zz", parentNodeId: null }), { ...ctx, pageExists: () => false }),
+      applyOps(base(), ops({ type: "add_to_tree", treeId: T, pageId: "zz", parentNodeId: null }), { pageExists: () => false }),
     ).toThrow(/does not exist/);
   });
 
-  it("splits a folder into groups keeping order", () => {
-    const s = applyOps(base(), ops({ type: "move", treeId: T, nodeId: "p1", newParentNodeId: "f_a" }), ctx).state;
-    const { state } = applyOps(s, ops({ type: "split_folder", treeId: T, nodeId: "f_a", groups: [{ title: "G", nodeIds: ["p1", "p2"] }] }), ctx);
-    const children = childrenByParent(state.trees[T]!.nodes);
-    const group = children.get("f_a")!;
-    expect(group).toHaveLength(1);
-    expect(children.get(group[0]!.nodeId)!.map((n) => n.nodeId)).toEqual(["p2", "p1"]);
-  });
-
   it("renumbers siblings that end up with the same position", () => {
-    const { state } = applyOps(base(), ops({ type: "move", treeId: T, nodeId: "p1", newParentNodeId: "f_a", position: "a0" }), ctx);
-    const positions = childrenByParent(state.trees[T]!.nodes).get("f_a")!.map((n) => n.position);
+    const { state } = applyOps(base(), ops({ type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b", position: "a0" }));
+    const positions = childrenByParent(state.trees[T]!.nodes).get("b")!.map((n) => n.position);
     expect(new Set(positions).size).toBe(2);
   });
 });
 
 describe("validateTree", () => {
-  it("detects orphans, cycles and duplicate pages", () => {
+  it("detects orphans and cycles", () => {
     const issues = validateTree({
       treeId: T,
-      nodes: [
-        { nodeId: "a", kind: "folder", pageId: null, title: "a", parentNodeId: "b", position: "a0" },
-        { nodeId: "b", kind: "folder", pageId: null, title: "b", parentNodeId: "a", position: "a0" },
-        { nodeId: "c", kind: "folder", pageId: null, title: "c", parentNodeId: "missing", position: "a0" },
-      ],
+      nodes: [page("a", "b", "a0"), page("b", "a", "a0"), page("c", "missing", "a0")],
     });
     const codes = new Set(issues.map((i) => i.code));
     expect(codes).toContain("cycle");
     expect(codes).toContain("orphan");
   });
 
+  it("requires every node to be a page with nodeId = pageId", () => {
+    const issues = validateTree({ treeId: T, nodes: [{ nodeId: "x", pageId: "y", parentNodeId: null, position: "a0" }] });
+    expect(issues.map((i) => i.code)).toContain("invalid_page_node");
+  });
+
   it("is surfaced as StructureValidationError from applyOps", () => {
     const broken = base();
-    broken.trees[T]!.nodes.push({ nodeId: "x", kind: "folder", pageId: null, title: "x", parentNodeId: "nope", position: "a0" });
-    expect(() => applyOps(broken, ops({ type: "rename_folder", treeId: T, nodeId: "f_a", title: "AA" }), ctx)).toThrow(StructureValidationError);
+    broken.trees[T]!.nodes.push(page("x", "nope", "a0"));
+    expect(() => applyOps(broken, ops({ type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b" }))).toThrow(StructureValidationError);
   });
 });
 
 describe("diffStructures", () => {
-  it("reports moves, renames and additions", () => {
+  it("reports moves, additions and removals", () => {
     const { state } = applyOps(
       base(),
       ops(
-        { type: "move", treeId: T, nodeId: "p1", newParentNodeId: "f_a" },
-        { type: "rename_folder", treeId: T, nodeId: "f_a", title: "AA" },
-        { type: "create_folder", treeId: T, nodeId: "f_new", title: "New", parentNodeId: null },
+        { type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b" },
+        { type: "add_to_tree", treeId: T, pageId: "c", parentNodeId: null },
+        { type: "remove_node", treeId: T, nodeId: "b1" },
       ),
-      ctx,
     );
     const kinds = diffStructures(base(), state).map((c) => `${c.kind}:${"nodeId" in c ? c.nodeId : "node" in c ? c.node.nodeId : c.treeId}`);
-    expect(kinds).toEqual(expect.arrayContaining(["node_moved:p1", "node_renamed:f_a", "node_added:f_new"]));
+    expect(kinds).toEqual(expect.arrayContaining(["node_moved:a1", "node_added:c", "node_removed:b1"]));
   });
 });

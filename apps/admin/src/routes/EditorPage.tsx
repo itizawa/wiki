@@ -5,11 +5,10 @@ import InputBase from "@mui/material/InputBase";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
-import { isValidSlug, pagePath, type PageDetail } from "@wiki/shared";
+import { pagePath, type PageDetail } from "@wiki/shared";
 import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
@@ -21,9 +20,9 @@ import { Mono, Muted, Section, StatusChip } from "../components/ui";
 import { monoFont } from "../theme";
 import { visibilityLabel } from "./PagesPage";
 
-type Draft = { title: string; slug: string; bodyMd: string };
+type Draft = { title: string; bodyMd: string };
 
-const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, slug: p.slug, bodyMd: p.head.bodyMd });
+const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
 
 export function EditorPage({ pageId }: { pageId: string }) {
   const qc = useQueryClient();
@@ -46,7 +45,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const dirty =
     draft !== null &&
     saved !== null &&
-    (draft.title !== saved.title || draft.slug !== saved.slug || draft.bodyMd !== saved.bodyMd);
+    (draft.title !== saved.title || draft.bodyMd !== saved.bodyMd);
 
   const save = useMutation({
     mutationFn: () =>
@@ -54,7 +53,6 @@ export function EditorPage({ pageId }: { pageId: string }) {
         baseVersionId: baseVersionId!,
         title: draft!.title,
         bodyMd: draft!.bodyMd,
-        slug: draft!.slug,
       }),
     onSuccess: (p) => {
       qc.setQueryData(["page", pageId], p);
@@ -77,7 +75,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
     },
   });
 
-  const canSave = draft !== null && draft.title.trim() !== "" && isValidSlug(draft.slug) && dirty && !save.isPending;
+  const canSave = draft !== null && draft.title.trim() !== "" && dirty && !save.isPending;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -204,16 +202,8 @@ export function EditorPage({ pageId }: { pageId: string }) {
               <Typography variant="subtitle1" component="h3">
                 ページ
               </Typography>
-              <TextField
-                label="slug"
-                fullWidth
-                value={draft.slug}
-                error={!isValidSlug(draft.slug)}
-                onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
-                sx={{ "& input": { fontFamily: monoFont, fontSize: "0.85rem" } }}
-              />
               <Muted sx={{ wordBreak: "break-all" }}>
-                <Mono>{pagePath(p.id, draft.slug)}</Mono>
+                <Mono>{pagePath(p.id)}</Mono>
               </Muted>
               <Button
                 variant="outlined"
@@ -234,7 +224,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
   );
 }
 
-/** ツリー上の置き場所（親フォルダの並び）とタイトル。 */
+/** ツリー上の置き場所（親ページの並び）とタイトル。 */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const ancestors = useMemo(() => {
@@ -245,7 +235,7 @@ function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
     for (let cur = byId.get(pageId)?.parentNodeId ?? null; cur !== null; cur = byId.get(cur)?.parentNodeId ?? null) {
       const node = byId.get(cur);
       if (!node) break;
-      names.unshift(node.kind === "folder" ? node.title! : data?.pages[node.pageId!]?.title ?? node.pageId!);
+      names.unshift(data?.pages[node.pageId]?.title ?? node.pageId);
     }
     return names;
   }, [structure.data, pageId]);

@@ -13,7 +13,7 @@ pnpm build:sample   # fixtures/manifest.sample.json でビルドし、scripts/ve
 
 | URL | 内容 |
 |---|---|
-| `/p/{id}-{slug}` | 記事（正規）。slug違い・slug無しは301、削除済みは410（`functions/_middleware.ts`） |
+| `/p/{id}` | 記事（正規）。slug つきの旧URL（`/p/{id}-{slug}`）は301、削除済みは410（`functions/_middleware.ts`） |
 | `/t/{treeKey}/` , `/t/{treeKey}/{nodeId}` | ツリー経由の閲覧。本文を再掲し、canonicalは `/p/` |
 | `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない |
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |

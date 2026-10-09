@@ -1,9 +1,8 @@
 import {
   createPageInput,
-  INBOX_NODE_ID,
   newPageId,
   savePageInput,
-  slugify,
+  type CreatePageInput,
   type PageDetail,
   type PageSummary,
   type PageVersion,
@@ -11,7 +10,7 @@ import {
 import { and, desc, eq, ilike, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageLinks, pages, pageVersions, scheduledActions, slugHistory } from "../db/schema";
+import { pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
@@ -23,7 +22,6 @@ type VersionRow = typeof pageVersions.$inferSelect;
 
 const toSummary = (p: PageRow): PageSummary => ({
   id: p.id,
-  slug: p.slug,
   title: p.title,
   headVersionId: p.headVersionId,
   publishedVersionId: p.publishedVersionId,
@@ -75,6 +73,26 @@ async function replaceLinks(db: Db, pageId: string, bodyMd: string) {
   }
 }
 
+/** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
+export async function createPage(tx: Db, input: CreatePageInput): Promise<string> {
+  const id = newPageId();
+  const versionId = crypto.randomUUID();
+  await tx.insert(pages).values({ id, title: input.title, headVersionId: versionId });
+  await tx.insert(pageVersions).values({
+    id: versionId,
+    pageId: id,
+    title: input.title,
+    bodyMd: input.bodyMd,
+    authorType: "human",
+  });
+  await replaceLinks(tx, id, input.bodyMd);
+  await commitOps(tx, {
+    message: `「${input.title}」を追加`,
+    ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
+  });
+  return id;
+}
+
 export const pageRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
@@ -88,29 +106,7 @@ export const pageRoutes = new Hono<AppEnv>()
   .post("/", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, createPageInput);
-    const id = newPageId();
-    await db.transaction(async (tx) => {
-      const versionId = crypto.randomUUID();
-      await tx.insert(pages).values({
-        id,
-        slug: input.slug ?? slugify(input.title),
-        title: input.title,
-        headVersionId: versionId,
-      });
-      await tx.insert(pageVersions).values({
-        id: versionId,
-        pageId: id,
-        title: input.title,
-        bodyMd: input.bodyMd,
-        authorType: "human",
-      });
-      await replaceLinks(tx, id, input.bodyMd);
-      // 新しいページはInboxに入れる（あとでツリーUIで整理する）
-      await commitOps(tx, {
-        message: `「${input.title}」をInboxに追加`,
-        ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx)).id, pageId: id, parentNodeId: INBOX_NODE_ID }],
-      });
-    });
+    const id = await db.transaction((tx) => createPage(tx, input));
     return c.json(await getDetail(db, id), 201);
   })
   .get("/:id", async (c) => {
@@ -130,8 +126,7 @@ export const pageRoutes = new Hono<AppEnv>()
         });
       }
       const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-      const slug = input.slug ?? page.slug;
-      if (head!.title === input.title && head!.bodyMd === input.bodyMd && slug === page.slug) return;
+      if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
 
       const [version] = await tx
         .insert(pageVersions)
@@ -143,18 +138,9 @@ export const pageRoutes = new Hono<AppEnv>()
           authorType: "human",
         })
         .returning();
-      if (slug !== page.slug) {
-        // 旧slugは301用に残す
-        await tx
-          .insert(slugHistory)
-          .values({ pageId: id, slug: page.slug, validUntil: new Date() })
-          .onConflictDoUpdate({ target: [slugHistory.pageId, slugHistory.slug], set: { validUntil: new Date() } });
-        // 公開中ならURLが変わるので再ビルドする（旧URLは301）
-        if (page.publishedVersionId) await recordPublishEvent(tx, "slug_change", { pageId: id });
-      }
       await tx
         .update(pages)
-        .set({ title: input.title, slug, headVersionId: version!.id, updatedAt: new Date() })
+        .set({ title: input.title, headVersionId: version!.id, updatedAt: new Date() })
         .where(eq(pages.id, id));
       await replaceLinks(tx, id, input.bodyMd);
     });

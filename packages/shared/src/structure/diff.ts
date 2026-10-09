@@ -6,8 +6,7 @@ export type StructureChange =
   | { kind: "node_added"; treeId: string; node: TreeNode }
   | { kind: "node_removed"; treeId: string; node: TreeNode }
   | { kind: "node_moved"; treeId: string; nodeId: string; from: string | null; to: string | null }
-  | { kind: "node_reordered"; treeId: string; nodeId: string }
-  | { kind: "node_renamed"; treeId: string; nodeId: string; from: string | null; to: string | null };
+  | { kind: "node_reordered"; treeId: string; nodeId: string };
 
 /** 2つの構造状態の差分を、ツリーごと・node_id単位で算出する。 */
 export function diffStructures(before: StructureState, after: StructureState): StructureChange[] {
@@ -33,9 +32,6 @@ export function diffStructures(before: StructureState, after: StructureState): S
         changes.push({ kind: "node_moved", treeId, nodeId, from: na.parentNodeId, to: nb.parentNodeId });
       } else if (na.position !== nb.position) {
         changes.push({ kind: "node_reordered", treeId, nodeId });
-      }
-      if (na.title !== nb.title) {
-        changes.push({ kind: "node_renamed", treeId, nodeId, from: na.title, to: nb.title });
       }
     }
     for (const [nodeId, na] of aNodes) {

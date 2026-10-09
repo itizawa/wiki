@@ -1,5 +1,5 @@
 export * from "./ids";
-export * from "./slug";
+export * from "./paths";
 export * from "./page";
 export * from "./publish";
 export * from "./redirect";
