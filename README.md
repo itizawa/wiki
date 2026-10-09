@@ -71,15 +71,15 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 
 1. **PostgreSQL** を用意し、接続文字列を控える（プーラーを通さない直接接続のもの。`channel_binding=require` は付けない）
 2. **Hyperdrive** をその接続文字列で作り、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
-3. `apps/api/wrangler.toml` の `ADMIN_ORIGIN` `SITE_ORIGIN` と、`apps/worker/wrangler.toml` の `API_ORIGIN`（`ADMIN_ORIGIN` と同じ値）を実際のオリジンにする
-4. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `{ADMIN_ORIGIN}/api/auth/google/callback` を登録する
+3. `apps/api/wrangler.toml` の `SITE_ORIGIN` を公開サイトのオリジン（`https://{サブドメイン}.hatchery-works.com`）にする。管理画面は `https://wiki-admin.hatchery-works.com` で、デプロイ時に独自ドメインとして紐づく
+4. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `https://wiki-admin.hatchery-works.com/api/auth/google/callback` を登録する
 5. **Cloudflare Pages** のプロジェクトを Git 連携で作る：ルート `apps/site`、ビルドコマンド `pnpm build`、出力 `dist`。
-   環境変数は `API_ORIGIN`（= `ADMIN_ORIGIN`）`INTERNAL_TOKEN` `SITE_ORIGIN` `SITE_NAME`。プレビューのデプロイは無効にする。作ったらデプロイフックを発行する
+   環境変数は `API_ORIGIN`（= `ADMIN_ORIGIN`）`INTERNAL_TOKEN` `SITE_ORIGIN` `SITE_NAME`。プレビューのデプロイは無効にする。作ったら独自ドメイン（`{サブドメイン}.hatchery-works.com`）を紐づけ、デプロイフックを発行する
 6. GitHub の Settings → Secrets and variables → Actions に次を登録する
 
    | Secret | 内容 |
    |---|---|
-   | `CLOUDFLARE_API_TOKEN` | 「Edit Cloudflare Workers」テンプレートの API トークン |
+   | `CLOUDFLARE_API_TOKEN` | 「Edit Cloudflare Workers」テンプレートの API トークン（対象ゾーンに `hatchery-works.com` を含める） |
    | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare のアカウントID |
    | `DATABASE_URL` | 手順1の接続文字列（マイグレーション用） |
    | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
@@ -91,7 +91,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
 
-シークレットはデプロイのたびに GitHub から Worker へ入れ直す（値を変えたら Actions の「Deploy」を手動実行する）。独自ドメインを使う場合は各 `wrangler.toml` に `routes` を足し、オリジンの設定をそのドメインに合わせる。
+シークレットはデプロイのたびに GitHub から Worker へ入れ直す（値を変えたら Actions の「Deploy」を手動実行する）。
 
 手元から出す場合は `wrangler login` のうえで `pnpm --filter @wiki/admin build && pnpm --filter @wiki/api deploy`、`pnpm --filter @wiki/worker deploy`。
 
