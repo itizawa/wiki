@@ -2,7 +2,7 @@ import { customAlphabet } from "nanoid";
 
 const alnum = "0123456789abcdefghijklmnopqrstuvwxyz";
 
-/** ページID。短く安定した英数字（URL `/p/{id}-{slug}` に使う）。 */
+/** ページID。短く安定した英数字（URL `/p/{id}` に使う）。 */
 export const newPageId = customAlphabet(alnum, 10);
 
 /** ツリーID。 */

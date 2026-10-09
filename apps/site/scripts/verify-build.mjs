@@ -13,29 +13,28 @@ const check = (ok, message) => {
 };
 
 const key = "Unl1stedKeyAbCdEfGhIjK";
-check(await exists("p/aaaaaaaaa1-はじめに.html"), "public page is generated at /p/{id}-{slug}");
+check(await exists("p/aaaaaaaaa1.html"), "public page is generated at /p/{id}");
 check(await exists("t/by-theme/aaaaaaaaa2.html"), "tree view re-displays the page under /t/");
 check(await exists(`u/${key}/index.html`), "unlisted page is generated under /u/{key}/");
 
 const tPage = await read("t/by-theme/aaaaaaaaa2.html");
-check(tPage.includes('rel="canonical" href="http://localhost:4321/p/aaaaaaaaa2-design-notes"'), "/t/ page has canonical to /p/");
+check(tPage.includes('rel="canonical" href="http://localhost:4321/p/aaaaaaaaa2"'), "/t/ page has canonical to /p/");
 
 const unlisted = await read(`u/${key}/index.html`);
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 
-const publicHtml = [await read("index.html"), await read("p/aaaaaaaaa1-はじめに.html"), await read("sitemap.xml"), await read("feed.xml")];
+const publicHtml = [await read("index.html"), await read("p/aaaaaaaaa1.html"), await read("sitemap.xml"), await read("feed.xml")];
 check(publicHtml.every((h) => !h.includes(key)), "unlisted key does not appear in public pages, sitemap or RSS");
 
-const intro = await read("p/aaaaaaaaa1-はじめに.html");
-check(intro.includes('href="/p/aaaaaaaaa2-design-notes"'), "internal links point to canonical URLs");
+const intro = await read("p/aaaaaaaaa1.html");
+check(intro.includes('href="/p/aaaaaaaaa2"'), "internal links point to canonical URLs");
 check(!intro.includes("zzzzzzzzz9"), "links to non-public pages become plain text");
 
-const notes = await read("p/aaaaaaaaa2-design-notes.html");
+const notes = await read("p/aaaaaaaaa2.html");
 check(notes.includes("広告を含みます") && notes.includes('rel="sponsored noopener"'), "monetized pages show the ad notice and sponsored links");
 
-const redirects = await read("_redirects");
-check(redirects.includes("/p/aaaaaaaaa2-old-slug /p/aaaaaaaaa2-design-notes 301"), "_redirects has old slug 301");
+check(JSON.parse(await read("page-routes.json")).canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check((await read("_headers")).includes("X-Robots-Tag: noindex"), "_headers marks /u/ noindex");
 check(JSON.parse(await read("page-routes.json")).gone.includes("ggggggggg1"), "page-routes.json lists gone pages");
 

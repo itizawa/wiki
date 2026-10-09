@@ -27,7 +27,7 @@ apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite�
 apps/api         API（Hono + Drizzle + PostgreSQL）
 apps/worker      Cron Triggers：予約公開の実行・公開ビルドの起動（ルールの実行はフェーズ3b以降）
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Pages）
-packages/shared  型、zodスキーマ（構造操作）、slug/URLルール、構造の適用・検証・差分
+packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
 
 ## フェーズ1で入っているもの
@@ -43,14 +43,14 @@ packages/shared  型、zodスキーマ（構造操作）、slug/URLルール、�
 
 ## フェーズ2で入っているもの
 
-- 公開範囲：`public`（`/p/{id}-{slug}`）／`unlisted`（`/u/{unlisted_key}/`、noindex・no-referrer、検索/サイトマップ/RSS/ナビ/リンクから除外）／`private`
+- 公開範囲：`public`（`/p/{id}`）／`unlisted`（`/u/{unlisted_key}/`、noindex・no-referrer、検索/サイトマップ/RSS/ナビ/リンクから除外）／`private`
   - 公開 = `published_version_id` を進める操作。公開後の編集は「最新版で公開し直す」まで公開側に出ない
   - 限定公開URLの再発行（旧URLは次のビルドで404）
 - 予約公開：`scheduled_actions`（公開・非公開化）。予約時点の版を固定し、予約後に編集があれば警告。同じ `batch_id` は1トランザクションで実行、失敗は3回まで再試行
 - 公開パイプライン：操作ごとに `publish_events` を記録 → ワーカーがデバウンスしてビルド起動（`contentHash` が同じなら省略）→ サイトが `/export/public` を取得して静的出力 → Pagefind
 - 公開サイト（`apps/site`）：記事・ツリー経由の閲覧（`/t/`、canonicalは `/p/`）・新着一覧・検索（Pagefind、遅延ロード）・RSS・サイトマップ
   - 内部リンクは公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
-  - slug変更・slug無しURLは 301（`_redirects` と Pages Functions）、削除記事は 410
+  - slug つきの旧URL（`/p/{id}-{slug}`）は `/p/{id}` へ 301（Pages Functions）、削除記事は 410
   - `monetization` が立った記事は「広告を含みます」を表示し、外部リンクに `rel="sponsored"`
 - 管理画面：エディタ横の公開パネル（公開/非公開化/限定公開URL/予約）、編集カレンダー（公開済み・予約・AI下書き、予約ストック警告、失敗一覧）
 
@@ -70,6 +70,7 @@ Node 22 と pnpm、PostgreSQL が必要。
 pnpm install
 cp apps/api/.env.example apps/api/.env   # DATABASE_URL, ADMIN_EMAILS, SESSION_SECRET を設定
 pnpm db:migrate                          # マイグレーション + ツリー（空）の初期化
+pnpm db:seed                             # テスト用データを投入（任意。ページが1件も無いときだけ入る）
 pnpm dev                                 # API :8787 と管理画面 :5173
 ```
 
@@ -80,6 +81,8 @@ pnpm --filter @wiki/site build:sample   # dist/ に出力し、限定公開の�
 ```
 
 APIのデータでビルドする場合は `API_ORIGIN=http://localhost:8787 INTERNAL_TOKEN=... pnpm --filter @wiki/site build`。
+
+テスト用データ（`pnpm db:seed`）は、3段の階層に公開・限定公開・予約・下書き・公開後に編集ありのページを一通り含む。既存のデータを消して入れ直す場合は `pnpm db:seed --reset`（すべてのテーブルを空にするので、ローカル専用。`NODE_ENV=production` では動かない）。
 
 `DEV_LOGIN_EMAIL` を設定すると、Googleを通さない「開発用ログイン」ボタンが出る（`NODE_ENV=production` では無効）。
 Googleログインを試す場合は OAuth クライアントを作り、承認済みリダイレクトURIに `http://localhost:5173/api/auth/google/callback` を登録する。

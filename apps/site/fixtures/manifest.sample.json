@@ -5,18 +5,16 @@
   "pages": [
     {
       "id": "aaaaaaaaa1",
-      "slug": "はじめに",
-      "path": "/p/aaaaaaaaa1-%E3%81%AF%E3%81%98%E3%82%81%E3%81%AB",
+      "path": "/p/aaaaaaaaa1",
       "title": "はじめに",
-      "bodyMd": "# ようこそ\n\nこのwikiの使い方です。[設計メモ](/p/aaaaaaaaa2) と [非公開のページ](/p/zzzzzzzzz9) を参照。\n\n- 検索はページ上部から\n- RSSもあります",
+      "bodyMd": "# ようこそ\n\nこのwikiの使い方です。[設計メモ](/p/aaaaaaaaa2-old-slug) と [非公開のページ](/p/zzzzzzzzz9) を参照。\n\n- 検索はページ上部から\n- RSSもあります",
       "firstPublishedAt": "2026-10-01T00:00:00.000Z",
       "revisedAt": "2026-10-05T00:00:00.000Z",
       "monetization": null
     },
     {
       "id": "aaaaaaaaa2",
-      "slug": "design-notes",
-      "path": "/p/aaaaaaaaa2-design-notes",
+      "path": "/p/aaaaaaaaa2",
       "title": "設計メモ",
       "bodyMd": "構造はコミットで管理します。おすすめの本は [こちら](https://example.com/book)。",
       "firstPublishedAt": "2026-10-08T00:00:00.000Z",
@@ -51,11 +49,6 @@
         { "nodeId": "aaaaaaaaa2", "pageId": "aaaaaaaaa2", "parentNodeId": null, "position": "a0" }
       ]
     }
-  ],
-  "redirects": [
-    { "from": "/p/aaaaaaaaa1", "to": "/p/aaaaaaaaa1-%E3%81%AF%E3%81%98%E3%82%81%E3%81%AB" },
-    { "from": "/p/aaaaaaaaa2", "to": "/p/aaaaaaaaa2-design-notes" },
-    { "from": "/p/aaaaaaaaa2-old-slug", "to": "/p/aaaaaaaaa2-design-notes" }
   ],
   "gone": ["ggggggggg1"]
 }

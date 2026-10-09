@@ -30,7 +30,7 @@ describe("publish / unpublish", () => {
     const manifest = await buildManifest(ctx.db);
     expect(manifest.pages).toHaveLength(1);
     expect(manifest.pages[0]!.bodyMd).toBe("v1");
-    expect(manifest.pages[0]!.path).toBe(`/p/${page.id}-${encodeURIComponent("記事")}`);
+    expect(manifest.pages[0]!.path).toBe(`/p/${page.id}`);
 
     const detail = (await ctx.call("GET", `/admin/pages/${page.id}`)).body;
     expect(detail.visibility).toBe("public");

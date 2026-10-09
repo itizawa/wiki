@@ -10,7 +10,7 @@ import { ancestors, navItems } from "../../lib/tree";
 
 export async function getStaticPaths() {
   const { manifest } = await siteData();
-  return manifest.pages.map((page) => ({ params: { page: `${page.id}-${page.slug}` }, props: { page } }));
+  return manifest.pages.map((page) => ({ params: { page: page.id }, props: { page } }));
 }
 
 const { page } = Astro.props as { page: ManifestPage };

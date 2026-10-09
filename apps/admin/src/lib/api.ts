@@ -43,7 +43,7 @@ export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
   headCommitId: string;
   trees: StructureTree[];
-  pages: Record<string, { id: string; title: string; slug: string; visibility: string; publishedVersionId: string | null }>;
+  pages: Record<string, { id: string; title: string; visibility: string; publishedVersionId: string | null }>;
 };
 
 export type CommitListItem = { id: string; message: string | null; authorType: string; createdAt: string; parentIds: string[] };
@@ -59,7 +59,7 @@ export const api = {
     request<{ pages: PageSummary[] }>("GET", `/admin/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", "/admin/pages", input),
   getPage: (id: string) => request<PageDetail>("GET", `/admin/pages/${id}`),
-  savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string; slug?: string }) =>
+  savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", `/admin/pages/${id}`, input),
   deletePage: (id: string) => request<{ ok: true }>("DELETE", `/admin/pages/${id}`),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", `/admin/pages/${id}/versions`),

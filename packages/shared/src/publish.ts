@@ -63,7 +63,6 @@ export type ScheduledAction = {
 
 export type ManifestPage = {
   id: string;
-  slug: string;
   path: string;
   title: string;
   bodyMd: string;
@@ -104,8 +103,6 @@ export type PublicManifest = {
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];
   trees: ManifestTree[];
-  /** 旧slug・slug無しURL → 正規URL（301） */
-  redirects: { from: string; to: string }[];
   /** 公開後に削除された記事の id（410） */
   gone: string[];
 };

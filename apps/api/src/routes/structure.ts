@@ -38,7 +38,6 @@ export const structureRoutes = new Hono<AppEnv>()
             .select({
               id: pages.id,
               title: pages.title,
-              slug: pages.slug,
               visibility: pages.visibility,
               publishedVersionId: pages.publishedVersionId,
             })

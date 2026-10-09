@@ -10,7 +10,7 @@ import {
 } from "@wiki/shared";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { pages, pageVersions, slugHistory } from "../db/schema";
+import { pages, pageVersions } from "../db/schema";
 import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
 
 /**
@@ -31,8 +31,7 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
     .filter((r) => r.page.visibility === "public")
     .map(({ page, version }) => ({
       id: page.id,
-      slug: page.slug,
-      path: pagePath(page.id, page.slug),
+      path: pagePath(page.id),
       title: version.title,
       bodyMd: version.bodyMd,
       firstPublishedAt: (page.firstPublishedAt ?? version.createdAt).toISOString(),
@@ -68,25 +67,13 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
       ]
     : [];
 
-  const history =
-    publicIds.size === 0
-      ? []
-      : await db.select().from(slugHistory).where(inArray(slugHistory.pageId, [...publicIds]));
-  const canonicalById = new Map(publicPages.map((p) => [p.id, p]));
-  const redirects = [
-    ...publicPages.map((p) => ({ from: `/p/${p.id}`, to: p.path })),
-    ...history
-      .filter((h) => h.slug !== canonicalById.get(h.pageId)!.slug)
-      .map((h) => ({ from: pagePath(h.pageId, h.slug), to: canonicalById.get(h.pageId)!.path })),
-  ].sort((a, b) => (a.from < b.from ? -1 : 1));
-
   const goneRows = await db
     .select({ id: pages.id })
     .from(pages)
     .where(and(isNotNull(pages.deletedAt), isNotNull(pages.firstPublishedAt)));
   const gone = goneRows.map((r) => r.id).sort();
 
-  const content = { headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, redirects, gone };
+  const content = { headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
   return { generatedAt: now.toISOString(), contentHash: await sha256(JSON.stringify(content)), ...content };
 }
 

@@ -27,7 +27,6 @@ export const pages = pgTable(
   "pages",
   {
     id: text("id").primaryKey(),
-    slug: text("slug").notNull(),
     /** head版タイトルのキャッシュ */
     title: text("title").notNull(),
     headVersionId: uuid("head_version_id").notNull(),
@@ -75,18 +74,6 @@ export const pageVersions = pgTable(
     check("page_versions_author_type_check", sql`${t.authorType} in ('human', 'ai')`),
     index("page_versions_page_id_idx").on(t.pageId, t.createdAt),
   ],
-);
-
-export const slugHistory = pgTable(
-  "slug_history",
-  {
-    pageId: text("page_id")
-      .notNull()
-      .references(() => pages.id),
-    slug: text("slug").notNull(),
-    validUntil: timestamp("valid_until", { withTimezone: true }).notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.pageId, t.slug] })],
 );
 
 export const pageLinks = pgTable(

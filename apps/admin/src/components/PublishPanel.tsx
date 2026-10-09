@@ -51,7 +51,7 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
   const origin = settings.data?.siteOrigin ?? "";
   const url =
     page.visibility === "public"
-      ? origin + pagePath(page.id, page.slug)
+      ? origin + pagePath(page.id)
       : page.visibility === "unlisted" && page.unlistedKey
         ? origin + unlistedPath(page.unlistedKey)
         : null;

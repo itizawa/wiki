@@ -1,4 +1,4 @@
-import { parsePageSegment } from "./slug";
+import { parsePageSegment } from "./paths";
 
 export type PublicRoutes = {
   /** 公開ページの id → 正規パス */
@@ -11,7 +11,7 @@ export type RouteResult = { status: 301; location: string } | { status: 410 } | 
 
 /**
  * 静的ファイルに一致しなかった `/p/...` へのリクエストを解決する。
- * id が一致して slug が違えば 301、削除済みなら 410、それ以外は null（404）。
+ * slug つきの旧URLなど、id は合っているが正規URLでないものは 301、削除済みなら 410、それ以外は null（404）。
  */
 export function resolvePagePath(pathname: string, routes: PublicRoutes): RouteResult {
   const m = /^\/p\/([^/]+)\/?$/.exec(pathname);

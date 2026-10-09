@@ -2,9 +2,8 @@ import { resolvePagePath, type PublicRoutes } from "@wiki/shared";
 
 /**
  * Cloudflare Pages Functions。静的ファイルに無い `/p/...` だけを扱う。
- * - id が一致して slug が違う → 正規URLへ 301
+ * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301
  * - 公開後に削除された記事 → 410
- * （旧slugの301は _redirects でも出しているが、任意のslug違いはここで吸収する）
  */
 export const onRequest: PagesFunction<{ ASSETS: Fetcher }> = async (ctx) => {
   const res = await ctx.next();
