@@ -36,6 +36,7 @@ jobs:
         run: pnpm db:migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL: require
 
       - name: Deploy admin + API
         working-directory: apps/api
