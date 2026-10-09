@@ -1,6 +1,6 @@
 import { childrenByParent, type TreeNode } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { flatten, resolveDrop } from "./tree";
+import { resolveDrop } from "./tree";
 
 const folder = (nodeId: string, parentNodeId: string | null, position: string): TreeNode => ({
   nodeId,
@@ -21,13 +21,6 @@ const nodes: TreeNode[] = [
 function apply(id: string, r: ReturnType<typeof resolveDrop>): TreeNode[] {
   return nodes.map((n) => (n.nodeId === id && r ? { ...n, parentNodeId: r.newParentNodeId, position: r.position! } : n));
 }
-
-describe("flatten", () => {
-  it("walks depth-first and hides collapsed children", () => {
-    expect(flatten(nodes, new Set()).map((r) => `${r.node.nodeId}@${r.depth}`)).toEqual(["a@0", "a1@1", "a2@1", "b@0"]);
-    expect(flatten(nodes, new Set(["a"])).map((r) => r.node.nodeId)).toEqual(["a", "b"]);
-  });
-});
 
 describe("resolveDrop", () => {
   it("places a node before another sibling", () => {

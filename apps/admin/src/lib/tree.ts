@@ -1,22 +1,5 @@
 import { childrenByParent, positionAfterLast, positionAtIndex, type TreeNode } from "@wiki/shared";
 
-export type Row = { node: TreeNode; depth: number; childCount: number };
-
-/** 表示用に深さ優先で平坦化する。折りたたまれたノードの子は出さない。 */
-export function flatten(nodes: readonly TreeNode[], collapsed: ReadonlySet<string>): Row[] {
-  const children = childrenByParent(nodes);
-  const rows: Row[] = [];
-  const walk = (parent: string | null, depth: number) => {
-    for (const node of children.get(parent) ?? []) {
-      const kids = children.get(node.nodeId) ?? [];
-      rows.push({ node, depth, childCount: kids.length });
-      if (!collapsed.has(node.nodeId)) walk(node.nodeId, depth + 1);
-    }
-  };
-  walk(null, 0);
-  return rows;
-}
-
 export type DropTarget =
   | { kind: "before"; nodeId: string }
   | { kind: "into"; nodeId: string }

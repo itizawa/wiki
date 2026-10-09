@@ -1,10 +1,18 @@
+import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { cx } from "../lib/cx";
-import ui from "../styles/ui.module.css";
 
 export function PagesPage() {
   const [q, setQ] = useState("");
@@ -17,53 +25,69 @@ export function PagesPage() {
   });
 
   return (
-    <div className={ui.stack}>
-      <section className={ui.card}>
-        <h2>新しいページ</h2>
-        <form
-          className={ui.row}
+    <Stack spacing={1.5}>
+      <Section>
+        <Typography variant="h6" component="h2" gutterBottom>
+          新しいページ
+        </Typography>
+        <Row
+          component="form"
           onSubmit={(e) => {
             e.preventDefault();
             if (title.trim()) create.mutate();
           }}
         >
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル" className={ui.grow} />
-          <button className={ui.buttonPrimary} disabled={!title.trim() || create.isPending}>
+          <TextField value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル" sx={{ flex: 1, minWidth: 0 }} />
+          <Button type="submit" variant="contained" size="medium" disabled={!title.trim() || create.isPending}>
             作成してInboxに追加
-          </button>
-        </form>
-        {create.error && <p className={ui.error}>{errorMessage(create.error)}</p>}
-      </section>
+          </Button>
+        </Row>
+        {create.error && (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            {errorMessage(create.error)}
+          </Alert>
+        )}
+      </Section>
 
-      <section className={ui.card}>
-        <div className={ui.row}>
-          <h2 className={ui.grow}>ページ</h2>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" />
-        </div>
-        {pages.isPending && <p className={ui.muted}>読み込み中…</p>}
-        {pages.error && <p className={ui.error}>{errorMessage(pages.error)}</p>}
-        {pages.data && pages.data.pages.length === 0 && <p className={ui.muted}>ページはまだありません。</p>}
-        <table className={ui.table}>
-          <tbody>
+      <Section>
+        <Row sx={{ mb: 1 }}>
+          <Typography variant="h6" component="h2" sx={{ flex: 1, minWidth: 0 }}>
+            ページ
+          </Typography>
+          <TextField value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" />
+        </Row>
+        {pages.isPending && <Muted>読み込み中…</Muted>}
+        {pages.error && <Alert severity="error">{errorMessage(pages.error)}</Alert>}
+        {pages.data && pages.data.pages.length === 0 && <Muted>ページはまだありません。</Muted>}
+        <Table size="small">
+          <TableBody>
             {pages.data?.pages.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <Link to="/pages/$pageId" params={{ pageId: p.id }}>
+              <TableRow key={p.id} hover>
+                <TableCell>
+                  <RouterLink to="/pages/$pageId" params={{ pageId: p.id }}>
                     {p.title}
-                  </Link>
-                </td>
-                <td className={cx(ui.muted, ui.small, ui.mono)}>{p.id}</td>
-                <td>
-                  <span className={cx(ui.badge, ui[p.visibility])}>{visibilityLabel[p.visibility]}</span>
-                  {p.origin === "ai_draft" && <span className={ui.badge}>AI下書き</span>}
-                </td>
-                <td className={cx(ui.muted, ui.small)}>{formatDateTime(p.updatedAt)}</td>
-              </tr>
+                  </RouterLink>
+                </TableCell>
+                <TableCell>
+                  <Muted component="span">
+                    <Mono>{p.id}</Mono>
+                  </Muted>
+                </TableCell>
+                <TableCell>
+                  <Row>
+                    <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+                    {p.origin === "ai_draft" && <StatusChip label="AI下書き" />}
+                  </Row>
+                </TableCell>
+                <TableCell>
+                  <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </section>
-    </div>
+          </TableBody>
+        </Table>
+      </Section>
+    </Stack>
   );
 }
 

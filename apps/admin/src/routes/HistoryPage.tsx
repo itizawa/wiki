@@ -1,50 +1,63 @@
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import type { StructureChange } from "@wiki/shared";
 import { useState } from "react";
+import { Mono, Muted, Row, Section, StatusChip, WithSidebar } from "../components/ui";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { cx } from "../lib/cx";
-import ui from "../styles/ui.module.css";
-import s from "./HistoryPage.module.css";
 
 export function HistoryPage() {
   const history = useQuery({ queryKey: ["history"], queryFn: api.history });
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const [selected, setSelected] = useState<string | null>(null);
 
-  if (history.isPending) return <p className={ui.muted}>読み込み中…</p>;
-  if (history.error) return <p className={ui.error}>{errorMessage(history.error)}</p>;
+  if (history.isPending) return <Muted>読み込み中…</Muted>;
+  if (history.error) return <Alert severity="error">{errorMessage(history.error)}</Alert>;
 
   return (
-    <div className={ui.withSidebar}>
-      <section className={ui.card}>
-        <h2>構造の履歴（main）</h2>
-        <p className={cx(ui.muted, ui.small)}>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</p>
-        <ul className={ui.plainList}>
+    <WithSidebar>
+      <Section>
+        <Typography variant="h6" component="h2">
+          構造の履歴（main）
+        </Typography>
+        <Muted>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</Muted>
+        <List disablePadding sx={{ mt: 1, mx: -1 }}>
           {history.data.commits.map((c, i) => (
-            <li key={c.id}>
-              <button className={selected === c.id ? ui.linkActive : ui.link} onClick={() => setSelected(c.id)}>
-                {c.message ?? "(no message)"}
-              </button>
-              {i === 0 && <span className={ui.badge}>head</span>}
-              {c.authorType === "ai" && <span className={ui.badge}>AI</span>}
-              {c.parentIds.length > 1 && <span className={ui.badge}>merge</span>}
-              <div className={cx(ui.muted, ui.small)}>
-                {formatDateTime(c.createdAt)} · <span className={ui.mono}>{c.id.slice(0, 8)}</span>
-              </div>
-            </li>
+            <ListItemButton key={c.id} selected={selected === c.id} onClick={() => setSelected(c.id)} sx={{ px: 1, borderRadius: 1 }}>
+              <ListItemText
+                primary={
+                  <Row>
+                    <span>{c.message ?? "(no message)"}</span>
+                    {i === 0 && <StatusChip label="head" />}
+                    {c.authorType === "ai" && <StatusChip label="AI" />}
+                    {c.parentIds.length > 1 && <StatusChip label="merge" />}
+                  </Row>
+                }
+                secondary={
+                  <>
+                    {formatDateTime(c.createdAt)} · <Mono>{c.id.slice(0, 8)}</Mono>
+                  </>
+                }
+              />
+            </ListItemButton>
           ))}
-        </ul>
-      </section>
-      <section className={ui.card}>{selected ? <CommitDetail id={selected} structure={structure.data} /> : <p className={ui.muted}>コミットを選ぶと差分を表示します。</p>}</section>
-    </div>
+        </List>
+      </Section>
+      <Section>{selected ? <CommitDetail id={selected} structure={structure.data} /> : <Muted>コミットを選ぶと差分を表示します。</Muted>}</Section>
+    </WithSidebar>
   );
 }
 
 function CommitDetail({ id, structure }: { id: string; structure?: StructureResponse }) {
   const detail = useQuery({ queryKey: ["commit", id], queryFn: () => api.commitDetail(id) });
-  if (detail.isPending) return <p className={ui.muted}>読み込み中…</p>;
-  if (detail.error) return <p className={ui.error}>{errorMessage(detail.error)}</p>;
+  if (detail.isPending) return <Muted>読み込み中…</Muted>;
+  if (detail.error) return <Alert severity="error">{errorMessage(detail.error)}</Alert>;
 
   const treeName = (treeId: string) => structure?.trees.find((t) => t.id === treeId)?.name ?? treeId;
   const nodeName = (treeId: string, nodeId: string | null) => {
@@ -76,21 +89,36 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
   for (const c of detail.data.changes) byTree.set(c.treeId, [...(byTree.get(c.treeId) ?? []), c]);
 
   return (
-    <div className={ui.stack}>
-      <h3>{detail.data.commit.message}</h3>
-      {byTree.size === 0 && <p className={ui.muted}>構造の変更はありません。</p>}
+    <Stack spacing={1.5}>
+      <Typography variant="subtitle1" component="h3">
+        {detail.data.commit.message}
+      </Typography>
+      {byTree.size === 0 && <Muted>構造の変更はありません。</Muted>}
       {[...byTree].map(([treeId, changes]) => (
         <div key={treeId}>
-          <h4>{treeName(treeId)}</h4>
-          <ul className={s.changes}>
+          <Typography variant="subtitle2" component="h4">
+            {treeName(treeId)}
+          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2.25 }}>
             {changes.map((c, i) => (
-              <li key={i} className={c.kind === "node_added" || c.kind === "tree_added" ? s.added : c.kind === "node_removed" || c.kind === "tree_removed" ? s.removed : undefined}>
+              <Box
+                component="li"
+                key={i}
+                sx={{
+                  color:
+                    c.kind === "node_added" || c.kind === "tree_added"
+                      ? "success.main"
+                      : c.kind === "node_removed" || c.kind === "tree_removed"
+                        ? "error.main"
+                        : undefined,
+                }}
+              >
                 {describe(c)}
-              </li>
+              </Box>
             ))}
-          </ul>
+          </Box>
         </div>
       ))}
-    </div>
+    </Stack>
   );
 }

@@ -1,12 +1,14 @@
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { actionLabel } from "../components/PublishPanel";
+import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
-import { cx } from "../lib/cx";
-import ui from "../styles/ui.module.css";
-import s from "./CalendarPage.module.css";
 
 const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
@@ -64,112 +66,137 @@ export function CalendarPage() {
   ).length;
   const today = jstDate(new Date(now).toISOString());
 
-  if (schedule.isPending || pages.isPending) return <p className={ui.muted}>読み込み中…</p>;
-  if (schedule.error) return <p className={ui.error}>{errorMessage(schedule.error)}</p>;
+  if (schedule.isPending || pages.isPending) return <Muted>読み込み中…</Muted>;
+  if (schedule.error) return <Alert severity="error">{errorMessage(schedule.error)}</Alert>;
 
   return (
-    <div className={ui.stack}>
-      <section className={stock < STOCK_MIN ? ui.cardWarn : ui.card}>
-        <h2>予約ストック</h2>
-        <p>
+    <Stack spacing={1.5}>
+      <Section sx={stock < STOCK_MIN ? { borderColor: "warning.main" } : undefined}>
+        <Typography variant="h6" component="h2" gutterBottom>
+          予約ストック
+        </Typography>
+        <Typography>
           今後{STOCK_DAYS}日の公開予約：<strong>{stock}件</strong>
-          {stock < STOCK_MIN && <span className={ui.warn}>　予約が少なくなっています。継続配信が途切れないよう記事を予約してください。</span>}
-        </p>
-      </section>
+        </Typography>
+        {stock < STOCK_MIN && (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            予約が少なくなっています。継続配信が途切れないよう記事を予約してください。
+          </Alert>
+        )}
+      </Section>
 
       {(failed.data?.actions.length ?? 0) > 0 && (
-        <section className={ui.card}>
-          <h2 className={ui.error}>失敗した予約</h2>
-          <ul className={ui.plainList}>
+        <Section>
+          <Typography variant="h6" component="h2" color="error" gutterBottom>
+            失敗した予約
+          </Typography>
+          <Stack component="ul" spacing={1} sx={{ listStyle: "none", p: 0, m: 0 }}>
             {failed.data!.actions.map((a) => (
-              <li key={a.id} className={ui.row}>
-                <span className={ui.grow}>
+              <Row component="li" key={a.id}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
                   <PageLink action={a} /> {actionLabel(a)}（{isoToJstLocal(a.runAt).replace("T", " ")}）
-                  <span className={cx(ui.error, ui.small)}> {a.lastError}</span>
-                </span>
-                <button className={ui.linkDanger} onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
+                  <Typography component="span" variant="body2" color="error">
+                    {" "}
+                    {a.lastError}
+                  </Typography>
+                </Box>
+                <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
                   キャンセル
-                </button>
-              </li>
+                </Button>
+              </Row>
             ))}
-          </ul>
-        </section>
+          </Stack>
+        </Section>
       )}
 
-      <section className={ui.card}>
-        <h2>編集カレンダー</h2>
-        <p className={cx(ui.muted, ui.small)}>過去14日〜60日先。時刻はJST。</p>
-        {mutate.error && <p className={ui.error}>{errorMessage(mutate.error)}</p>}
-        {days.length === 0 && <p className={ui.muted}>予定はありません。</p>}
-        <div className={s.calendar}>
+      <Section>
+        <Typography variant="h6" component="h2">
+          編集カレンダー
+        </Typography>
+        <Muted gutterBottom>過去14日〜60日先。時刻はJST。</Muted>
+        {mutate.error && <Alert severity="error">{errorMessage(mutate.error)}</Alert>}
+        {days.length === 0 && <Muted>予定はありません。</Muted>}
+        <Stack spacing={0.5}>
           {days.map(([day, entries]) => (
-            <div key={day} className={day === today ? s.today : day < today ? s.past : s.day}>
-              <h4>
-                {day}
-                {day === today && <span className={ui.badge}>今日</span>}
-              </h4>
-              <ul className={cx(ui.plainList, ui.small)}>
+            <Box key={day} sx={{ borderTop: 1, borderColor: "divider", py: 1, opacity: day < today ? 0.7 : 1 }}>
+              <Row sx={{ mb: 0.5 }}>
+                <Typography variant="subtitle2" component="h4" color={day === today ? "primary" : undefined}>
+                  {day}
+                </Typography>
+                {day === today && <StatusChip label="今日" />}
+              </Row>
+              <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0, typography: "body2" }}>
                 {entries.map((e, i) => (
-                  <li key={i} className={ui.row}>
-                    <span className={cx(ui.mono, ui.muted)}>{isoToJstLocal(e.at).slice(11)}</span>
+                  <Row component="li" key={i}>
+                    <Mono sx={{ color: "text.secondary" }}>{isoToJstLocal(e.at).slice(11)}</Mono>
                     {e.kind === "action" && (
                       <>
-                        <span className={cx(ui.badge, ui[e.action.status])}>{actionLabel(e.action)}</span>
-                        <span className={ui.grow}>
+                        <StatusChip status={e.action.status} label={actionLabel(e.action)} />
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
                           <PageLink action={e.action} />
-                          {e.action.editedAfterSchedule && <span className={ui.warn}> 予約後に編集あり</span>}
-                          {e.action.status === "done" && <span className={ui.muted}> 実行済み</span>}
-                        </span>
+                          {e.action.editedAfterSchedule && (
+                            <Box component="span" sx={{ color: "warning.main" }}>
+                              {" "}
+                              予約後に編集あり
+                            </Box>
+                          )}
+                          {e.action.status === "done" && (
+                            <Box component="span" sx={{ color: "text.secondary" }}>
+                              {" "}
+                              実行済み
+                            </Box>
+                          )}
+                        </Box>
                         {e.action.status === "scheduled" && (
                           <>
-                            <button
-                              className={ui.link}
+                            <Button
+                              variant="text"
                               onClick={() => {
                                 const next = prompt("新しい日時（JST, YYYY-MM-DDTHH:mm）", isoToJstLocal(e.action.runAt));
                                 if (next) mutate.mutate(() => api.reschedule(e.action.id, jstLocalToIso(next)));
                               }}
                             >
                               変更
-                            </button>
-                            <button className={ui.linkDanger} onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))}>
+                            </Button>
+                            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))}>
                               キャンセル
-                            </button>
+                            </Button>
                           </>
                         )}
                       </>
                     )}
                     {e.kind === "published" && (
                       <>
-                        <span className={cx(ui.badge, e.unlisted ? ui.unlisted : ui.public)}>{e.unlisted ? "限定公開済み" : "公開済み"}</span>
-                        <Link to="/pages/$pageId" params={{ pageId: e.pageId }}>
+                        <StatusChip status={e.unlisted ? "unlisted" : "public"} label={e.unlisted ? "限定公開済み" : "公開済み"} />
+                        <RouterLink to="/pages/$pageId" params={{ pageId: e.pageId }}>
                           {e.title}
-                        </Link>
+                        </RouterLink>
                       </>
                     )}
                     {e.kind === "draft" && (
                       <>
-                        <span className={ui.badge}>AI下書き</span>
-                        <Link to="/pages/$pageId" params={{ pageId: e.pageId }}>
+                        <StatusChip label="AI下書き" />
+                        <RouterLink to="/pages/$pageId" params={{ pageId: e.pageId }}>
                           {e.title}
-                        </Link>
+                        </RouterLink>
                       </>
                     )}
-                  </li>
+                  </Row>
                 ))}
-              </ul>
-            </div>
+              </Stack>
+            </Box>
           ))}
-        </div>
-      </section>
-    </div>
+        </Stack>
+      </Section>
+    </Stack>
   );
 }
 
 function PageLink({ action }: { action: ScheduledAction }) {
   if (!action.pageId) return <span>{action.branchName}</span>;
   return (
-    <Link to="/pages/$pageId" params={{ pageId: action.pageId }}>
+    <RouterLink to="/pages/$pageId" params={{ pageId: action.pageId }}>
       {action.pageTitle ?? action.pageId}
-    </Link>
+    </RouterLink>
   );
 }
