@@ -1,4 +1,6 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import type { ComponentType } from "react";
+import { PageBody } from "./components/ui";
 import { Layout } from "./routes/Layout";
 import { CalendarPage } from "./routes/CalendarPage";
 import { EditorPage } from "./routes/EditorPage";
@@ -8,7 +10,14 @@ import { TreePage } from "./routes/TreePage";
 
 const rootRoute = createRootRoute({ component: Layout });
 
-const pagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: PagesPage });
+/** 一覧・設定系の画面は余白つきの枠に入れる（エディタは画面いっぱいを使う）。 */
+const padded = (Page: ComponentType) => () => (
+  <PageBody>
+    <Page />
+  </PageBody>
+);
+
+const pagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: padded(PagesPage) });
 const editorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/pages/$pageId",
@@ -17,11 +26,11 @@ const editorRoute = createRoute({
     return <EditorPage key={pageId} pageId={pageId} />;
   },
 });
-const treeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tree", component: TreePage });
-const calendarRoute = createRoute({ getParentRoute: () => rootRoute, path: "/calendar", component: CalendarPage });
-const historyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/history", component: HistoryPage });
+const treeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tree", component: padded(TreePage) });
+const calendarRoute = createRoute({ getParentRoute: () => rootRoute, path: "/calendar", component: padded(CalendarPage) });
+const historyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/history", component: padded(HistoryPage) });
 // ログイン失敗時のリダイレクト先。Layout がログイン画面を出す
-const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: PagesPage });
+const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: padded(PagesPage) });
 
 const routeTree = rootRoute.addChildren([pagesRoute, editorRoute, treeRoute, calendarRoute, historyRoute, loginRoute]);
 

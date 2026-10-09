@@ -37,6 +37,11 @@ export function WithSidebar({ sx, ...props }: BoxProps) {
   );
 }
 
+/** 一覧・設定系の画面の本文枠。 */
+export function PageBody({ sx, ...props }: BoxProps) {
+  return <Box {...props} sx={[{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1200, mx: "auto" }, ...sxList(sx)]} />;
+}
+
 /** 補足の文（小さめ・薄い色）。 */
 export function Muted(props: TypographyProps) {
   return <Typography variant="body2" color="text.secondary" {...props} />;

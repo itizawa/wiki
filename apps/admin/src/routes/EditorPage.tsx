@@ -1,24 +1,23 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import InputBase from "@mui/material/InputBase";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { isValidSlug, pagePath, type PageDetail } from "@wiki/shared";
 import { diffLines } from "diff";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { renderMarkdown } from "../lib/markdown";
+import { usePersistentState } from "../lib/storage";
 import { PublishPanel } from "../components/PublishPanel";
-import { Mono, Muted, Row, Section, StatusChip, WithSidebar } from "../components/ui";
+import { Mono, Muted, Section, StatusChip } from "../components/ui";
 import { monoFont } from "../theme";
 import { visibilityLabel } from "./PagesPage";
 
@@ -32,7 +31,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
-  const [mode, setMode] = useState<"split" | "edit" | "preview">("split");
+  const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
 
   // 初回読み込み時だけサーバーの内容で下書きを作る（以降はローカルの編集を優先）
@@ -68,9 +67,11 @@ export function EditorPage({ pageId }: { pageId: string }) {
     },
   });
 
+  const removed = useRef(false);
   const remove = useMutation({
     mutationFn: () => api.deletePage(pageId),
     onSuccess: async () => {
+      removed.current = true;
       await qc.invalidateQueries();
       await navigate({ to: "/" });
     },
@@ -85,149 +86,182 @@ export function EditorPage({ pageId }: { pageId: string }) {
         if (canSave) save.mutate();
       }
     };
-    const onUnload = (e: BeforeUnloadEvent) => {
-      if (dirty) e.preventDefault();
-    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("beforeunload", onUnload);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("beforeunload", onUnload);
-    };
-  }, [canSave, dirty, save]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canSave, save]);
 
-  const preview = useMemo(() => (draft ? renderMarkdown(draft.bodyMd) : ""), [draft?.bodyMd]);
+  // 未保存のまま別のページへ移ろうとしたら確認する（削除後の移動は除く）
+  useBlocker({
+    shouldBlockFn: () => dirty && !removed.current && !confirm("保存していない変更があります。破棄して移動しますか？"),
+    enableBeforeUnload: dirty,
+  });
 
-  if (page.isPending || !draft) return <Muted>読み込み中…</Muted>;
-  if (page.error) return <Alert severity="error">{errorMessage(page.error)}</Alert>;
+  if (page.isPending || !draft) return <Muted sx={{ p: 3 }}>読み込み中…</Muted>;
+  if (page.error) {
+    return (
+      <Alert severity="error" sx={{ m: 3 }}>
+        {errorMessage(page.error)}
+      </Alert>
+    );
+  }
   const p = page.data;
 
   return (
-    <WithSidebar>
-      <Stack spacing={1.5} sx={{ minWidth: 0 }}>
-        <Row>
-          <TextField
-            value={draft.title}
-            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-            placeholder="タイトル"
-            sx={{ flex: 1, minWidth: 0, "& input": { fontSize: "1.4rem", fontWeight: 600 } }}
-          />
-          <Button variant="contained" size="large" disabled={!canSave} onClick={() => save.mutate()}>
-            {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
-          </Button>
-        </Row>
-        <Row>
-          <TextField
-            label="slug"
-            value={draft.slug}
-            error={!isValidSlug(draft.slug)}
-            onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
-            sx={{ flex: 1, minWidth: 0, "& input": { fontFamily: monoFont, fontSize: "0.85rem" } }}
-          />
-          <Muted component="span">
-            <Mono>{pagePath(p.id, draft.slug)}</Mono>
-          </Muted>
-          <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
-        </Row>
-        {save.error && (
-          <Alert
-            severity="error"
-            action={
-              <Button
-                color="inherit"
-                onClick={async () => {
-                  // 競合時：サーバーの最新版を読み直す（ローカルの編集は破棄される）
-                  const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
-                  setDraft(draftOf(latest));
-                  setBaseVersionId(latest.headVersionId);
-                  save.reset();
-                }}
-              >
-                最新版を読み込む
-              </Button>
-            }
-          >
-            {errorMessage(save.error)}
-          </Alert>
-        )}
-        <ToggleButtonGroup size="small" exclusive value={mode} onChange={(_e, m: typeof mode | null) => m && setMode(m)}>
-          <ToggleButton value="split">分割</ToggleButton>
-          <ToggleButton value="edit">編集</ToggleButton>
-          <ToggleButton value="preview">プレビュー</ToggleButton>
-        </ToggleButtonGroup>
+    <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
         <Box
+          component="header"
           sx={{
-            display: "grid",
-            gap: 1.5,
-            minHeight: "60vh",
-            alignItems: "start",
-            gridTemplateColumns: mode === "split" ? { xs: "1fr", md: "1fr 1fr" } : "1fr",
+            position: "sticky",
+            top: 0,
+            zIndex: 2,
+            height: 48,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 2,
+            bgcolor: "background.paper",
           }}
         >
-          {mode !== "preview" && (
-            <TextField
-              multiline
-              fullWidth
-              minRows={24}
-              value={draft.bodyMd}
-              onChange={(e) => setDraft({ ...draft, bodyMd: e.target.value })}
-              placeholder="Markdownで本文を書く"
-              spellCheck={false}
-              sx={{ "& textarea": { fontFamily: monoFont, lineHeight: 1.6 } }}
-            />
-          )}
-          {mode !== "edit" && (
-            <Paper
-              component="article"
-              variant="outlined"
-              sx={{
-                px: 2,
-                py: 1.5,
-                overflow: "auto",
-                lineHeight: 1.7,
-                minHeight: "60vh",
-                "& pre": { bgcolor: "background.default", p: 1, borderRadius: 1, overflow: "auto" },
-                "& a": { color: "primary.main" },
-              }}
-              dangerouslySetInnerHTML={{ __html: preview }}
-            />
-          )}
+          <Breadcrumb pageId={pageId} title={draft.title} />
+          <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+          <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()}>
+            {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
+          </Button>
+          <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
+            公開・履歴
+          </Button>
         </Box>
-      </Stack>
 
-      <Stack component="aside" spacing={1.5} sx={{ minWidth: 0 }}>
-        <VersionPanel
-          pageId={pageId}
-          headVersionId={p.headVersionId}
-          selected={selectedVersion}
-          onSelect={setSelectedVersion}
-          current={draft}
-          onRestore={(v) => setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd })}
-        />
-        <PublishPanel page={p} dirty={dirty} />
-        <Section>
-          <Stack spacing={1} sx={{ alignItems: "flex-start" }}>
-            <Typography variant="subtitle1" component="h3">
-              ページ
-            </Typography>
-            <Muted>
-              <Mono>id: {p.id}</Mono>
-            </Muted>
-            <Button
-              variant="outlined"
-              color="error"
-              disabled={remove.isPending}
-              onClick={() => {
-                if (confirm(`「${p.title}」を削除しますか？（全ツリーから外れます）`)) remove.mutate();
-              }}
+        <Box sx={{ maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
+          {save.error && (
+            <Alert
+              severity="error"
+              sx={{ mb: 2 }}
+              action={
+                <Button
+                  color="inherit"
+                  onClick={async () => {
+                    // 競合時：サーバーの最新版を読み直す（ローカルの編集は破棄される）
+                    const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+                    setDraft(draftOf(latest));
+                    setBaseVersionId(latest.headVersionId);
+                    save.reset();
+                  }}
+                >
+                  最新版を読み込む
+                </Button>
+              }
             >
-              削除
-            </Button>
-            {remove.error && <Alert severity="error">{errorMessage(remove.error)}</Alert>}
-          </Stack>
-        </Section>
-      </Stack>
-    </WithSidebar>
+              {errorMessage(save.error)}
+            </Alert>
+          )}
+          <InputBase
+            fullWidth
+            multiline
+            value={draft.title}
+            onChange={(e) => setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") })}
+            placeholder="無題"
+            inputProps={{ "aria-label": "タイトル" }}
+            sx={{ mb: 2, p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
+          />
+          <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
+        </Box>
+      </Box>
+
+      {panelOpen && (
+        <Stack
+          component="aside"
+          aria-label="公開・履歴"
+          spacing={1.5}
+          sx={{
+            width: { xs: "100%", lg: 340 },
+            flexShrink: 0,
+            position: { xs: "fixed", lg: "sticky" },
+            inset: { xs: "48px 0 0 auto", lg: "auto" },
+            maxWidth: { xs: 380, lg: "none" },
+            top: { lg: 0 },
+            zIndex: 3,
+            height: { lg: "100vh" },
+            overflowY: "auto",
+            p: 1.5,
+            borderLeft: 1,
+            borderColor: "divider",
+            bgcolor: "background.default",
+          }}
+        >
+          <PublishPanel page={p} dirty={dirty} />
+          <VersionPanel
+            pageId={pageId}
+            headVersionId={p.headVersionId}
+            selected={selectedVersion}
+            onSelect={setSelectedVersion}
+            current={draft}
+            onRestore={(v) => setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd })}
+          />
+          <Section>
+            <Stack spacing={1.5} sx={{ alignItems: "flex-start" }}>
+              <Typography variant="subtitle1" component="h3">
+                ページ
+              </Typography>
+              <TextField
+                label="slug"
+                fullWidth
+                value={draft.slug}
+                error={!isValidSlug(draft.slug)}
+                onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                sx={{ "& input": { fontFamily: monoFont, fontSize: "0.85rem" } }}
+              />
+              <Muted sx={{ wordBreak: "break-all" }}>
+                <Mono>{pagePath(p.id, draft.slug)}</Mono>
+              </Muted>
+              <Button
+                variant="outlined"
+                color="error"
+                disabled={remove.isPending}
+                onClick={() => {
+                  if (confirm(`「${p.title}」を削除しますか？（ツリーからも外れます）`)) remove.mutate();
+                }}
+              >
+                削除
+              </Button>
+              {remove.error && <Alert severity="error">{errorMessage(remove.error)}</Alert>}
+            </Stack>
+          </Section>
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+/** ツリー上の置き場所（親フォルダの並び）とタイトル。 */
+function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
+  const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
+  const ancestors = useMemo(() => {
+    const data = structure.data;
+    const nodes = data?.trees[0]?.nodes ?? [];
+    const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+    const names: string[] = [];
+    for (let cur = byId.get(pageId)?.parentNodeId ?? null; cur !== null; cur = byId.get(cur)?.parentNodeId ?? null) {
+      const node = byId.get(cur);
+      if (!node) break;
+      names.unshift(node.kind === "folder" ? node.title! : data?.pages[node.pageId!]?.title ?? node.pageId!);
+    }
+    return names;
+  }, [structure.data, pageId]);
+
+  return (
+    <Muted
+      component="div"
+      sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+    >
+      {ancestors.map((name, i) => (
+        <span key={i}>{name} / </span>
+      ))}
+      <Box component="span" sx={{ color: "text.primary" }}>
+        {title || "無題"}
+      </Box>
+    </Muted>
   );
 }
 
