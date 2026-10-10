@@ -309,20 +309,16 @@ export function Sidebar(props: {
         </Alert>
       )}
 
-      <Box sx={{ display: "flex", alignItems: "stretch", gap: 0.5, pl: 1, pr: 1.5, borderTop: 1, borderColor: "divider" }}>
+      <Box sx={{ display: "flex", px: 1, borderTop: 1, borderColor: "divider" }}>
         <UserMenu email={props.email} onLogout={props.onLogout} />
-        <Tooltip title="キーボードショートカットと記法 (?)">
-          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide} sx={{ alignSelf: "center" }}>
-            <Keyboard size={18} />
-          </IconButton>
-        </Tooltip>
       </Box>
     </Box>
   );
 }
 
 /**
- * 左下のユーザーメニュー。ログイン中のメールアドレスを出し、押すとメニューが上に開く。ログアウトはここから行う。
+ * 左下のユーザーメニュー。ログイン中のメールアドレスを出し、押すとメニューが上に開く。
+ * キーボードショートカットと記法のガイドと、ログアウトはここから行う。
  * 押せる範囲は、行の高さいっぱいに取る。
  */
 function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) {
@@ -373,6 +369,22 @@ function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) 
         <ListSubheader disableSticky sx={{ py: 0.75, lineHeight: 1.5, fontSize: "0.75rem", fontWeight: 600, overflowWrap: "anywhere" }}>
           {email}
         </ListSubheader>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            openShortcutGuide();
+          }}
+        >
+          <ListItemIcon>
+            <Keyboard size={18} />
+          </ListItemIcon>
+          <ListItemText>キーボードショートカットと記法</ListItemText>
+          {/* キーでも開けることを示す */}
+          <Typography variant="body2" sx={{ ml: 2, color: "text.disabled" }}>
+            ?
+          </Typography>
+        </MenuItem>
         <Divider />
         <MenuItem
           onClick={() => {

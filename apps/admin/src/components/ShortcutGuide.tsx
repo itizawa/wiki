@@ -20,7 +20,7 @@ const subscribe = (l: () => void) => {
   return () => void listeners.delete(l);
 };
 
-/** ガイドを開く（サイドバーのボタンから呼ぶ）。 */
+/** ガイドを開く（左下のユーザーメニューから呼ぶ）。 */
 export const openShortcutGuide = () => setOpen(true);
 
 /** 文字を打ち込む場所（入力欄や本文）にいるか。そこでの「?」は文字として扱う。 */
