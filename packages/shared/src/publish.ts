@@ -7,8 +7,17 @@ export type PublishVisibility = z.infer<typeof publishVisibilitySchema>;
 export const publishPageInput = z.object({
   versionId: z.string().uuid(),
   visibility: publishVisibilitySchema,
+  /** 配下の公開中のページも同じ公開範囲にする（まだ公開していないページは飛ばす） */
+  applyToDescendants: z.boolean().default(false),
 });
-export type PublishPageInput = z.infer<typeof publishPageInput>;
+export type PublishPageInput = z.input<typeof publishPageInput>;
+
+/** 非公開化。本文は省略できる。 */
+export const unpublishPageInput = z.object({
+  /** 配下の公開中・限定公開中のページもまとめて非公開にする */
+  applyToDescendants: z.boolean().default(false),
+});
+export type UnpublishPageInput = z.input<typeof unpublishPageInput>;
 
 const runAt = z
   .string()

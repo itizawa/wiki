@@ -177,7 +177,10 @@ export async function deletePage(tx: Db, wikiId: string, id: string, opts: { oau
   const main = await getBranch(tx, wikiId, MAIN_BRANCH);
   const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
   if (ops.length > 0) {
-    await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops, oauthGrantId: opts.oauthGrantId });
+    await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops,
+      checkVisibility: false,
+      oauthGrantId: opts.oauthGrantId,
+    });
   }
   await tx
     .update(pages)

@@ -259,38 +259,66 @@ export const TOOLS = [
   tool({
     name: "publish_page",
     description:
-      "ページを公開する（すぐに公開サイトへ反映する）。versionId を省くと最新の版を公開する。公開後の編集は、もう一度公開するまで公開側に出ない。",
+      "ページを公開する（すぐに公開サイトへ反映する）。versionId を省くと最新の版を公開する。公開後の編集は、もう一度公開するまで公開側に出ない。" +
+      "公開範囲は親より広くできない。配下にこれより広く公開中のページがあると止まるので、applyToDescendants で配下もそろえる。",
     scope: "wiki.publish",
-    input: z.object({ wiki: wikiKey, pageId, versionId: z.string().uuid().optional(), visibility: publishVisibilitySchema.default("public") }),
+    input: z.object({
+      wiki: wikiKey,
+      pageId,
+      versionId: z.string().uuid().optional(),
+      visibility: publishVisibilitySchema.default("public"),
+      applyToDescendants: z.boolean().default(false),
+    }),
     inputSchema: schema(
       {
         ...WIKI_PROP,
         pageId: str("ページの ID"),
         versionId: str("公開する版（省略すると最新の版）"),
         visibility: { type: "string", enum: ["public", "unlisted"], description: "public（公開）か unlisted（限定公開）。既定は public" },
+        applyToDescendants: { type: "boolean", description: "配下で公開中のページの公開範囲も、これにそろえる。既定は false" },
       },
       ["wiki", "pageId"],
     ),
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      // 配下をそろえると、見えていない限定公開のページを公開にしうる。非公開も見てよい許可があるときだけ
+      if (input.applyToDescendants && input.visibility === "public" && !agent.scopes.includes("wiki.private")) {
+        throw new HttpError(403, "insufficient_scope", "applyToDescendants with public needs wiki.private");
+      }
       const versionId = input.versionId ?? page.headVersionId;
       await db.transaction((tx) =>
-        publishPage(tx, { wikiId: wiki.id, pageId: page.id, versionId, visibility: input.visibility, oauthGrantId: agent.grantId }),
+        publishPage(tx, {
+          wikiId: wiki.id,
+          pageId: page.id,
+          versionId,
+          visibility: input.visibility,
+          applyToDescendants: input.applyToDescendants,
+          oauthGrantId: agent.grantId,
+        }),
       );
       return { id: page.id, publishedVersionId: versionId, visibility: input.visibility };
     },
   }),
   tool({
     name: "unpublish_page",
-    description: "ページの公開をやめ、非公開に戻す。",
+    description: "ページの公開をやめ、非公開に戻す。配下に公開中のページがあると止まるので、applyToDescendants で配下もまとめて非公開にする。",
     scope: "wiki.publish",
-    input: z.object({ wiki: wikiKey, pageId }),
-    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
+    input: z.object({ wiki: wikiKey, pageId, applyToDescendants: z.boolean().default(false) }),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        applyToDescendants: { type: "boolean", description: "配下で公開中のページも、まとめて非公開にする。既定は false" },
+      },
+      ["wiki", "pageId"],
+    ),
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
-      await db.transaction((tx) => unpublishPage(tx, wiki.id, page.id, undefined, agent.grantId));
+      await db.transaction((tx) =>
+        unpublishPage(tx, wiki.id, page.id, { applyToDescendants: input.applyToDescendants, oauthGrantId: agent.grantId }),
+      );
       return { id: page.id, visibility: "private" };
     },
   }),

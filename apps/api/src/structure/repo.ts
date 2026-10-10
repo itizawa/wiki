@@ -1,6 +1,7 @@
 import {
   applyOps,
   childrenByParent,
+  isWithinParent,
   newTreeId,
   type StructureOp,
   type StructureState,
@@ -105,6 +106,8 @@ export async function commitOps(
     authorType?: "human" | "ai";
     /** 外部のアプリ（MCP）からの操作なら、その許可 */
     oauthGrantId?: string;
+    /** 移動で公開範囲の親子の決まりを破らないかを確かめる（ページの削除に伴う繰り上げでは確かめない） */
+    checkVisibility?: boolean;
   },
 ): Promise<CommitResult> {
   return db.transaction(async (tx) => {
@@ -134,6 +137,7 @@ export async function commitOps(
     );
 
     const result = applyOps(head.state, input.ops, { pageExists: (id) => livePages.has(id) });
+    if (input.checkVisibility ?? true) await assertMovesKeepHierarchy(tx, wikiId, head.state, result.state);
 
     const commitId = await writeCommit(tx, {
       wikiId,
@@ -151,6 +155,35 @@ export async function commitOps(
       .where(and(eq(structureBranches.wikiId, wikiId), eq(structureBranches.name, MAIN_BRANCH)));
     return { commitId, state: result.state };
   });
+}
+
+/**
+ * 公開範囲の親子の決まり：移動先の親より広い公開範囲のページは移動できない（先に公開範囲を狭める）。
+ * 親が変わったページだけを見る。すでに決まりに合わないページは、並び替えなどでは止めない。
+ */
+async function assertMovesKeepHierarchy(db: Db, wikiId: string, before: StructureState, after: StructureState): Promise<void> {
+  const parentBefore = new Map(Object.values(before.trees).flatMap((t) => t.nodes.map((n) => [n.nodeId, n.parentNodeId] as const)));
+  const moved = Object.values(after.trees).flatMap((t) =>
+    t.nodes.filter((n) => parentBefore.has(n.nodeId) && parentBefore.get(n.nodeId) !== n.parentNodeId && n.parentNodeId !== null),
+  );
+  if (moved.length === 0) return;
+  const ids = [...new Set(moved.flatMap((n) => [n.pageId, n.parentNodeId!]))];
+  const rows = await db
+    .select({ id: pages.id, title: pages.title, visibility: pages.visibility })
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, ids)));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const n of moved) {
+    const page = byId.get(n.pageId);
+    const parent = byId.get(n.parentNodeId!);
+    if (!page || !parent || isWithinParent(page.visibility, parent.visibility)) continue;
+    throw new HttpError(
+      409,
+      "exceeds_parent",
+      `"${page.title}" cannot be moved under "${parent.title}" because it is wider than the new parent (${parent.visibility})`,
+      { pageId: page.id, parentId: parent.id, parentTitle: parent.title, parentVisibility: parent.visibility, visibility: page.visibility },
+    );
+  }
 }
 
 async function writeCommit(

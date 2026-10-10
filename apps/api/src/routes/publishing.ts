@@ -1,7 +1,10 @@
 import {
+  isWider,
+  isWithinParent,
   publishPageInput,
   rescheduleInput,
   scheduleActionInput,
+  unpublishPageInput,
   type ScheduleActionInput,
   type ScheduledAction,
 } from "@wiki/shared";
@@ -11,6 +14,7 @@ import type { Db } from "../db/client";
 import { pages, pageVersions, scheduledActions } from "../db/schema";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
+import { descendantIds, descendantsWider, exceedsParent, loadTreeIndex, visibilityAt } from "../publishing/hierarchy";
 import { publishPage, rotateUnlistedKey, unpublishPage } from "../publishing/service";
 import { parseJson } from "../validation";
 
@@ -24,7 +28,9 @@ export const pagePublishRoutes = new Hono<AppEnv>()
   })
   .post("/:id/unpublish", async (c) => {
     const { db } = c.get("deps");
-    await db.transaction((tx) => unpublishPage(tx, c.get("wiki").id, c.req.param("id")));
+    // 本文は省略できる（配下をまとめて非公開にするときだけ送る）
+    const input = c.req.header("content-type")?.includes("json") ? await parseJson(c, unpublishPageInput) : unpublishPageInput.parse({});
+    await db.transaction((tx) => unpublishPage(tx, c.get("wiki").id, c.req.param("id"), input));
     return c.json({ ok: true });
   })
   .post("/:id/unlisted-key", async (c) => {
@@ -64,6 +70,33 @@ export async function listActions(db: Db, wikiId: string, where: SQL | undefined
     editedAfterSchedule:
       a.status === "scheduled" && a.actionType === "publish_page" && head !== null && head !== a.versionId,
   }));
+}
+
+/**
+ * 予約の時刻の時点で、親子の決まり（配下は親と同じか、より狭い）が守られるかを確かめる。
+ * それまでに実行される予約（同じ batch を含む）も重ねて見るので、親の公開を先に予約してあれば子の公開も予約できる。
+ */
+async function assertScheduleKeepsHierarchy(
+  db: Db,
+  wikiId: string,
+  page: { id: string; title: string },
+  input: { actionType: "publish_page" | "unpublish_page"; runAt: Date; batchId?: string; targetVisibility?: "public" | "unlisted" },
+): Promise<void> {
+  const target = input.actionType === "publish_page" ? (input.targetVisibility ?? "public") : "private";
+  const index = await loadTreeIndex(db, wikiId);
+  const parentId = index.parentOf.get(page.id) ?? null;
+  const descendants = descendantIds(index, page.id);
+  const at = await visibilityAt(db, wikiId, parentId ? [parentId, ...descendants] : descendants, input.runAt, input.batchId);
+  const parentVisibility = parentId ? at.get(parentId) : undefined;
+  if (parentId && parentVisibility && !isWithinParent(target, parentVisibility)) {
+    const [parent] = await db.select({ title: pages.title }).from(pages).where(eq(pages.id, parentId));
+    throw exceedsParent(page, { id: parentId, title: parent?.title ?? parentId, visibility: parentVisibility });
+  }
+  const wider = descendants.filter((id) => {
+    const v = at.get(id);
+    return v !== undefined && isWider(v, target);
+  });
+  if (wider.length > 0) throw descendantsWider(page, wider);
 }
 
 /** /admin/w/:wikiKey/schedule：予約の一覧・作成・変更・キャンセル（編集カレンダー） */
@@ -121,7 +154,7 @@ export async function createSchedule(
 ): Promise<ScheduledAction> {
   if (input.runAt.getTime() <= Date.now()) throw new HttpError(400, "run_at_in_past", "runAt must be in the future");
   const [page] = await db
-    .select({ id: pages.id })
+    .select({ id: pages.id, title: pages.title })
     .from(pages)
     .where(and(eq(pages.wikiId, wikiId), eq(pages.id, input.pageId), isNull(pages.deletedAt)));
   if (!page) throw notFound(`page ${input.pageId}`);
@@ -132,6 +165,7 @@ export async function createSchedule(
       .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, input.pageId)));
     if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
   }
+  await assertScheduleKeepsHierarchy(db, wikiId, page, input);
   const [row] = await db
     .insert(scheduledActions)
     .values({
