@@ -11,10 +11,10 @@ import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { diffLines } from "diff";
-import { useMemo, useState } from "react";
-import { api, errorMessage } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { monoFont } from "../theme";
 import { Tooltip } from "./Tooltip";
@@ -54,6 +54,22 @@ export function VersionHistory(props: {
   });
   const [view, setView] = useState<"diff" | "body">("diff");
 
+  // 選んでいた版が、もう無い（開いているあいだに間引かれた、古い URL を開いた）。最新の版に選び直し、一覧を読み直す
+  const qc = useQueryClient();
+  const [missing, setMissing] = useState(false);
+  const selectedIsGone = version.error instanceof ApiError && version.error.status === 404 && props.selected !== props.headVersionId;
+  const { pageId, headVersionId, onSelect } = props;
+  useEffect(() => {
+    if (!selectedIsGone) return;
+    setMissing(true);
+    void qc.invalidateQueries({ queryKey: ["versions", pageId] });
+    onSelect(headVersionId);
+    // onSelect は描くたびに作り直されるので、依存に入れない
+  },[selectedIsGone, pageId, headVersionId, qc]);
+  useEffect(() => {
+    if (!open) setMissing(false);
+  }, [open]);
+
   return (
     <Dialog fullScreen open={open} onClose={props.onClose} aria-labelledby="version-history-title">
       <Stack direction="row" sx={{ alignItems: "center", gap: 1, height: 48, px: 2, borderBottom: 1, borderColor: "divider", flexShrink: 0 }}>
@@ -77,7 +93,12 @@ export function VersionHistory(props: {
         }}
       >
         <Box component="section" aria-label="選んだ版" sx={{ order: { xs: 2, md: 1 }, overflow: "auto", p: { xs: 2, md: 3 } }}>
-          {version.error && <Alert severity="error">{errorMessage(version.error)}</Alert>}
+          {missing && (
+            <Alert severity="info" onClose={() => setMissing(false)} sx={{ maxWidth: 900, mx: "auto", mb: 2 }}>
+              選んでいた版は、もうありません（「自動」の版は、古くなると間引きます）。最新の版を開いています。
+            </Alert>
+          )}
+          {version.error && !selectedIsGone && <Alert severity="error">{errorMessage(version.error)}</Alert>}
           {version.isPending && (
             // 見出し（版の日時）と、差分の位置に文の行
             <LoadingRegion sx={{ maxWidth: 900, mx: "auto" }}>
@@ -136,7 +157,10 @@ export function VersionHistory(props: {
                 key={v.id}
                 selected={props.selected === v.id}
                 aria-current={props.selected === v.id ? "true" : undefined}
-                onClick={() => props.onSelect(v.id)}
+                onClick={() => {
+                  setMissing(false);
+                  props.onSelect(v.id);
+                }}
                 sx={{ px: 1, gap: 0.75, borderRadius: 1 }}
               >
                 {formatDateTime(v.createdAt)}
@@ -148,6 +172,11 @@ export function VersionHistory(props: {
               </ListItemButton>
             ))}
           </List>
+          {versions.data && (
+            <Muted variant="caption" component="p" sx={{ px: 1, pt: 1.5, pb: 1 }}>
+              「自動」の版は、1日たつと1日に1つ、30日たつと1か月に1つに間引きます。⌘S で残した版と、公開・予約した版は消しません。
+            </Muted>
+          )}
         </Box>
       </Box>
     </Dialog>

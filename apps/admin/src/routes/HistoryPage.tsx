@@ -32,7 +32,7 @@ export function HistoryPage() {
         <Muted>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</Muted>
         {/* コミットの行（メッセージ + 日時）と同じ高さ */}
         {history.isPending && <SkeletonRows rows={5} height={COMMIT_ROW_HEIGHT} secondary sx={{ mt: 1, mx: -1 }} />}
-        <List disablePadding sx={{ mt: 1, mx: -1 }}>
+        <List disablePadding sx={{ mt: history.isPending ? 0 : 1, mx: -1 }}>
           {history.data?.commits.map((c, i) => (
             <ListItemButton key={c.id} selected={selected === c.id} onClick={() => setSelected(c.id)} sx={{ px: 1, borderRadius: 1 }}>
               <ListItemText
