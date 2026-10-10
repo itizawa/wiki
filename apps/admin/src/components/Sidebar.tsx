@@ -21,6 +21,7 @@ import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrow
 import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import SearchIcon from "@mui/icons-material/Search";
+import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
@@ -37,6 +38,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
 import { useMemo, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
+import { useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { Muted, RouterLink } from "./ui";
@@ -175,6 +177,8 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
               構造の履歴
             </NavItem>
 
+            {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
+
             <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
               <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
                 ドキュメント
@@ -241,6 +245,29 @@ function NavItem(props: { to: "/" | "/calendar" | "/rules" | "/history"; exact?:
         {props.children}
       </Box>
     </RouterLink>
+  );
+}
+
+/** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。1つも無ければ何も出さない。 */
+function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]; onNavigate?: () => void }) {
+  const { ids } = useStars();
+  // 削除されたページのスターは出さない
+  const starred = ids.flatMap((id) => (pages[id] ? [pages[id]] : []));
+  if (starred.length === 0) return null;
+  return (
+    <Box component="section" aria-label="スター">
+      <Typography variant="caption" sx={{ display: "block", mt: 2.5, mb: 0.5, pl: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
+        スター
+      </Typography>
+      {starred.map((p) => (
+        <RouterLink key={p.id} to="/pages/$pageId" params={{ pageId: p.id }} onClick={onNavigate} underline="none" sx={rowSx}>
+          <StarIcon sx={{ fontSize: 18, color: "warning.main" }} />
+          <Box component="span" sx={ellipsis}>
+            {p.title}
+          </Box>
+        </RouterLink>
+      ))}
+    </Box>
   );
 }
 
