@@ -1,3 +1,5 @@
+import { useEffect, type CSSProperties } from "react";
+import { clampSidebarWidth, SIDEBAR_WIDTH, SidebarResizer } from "../components/SidebarResizer";
 import MenuIcon from "@mui/icons-material/Menu";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -11,9 +13,8 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
-import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
+import { useState, type ReactNode } from "react";
+import { Sidebar } from "../components/Sidebar";
 import { Muted, Section } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { usePersistentState } from "../lib/storage";

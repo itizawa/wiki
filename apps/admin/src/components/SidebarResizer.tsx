@@ -1,5 +1,9 @@
 import Box from "@mui/material/Box";
 import { useRef } from "react";
+import { SIDEBAR_WIDTH } from "./Sidebar";
+
+// Layout が幅をまとめて扱えるよう、既定の幅もここから出す
+export { SIDEBAR_WIDTH };
 
 export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_MAX_WIDTH = 480;
