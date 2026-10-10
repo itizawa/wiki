@@ -26,7 +26,7 @@ export function toWiki(row: WikiRow, config: Pick<AppConfig, "siteBaseDomain">):
 }
 
 export function toWikiSettings(row: WikiRow): WikiSettings {
-  return { gaMeasurementId: row.gaMeasurementId, searchConsoleVerification: row.searchConsoleVerification };
+  return { gaMeasurementId: row.gaMeasurementId, searchConsoleVerification: row.searchConsoleVerification, gaPropertyId: row.gaPropertyId };
 }
 
 /** 作成順に返す（最初の wiki が先頭）。 */
@@ -94,8 +94,9 @@ export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): P
 }
 
 /**
- * 連携の設定（GA の測定 ID、サーチコンソールの確認用の値）の変更。null で外す。
- * どちらも公開サイトの HTML に出るので、実際に変わったときだけビルドし直す。
+ * 連携の設定（GA の測定 ID・プロパティ ID、サーチコンソールの確認用の値）の変更。null で外す。
+ * 測定 ID と確認用の値は公開サイトの HTML に出るので、実際に変わったときだけビルドし直す。
+ * プロパティ ID は管理画面の「アクセス解析」だけが使うので、変えてもビルドし直さない。
  */
 export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiSettingsInput): Promise<WikiRow> {
   return db.transaction(async (tx) => {
@@ -104,16 +105,18 @@ export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiS
     if (wiki.archivedAt) throw notFound(`wiki ${key}`);
     const gaChanged = input.gaMeasurementId !== undefined && input.gaMeasurementId !== wiki.gaMeasurementId;
     const verificationChanged = input.searchConsoleVerification !== undefined && input.searchConsoleVerification !== wiki.searchConsoleVerification;
-    if (!gaChanged && !verificationChanged) return wiki;
+    const propertyChanged = input.gaPropertyId !== undefined && input.gaPropertyId !== wiki.gaPropertyId;
+    if (!gaChanged && !verificationChanged && !propertyChanged) return wiki;
     const [row] = await tx
       .update(wikis)
       .set({
         ...(gaChanged && { gaMeasurementId: input.gaMeasurementId }),
         ...(verificationChanged && { searchConsoleVerification: input.searchConsoleVerification }),
+        ...(propertyChanged && { gaPropertyId: input.gaPropertyId }),
       })
       .where(eq(wikis.id, wiki.id))
       .returning();
-    await recordPublishEvent(tx, wiki.id, "wiki_settings");
+    if (gaChanged || verificationChanged) await recordPublishEvent(tx, wiki.id, "wiki_settings");
     return row!;
   });
 }

@@ -1,6 +1,7 @@
 // デプロイ用：環境変数から wrangler の --secrets-file に渡すJSONを書き出す。
 // 使い方: node write-secrets.mjs <出力先> KEY [KEY ...]    （KEY? は未設定でもよい）
 // 必須のキーが空ならここで止める（空のシークレットでデプロイしないため）。
+// 任意のキー（KEY?）が空なら、何も書かない（例：GOOGLE_SERVICE_ACCOUNT_JSON。未登録なら Worker には渡らず、その機能だけが無効になる）。
 import { writeFileSync } from "node:fs";
 
 const [out, ...keys] = process.argv.slice(2);

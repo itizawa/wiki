@@ -44,3 +44,4 @@ enabled = true
 # GOOGLE_CLIENT_ID      Google OAuth クライアント
 # GOOGLE_CLIENT_SECRET
 # INTERNAL_TOKEN        /export/public と /internal/* 用トークン（ワーカー・サイトのビルドと同じ値）
+# GOOGLE_SERVICE_ACCOUNT_JSON  任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読むサービスアカウントの鍵（JSON そのまま）。無ければその機能だけが「未設定」になる

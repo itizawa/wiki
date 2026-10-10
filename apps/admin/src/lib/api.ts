@@ -1,4 +1,7 @@
 import type {
+  AnalyticsDays,
+  ConnectionCheck,
+  GoogleConnection,
   PageDetail,
   PageDraft,
   SavePageDraftResult,
@@ -20,6 +23,7 @@ import type {
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
+  WikiAnalytics,
   WikiSettings,
   WikiSummary,
   WikiViews,
@@ -169,9 +173,18 @@ export const api = {
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
-  /** wiki ごとの設定（Google Analytics の測定 ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
+  /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
   updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
+
+  /** 「アクセス解析」：Google Analytics とサーチコンソールの数字と、連携の状態。同じ期間は、API が1時間のあいだ使い回す */
+  analytics: (days: AnalyticsDays) => request<WikiAnalytics>("GET", w(`/analytics?days=${days}`)),
+  /** Google から取り直す（1分おきまで） */
+  refreshAnalytics: (days: AnalyticsDays) => request<WikiAnalytics>("POST", w("/analytics/refresh"), { days }),
+  /** Google へ足すサービスアカウントのメールアドレスと、鍵の状態 */
+  analyticsConnection: () => request<GoogleConnection>("GET", w("/analytics/connection")),
+  /** 「接続を確かめる」：保存してある設定で、Google へ問い合わせてみる */
+  checkAnalytics: (target: "ga" | "search_console") => request<ConnectionCheck>("POST", w("/analytics/check"), { target }),
 
   /** 閲覧数（ページごとの合計・直近30日） */
   listViews: () => request<WikiViews>("GET", w("/views")),

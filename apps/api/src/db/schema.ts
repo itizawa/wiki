@@ -36,6 +36,8 @@ export const wikis = pgTable("wikis", {
   gaMeasurementId: text("ga_measurement_id"),
   /** Google サーチコンソールの確認用の値（meta タグの content の中身）。null なら出さない */
   searchConsoleVerification: text("search_console_verification"),
+  /** GA4 のプロパティ ID（数字だけ）。「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
+  gaPropertyId: text("ga_property_id"),
   /** nullなら使用中 */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -524,4 +526,33 @@ export const oauthTokens = pgTable(
     check("oauth_tokens_kind_check", sql`${t.kind} in ('access', 'refresh')`),
     index("oauth_tokens_grant_idx").on(t.grantId),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// アクセス解析（Google Analytics・サーチコンソールの数字の控え）
+// ---------------------------------------------------------------------------
+
+/**
+ * Google へ問い合わせた結果の控え。wiki・種類・期間ごとに1行で、同じ期間は1時間のあいだ使い回す。
+ * 問い合わせが失敗したときは `data` と `fetched_at` を残し、`error` と `attempted_at` だけを書き換える（前に取れたぶんを「◯時点の数字」として出す）。
+ */
+export const analyticsSnapshots = pgTable(
+  "analytics_snapshots",
+  {
+    wikiId: wikiId(),
+    kind: text("kind", { enum: ["ga", "search_console"] }).notNull(),
+    /** 期間（日数） */
+    days: integer("days").notNull(),
+    /** 問い合わせた先（GA はプロパティ ID、サーチコンソールはサイトの URL）。設定が変わったら、この行は使わない */
+    target: text("target").notNull(),
+    /** 取れた数字。1回も取れていなければ null */
+    data: jsonb("data"),
+    /** data を取った日時 */
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** 最後に Google へ問い合わせた日時（失敗したときも入る）。取り直しの間隔に使う */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull(),
+    /** 最後の問い合わせが失敗した理由（GoogleFailure）。成功したら null */
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.wikiId, t.kind, t.days] }), check("analytics_snapshots_kind_check", sql`${t.kind} in ('ga', 'search_console')`)],
 );

@@ -1,3 +1,4 @@
+import { reportingFromConfig } from "./analytics/google";
 import { createApp } from "./app";
 import { createGoogleOidc } from "./auth/google";
 import { loadConfig } from "./config";
@@ -49,7 +50,7 @@ export function createWorker(connect: Connect) {
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const { db, close } = connect(env);
       try {
-        return await createApp({ db, config, google, images: env.IMAGES ? r2ImageStore(env.IMAGES) : null }).fetch(appRequest);
+        return await createApp({ db, config, google, images: env.IMAGES ? r2ImageStore(env.IMAGES) : null, reporting: reportingFromConfig(config) }).fetch(appRequest);
       } finally {
         ctx.waitUntil(close());
       }

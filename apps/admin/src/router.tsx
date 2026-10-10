@@ -1,7 +1,9 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
+import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { CalendarPage } from "./routes/CalendarPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
@@ -75,6 +77,24 @@ const searchRoute = createRoute({
   },
 });
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
+// アクセス解析（Google Analytics とサーチコンソールの数字）。?days=7|90：期間（既定の28日は付けない）。再読み込みや URL の共有で同じ期間が開く
+const analyticsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "analytics",
+  validateSearch: (search: Record<string, unknown>): { days?: AnalyticsDays } => {
+    const days = Number(search.days);
+    return isAnalyticsDays(days) && days !== DEFAULT_ANALYTICS_DAYS ? { days } : {};
+  },
+  component: function Analytics() {
+    const { days = DEFAULT_ANALYTICS_DAYS } = analyticsRoute.useSearch();
+    const navigate = analyticsRoute.useNavigate();
+    return (
+      <PageBody>
+        <AnalyticsPage days={days} onDaysChange={(next) => void navigate({ search: next === DEFAULT_ANALYTICS_DAYS ? {} : { days: next }, replace: true })} />
+      </PageBody>
+    );
+  },
+});
 const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
 const templatesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "templates", component: padded(TemplatesPage) });
 const templateEditorRoute = createRoute({
@@ -113,7 +133,7 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   consentRoute,
   connectionsRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, trashRoute, settingsRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, analyticsRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, trashRoute, settingsRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),

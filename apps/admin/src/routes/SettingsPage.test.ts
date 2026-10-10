@@ -39,15 +39,23 @@ describe("確認用の値の確かめ", () => {
 });
 
 describe("保存したあとの文", () => {
-  const none = { gaMeasurementId: null, searchConsoleVerification: null };
+  const none = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null };
 
   it("反映までの時間を伝え、測定 ID を入れたときは GA に数字が出るまでの時間も添える", () => {
     expect(savedMessage(none, { ...none, searchConsoleVerification: "abc" })).toBe("保存しました。公開サイトには数分で反映されます。");
     expect(savedMessage(none, { ...none, gaMeasurementId: "G-ABCD1234" })).toContain("数時間かかることがあります");
   });
 
+  it("プロパティ ID だけを変えたときは、公開サイトへの反映には触れない", () => {
+    const saved = savedMessage(none, { ...none, gaPropertyId: "123456789" });
+    expect(saved).not.toContain("公開サイト");
+    expect(saved).toContain("接続を確かめる");
+    expect(savedMessage({ ...none, gaPropertyId: "123456789" }, none)).toContain("プロパティ ID を外しました");
+    expect(savedMessage(none, { ...none, gaPropertyId: "123456789", gaMeasurementId: "G-ABCD1234" })).toContain("公開サイトには数分で反映されます");
+  });
+
   it("外したときは、タグが消えることを伝える", () => {
-    const both = { gaMeasurementId: "G-ABCD1234", searchConsoleVerification: "abc" };
+    const both = { ...none, gaMeasurementId: "G-ABCD1234", searchConsoleVerification: "abc" };
     expect(savedMessage(both, { ...both, gaMeasurementId: null })).toContain("Google Analyticsの連携を外しました");
     expect(savedMessage(both, none)).toContain("Google AnalyticsとGoogle サーチコンソールの連携を外しました");
   });

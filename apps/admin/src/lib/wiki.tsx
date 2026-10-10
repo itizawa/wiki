@@ -58,11 +58,12 @@ export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・検索・カレンダー・ルール・テンプレート・履歴・ゴミ箱・設定）へのリンク。 */
+/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・ルール・テンプレート・履歴・ゴミ箱・設定）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"
   | "/w/$wikiKey/search"
   | "/w/$wikiKey/calendar"
+  | "/w/$wikiKey/analytics"
   | "/w/$wikiKey/rules"
   | "/w/$wikiKey/templates"
   | "/w/$wikiKey/history"
