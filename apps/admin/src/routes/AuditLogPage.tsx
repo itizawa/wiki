@@ -25,6 +25,9 @@ import { useWikis } from "./Layout";
 
 const GLOBAL = "global";
 
+/** 「すべて」を選んでいるときも、ラベルを上に出して選んでいるものを見せる */
+const selectSlots = { inputLabel: { shrink: true }, select: { displayEmpty: true } } as const;
+
 /**
  * 監査ログ：重要な操作を「いつ・誰が・何をした」の文で、新しい順に出す。
  * scope が wiki なら開いている wiki のもの（管理者）、all ならすべての wiki と全体にかかわるもの（オーナー）。
@@ -131,7 +134,7 @@ function Filters({ scope, filter, onChange }: { scope: AuditScope; filter: Audit
           onChange={(e) => set({ to: e.target.value || undefined })}
           slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: filter.from } }}
         />
-        <TextField select label="人" value={filter.actor ?? ""} onChange={(e) => set({ actor: e.target.value || undefined })} sx={{ minWidth: 180 }}>
+        <TextField select label="人" slotProps={selectSlots} value={filter.actor ?? ""} onChange={(e) => set({ actor: e.target.value || undefined })} sx={{ minWidth: 180 }}>
           <MenuItem value="">すべての人</MenuItem>
           {actors.data?.actors.map((a) => (
             <MenuItem key={a.userId} value={a.userId}>
@@ -139,7 +142,7 @@ function Filters({ scope, filter, onChange }: { scope: AuditScope; filter: Audit
             </MenuItem>
           ))}
         </TextField>
-        <TextField select label="分類" value={filter.category ?? ""} onChange={(e) => set({ category: e.target.value || undefined })} sx={{ minWidth: 140 }}>
+        <TextField select label="分類" slotProps={selectSlots} value={filter.category ?? ""} onChange={(e) => set({ category: e.target.value || undefined })} sx={{ minWidth: 140 }}>
           <MenuItem value="">すべての分類</MenuItem>
           {AUDIT_CATEGORIES.map((c) => (
             <MenuItem key={c} value={c}>
@@ -148,7 +151,7 @@ function Filters({ scope, filter, onChange }: { scope: AuditScope; filter: Audit
           ))}
         </TextField>
         {scope === "all" && (
-          <TextField select label="wiki" value={filter.wiki ?? ""} onChange={(e) => set({ wiki: e.target.value || undefined })} sx={{ minWidth: 180 }}>
+          <TextField select label="wiki" slotProps={selectSlots} value={filter.wiki ?? ""} onChange={(e) => set({ wiki: e.target.value || undefined })} sx={{ minWidth: 180 }}>
             <MenuItem value="">すべて</MenuItem>
             <MenuItem value={GLOBAL}>全体にかかわるもの</MenuItem>
             {wikis.data?.wikis.map((w) => (
@@ -179,7 +182,7 @@ function EntryRow({ entry, showWiki }: { entry: AuditLogEntry; showWiki: boolean
       sx={{
         display: "grid",
         // 日時の桁を揃え、狭い画面では文を下の行に回す
-        gridTemplateColumns: { xs: "auto 1fr", md: "auto minmax(8em, auto) 1fr" },
+        gridTemplateColumns: { xs: "auto 1fr", md: "auto 12em 1fr" },
         columnGap: 2,
         rowGap: 0.25,
         px: 2,
@@ -190,7 +193,7 @@ function EntryRow({ entry, showWiki }: { entry: AuditLogEntry; showWiki: boolean
       <Box component="time" dateTime={entry.createdAt} sx={{ fontFamily: monoFont, fontVariantNumeric: "tabular-nums", color: "text.secondary", fontSize: "0.85rem", pt: "2px" }}>
         {formatAuditTime(entry.createdAt)}
       </Box>
-      <Box sx={{ fontWeight: 600 }}>
+      <Box sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>
         {entry.actor.label}
         {entry.actor.type === "rule" && <Chip size="small" label="ルール" variant="outlined" sx={{ ml: 1 }} />}
         {entry.actor.type === "system" && <Chip size="small" label="予約の実行" variant="outlined" sx={{ ml: 1 }} />}
