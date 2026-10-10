@@ -7,3 +7,10 @@
 .body :global(table) { border-collapse: collapse; }
 .body :global(th),
 .body :global(td) { border: 1px solid var(--border); padding: 4px 8px; }
+/* 目次。見出しをクリックで閉じられる */
+.toc { margin: 0 0 24px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
+.toc summary { cursor: pointer; font-weight: 600; }
+.toc ol { list-style: none; margin: 4px 0; padding: 0; }
+.toc li { padding-left: calc(var(--indent) * 1.25em); line-height: 1.9; }
+/* ページ内リンクで飛んだとき、見出しが画面の上端に張りつかないようにする */
+.body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: 16px; }
