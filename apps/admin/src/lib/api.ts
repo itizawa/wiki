@@ -1,11 +1,13 @@
 import type {
   PageDetail,
   PageDraft,
+  PageTemplate,
   PageSummary,
   PageVersion,
   PublishVisibility,
   Rule,
   RuleRun,
+  SearchResult,
   ScheduledAction,
   SetWorkflowInput,
   StructureChange,
@@ -86,7 +88,11 @@ export const api = {
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
-  createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", w("/pages"), input),
+  /** タイトルと本文の検索。語が無ければ、最近更新したページ */
+  search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
+  /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */
+  createPage: (input: { title?: string; bodyMd?: string; parentPageId?: string | null; templateId?: string }) =>
+    request<PageDetail>("POST", w("/pages"), input),
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
@@ -121,9 +127,9 @@ export const api = {
   setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", w(`/pages/${id}/workflow`), input),
   reviewDone: (id: string) => request<PageDetail>("POST", w(`/pages/${id}/review-done`)),
 
-  publish: (id: string, input: { versionId: string; visibility: PublishVisibility }) =>
+  publish: (id: string, input: { versionId: string; visibility: PublishVisibility; applyToDescendants?: boolean }) =>
     request<{ ok: true }>("POST", w(`/pages/${id}/publish`), input),
-  unpublish: (id: string) => request<{ ok: true }>("POST", w(`/pages/${id}/unpublish`)),
+  unpublish: (id: string, input?: { applyToDescendants: boolean }) => request<{ ok: true }>("POST", w(`/pages/${id}/unpublish`), input),
   rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", w(`/pages/${id}/unlisted-key`)),
 
   listSchedule: (params: { from?: string; to?: string; pageId?: string; status?: string } = {}) => {
@@ -142,6 +148,14 @@ export const api = {
   saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", w(`/rules/${id}`), input),
   listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", w("/rules/runs")),
 
+  listTemplates: () => request<{ templates: PageTemplate[] }>("GET", w("/templates")),
+  getTemplate: (id: string) => request<PageTemplate>("GET", w(`/templates/${id}`)),
+  createTemplate: (input: { title: string; bodyMd: string }) => request<PageTemplate>("POST", w("/templates"), input),
+  updateTemplate: (id: string, input: { title: string; bodyMd: string }) => request<PageTemplate>("PUT", w(`/templates/${id}`), input),
+  deleteTemplate: (id: string) => request<{ ok: true }>("DELETE", w(`/templates/${id}`)),
+  /** 変数を置き換えたタイトルと本文 */
+  renderTemplate: (id: string) => request<{ title: string; bodyMd: string }>("GET", w(`/templates/${id}/render`)),
+
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
     request<{ commitId: string }>("POST", w("/structure/commits"), input),
@@ -149,6 +163,8 @@ export const api = {
   commitDetail: (id: string) =>
     request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
 };
+
+const VISIBILITY_LABEL = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;
 
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -177,6 +193,16 @@ export function errorMessage(err: unknown): string {
         return "wiki の作成・アーカイブは、オーナーだけが行えます。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
+      case "exceeds_parent": {
+        const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
+        const parent = d?.parentTitle ? `親ページ「${d.parentTitle}」` : "親ページ";
+        const label = d?.parentVisibility ? VISIBILITY_LABEL[d.parentVisibility] : "より狭い公開範囲";
+        return `${parent}が${label}のため、それより広い公開範囲にはできません。先に親ページを公開するか、このページの公開範囲を狭めてください。`;
+      }
+      case "descendants_wider": {
+        const count = (err.details as { count?: number } | undefined)?.count;
+        return `配下に、それより広い公開範囲のページが${count ? ` ${count} 件` : ""}あります。配下のページもまとめて変えるか、先に配下のページを狭めてください。`;
+      }
       default:
         return err.message;
     }

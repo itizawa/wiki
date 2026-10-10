@@ -23,8 +23,12 @@ import { StarButton } from "../components/StarButton";
 import { Tooltip } from "../components/Tooltip";
 import { VersionHistory } from "../components/VersionHistory";
 import { Muted } from "../components/ui";
+import { TemplatePicker } from "./TemplatePicker";
 
 type Draft = { title: string; bodyMd: string };
+
+/** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
+const UNTITLED = "無題";
 
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
 
@@ -56,6 +60,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       setRestored(null);
       void qc.invalidateQueries({ queryKey: ["versions", pageId] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
       void qc.invalidateQueries({ queryKey: ["structure"] });
       // 「予約後に編集あり」の表示を更新する
       void qc.invalidateQueries({ queryKey: ["schedule"] });
@@ -161,7 +166,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
 
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
+      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <Box
           component="header"
           sx={{
@@ -260,6 +266,12 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               版履歴を見る
             </Button>
           </Stack>
+          {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
+          {draft.bodyMd.trim() === "" && (
+            <TemplatePicker
+              onApply={(t) => setDraft((d) => (d ? { title: d.title.trim() === "" || d.title === UNTITLED ? t.title : d.title, bodyMd: t.bodyMd } : d))}
+            />
+          )}
           <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
         <EditingStats bodyMd={draft.bodyMd} />

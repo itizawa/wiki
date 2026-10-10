@@ -33,6 +33,9 @@ describe("seedDatabase", () => {
 
     const schedule = (await ctx.call("GET", `${W}/schedule`)).body.actions;
     expect(schedule.some((a: any) => a.status === "scheduled" && a.actionType === "publish_page")).toBe(true);
+
+    const templates = (await ctx.call("GET", `${W}/templates`)).body.templates;
+    expect(templates.map((t: any) => t.title)).toContain("議事録 {date}");
   });
 
   it("adds a second wiki with its own pages", async () => {
