@@ -23,6 +23,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
+import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
 import { ImageDialog, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -68,6 +69,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
 
   return (
     <Box>
+      <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
       <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
@@ -119,6 +121,9 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
             "& th": { bgcolor: "action.hover", fontWeight: 600 },
             "& th p, & td p": { my: 0 },
             "& .selectedCell": { bgcolor: "action.selected" },
+            // 検索で一致した箇所。いま見ている1つは、色に加えて枠でも区別する
+            "& .find-match": { bgcolor: "find.match", borderRadius: "2px" },
+            "& .find-current": { bgcolor: "find.current", outline: "2px solid", outlineColor: "warning.main" },
             "& p.is-editor-empty:first-of-type::before": {
               content: "attr(data-placeholder)",
               color: "text.disabled",

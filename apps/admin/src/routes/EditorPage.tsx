@@ -1,3 +1,4 @@
+import SearchIcon from "@mui/icons-material/Search";
 import HistoryIcon from "@mui/icons-material/History";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -15,6 +16,7 @@ import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { pagePath, type PageDetail } from "@wiki/shared";
 import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { openFindBar } from "../editor/FindBar";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { useStars } from "../lib/stars";
@@ -143,6 +145,11 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <Breadcrumb pageId={pageId} title={draft.title} />
           <StarButton pageId={pageId} />
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+          <Tooltip title="本文を検索・置換 (⌘F)">
+            <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
+              <SearchIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
           </Button>
