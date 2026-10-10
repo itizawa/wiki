@@ -1,4 +1,5 @@
 import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
@@ -9,11 +10,12 @@ import type { PageDetail, WorkflowState } from "@wiki/shared";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { Tooltip } from "./Tooltip";
-import { Muted, Section } from "./ui";
+import { Muted } from "./ui";
 
 export const workflowLabel: Record<WorkflowState, string> = { idea: "ネタ", draft: "下書き", approved: "承認済み" };
 
-/** エディタ横の「記事の状態」：承認（ルールが予約枠に入れてよい版を決める）と、見直しキュー。 */
+/** 「記事の状態」：承認（ルールが予約枠に入れてよい版を決める）と、見直しキュー。 */
+/** 編集画面の「公開」ポップオーバーの上段に出す。 */
 export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolean }) {
   const qc = useQueryClient();
   const action = useMutation({
@@ -28,7 +30,7 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
   const needsSave = dirty ? "先に保存してください" : "";
 
   return (
-    <Section>
+    <Box component="section" aria-label="記事の状態">
       <Stack spacing={1.5} sx={{ alignItems: "flex-start" }}>
         <Typography variant="subtitle1" component="h3">
           記事の状態
@@ -82,6 +84,6 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
         )}
         {action.error && <Alert severity="error">{errorMessage(action.error)}</Alert>}
       </Stack>
-    </Section>
+    </Box>
   );
 }

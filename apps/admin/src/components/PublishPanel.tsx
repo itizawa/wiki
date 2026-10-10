@@ -14,7 +14,7 @@ import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
-import { Mono, Muted, Row, Section, StatusChip } from "./ui";
+import { Mono, Muted, Row, StatusChip } from "./ui";
 
 const statusLabel: Record<ScheduledAction["status"], string> = {
   scheduled: "予約中",
@@ -33,7 +33,7 @@ export const actionLabel = (a: Pick<ScheduledAction, "actionType" | "targetVisib
       ? "非公開化"
       : "マージ";
 
-/** エディタ横の公開設定：公開/非公開化、限定公開URL、予約。 */
+/** 公開の設定：公開/非公開化、限定公開URL、予約。編集画面の「公開」ポップオーバーの中に出す。 */
 export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean }) {
   const qc = useQueryClient();
   const schedule = useQuery({ queryKey: ["schedule", page.id], queryFn: () => api.listSchedule({ pageId: page.id }) });
@@ -63,7 +63,7 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
   const needsSave = dirty ? "先に保存してください" : "";
 
   return (
-    <Section>
+    <Box component="section" aria-label="公開">
       <Stack spacing={1.5}>
         <Typography variant="subtitle1" component="h3">
           公開
@@ -206,6 +206,6 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
           </Stack>
         )}
       </Stack>
-    </Section>
+    </Box>
   );
 }
