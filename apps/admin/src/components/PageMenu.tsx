@@ -1,6 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { Copy, Download, Ellipsis, LayoutTemplate } from "lucide-react";
+import { Copy, Download, Ellipsis, History, LayoutTemplate, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -15,9 +15,14 @@ import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
 import { Tooltip } from "./Tooltip";
+import { Mono, Muted } from "./ui";
 
-/** 編集画面の「…」メニュー。いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す、テンプレートにする。 */
-export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
+/**
+ * 編集画面の「…」メニュー。版履歴を開く・いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す・テンプレートにする・ページを削除する。
+ * 下にページのパスを出す。
+ */
+export function PageMenu(props: { title: string; bodyMd: string; path: string; onOpenHistory: () => void; onDelete: () => void }) {
+  const { title, bodyMd } = props;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -68,12 +73,24 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
 
   return (
     <>
-      <Tooltip title="書き出す・テンプレートにする">
-        <IconButton size="small" aria-label="書き出す・テンプレートにする" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
+      <Tooltip title="その他の操作">
+        <IconButton size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
           <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            props.onOpenHistory();
+          }}
+        >
+          <ListItemIcon>
+            <History size={18} />
+          </ListItemIcon>
+          <ListItemText>版履歴</ListItemText>
+        </MenuItem>
+        <Divider />
         <MenuItem onClick={copy}>
           <ListItemIcon>
             <Copy size={18} />
@@ -100,6 +117,22 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
           </ListItemIcon>
           <ListItemText>テンプレートとして保存</ListItemText>
         </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            props.onDelete();
+          }}
+          sx={{ color: "error.main" }}
+        >
+          <ListItemIcon sx={{ color: "inherit" }}>
+            <Trash2 size={18} />
+          </ListItemIcon>
+          <ListItemText>このページを削除…</ListItemText>
+        </MenuItem>
+        <Muted component="div" sx={{ px: 2, pt: 1, pb: 0.5, fontSize: "0.75rem", wordBreak: "break-all" }}>
+          <Mono>{props.path}</Mono>
+        </Muted>
       </Menu>
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
