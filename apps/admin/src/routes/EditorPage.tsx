@@ -23,6 +23,7 @@ import { useStars } from "../lib/stars";
 import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
+import { confirmDialog } from "../components/ConfirmDialog";
 import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
 import { Tooltip } from "../components/Tooltip";
@@ -111,7 +112,16 @@ export function EditorPage({ pageId }: { pageId: string }) {
 
   // 未保存のまま別のページへ移ろうとしたら確認する（削除後の移動は除く）
   useBlocker({
-    shouldBlockFn: () => dirty && !removed.current && !confirm("保存していない変更があります。破棄して移動しますか？"),
+    shouldBlockFn: async () =>
+      dirty &&
+      !removed.current &&
+      !(await confirmDialog({
+        title: "保存していない変更があります",
+        body: "このまま移動すると、保存していない変更は失われます。",
+        confirmLabel: "変更を破棄して移動する",
+        cancelLabel: "編集に戻る",
+        danger: true,
+      })),
     enableBeforeUnload: dirty,
   });
 
@@ -256,11 +266,18 @@ export function EditorPage({ pageId }: { pageId: string }) {
                 variant="outlined"
                 color="error"
                 disabled={remove.isPending}
-                onClick={() => {
-                  if (confirm(`「${p.title}」を削除しますか？（ツリーからも外れます）`)) remove.mutate();
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: `「${p.title}」を削除しますか？`,
+                    body: `ツリーからも外れます。${p.publishedVersionId ? "公開中のページなので、公開サイトからも見られなくなります。" : ""}この画面からは元に戻せません。`,
+                    confirmLabel: "削除する",
+                    cancelLabel: "削除しない",
+                    danger: true,
+                  });
+                  if (ok) remove.mutate();
                 }}
               >
-                削除
+                このページを削除…
               </Button>
               {remove.error && <Alert severity="error">{errorMessage(remove.error)}</Alert>}
             </Stack>

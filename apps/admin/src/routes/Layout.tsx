@@ -15,6 +15,7 @@ import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer"
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { CommandMenu } from "../components/CommandMenu";
+import { ConfirmHost } from "../components/ConfirmDialog";
 import { Muted, Section } from "../components/ui";
 import { ShortcutGuide } from "../components/ShortcutGuide";
 import { api, ApiError } from "../lib/api";
@@ -109,6 +110,7 @@ export function Layout() {
         />
       </Drawer>
       <ShortcutGuide />
+      <ConfirmHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
