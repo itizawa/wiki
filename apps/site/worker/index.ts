@@ -30,33 +30,56 @@ export default {
     const target = resolveWiki(request, url, env);
     // wiki ではないサブドメイン（管理画面など、ほかの Worker のもの）は、そのまま本来の行き先へ渡す
     if (target === "passthrough") return fetch(request);
-    if (target instanceof Response) return target;
-    if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
-    if (url.pathname.startsWith("/images/")) return image(url.pathname, env);
-
-    const prefix = `/${target}`;
-    const asset = (pathname: string) => {
-      const assetUrl = new URL(url);
-      assetUrl.pathname = prefix + pathname;
-      return assetUrl;
-    };
-    const res = withoutPrefix(await env.ASSETS.fetch(new Request(asset(url.pathname), request)), url, prefix);
-    if (url.pathname.startsWith("/u/")) return unlisted(res);
-    if (res.status !== 404 || !url.pathname.startsWith("/p/")) return res;
-
-    const routesRes = await env.ASSETS.fetch(asset("/page-routes.json"));
-    if (!routesRes.ok) return res;
-    const result = resolvePagePath(url.pathname, (await routesRes.json()) as PublicRoutes);
-    if (result?.status === 301) return Response.redirect(new URL(result.location, url).href, 301);
-    if (result?.status === 410) {
-      return new Response(
-        '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="robots" content="noindex"><title>削除されました</title><p>この記事は削除されました。<a href="/">トップへ</a></p></html>',
-        { status: 410, headers: { "content-type": "text/html; charset=utf-8" } },
-      );
-    }
-    return res;
+    if (target instanceof Response) return withSecurityHeaders(target);
+    return withSecurityHeaders(await serve(request, url, env, target));
   },
 };
+
+/**
+ * どの応答にも付けるヘッダー。応答が自分で付けたもの（限定公開の no-referrer、画像の CSP など）は上書きしない。
+ * スクリプトは Astro がページに埋め込むことがあるので、CSP では枠に入れさせないことと、base・object だけを絞る。
+ */
+const SECURITY_HEADERS = {
+  "content-security-policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+  "x-frame-options": "DENY",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+};
+
+function withSecurityHeaders(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+async function serve(request: Request, url: URL, env: Env, target: string): Promise<Response> {
+  if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
+  if (url.pathname.startsWith("/images/")) return image(url.pathname, env);
+
+  const prefix = `/${target}`;
+  const asset = (pathname: string) => {
+    const assetUrl = new URL(url);
+    assetUrl.pathname = prefix + pathname;
+    return assetUrl;
+  };
+  const res = withoutPrefix(await env.ASSETS.fetch(new Request(asset(url.pathname), request)), url, prefix);
+  if (url.pathname.startsWith("/u/")) return unlisted(res);
+  if (res.status !== 404 || !url.pathname.startsWith("/p/")) return res;
+
+  const routesRes = await env.ASSETS.fetch(asset("/page-routes.json"));
+  if (!routesRes.ok) return res;
+  const result = resolvePagePath(url.pathname, (await routesRes.json()) as PublicRoutes);
+  if (result?.status === 301) return Response.redirect(new URL(result.location, url).href, 301);
+  if (result?.status === 410) {
+    return new Response(
+      '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="robots" content="noindex"><title>削除されました</title><p>この記事は削除されました。<a href="/">トップへ</a></p></html>',
+      { status: 410, headers: { "content-type": "text/html; charset=utf-8" } },
+    );
+  }
+  return res;
+}
 
 /**
  * どの wiki を返すかを決める。
