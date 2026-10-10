@@ -17,6 +17,7 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
@@ -64,7 +65,14 @@ const rowSx = {
 const ellipsis = { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
 /** 左サイドバー：検索、画面の切り替え、ドキュメントのツリー。 */
-export function Sidebar(props: { email: string; onCollapse?: () => void; onNavigate?: () => void; onLogout: () => void }) {
+export function Sidebar(props: {
+  email: string;
+  onCollapse?: () => void;
+  onNavigate?: () => void;
+  /** コマンドメニュー（⌘K）を開く */
+  onOpenCommands: () => void;
+  onLogout: () => void;
+}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
@@ -162,6 +170,15 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
           <SearchResults q={q.trim()} onNavigate={props.onNavigate} />
         ) : (
           <>
+            <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
+              <KeyboardCommandKeyIcon fontSize="small" />
+              <Box component="span" sx={ellipsis}>
+                コマンドメニュー
+              </Box>
+              <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
+                ⌘K
+              </Box>
+            </Box>
             <NavItem to="/" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
               すべてのページ
             </NavItem>
