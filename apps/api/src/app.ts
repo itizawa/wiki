@@ -6,6 +6,7 @@ import { HttpError } from "./errors";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
+import { analyticsRoutes } from "./routes/analytics";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
@@ -91,6 +92,7 @@ export function createApp(deps: Deps) {
   wiki.route("/images", imageUploadRoutes);
   wiki.route("/views", viewRoutes);
   wiki.route("/settings", wikiSettingsRoutes);
+  wiki.route("/analytics", analyticsRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

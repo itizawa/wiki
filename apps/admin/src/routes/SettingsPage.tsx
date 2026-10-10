@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Check, CircleCheck, Copy, ExternalLink, TriangleAlert } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -7,11 +7,12 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVerification, type WikiSettings } from "@wiki/shared";
+import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVerification, type GoogleConnection, type WikiSettings } from "@wiki/shared";
 import { useEffect, useState, type ReactNode } from "react";
-import { Mono, Muted, Row, Section, SkeletonSection } from "../components/ui";
+import { Mono, Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
+import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_SECRET, type AnalyticsTarget } from "../lib/analytics";
 import { api, ApiError, errorMessage } from "../lib/api";
-import { useWiki } from "../lib/wiki";
+import { screenLink, useWiki } from "../lib/wiki";
 
 /** 測定 ID の欄に入れたものを、保存する形にそろえる（前後の空白を落とし、英字は大文字にする）。 */
 export function normalizeGaMeasurementId(value: string): string {
@@ -40,7 +41,12 @@ export function searchConsoleVerificationProblem(value: string): string | null {
 
 /** 保存したあとに出す文。反映までの時間と、外したときにタグが消えることを伝える。 */
 export function savedMessage(before: WikiSettings, after: WikiSettings): string {
-  const parts = ["保存しました。公開サイトには数分で反映されます。"];
+  const siteChanged = after.gaMeasurementId !== before.gaMeasurementId || after.searchConsoleVerification !== before.searchConsoleVerification;
+  // プロパティ ID は管理画面の「アクセス解析」だけが使う。公開サイトは変わらない
+  const parts = [siteChanged ? "保存しました。公開サイトには数分で反映されます。" : "保存しました。"];
+  if (after.gaPropertyId !== before.gaPropertyId) {
+    parts.push(after.gaPropertyId ? "プロパティ ID は、下の「接続を確かめる」で、つながるかを確かめられます。" : "プロパティ ID を外しました。「アクセス解析」に、GA の数字は出なくなります。");
+  }
   if (after.gaMeasurementId && after.gaMeasurementId !== before.gaMeasurementId) {
     parts.push("Google Analytics の画面に数字が出るまでは、数時間かかることがあります。");
   }
@@ -59,6 +65,8 @@ const stepsSx = { m: 0, pl: 2.75, fontSize: "0.9rem", "& > li": { mb: 0.75 }, ..
 export function SettingsPage() {
   const { wiki, isOwner } = useWiki();
   const settings = useQuery({ queryKey: ["wiki-settings"], queryFn: api.getSettings });
+  // Google へ足すサービスアカウント。取れなくても、設定の欄は出す
+  const connection = useQuery({ queryKey: ["analytics-connection"], queryFn: api.analyticsConnection });
 
   return (
     <Stack spacing={1.5}>
@@ -77,6 +85,7 @@ export function SettingsPage() {
         </Typography>
         <Muted sx={textSx}>
           公開サイトを Google のサービスとつなぎます。限定公開のページ（<Mono>/u/...</Mono>）には、どちらのタグも入れません（限定公開の URL を外へ送らないため）。
+          つないだあとの数字は、<RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">「アクセス解析」</RouterLink>で見られます。
         </Muted>
       </Box>
 
@@ -84,14 +93,21 @@ export function SettingsPage() {
       {settings.error && <Alert severity="error">{errorMessage(settings.error)}</Alert>}
       {/* 2つのまとまり（Google Analytics・サーチコンソール）の形 */}
       {settings.isPending && [0, 1].map((i) => <SkeletonSection key={i} lines={3} />)}
-      {settings.data && (isOwner ? <SettingsForm origin={wiki.origin} saved={settings.data} /> : <ReadOnlySettings settings={settings.data} />)}
+      {settings.data &&
+        (isOwner ? (
+          <SettingsForm origin={wiki.origin} saved={settings.data} connection={connection.data} />
+        ) : (
+          <ReadOnlySettings settings={settings.data} connection={connection.data} />
+        ))}
     </Stack>
   );
 }
 
-function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }) {
+function SettingsForm({ origin, saved, connection }: { origin: string; saved: WikiSettings; connection: GoogleConnection | undefined }) {
   const qc = useQueryClient();
   const [gaId, setGaId] = useState(saved.gaMeasurementId ?? "");
+  const [propertyId, setPropertyId] = useState(saved.gaPropertyId ?? "");
+  const [propertyProblem, setPropertyProblem] = useState<string | null>(null);
   const [verification, setVerification] = useState(saved.searchConsoleVerification ?? "");
   // 確かめるのは、欄を離れたときと保存するとき。打っている途中には出さない
   const [gaProblem, setGaProblem] = useState<string | null>(null);
@@ -105,6 +121,8 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
     onSuccess: (after) => {
       setDone(savedMessage(saved, after));
       qc.setQueryData(["wiki-settings"], after);
+      // プロパティ ID が変わると、「アクセス解析」に出すものが変わる
+      void qc.invalidateQueries({ queryKey: ["analytics"] });
     },
   });
 
@@ -116,6 +134,13 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
     setGaProblem(problem);
     return { value: next === "" ? null : next, problem };
   };
+  const checkProperty = () => {
+    const next = propertyId.trim();
+    const problem = gaPropertyIdProblem(next);
+    setPropertyId(next);
+    setPropertyProblem(problem);
+    return { value: next === "" ? null : next, problem };
+  };
   const checkVerification = () => {
     const next = extractSearchConsoleVerification(verification);
     const problem = searchConsoleVerificationProblem(next);
@@ -125,8 +150,11 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
     return { value: next === "" ? null : next, problem };
   };
 
+  const propertyChanged = (propertyId.trim() || null) !== saved.gaPropertyId;
   const changed =
-    (normalizeGaMeasurementId(gaId) || null) !== saved.gaMeasurementId || (extractSearchConsoleVerification(verification) || null) !== saved.searchConsoleVerification;
+    (normalizeGaMeasurementId(gaId) || null) !== saved.gaMeasurementId ||
+    (extractSearchConsoleVerification(verification) || null) !== saved.searchConsoleVerification ||
+    propertyChanged;
   const edited = () => {
     setDone(null);
     save.reset();
@@ -141,8 +169,9 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
         e.preventDefault();
         const ga = checkGa();
         const sc = checkVerification();
-        if (ga.problem || sc.problem || !changed || save.isPending) return;
-        save.mutate({ gaMeasurementId: ga.value, searchConsoleVerification: sc.value });
+        const property = checkProperty();
+        if (ga.problem || sc.problem || property.problem || !changed || save.isPending) return;
+        save.mutate({ gaMeasurementId: ga.value, searchConsoleVerification: sc.value, gaPropertyId: property.value });
       }}
     >
       <Section>
@@ -181,6 +210,33 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
           }}
           sx={{ mt: 2, width: "100%", maxWidth: 420 }}
         />
+
+        <ReadNumbers target="ga" connection={connection} blocked={propertyChanged ? "プロパティ ID を保存してから、確かめられます。" : saved.gaPropertyId ? null : "プロパティ ID を入れて保存すると、確かめられます。"}>
+          <li>
+            GA の「管理 → プロパティの詳細」の右上に出ている<strong>プロパティ ID</strong>（数字だけ。測定 ID とは別の番号）を、下の欄に入れて保存します。
+            <TextField
+              label="プロパティ ID"
+              value={propertyId}
+              onChange={(e) => {
+                setPropertyId(e.target.value);
+                setPropertyProblem(null);
+                edited();
+              }}
+              onBlur={checkProperty}
+              placeholder="例：123456789"
+              error={propertyProblem !== null}
+              helperText={propertyProblem ?? "数字だけの番号です。公開サイトには出しません。空にして保存すると、GA の数字を読まなくなります。"}
+              slotProps={{
+                htmlInput: { maxLength: 40, inputMode: "numeric", autoCorrect: "off", spellCheck: false },
+                inputLabel: { shrink: true },
+                input: { sx: { fontFamily: "monospace" } },
+                formHelperText: { role: propertyProblem ? "alert" : undefined },
+              }}
+              sx={{ display: "flex", mt: 1.5, mb: 0.5, width: "100%", maxWidth: 420 }}
+            />
+          </li>
+          <li>GA の「管理 → プロパティのアクセス管理」で、下のメールアドレスを「閲覧者」として足します。</li>
+        </ReadNumbers>
       </Section>
 
       <Section>
@@ -228,6 +284,13 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
           }}
           sx={{ mt: 2, width: "100%", maxWidth: 680 }}
         />
+
+        <ReadNumbers target="search_console" connection={connection} blocked={null}>
+          <li>
+            上の手順で、公開サイトの URL を「URL プレフィックス」のプロパティとして登録し、「確認」まで済ませます（入力する欄はありません。プロパティは公開サイトの URL から決まります）。
+          </li>
+          <li>サーチコンソールの「設定 → ユーザーと権限」で、下のメールアドレスをユーザーとして足します（権限は「制限付き」で足ります）。</li>
+        </ReadNumbers>
       </Section>
 
       {/* 結果は、押したボタンのそばに出す */}
@@ -253,33 +316,36 @@ function SettingsForm({ origin, saved }: { origin: string; saved: WikiSettings }
 
 function saveErrorMessage(err: unknown): string {
   if (err instanceof ApiError && err.code === "invalid_input") {
-    return "保存できませんでした。測定 ID は「G-」で始まるもの、確認用の値は半角の英字・数字・「-」「_」だけのものを入れてください。";
+    return "保存できませんでした。測定 ID は「G-」で始まるもの、プロパティ ID は数字だけのもの、確認用の値は半角の英字・数字・「-」「_」だけのものを入れてください。";
   }
   if (err instanceof ApiError && err.code === "owner_only") return "保存できませんでした。変更はオーナーだけが行えます。";
   return errorMessage(err);
 }
 
 /** オーナーでない人に出す、いまの値（読むだけ）。 */
-function ReadOnlySettings({ settings }: { settings: WikiSettings }) {
+function ReadOnlySettings({ settings, connection }: { settings: WikiSettings; connection: GoogleConnection | undefined }) {
   return (
     <>
       <Section>
         <IntegrationTitle name="Google Analytics" connected={settings.gaMeasurementId !== null} />
         <ReadOnlyValue label="測定 ID" value={settings.gaMeasurementId} />
+        <ReadOnlyValue label="プロパティ ID（「アクセス解析」が数字を読むのに使う）" value={settings.gaPropertyId} unset="未設定（GA の数字を読みません）" />
+        <ConnectionCheckButton target="ga" connection={connection} blocked={settings.gaPropertyId ? null : "プロパティ ID が保存されると、確かめられます。"} />
       </Section>
       <Section>
         <IntegrationTitle name="Google サーチコンソール" connected={settings.searchConsoleVerification !== null} />
         <ReadOnlyValue label="確認用の値" value={settings.searchConsoleVerification} />
+        <ConnectionCheckButton target="search_console" connection={connection} blocked={null} />
       </Section>
     </>
   );
 }
 
-function ReadOnlyValue({ label, value }: { label: string; value: string | null }) {
+function ReadOnlyValue({ label, value, unset = "未設定（公開サイトにタグを入れていません）" }: { label: string; value: string | null; unset?: string }) {
   return (
     <Box sx={{ mt: 0.5 }}>
       <Muted>{label}</Muted>
-      {value ? <Mono sx={{ display: "block", wordBreak: "break-all" }}>{value}</Mono> : <Typography>未設定（公開サイトにタグを入れていません）</Typography>}
+      {value ? <Mono sx={{ display: "block", wordBreak: "break-all" }}>{value}</Mono> : <Typography>{unset}</Typography>}
     </Box>
   );
 }
@@ -301,7 +367,7 @@ function IntegrationTitle({ name, connected }: { name: string; connected: boolea
 }
 
 /** Google の画面へのリンク（別のタブで開く）。 */
-function ExternalSite({ href, children }: { href: string; children: ReactNode }) {
+export function ExternalSite({ href, children }: { href: string; children: ReactNode }) {
   return (
     <MuiLink href={href} target="_blank" rel="noopener" underline="always" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
       {children}
@@ -311,7 +377,7 @@ function ExternalSite({ href, children }: { href: string; children: ReactNode })
 }
 
 /** コピーできる値。コピーした結果は、押したボタンに出す。 */
-function CopyField({ label, value }: { label: string; value: string }) {
+function CopyField({ label, value, what = "URL" }: { label: string; value: string; what?: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   useEffect(() => {
     if (state === "idle") return;
@@ -335,8 +401,78 @@ function CopyField({ label, value }: { label: string; value: string }) {
         {state === "copied" ? "コピーしました" : "コピーする"}
       </Button>
       <Box component="span" role="status" sx={{ fontSize: "0.875rem", color: "error.main" }}>
-        {state === "failed" ? "コピーできませんでした。URL を選んでコピーしてください。" : ""}
+        {state === "failed" ? `コピーできませんでした。${what}を選んでコピーしてください。` : ""}
       </Box>
     </Row>
+  );
+}
+
+/**
+ * まとまりの下のほうに置く「数字を管理画面で見る」：手順（children）、Google へ足すサービスアカウントのメールアドレス、「接続を確かめる」。
+ * サービスアカウントの鍵が登録されていない環境では、手順の代わりに、そのことを出す。
+ */
+function ReadNumbers({ target, connection, blocked, children }: { target: AnalyticsTarget; connection: GoogleConnection | undefined; blocked: string | null; children: ReactNode }) {
+  return (
+    <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "divider" }}>
+      <Typography component="h5" sx={{ fontWeight: 600, fontSize: "0.9375rem" }}>
+        数字を管理画面で見る（アクセス解析）
+      </Typography>
+      <Muted sx={textSx}>
+        管理画面は、Google の数字を、人のログインとは別の「サービスアカウント」で読みます。だれが開いても同じ数字が出ます。読むだけで、Google の側の設定は変えません。
+      </Muted>
+      <Box component="ol" sx={{ ...stepsSx, mt: 1.5 }}>
+        {children}
+      </Box>
+      {connection?.serviceAccountEmail ? (
+        <CopyField label="サービスアカウントのメールアドレス" value={connection.serviceAccountEmail} what="メールアドレス" />
+      ) : (
+        connection && <ServiceAccountMissing state={connection.serviceAccount} />
+      )}
+      <ConnectionCheckButton target={target} connection={connection} blocked={blocked} />
+    </Box>
+  );
+}
+
+function ServiceAccountMissing({ state }: { state: GoogleConnection["serviceAccount"] }) {
+  return (
+    <Alert severity="info" sx={textSx}>
+      {state === "invalid"
+        ? `サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）が登録されていますが、鍵として読めません。`
+        : `この管理画面には、サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）がまだ登録されていないため、足すメールアドレスを出せません。`}
+      登録の手順は、
+      <RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">
+        「アクセス解析」
+      </RouterLink>
+      にあります。測定 ID と確認用の値（公開サイトのタグ）は、鍵が無くても使えます。
+    </Alert>
+  );
+}
+
+/**
+ * 「接続を確かめる」。保存してある設定で Google へ問い合わせ、つながったか、だめなら理由と直し方を、押したボタンのそばに出す。
+ * `blocked`：まだ確かめられない理由（プロパティ ID を保存していない、など）。
+ */
+function ConnectionCheckButton({ target, connection, blocked }: { target: AnalyticsTarget; connection: GoogleConnection | undefined; blocked: string | null }) {
+  const check = useMutation({ mutationFn: () => api.checkAnalytics(target) });
+  // 鍵が無い環境では、押しても確かめられないので出さない（理由は、すぐ上に出ている）
+  if (connection?.serviceAccount !== "ready") return null;
+  const result = check.data;
+  return (
+    <Stack spacing={1} sx={{ mt: 1.5, alignItems: "flex-start" }}>
+      <Button variant="outlined" disabled={blocked !== null || check.isPending} onClick={() => check.mutate()}>
+        {check.isPending ? "確かめています…" : "接続を確かめる"}
+      </Button>
+      {blocked && <Muted>{blocked}</Muted>}
+      {!blocked && result && !check.isPending && (
+        <Alert severity={result.ok ? "success" : "error"} icon={result.ok ? <CircleCheck size={20} /> : <TriangleAlert size={20} />} sx={textSx}>
+          {checkResultText(result, target)}
+        </Alert>
+      )}
+      {check.error && (
+        <Alert severity="error" sx={textSx}>
+          {errorMessage(check.error)}
+        </Alert>
+      )}
+    </Stack>
   );
 }

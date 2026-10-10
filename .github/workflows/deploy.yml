@@ -46,10 +46,12 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          # 任意。「アクセス解析」用のサービスアカウントの鍵（JSON）。未登録なら渡さず、その機能だけが「未設定」になる
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           pnpm --filter @wiki/admin build
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET ADMIN_EMAILS GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN
+            SESSION_SECRET ADMIN_EMAILS GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker

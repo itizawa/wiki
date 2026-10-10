@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Workflow } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Workflow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -101,6 +101,13 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
+    {
+      id: "analytics",
+      label: "「アクセス解析」を開く",
+      keywords: ["analytics", "ga", "google", "search console", "access", "kaiseki"],
+      icon: <ChartColumn size={18} />,
+      run: go("/w/$wikiKey/analytics"),
+    },
     { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/rules") },
     { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },

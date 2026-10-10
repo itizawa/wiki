@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isGaPropertyId } from "./analytics";
 import { imageNameFromPath } from "./images";
 
 /**
@@ -20,14 +21,16 @@ export type Wiki = {
 } & WikiSettings;
 
 /**
- * wiki ごとの設定のうち、公開サイトの外部サービスとの連携。どちらも null なら未設定（タグを出さない）。
- * 値は公開サイトの HTML にそのまま出るので、決まった形のものだけを持つ。
+ * wiki ごとの設定のうち、外部サービスとの連携。null なら未設定。
+ * 測定 ID と確認用の値は公開サイトの HTML にそのまま出るので、決まった形のものだけを持つ（どちらも null ならタグを出さない）。
  */
 export type WikiSettings = {
   /** Google Analytics（GA4）の測定 ID（`G-` で始まる） */
   gaMeasurementId: string | null;
   /** Google サーチコンソールの確認用の値（`<meta name="google-site-verification">` の `content` の中身） */
   searchConsoleVerification: string | null;
+  /** GA4 のプロパティ ID（数字だけ）。管理画面の「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
+  gaPropertyId: string | null;
 };
 
 export const WIKI_KEY_MIN = 3;
@@ -146,13 +149,14 @@ const settingValue = (ok: (value: string) => boolean, message: string) =>
     .transform((v) => (v === "" ? null : v))
     .refine((v) => v === null || ok(v), { message });
 
-/** 連携の設定の変更。どちらか一方だけでもよい。 */
+/** 連携の設定の変更。どれか1つだけでもよい。 */
 export const updateWikiSettingsInput = z
   .object({
     gaMeasurementId: settingValue(isGaMeasurementId, "measurement id must look like G-XXXXXXXXXX").optional(),
     searchConsoleVerification: settingValue(isSearchConsoleVerification, "verification must be the content value of the meta tag").optional(),
+    gaPropertyId: settingValue(isGaPropertyId, "property id must be digits only").optional(),
   })
-  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined, { message: "nothing to update" });
+  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined || v.gaPropertyId !== undefined, { message: "nothing to update" });
 export type UpdateWikiSettingsInput = z.infer<typeof updateWikiSettingsInput>;
 
 /**

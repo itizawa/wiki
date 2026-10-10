@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app";
+import type { GoogleReporting } from "../analytics/google";
 import type { GoogleOidc } from "../auth/google";
 import { SESSION_COOKIE, signSession } from "../auth/session";
 import type { AppConfig } from "../config";
@@ -24,6 +25,7 @@ export const testConfig: AppConfig = {
   secureCookies: false,
   siteBaseDomain: "site.test",
   internalToken: "internal-token",
+  googleServiceAccount: null,
 };
 
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
@@ -36,14 +38,14 @@ export async function wikiManifest(db: Db, key = DEFAULT_WIKI_KEY) {
   return wiki;
 }
 
-export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null } = {}) {
+export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null; reporting?: GoogleReporting | null } = {}) {
   const client = new PGlite();
   const db = drizzle(client, { schema }) as unknown as Db;
   await migrate(db as never, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
-  const app = createApp({ db, config, google: opts.google ?? null, images });
+  const app = createApp({ db, config, google: opts.google ?? null, images, reporting: opts.reporting ?? null });
   const cookie = `${SESSION_COOKIE}=${await signSession(config.sessionSecret, ADMIN)}`;
 
   /** body が Uint8Array なら、そのまま（JSON にせず）送る */
