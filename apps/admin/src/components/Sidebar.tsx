@@ -39,7 +39,7 @@ import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
 import { WikiIcon } from "./WikiIcon";
-import { Muted, RouterLink } from "./ui";
+import { Muted, RouterLink, SkeletonRows } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
 const UNTITLED = "無題";
@@ -242,7 +242,7 @@ export function Sidebar(props: {
               </span>
             </Tooltip>
           </Box>
-          {structure.isPending && <Muted sx={{ px: 1 }}>読み込み中…</Muted>}
+          {structure.isPending && <SkeletonRows rows={5} indents={[0, 16, 16, 0, 16]} />}
           {tree && structure.data && (
             <DocumentTree
               tree={tree}

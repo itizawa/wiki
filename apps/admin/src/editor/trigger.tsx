@@ -5,7 +5,7 @@ import Popper from "@mui/material/Popper";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Extension, useEditorState, type Editor } from "@tiptap/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Muted } from "../components/ui";
+import { Muted, SkeletonRows } from "../components/ui";
 
 /** カーソルの直前にある「記号＋絞り込みの文字」の範囲。 */
 export type TriggerMatch = { from: number; to: number; query: string };
@@ -87,6 +87,8 @@ export function TriggerMenu<T>(props: {
   label: string;
   /** 候補が無いときに出す文 */
   emptyText: string;
+  /** 候補を読み込んでいる間。候補がまだ無ければ、文の代わりに候補の行の形を出す */
+  loading?: boolean;
 }) {
   const { editor, trigger, match, items } = props;
   const [index, setIndex] = useState(0);
@@ -124,7 +126,10 @@ export function TriggerMenu<T>(props: {
   return (
     <Popper open={!!match} anchorEl={anchor} placement="bottom-start" modifiers={[{ name: "offset", options: { offset: [0, 6] } }]} sx={{ zIndex: 3 }}>
       <Paper elevation={4} sx={{ minWidth: 240, maxWidth: 360, maxHeight: 320, overflowY: "auto" }}>
-        {items.length === 0 ? (
+        {items.length === 0 && props.loading ? (
+          // 候補の行（アイコン + タイトル）と同じ高さ
+          <SkeletonRows rows={3} height={32} icon sx={{ px: 1, py: 0.5 }} />
+        ) : items.length === 0 ? (
           <Muted sx={{ px: 2, py: 1.25 }}>{props.emptyText}</Muted>
         ) : (
           <MenuList dense role="listbox" aria-label={props.label}>
