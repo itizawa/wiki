@@ -1,9 +1,12 @@
 import AddIcon from "@mui/icons-material/Add";
 import AutoModeIcon from "@mui/icons-material/AutoMode";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SearchIcon from "@mui/icons-material/Search";
 import ViewSidebarOutlinedIcon from "@mui/icons-material/ViewSidebarOutlined";
@@ -20,6 +23,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
+import { usePageActions } from "../lib/pageActions";
+import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
 const MAX_PAGES = 8;
@@ -44,6 +49,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim();
+  const pageActions = usePageActions();
 
   const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q), enabled: open, placeholderData: keepPreviousData });
   const create = useMutation({
@@ -56,6 +62,11 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
   });
 
+  // メニューを閉じてから実行する操作
+  const closing = (run: () => void) => () => {
+    onClose();
+    run();
+  };
   const go = (to: "/" | "/calendar" | "/rules" | "/history") => () => {
     onClose();
     void navigate({ to });
@@ -72,6 +83,19 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <CalendarMonthOutlinedIcon fontSize="small" />, run: go("/calendar") },
     { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <AutoModeIcon fontSize="small" />, run: go("/rules") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <HistoryIcon fontSize="small" />, run: go("/history") },
+    // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す
+    ...(pageActions
+      ? [
+          { id: "copy-md", label: "このページの Markdown をコピー", keywords: ["copy", "markdown", "md", "export"], icon: <ContentCopyIcon fontSize="small" />, run: closing(pageActions.copyMarkdown) },
+          {
+            id: "download-md",
+            label: "このページの Markdown ファイル（.md）をダウンロード",
+            keywords: ["download", "markdown", "md", "export"],
+            icon: <FileDownloadOutlinedIcon fontSize="small" />,
+            run: closing(pageActions.downloadMarkdown),
+          },
+        ]
+      : []),
     ...(props.onToggleSidebar
       ? [
           {
@@ -86,6 +110,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           },
         ]
       : []),
+    { id: "shortcuts", label: "キーボードショートカットと記法の一覧を開く", keywords: ["shortcut", "keyboard", "help", "markdown", "?"], icon: <KeyboardOutlinedIcon fontSize="small" />, run: closing(openShortcutGuide) },
     {
       id: "logout",
       label: "ログアウトする",
