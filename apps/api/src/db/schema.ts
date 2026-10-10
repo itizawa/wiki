@@ -107,6 +107,13 @@ export const pageVersions = pgTable(
     sourceProposalId: uuid("source_proposal_id"),
     /** 外部のアプリ（MCP）から保存した版なら、その連携 */
     oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
+    /** 作った人のメールアドレス。外部のアプリ（MCP）から保存した版と、この列を足す前の版は null */
+    authorEmail: text("author_email"),
+    /**
+     * 間引かずに残す版か。人が操作して作った版と、公開・予約・承認に使った版は true。
+     * ワーカーが下書きから自動で作った版は false（あとで間引いてよい）
+     */
+    keep: boolean("keep").notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [
@@ -116,7 +123,8 @@ export const pageVersions = pgTable(
 );
 
 /**
- * 編集中の下書き（自動保存）。版にはせず、人ごとに1つだけ持つ。「版として残す」で版を作ったら消す。
+ * 編集中の下書き（自動保存）。人ごとに1つだけ持つ。編集が一段落したらワーカーが版にし、版になったら消す
+ * （人が操作して版を作ったときも消す）。
  * base_version_id は下書きを始めたときの head。head が先に進んでいたら、下書きは古い版をもとにしている。
  */
 export const pageDrafts = pgTable(
@@ -129,6 +137,8 @@ export const pageDrafts = pgTable(
     baseVersionId: uuid("base_version_id").notNull(),
     title: text("title").notNull(),
     bodyMd: text("body_md").notNull(),
+    /** 下書きを始めた時刻。打ち続けているあいだも、ここから一定時間で版にする */
+    createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.pageId, t.authorEmail] })],

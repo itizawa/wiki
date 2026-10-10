@@ -31,7 +31,7 @@ export type SavePageInput = z.infer<typeof savePageInput>;
 
 /**
  * 下書きの自動保存。版は作らない。baseVersionId が現在の head と一致する場合のみ保存できる。
- * タイトルは打ちかけで空のこともあるので、空でも受け付ける（版として残すときに確かめる）。
+ * タイトルは打ちかけで空のこともあるので、空でも受け付ける（版にするときに確かめる。空のあいだは版にならない）。
  */
 export const savePageDraftInput = z.object({
   baseVersionId: z.string().uuid(),
@@ -40,7 +40,7 @@ export const savePageDraftInput = z.object({
 });
 export type SavePageDraftInput = z.infer<typeof savePageDraftInput>;
 
-/** 自分の下書き。版として残すか破棄するまで、ページを開き直しても続きから書ける。 */
+/** 自分の下書き。版になるか破棄するまで、ページを開き直しても続きから書ける。編集が一段落すると、自動で版になる。 */
 export type PageDraft = {
   /** 下書きを始めたときの head。いまの head と違えば、その後に別の版ができている */
   baseVersionId: string;
@@ -48,6 +48,15 @@ export type PageDraft = {
   bodyMd: string;
   updatedAt: string;
 };
+
+/** 下書きの自動保存の結果。 */
+export type SavePageDraftResult = {
+  /** 保存した下書き。head と同じ内容に戻していたら null（下書きは無い） */
+  draft: PageDraft | null;
+  /** いまの head。送った baseVersionId と違えば、自分の下書きから自動で版ができている */
+  headVersionId: string;
+};
+
 /** スターの並び替え。渡した順に並べる（スターが付いていない id は無視し、ここに無いスターは後ろに残す）。 */
 export const reorderStarsInput = z.object({
   pageIds: z.array(z.string().min(1).max(64)).max(500),
@@ -78,6 +87,8 @@ export type PageVersion = {
   title: string;
   bodyMd: string;
   authorType: AuthorType;
+  /** 間引かずに残す版か。下書きから自動でできた版は false。人が操作して作った版と、公開・予約・承認に使った版は true */
+  keep: boolean;
   createdAt: string;
 };
 
