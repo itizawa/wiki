@@ -27,6 +27,7 @@ import { monoFont } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
 import { highlightSx } from "./highlight";
+import { OUTLINE_SCROLL_MARGIN } from "./Outline";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
 
@@ -36,7 +37,7 @@ const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.
  * 本文のWYSIWYGエディタ。値はMarkdownでやり取りする。
  * 読み込んだだけでは onChange を呼ばない（記法の正規化だけで「未保存」にならないように）。
  */
-export function MarkdownEditor(props: { value: string; onChange: (md: string) => void }) {
+export function MarkdownEditor(props: { value: string; onChange: (md: string) => void; onEditor?: (editor: Editor) => void }) {
   // エディタが最後に出した（または受け取った）Markdown。外からの差し替えと自分の編集を区別する
   const current = useRef(props.value);
   const onChange = useRef(props.onChange);
@@ -55,6 +56,11 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
       onChange.current(current.current);
     },
   });
+
+  const onEditor = props.onEditor;
+  useEffect(() => {
+    onEditor?.(editor);
+  }, [editor, onEditor]);
 
   // 版の復元や最新版の読み直しで、外から本文が差し替えられたとき
   useEffect(() => {
@@ -85,6 +91,8 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
             "& > :first-of-type": { mt: 0 },
             "& p": { my: 1 },
             "& h1, & h2, & h3, & h4": { fontWeight: 600, lineHeight: 1.35, mt: 3, mb: 1 },
+            // 目次から飛んだとき、見出しが固定したヘッダーの下に隠れないようにする
+            "& :is(h1, h2, h3, h4), & [data-type='details']": { scrollMarginTop: `${OUTLINE_SCROLL_MARGIN}px` },
             "& h1": { fontSize: "1.6rem" },
             "& h2": { fontSize: "1.35rem" },
             "& h3": { fontSize: "1.15rem" },
