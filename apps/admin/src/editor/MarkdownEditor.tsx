@@ -22,6 +22,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
+import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -36,7 +37,13 @@ const extensions = [...editorExtensions, Placeholder.configure({ placeholder: "�
  * 本文のWYSIWYGエディタ。値はMarkdownでやり取りする。
  * 読み込んだだけでは onChange を呼ばない（記法の正規化だけで「未保存」にならないように）。
  */
-export function MarkdownEditor(props: { value: string; onChange: (md: string) => void }) {
+export function MarkdownEditor(props: {
+  value: string;
+  onChange: (md: string) => void;
+  /** 本文の検索と置換のバーを開いているか */
+  findOpen: boolean;
+  onFindOpenChange: (open: boolean) => void;
+}) {
   // エディタが最後に出した（または受け取った）Markdown。外からの差し替えと自分の編集を区別する
   const current = useRef(props.value);
   const onChange = useRef(props.onChange);
@@ -61,6 +68,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
 
   return (
     <Box>
+      <FindBar editor={editor} open={props.findOpen} onOpenChange={props.onFindOpenChange} />
       <SelectionMenu editor={editor} />
       <InsertMenu editor={editor} />
       <Box
@@ -108,6 +116,9 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
             "& th": { bgcolor: "action.hover", fontWeight: 600 },
             "& th p, & td p": { my: 0 },
             "& .selectedCell": { bgcolor: "action.selected" },
+            // 検索で一致した箇所。いま見ている1つは、色に加えて枠でも区別する
+            "& .find-match": { bgcolor: "find.match", borderRadius: "2px" },
+            "& .find-current": { bgcolor: "find.current", outline: "2px solid", outlineColor: "warning.main" },
             "& p.is-editor-empty:first-of-type::before": {
               content: "attr(data-placeholder)",
               color: "text.disabled",

@@ -1,6 +1,8 @@
+import SearchIcon from "@mui/icons-material/Search";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -16,6 +18,7 @@ import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { usePersistentState } from "../lib/storage";
 import { PublishPanel } from "../components/PublishPanel";
+import { Tooltip } from "../components/Tooltip";
 import { WorkflowPanel } from "../components/WorkflowPanel";
 import { Mono, Muted, Section, StatusChip } from "../components/ui";
 import { monoFont } from "../theme";
@@ -33,6 +36,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
 
   // 初回読み込み時だけサーバーの内容で下書きを作る（以降はローカルの編集を優先）
   useEffect(() => {
@@ -124,6 +128,11 @@ export function EditorPage({ pageId }: { pageId: string }) {
         >
           <Breadcrumb pageId={pageId} title={draft.title} />
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+          <Tooltip title="本文を検索・置換 (⌘F)">
+            <IconButton size="small" aria-label="本文を検索・置換" aria-pressed={findOpen} onClick={() => setFindOpen(!findOpen)}>
+              <SearchIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
           </Button>
@@ -164,7 +173,12 @@ export function EditorPage({ pageId }: { pageId: string }) {
             inputProps={{ "aria-label": "タイトル" }}
             sx={{ mb: 2, p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
           />
-          <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
+          <MarkdownEditor
+            value={draft.bodyMd}
+            onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))}
+            findOpen={findOpen}
+            onFindOpenChange={setFindOpen}
+          />
         </Box>
       </Box>
 
