@@ -8,11 +8,14 @@ const env: Env = {
   NOTIFY_WEBHOOK_URL: "https://hooks.test/notify",
 };
 
-function fakeFetch(responses: Record<string, unknown>) {
+const noRules = { runs: [], notifications: [] };
+
+function fakeFetch(responses: Record<string, unknown>, failing: string[] = []) {
   const calls: { url: string; body?: string; auth?: string | null }[] = [];
   const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, body: init?.body as string | undefined, auth: new Headers(init?.headers).get("authorization") });
+    if (failing.includes(url)) return new Response("{}", { status: 500 });
     return new Response(JSON.stringify(responses[url] ?? {}), { status: 200 });
   }) as typeof fetch;
   return { impl, calls };
@@ -22,12 +25,14 @@ describe("tick", () => {
   it("runs due actions, then triggers the deploy hook when a build is due", async () => {
     const { impl, calls } = fakeFetch({
       "https://api.test/internal/scheduled/run": { done: ["a"], retrying: [], failed: [] },
+      "https://api.test/internal/rules/run": noRules,
       "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h" },
     });
     const r = await tick(env, impl);
     expect(r.deployed).toBe(true);
     expect(calls.map((c) => c.url)).toEqual([
       "https://api.test/internal/scheduled/run",
+      "https://api.test/internal/rules/run",
       "https://api.test/internal/builds/request",
       "https://hooks.test/deploy",
     ]);
@@ -37,6 +42,7 @@ describe("tick", () => {
   it("notifies final failures and does not deploy while debouncing", async () => {
     const { impl, calls } = fakeFetch({
       "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [{ id: "x", error: "boom" }] },
+      "https://api.test/internal/rules/run": noRules,
       "https://api.test/internal/builds/request": { trigger: false, reason: "debouncing" },
     });
     const r = await tick(env, impl);
@@ -44,5 +50,33 @@ describe("tick", () => {
     const notify = calls.find((c) => c.url === "https://hooks.test/notify")!;
     expect(JSON.parse(notify.body!).text).toContain("boom");
     expect(calls.some((c) => c.url === "https://hooks.test/deploy")).toBe(false);
+  });
+
+  it("runs the rules and sends their notifications", async () => {
+    const { impl, calls } = fakeFetch({
+      "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
+      "https://api.test/internal/rules/run": {
+        runs: [{ ruleId: "notify-low-stock", status: "done", summary: "通知" }],
+        notifications: [{ ruleId: "notify-low-stock", text: "予約ストックが減っています" }],
+      },
+      "https://api.test/internal/builds/request": { trigger: false, reason: "no_changes" },
+    });
+    const r = await tick(env, impl);
+    expect(r.rules!.runs).toHaveLength(1);
+    const notify = calls.filter((c) => c.url === "https://hooks.test/notify");
+    expect(notify.map((c) => JSON.parse(c.body!).text)).toEqual(["予約ストックが減っています"]);
+  });
+
+  it("still requests the build when the rules fail", async () => {
+    const { impl } = fakeFetch(
+      {
+        "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
+        "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h" },
+      },
+      ["https://api.test/internal/rules/run"],
+    );
+    const r = await tick(env, impl);
+    expect(r.rules).toBeNull();
+    expect(r.deployed).toBe(true);
   });
 });

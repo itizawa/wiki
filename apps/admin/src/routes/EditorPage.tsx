@@ -16,6 +16,7 @@ import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { usePersistentState } from "../lib/storage";
 import { PublishPanel } from "../components/PublishPanel";
+import { WorkflowPanel } from "../components/WorkflowPanel";
 import { Mono, Muted, Section, StatusChip } from "../components/ui";
 import { monoFont } from "../theme";
 import { visibilityLabel } from "./PagesPage";
@@ -188,6 +189,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
             bgcolor: "background.default",
           }}
         >
+          <WorkflowPanel page={p} dirty={dirty} />
           <PublishPanel page={p} dirty={dirty} />
           <VersionPanel
             pageId={pageId}

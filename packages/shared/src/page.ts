@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { WorkflowState } from "./rules";
 
 export const visibilitySchema = z.enum(["public", "unlisted", "private"]);
 export type Visibility = z.infer<typeof visibilitySchema>;
@@ -32,6 +33,11 @@ export type PageSummary = {
   origin: "human" | "ai_draft";
   unlistedKey: string | null;
   firstPublishedAt: string | null;
+  workflowState: WorkflowState;
+  /** 承認した版。承認後に編集があると headVersionId と異なる */
+  approvedVersionId: string | null;
+  /** 見直しキューに入った日時。入っていなければ null */
+  reviewRequestedAt: string | null;
   updatedAt: string;
 };
 

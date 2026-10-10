@@ -20,12 +20,14 @@ type SeedPage = {
   state?: "public" | "unlisted" | "scheduled";
   /** 公開日を何日前にするか（public のみ） */
   daysAgo?: number;
+  /** 記事の状態。省略時は draft */
+  workflow?: "idea" | "approved";
   /** 保存し直して版を増やす（公開済みなら「公開後に編集あり」の状態になる） */
   revisedBody?: string;
   children?: SeedPage[];
 };
 
-/** ローカル確認用のデータ。階層3段、公開・限定公開・予約・下書き、版の履歴、内部リンクを一通り含む。 */
+/** ローカル確認用のデータ。階層3段、公開・限定公開・予約・下書き、記事の状態（ネタ・承認済み）、版の履歴、内部リンクを一通り含む。 */
 const SEED: SeedPage[] = [
   {
     key: "intro",
@@ -87,6 +89,7 @@ const SEED: SeedPage[] = [
           },
           {
             title: "公開パイプライン",
+            workflow: "approved",
             body: "## 流れ（下書き）\n\n操作 → publish_events → ワーカーがデバウンス → ビルド\n\nTODO: 図を入れる。[ツリーとページの階層]({{hierarchy}}) と合わせて読めるようにする。",
           },
         ],
@@ -105,7 +108,7 @@ const SEED: SeedPage[] = [
     title: "下書き置き場",
     body: "",
     children: [
-      { title: "ネタ：予約投稿の運用", body: "週2本、火曜と金曜の朝に出す案。" },
+      { title: "ネタ：予約投稿の運用", workflow: "idea", body: "週2本、火曜と金曜の朝に出す案。" },
       { title: "無題", body: "" },
     ],
   },
@@ -157,6 +160,12 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
           targetVisibility: "public",
           runAt: new Date(now.getTime() + 3 * DAY),
         });
+      }
+
+      if (page.workflow === "approved") {
+        await tx.update(pages).set({ workflowState: "approved", approvedVersionId: versionId, approvedAt: now }).where(eq(pages.id, id));
+      } else if (page.workflow) {
+        await tx.update(pages).set({ workflowState: page.workflow }).where(eq(pages.id, id));
       }
 
       if (page.revisedBody !== undefined) {

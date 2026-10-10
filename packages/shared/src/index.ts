@@ -3,6 +3,7 @@ export * from "./paths";
 export * from "./page";
 export * from "./publish";
 export * from "./redirect";
+export * from "./rules";
 export * from "./time";
 export * from "./structure/types";
 export * from "./structure/ops";

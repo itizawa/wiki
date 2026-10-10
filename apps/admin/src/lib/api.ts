@@ -3,11 +3,15 @@ import type {
   PageSummary,
   PageVersion,
   PublishVisibility,
+  Rule,
+  RuleRun,
   ScheduledAction,
+  SetWorkflowInput,
   StructureChange,
   StructureOpInput,
   TreeMeta,
   TreeNode,
+  UpdateRuleInput,
 } from "@wiki/shared";
 
 export class ApiError extends Error {
@@ -65,6 +69,9 @@ export const api = {
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", `/admin/pages/${id}/versions`),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", `/admin/pages/${id}/versions/${versionId}`),
 
+  setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", `/admin/pages/${id}/workflow`, input),
+  reviewDone: (id: string) => request<PageDetail>("POST", `/admin/pages/${id}/review-done`),
+
   publish: (id: string, input: { versionId: string; visibility: PublishVisibility }) =>
     request<{ ok: true }>("POST", `/admin/pages/${id}/publish`, input),
   unpublish: (id: string) => request<{ ok: true }>("POST", `/admin/pages/${id}/unpublish`),
@@ -81,6 +88,10 @@ export const api = {
   ) => request<ScheduledAction>("POST", "/admin/schedule", input),
   reschedule: (id: string, runAt: string) => request<ScheduledAction>("PATCH", `/admin/schedule/${id}`, { runAt }),
   cancelSchedule: (id: string) => request<ScheduledAction>("POST", `/admin/schedule/${id}/cancel`),
+
+  listRules: () => request<{ rules: Rule[] }>("GET", "/admin/rules"),
+  saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", `/admin/rules/${id}`, input),
+  listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", "/admin/rules/runs"),
 
   structure: () => request<StructureResponse>("GET", "/admin/structure"),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>

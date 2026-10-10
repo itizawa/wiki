@@ -47,6 +47,7 @@ async function listActions(db: Db, where: SQL | undefined): Promise<ScheduledAct
     targetVisibility: a.targetVisibility,
     branchName: a.branchName,
     batchId: a.batchId,
+    ruleRunId: a.ruleRunId,
     runAt: a.runAt.toISOString(),
     status: a.status,
     attempts: a.attempts,

@@ -5,6 +5,7 @@ import { HttpError } from "../errors";
 import { requestBuild } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
+import { runRules } from "../rules/engine";
 
 /** ワーカー・サイトのビルドからの呼び出し。`Authorization: Bearer $INTERNAL_TOKEN` */
 export const requireInternalToken: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -37,6 +38,9 @@ export const internalRoutes = new Hono<AppEnv>()
   .use("*", requireInternalToken)
   .post("/scheduled/run", async (c) => {
     return c.json(await runDueActions(c.get("deps").db));
+  })
+  .post("/rules/run", async (c) => {
+    return c.json(await runRules(c.get("deps").db));
   })
   .post("/builds/request", async (c) => {
     const body = buildRequestInput.parse(await c.req.json().catch(() => ({})));

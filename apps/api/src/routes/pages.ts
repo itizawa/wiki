@@ -2,12 +2,13 @@ import {
   createPageInput,
   newPageId,
   savePageInput,
+  setWorkflowInput,
   type CreatePageInput,
   type PageDetail,
   type PageSummary,
   type PageVersion,
 } from "@wiki/shared";
-import { and, desc, eq, ilike, isNull } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
 import { pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
@@ -29,6 +30,9 @@ const toSummary = (p: PageRow): PageSummary => ({
   origin: p.origin,
   unlistedKey: p.unlistedKey,
   firstPublishedAt: p.firstPublishedAt?.toISOString() ?? null,
+  workflowState: p.workflowState,
+  approvedVersionId: p.approvedVersionId,
+  reviewRequestedAt: p.reviewRequestedAt?.toISOString() ?? null,
   updatedAt: p.updatedAt.toISOString(),
 });
 
@@ -168,6 +172,38 @@ export const pageRoutes = new Hono<AppEnv>()
       if (page.firstPublishedAt) await recordPublishEvent(tx, "delete", { pageId: id });
     });
     return c.json({ ok: true });
+  })
+  .post("/:id/workflow", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    const input = await parseJson(c, setWorkflowInput);
+    await db.transaction(async (tx) => {
+      await findLivePage(tx, id, true);
+      if (input.state === "approved") {
+        const [v] = await tx
+          .select({ id: pageVersions.id })
+          .from(pageVersions)
+          .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, id)));
+        if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
+      }
+      // 一覧の並び（updated_at）は変えない。approved_at は予約の created_at と比べるので、同じDBの時計で入れる
+      await tx
+        .update(pages)
+        .set(
+          input.state === "approved"
+            ? { workflowState: "approved", approvedVersionId: input.versionId, approvedAt: sql`clock_timestamp()` }
+            : { workflowState: input.state, approvedVersionId: null, approvedAt: null },
+        )
+        .where(eq(pages.id, id));
+    });
+    return c.json(await getDetail(db, id));
+  })
+  .post("/:id/review-done", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    await findLivePage(db, id);
+    await db.update(pages).set({ reviewRequestedAt: null, reviewedAt: new Date() }).where(eq(pages.id, id));
+    return c.json(await getDetail(db, id));
   })
   .get("/:id/versions", async (c) => {
     const { db } = c.get("deps");
