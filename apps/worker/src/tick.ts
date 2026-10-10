@@ -6,17 +6,18 @@ export type Env = {
   BUILD_DEBOUNCE_SEC?: string;
 };
 
-type RunSummary = { done: string[]; retrying: string[]; failed: { id: string; error: string }[] };
+type RunSummary = { done: string[]; retrying: string[]; failed: { id: string; error: string; wikiName: string }[] };
 type RulesRunResult = {
-  runs: { ruleId: string; status: "done" | "failed"; summary: string }[];
-  notifications: { ruleId: string; text: string }[];
+  runs: { wikiKey: string; ruleId: string; status: "done" | "failed"; summary: string }[];
+  notifications: { wikiKey: string; ruleId: string; text: string }[];
 };
 type BuildDecision = { trigger: true; buildId: string; contentHash: string } | { trigger: false; reason: string };
 
 export type TickResult = { run: RunSummary; rules: RulesRunResult | null; build: BuildDecision; deployed: boolean };
 
 /**
- * Cron Triggers の1回分。
+ * Cron Triggers の1回分。全 wiki のぶんをまとめて行う（アーカイブ中の wiki は API 側で飛ばす）。
+ * 通知先は全体で1つなので、文面に wiki の名前を入れる。
  * 1) 期限の来た予約を実行（API側で FOR UPDATE SKIP LOCKED）
  * 2) 最終失敗があれば通知
  * 3) ルールを評価し、ルールからの通知を送る（失敗しても公開ビルドは止めない）
@@ -44,7 +45,7 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<T
 
   const run = await call<RunSummary>("/internal/scheduled/run");
   if (run.failed.length > 0) {
-    const lines = run.failed.map((f) => `• ${f.id}: ${f.error}`).join("\n");
+    const lines = run.failed.map((f) => `• 【${f.wikiName}】${f.id}: ${f.error}`).join("\n");
     await notify(`予約の実行に失敗しました（${run.failed.length}件、再試行済み）\n${lines}`);
   }
 
