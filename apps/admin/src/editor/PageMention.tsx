@@ -77,7 +77,8 @@ export function PageMention({ editor }: { editor: Editor }) {
       items={items}
       itemKey={(i) => (i.kind === "page" ? i.id : `create:${i.template?.id ?? ""}`)}
       label="ページへのリンクを挿入"
-      emptyText={pages.isPending ? "読み込み中…" : pages.error ? "ページを読み込めませんでした。" : "ページはまだありません。"}
+      emptyText={pages.error ? "ページを読み込めませんでした。" : "ページはまだありません。"}
+      loading={pages.isPending}
       renderItem={(i) =>
         i.kind === "page" ? (
           <>

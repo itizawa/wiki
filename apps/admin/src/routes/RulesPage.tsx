@@ -10,12 +10,15 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Rule, RuleAction, RuleTrigger } from "@wiki/shared";
 import { useState } from "react";
-import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Muted, RouterLink, Row, Section, SkeletonRows, SkeletonSection, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
+/** ルールのカードのおよその高さ（読み込み中の枠に使う）。 */
+const RULE_CARD_HEIGHT = 228;
 
 /** ルール：定型ルールの設定、見直しキュー、実行ログ。 */
 export function RulesPage() {
@@ -28,7 +31,6 @@ export function RulesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pages"] }),
   });
 
-  if (rules.isPending) return <Muted>読み込み中…</Muted>;
   if (rules.error) return <Alert severity="error">{errorMessage(rules.error)}</Alert>;
 
   const queue = (pages.data?.pages ?? [])
@@ -47,7 +49,9 @@ export function RulesPage() {
         </Muted>
       </Section>
 
-      {rules.data.rules.map((rule) => (
+      {/* ルールのカードの形（高さは、設定の行が並んだカードに近づける） */}
+      {rules.isPending && [0, 1, 2].map((i) => <SkeletonSection key={i} lines={4} sx={{ minHeight: RULE_CARD_HEIGHT }} />)}
+      {rules.data?.rules.map((rule) => (
         <RuleCard key={`${rule.id}:${rule.updatedAt}`} rule={rule} />
       ))}
 
@@ -56,7 +60,9 @@ export function RulesPage() {
           見直しキュー
         </Typography>
         {reviewDone.error && <Alert severity="error">{errorMessage(reviewDone.error)}</Alert>}
-        {queue.length === 0 && <Muted>見直し待ちの記事はありません。</Muted>}
+        {pages.isPending && <SkeletonRows rows={3} height={32} sx={{ mx: -1 }} />}
+        {/* 「ありません」は、読み込みが終わって0件のときだけ出す */}
+        {pages.data && queue.length === 0 && <Muted>見直し待ちの記事はありません。</Muted>}
         <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0 }}>
           {queue.map((p) => (
             <Row component="li" key={p.id}>
@@ -79,6 +85,7 @@ export function RulesPage() {
           実行ログ
         </Typography>
         <Muted gutterBottom>ルールが何かをした回と、失敗した回だけが残ります（新しい順、50件まで）。</Muted>
+        {runs.isPending && <SkeletonRows rows={3} height={28} sx={{ mx: -1 }} />}
         {runs.data?.runs.length === 0 && <Muted>まだ実行されていません。</Muted>}
         <Stack component="ul" spacing={1} sx={{ listStyle: "none", p: 0, m: 0, typography: "body2" }}>
           {runs.data?.runs.map((run) => (

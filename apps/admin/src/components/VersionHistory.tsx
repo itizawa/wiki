@@ -6,6 +6,7 @@ import Dialog from "@mui/material/Dialog";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
@@ -17,9 +18,12 @@ import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { monoFont } from "../theme";
 import { Tooltip } from "./Tooltip";
-import { Muted, StatusChip } from "./ui";
+import { LoadingRegion, Muted, SkeletonRows, StatusChip } from "./ui";
 
 type Content = { title: string; bodyMd: string };
+
+/** 版の一覧の行の高さ。 */
+const VERSION_ROW_HEIGHT = 32;
 
 const asDocument = (c: Content) => `# ${c.title}\n\n${c.bodyMd}`;
 
@@ -95,6 +99,16 @@ export function VersionHistory(props: {
             </Alert>
           )}
           {version.error && !selectedIsGone && <Alert severity="error">{errorMessage(version.error)}</Alert>}
+          {version.isPending && (
+            // 見出し（版の日時）と、差分の位置に文の行
+            <LoadingRegion sx={{ maxWidth: 900, mx: "auto" }}>
+              <Skeleton variant="text" width="40%" sx={{ fontSize: "1.1rem", mb: 2 }} />
+              <Skeleton variant="text" />
+              <Skeleton variant="text" />
+              <Skeleton variant="text" />
+              <Skeleton variant="text" width="60%" />
+            </LoadingRegion>
+          )}
           {version.data && (
             <Stack spacing={2} sx={{ maxWidth: 900, mx: "auto" }}>
               <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}>
@@ -136,6 +150,7 @@ export function VersionHistory(props: {
             [t.breakpoints.down("md")]: { borderBottom: `1px solid ${t.palette.divider}` },
           })}
         >
+          {versions.isPending && <SkeletonRows rows={3} height={VERSION_ROW_HEIGHT} />}
           <List dense disablePadding>
             {versions.data?.versions.map((v) => (
               <ListItemButton
