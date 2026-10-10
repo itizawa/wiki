@@ -15,6 +15,7 @@ import { pages, pageVersions, scheduledActions } from "../db/schema";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { descendantIds, descendantsWider, exceedsParent, loadTreeIndex, visibilityAt } from "../publishing/hierarchy";
+import { keepVersion } from "../pages/versions";
 import { publishPage, rotateUnlistedKey, unpublishPage, type PublishInput } from "../publishing/service";
 import { parseJson } from "../validation";
 import { auditActor, writeAudit, type AuditActor } from "../audit/service";
@@ -125,7 +126,6 @@ export async function listActions(db: Db, wikiId: string, where: SQL | undefined
     targetVisibility: a.targetVisibility,
     branchName: a.branchName,
     batchId: a.batchId,
-    ruleRunId: a.ruleRunId,
     runAt: a.runAt.toISOString(),
     status: a.status,
     attempts: a.attempts,
@@ -272,6 +272,8 @@ export async function createSchedule(
         ...(input.actionType === "publish_page" && { versionId: input.versionId }),
       },
     });
+    // 予約に使った版は、自動でできた版でも間引かない
+    if (input.actionType === "publish_page") await keepVersion(tx, input.versionId);
     return row;
   });
   const [created] = await listActions(db, wikiId, eq(scheduledActions.id, row!.id));

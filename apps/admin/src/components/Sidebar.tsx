@@ -1,4 +1,4 @@
-import { Calendar, Check, ClipboardList, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, ShieldUser, Star, Users, Workflow } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -37,9 +37,9 @@ import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
-import { StarButton } from "./StarButton";
+import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
 import { WikiIcon } from "./WikiIcon";
-import { Muted, RouterLink } from "./ui";
+import { Muted, RouterLink, SkeletonRows } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
 const UNTITLED = "無題";
@@ -59,8 +59,38 @@ function useDragSensors() {
 
 /** 指で操作する端末（スマホ・タブレット）。行と行の中のボタンを大きくして、押し間違いを減らす。 */
 const TOUCH = "@media (pointer: coarse)";
-/** 行の中の小さなボタン（スター、「＋」）。指で操作する端末では、押せる範囲を広げる。 */
-const rowButtonSx = { p: 0.25, [TOUCH]: { p: 1 } } as const;
+/** マウスで操作する端末。行のボタンは、マウスを乗せたときだけ出す。 */
+const HOVER = "@media (hover: hover) and (pointer: fine)";
+/** 行の中の小さなボタン（「…」、「＋」）。指で操作する端末では、ボタンごと大きくする（隣り合うので、テーマの「押せる範囲だけ広げる」は使わない）。 */
+const rowButtonSx = { p: 0.25, [TOUCH]: { p: 1, "&::after": { display: "none" } } } as const;
+
+/**
+ * マウスを乗せたときだけ出すボタン（`selector`）を、マウスを乗せたとき・中にキーボードのフォーカスがあるときに出す。
+ * フォーカスは `:focus-visible` で見る（`:focus-within` だと、行をクリックして開いたあとも、フォーカスが残ってボタンが出たままになる）。
+ * `:has()` が使えないブラウザでは `:focus-within` で代える。
+ */
+const revealOnHoverOrFocus = (selector: string) =>
+  ({
+    [`&:hover ${selector}`]: { opacity: 1 },
+    [`&:has(:focus-visible) ${selector}`]: { opacity: 1 },
+    "@supports not selector(:has(*))": { [`&:focus-within ${selector}`]: { opacity: 1 } },
+  }) as const;
+
+/**
+ * 行の右端のボタン（`.row-actions`）の出し方。
+ * - マウスで操作する端末では、ふだんは見えなくし、行にマウスを乗せたとき・行の中にキーボードのフォーカスがあるとき・その行のメニューが開いている間だけ出す。
+ *   Tab で届かなくならないよう、`display: none` ではなく透明にして隠す（幅も空けたままなので、出したときにタイトルの省略位置が動かない）
+ * - 指で操作する端末などでは、乗せる操作が無く押せなくなるので、いつも薄く出しておく
+ */
+const rowActionsSx = {
+  "& .row-actions": { display: "flex", flexShrink: 0, opacity: 0.55 },
+  ...revealOnHoverOrFocus(".row-actions"),
+  '& .row-actions[data-open="true"]': { opacity: 1 },
+  [HOVER]: { "& .row-actions": { opacity: 0 } },
+} as const;
+
+/** 行の「…」メニューを開く。`key` は行ごとの名前 */
+type OpenRowMenu = (target: RowMenuTarget) => void;
 
 /** 行の共通の見た目（ナビ項目・ツリーの行・検索結果）。 */
 const rowSx = {
@@ -95,7 +125,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { role } = useWiki();
+  const { isOwner, role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -126,6 +156,16 @@ export function Sidebar(props: {
   });
 
   const error = commit.error ?? create.error ?? structure.error;
+
+  // 行の「…」メニューは、サイドバーに1つだけ置く。閉じたあとも、最後に開いた行を覚えておく（閉じる動きの間、中身を出しておく）
+  const [menuTarget, setMenuTarget] = useState<RowMenuTarget | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const openMenu: OpenRowMenu = (target) => {
+    setMenuTarget(target);
+    setMenuOpen(true);
+  };
+  const openMenuKey = menuOpen ? (menuTarget?.key ?? null) : null;
+  const isEmpty = tree?.nodes.length === 0;
 
   return (
     <Box
@@ -163,8 +203,9 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/calendar" icon={<Calendar size={18} />} onClick={props.onNavigate}>
           編集カレンダー
         </NavItem>
-        <NavItem to="/w/$wikiKey/rules" icon={<Workflow size={18} />} onClick={props.onNavigate}>
-          ルール
+        {/* Google Analytics とサーチコンソールの数字。その wiki を開ける人ならだれでも見られる */}
+        <NavItem to="/w/$wikiKey/analytics" icon={<ChartColumn size={18} />} onClick={props.onNavigate}>
+          アクセス解析
         </NavItem>
         <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
           テンプレート
@@ -180,36 +221,75 @@ export function Sidebar(props: {
             監査ログ
           </NavItem>
         )}
-
-        {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
-
-        <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
-          <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
-            ドキュメント
-          </Typography>
-          <Tooltip title="最上位に新しいページ">
-            <span>
-              <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
-                <Plus size={18} />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-        {structure.isPending && <Muted sx={{ px: 1 }}>読み込み中…</Muted>}
-        {tree && structure.data && (
-          <DocumentTree
-            tree={tree}
-            data={structure.data}
-            busy={commit.isPending || create.isPending}
-            run={(ops) => {
-              commit.reset();
-              commit.mutate(ops);
-            }}
-            onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
-            onNavigate={props.onNavigate}
-          />
+        <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
+          ゴミ箱
+        </NavItem>
+        {/* この wiki の設定（公開サイトの連携）。変えられるのはオーナーだけだが、いまの値はだれでも見られる */}
+        <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
+          設定
+        </NavItem>
+        {/* wiki の管理・オーナーの管理・すべての wiki の監査ログは /w/ の外の画面なので、NavItem ではなくリンクを直接置く。オーナーにだけ出す */}
+        {isOwner && (
+          <RouterLink to="/wikis" onClick={props.onNavigate} underline="none" sx={rowSx}>
+            <Settings size={18} />
+            <Box component="span" sx={ellipsis}>
+              wiki の管理
+            </Box>
+          </RouterLink>
         )}
+        {isOwner && (
+          <RouterLink to="/owners" onClick={props.onNavigate} underline="none" sx={rowSx}>
+            <ShieldUser size={18} />
+            <Box component="span" sx={ellipsis}>
+              オーナーの管理
+            </Box>
+          </RouterLink>
+        )}
+        {isOwner && (
+          <RouterLink to="/audit" onClick={props.onNavigate} underline="none" sx={rowSx}>
+            <ClipboardList size={18} />
+            <Box component="span" sx={ellipsis}>
+              監査ログ（すべての wiki）
+            </Box>
+          </RouterLink>
+        )}
+
+        {structure.data && <StarredPages pages={structure.data.pages} openMenuKey={openMenuKey} onOpenMenu={openMenu} onNavigate={props.onNavigate} />}
+
+        {/* 「最上位に新しいページ」も行のボタンと同じく、マウスで操作する端末では、見出しかツリーにマウスが乗っている間・キーボードのフォーカスがある間だけ出す。
+            ページが1つも無いときは、作る入口が見つからなくなるので、いつも出す */}
+        <Box sx={[!isEmpty && { [HOVER]: { "& .section-action": { opacity: 0 } }, ...revealOnHoverOrFocus(".section-action") }]}>
+          <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
+            <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
+              ドキュメント
+            </Typography>
+            <Tooltip title="最上位に新しいページ">
+              <span className="section-action">
+                <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
+                  <Plus size={18} />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+          {structure.isPending && <SkeletonRows rows={5} indents={[0, 16, 16, 0, 16]} />}
+          {tree && structure.data && (
+            <DocumentTree
+              tree={tree}
+              data={structure.data}
+              busy={commit.isPending || create.isPending}
+              run={(ops) => {
+                commit.reset();
+                commit.mutate(ops);
+              }}
+              onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
+              openMenuKey={openMenuKey}
+              onOpenMenu={openMenu}
+              onNavigate={props.onNavigate}
+            />
+          )}
+        </Box>
       </Box>
+      <PageRowMenu target={menuTarget} open={menuOpen} onClose={() => setMenuOpen(false)} nodes={tree?.nodes ?? []} onNavigate={props.onNavigate} />
 
       {error && (
         <Alert
@@ -224,18 +304,11 @@ export function Sidebar(props: {
         </Alert>
       )}
 
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 1, borderTop: 1, borderColor: "divider" }}>
-        <Muted sx={ellipsis} title={props.email}>
-          {props.email}
-        </Muted>
+      <Box sx={{ display: "flex", alignItems: "stretch", gap: 0.5, pl: 1, pr: 1.5, borderTop: 1, borderColor: "divider" }}>
+        <UserMenu email={props.email} onLogout={props.onLogout} />
         <Tooltip title="キーボードショートカットと記法 (?)">
-          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide}>
+          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide} sx={{ alignSelf: "center" }}>
             <Keyboard size={18} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="ログアウト">
-          <IconButton size="small" aria-label="ログアウト" onClick={props.onLogout}>
-            <LogOut size={18} />
           </IconButton>
         </Tooltip>
       </Box>
@@ -243,14 +316,83 @@ export function Sidebar(props: {
   );
 }
 
+/**
+ * 左下のユーザーメニュー。ログイン中のメールアドレスを出し、押すとメニューが上に開く。ログアウトはここから行う。
+ * 押せる範囲は、行の高さいっぱいに取る。
+ */
+function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <Box
+        component="button"
+        type="button"
+        title={email}
+        aria-label={`アカウントのメニューを開く（${email}）`}
+        aria-haspopup="menu"
+        aria-expanded={anchor !== null}
+        onClick={(e) => setAnchor(e.currentTarget)}
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 46,
+          display: "flex",
+          alignItems: "center",
+          gap: 0.5,
+          px: 0.5,
+          border: 0,
+          borderRadius: 1,
+          bgcolor: "transparent",
+          color: "text.secondary",
+          font: "inherit",
+          fontSize: "0.875rem",
+          textAlign: "left",
+          cursor: "pointer",
+          "&:hover": { bgcolor: "action.hover" },
+        }}
+      >
+        <Box component="span" sx={ellipsis}>
+          {email}
+        </Box>
+        <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0 }} />
+      </Box>
+      <Menu
+        open={anchor !== null}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "top", horizontal: "left" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+        slotProps={{ list: { dense: true, sx: { minWidth: 240, maxWidth: 320 } } }}
+      >
+        {/* 長いメールアドレスも省略せず、折り返して全体を出す */}
+        <ListSubheader disableSticky sx={{ py: 0.75, lineHeight: 1.5, fontSize: "0.75rem", fontWeight: 600, overflowWrap: "anywhere" }}>
+          {email}
+        </ListSubheader>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onLogout();
+          }}
+        >
+          <ListItemIcon>
+            <LogOut size={18} />
+          </ListItemIcon>
+          <ListItemText>ログアウトする</ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
 const MenuItemLink = createLink(MenuItem);
 
 /**
  * wiki の切り替え。いまどの wiki にいるかを、サイドバーの上に常に出す（表示名と、公開サイトのサブドメインになる key）。
- * 押すと、選べる wiki の一覧と、wiki の管理（オーナーだけ）への入口を出す。
+ * 押すと、選べる wiki の一覧と、外部アプリ連携への入口を出す。
  */
 function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
-  const { wiki, wikis, isOwner } = useWiki();
+  const { wiki, wikis } = useWiki();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const close = () => {
     setAnchor(null);
@@ -295,51 +437,37 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0, color: "text.secondary" }} />
         </Box>
       </Tooltip>
-      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true, sx: { minWidth: 240 } } }}>
-        <ListSubheader disableSticky sx={{ lineHeight: "28px", fontSize: "0.75rem", fontWeight: 600 }}>
-          wiki を切り替える
-        </ListSubheader>
+      {/* Slack のワークスペース一覧のように、大きめのアイコンと、表示名・key の2行を並べる。開くボタンが見出しの役をするので、一覧に見出しは置かない */}
+      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { "aria-label": "wiki を切り替える", sx: { minWidth: 280, maxWidth: 360 } } }}>
         {wikis.map((w) => (
-          <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
-            {/* いまの wiki は、色だけでなくチェックの印でも示す */}
-            <ListItemIcon>{w.key === wiki.key && <Check size={18} />}</ListItemIcon>
-            <Box sx={{ mr: 1.25, display: "flex" }}>
-              <WikiIcon wiki={w} size={24} />
-            </Box>
-            <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
+          <MenuItemLink
+            key={w.key}
+            to="/w/$wikiKey"
+            params={{ wikiKey: w.key }}
+            selected={w.key === wiki.key}
+            aria-current={w.key === wiki.key ? "true" : undefined}
+            onClick={close}
+            sx={{ gap: 1.5, minHeight: 52, py: 0.75 }}
+          >
+            <WikiIcon wiki={w} size={36} />
+            <ListItemText
+              primary={w.name}
+              secondary={w.key}
+              slotProps={{ primary: { noWrap: true, sx: { fontWeight: 600, lineHeight: 1.3 } }, secondary: { noWrap: true, sx: { fontSize: "0.75rem", lineHeight: 1.3 } } }}
+              sx={{ my: 0, minWidth: 0 }}
+            />
+            {/* いまの wiki は、背景の色だけでなくチェックの印でも示す */}
+            {w.key === wiki.key && <Box component={Check} size={18} sx={{ flexShrink: 0 }} />}
           </MenuItemLink>
         ))}
         <Divider />
-        {isOwner && (
-          <MenuItemLink to="/wikis" onClick={close}>
-            <ListItemIcon>
-              <Settings size={18} />
-            </ListItemIcon>
-            <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
-          </MenuItemLink>
-        )}
-        <MenuItemLink to="/connections" onClick={close}>
-          <ListItemIcon>
+        {/* アイコンの列の幅を wiki の行（36px）に合わせ、文字の始まりを揃える */}
+        <MenuItemLink to="/connections" onClick={close} sx={{ gap: 1.5 }}>
+          <ListItemIcon sx={{ "&&": { minWidth: 36 }, justifyContent: "center" }}>
             <Puzzle size={18} />
           </ListItemIcon>
           <ListItemText>外部アプリ連携（MCP）</ListItemText>
         </MenuItemLink>
-        {isOwner && (
-          <MenuItemLink to="/owners" onClick={close}>
-            <ListItemIcon>
-              <ShieldUser size={18} />
-            </ListItemIcon>
-            <ListItemText>オーナーの管理</ListItemText>
-          </MenuItemLink>
-        )}
-        {isOwner && (
-          <MenuItemLink to="/audit" onClick={close}>
-            <ListItemIcon>
-              <ClipboardList size={18} />
-            </ListItemIcon>
-            <ListItemText>監査ログ（すべての wiki）</ListItemText>
-          </MenuItemLink>
-        )}
       </Menu>
     </>
   );
@@ -357,7 +485,17 @@ function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; chil
 }
 
 /** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。ドラッグで並べ替えられる。1つも無ければ何も出さない。 */
-function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]; onNavigate?: () => void }) {
+function StarredPages({
+  pages,
+  openMenuKey,
+  onOpenMenu,
+  onNavigate,
+}: {
+  pages: StructureResponse["pages"];
+  openMenuKey: string | null;
+  onOpenMenu: OpenRowMenu;
+  onNavigate?: () => void;
+}) {
   const { ids, reorder } = useStars();
   const sensors = useDragSensors();
   // 削除されたページのスターは出さない
@@ -377,7 +515,7 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
       >
         <SortableContext items={starred.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           {starred.map((p) => (
-            <StarredRow key={p.id} page={p} onNavigate={onNavigate} />
+            <StarredRow key={p.id} page={p} menuOpen={openMenuKey === `star:${p.id}`} onOpenMenu={onOpenMenu} onNavigate={onNavigate} />
           ))}
         </SortableContext>
       </DndContext>
@@ -385,8 +523,9 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
   );
 }
 
-function StarredRow({ page, onNavigate }: { page: StructureResponse["pages"][string]; onNavigate?: () => void }) {
+function StarredRow({ page, menuOpen, onOpenMenu, onNavigate }: { page: RowMenuPage; menuOpen: boolean; onOpenMenu: OpenRowMenu; onNavigate?: () => void }) {
   const sortable = useSortable({ id: page.id });
+  const { pageId: activePageId } = useParams({ strict: false });
   // 押した位置。ドラッグして離したときの click で、そのページを開いてしまわないようにするために覚える
   const pressedAt = useRef<{ x: number; y: number } | null>(null);
   return (
@@ -404,12 +543,25 @@ function StarredRow({ page, onNavigate }: { page: StructureResponse["pages"][str
       style={{ transform: sortable.transform ? `translate3d(0, ${sortable.transform.y}px, 0)` : undefined, transition: sortable.transition }}
       sx={[sortable.isDragging && { position: "relative", zIndex: 1, opacity: 0.7 }]}
     >
-      <RouterLink {...pageLink(page.id)} draggable={false} onClick={onNavigate} underline="none" sx={rowSx}>
-        <Box component={Star} size={18} fill="currentColor" sx={{ color: "warning.main" }} />
-        <Box component="span" sx={ellipsis}>
-          {page.title}
+      {/* 「…」をリンクの中に入れないよう、行の枠とリンクを分ける */}
+      <Box data-active={page.id === activePageId} sx={{ ...rowSx, ...rowActionsSx, pr: 0.5 }}>
+        <RouterLink
+          {...pageLink(page.id)}
+          draggable={false}
+          onClick={onNavigate}
+          underline="none"
+          sx={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", gap: 0.75, color: "inherit" }}
+        >
+          <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />
+          <Box component="span" sx={ellipsis}>
+            {page.title}
+          </Box>
+        </RouterLink>
+        {/* 「…」を押しても、行のドラッグ（並べ替え）が始まらないようにする */}
+        <Box className="row-actions" data-open={menuOpen} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+          <PageRowMenuButton title={page.title} open={menuOpen} onOpen={(anchor) => onOpenMenu({ key: `star:${page.id}`, page, anchor })} sx={rowButtonSx} />
         </Box>
-      </RouterLink>
+      </Box>
     </Box>
   );
 }
@@ -423,6 +575,10 @@ type TreeContext = {
   toggle: (nodeId: string) => void;
   expand: (nodeId: string) => void;
   onCreatePage: (parentNodeId: string) => void;
+  page: (node: TreeNode) => RowMenuPage | undefined;
+  /** 「…」メニューを開いている行の名前（開いていなければ null） */
+  openMenuKey: string | null;
+  onOpenMenu: OpenRowMenu;
   onNavigate?: () => void;
   /** 折りたたみの動きの長さ。OS の「視差効果を減らす」が有効なら 0 */
   motionMs: number;
@@ -437,6 +593,8 @@ function DocumentTree(props: {
   busy: boolean;
   run: (ops: StructureOpInput[]) => void;
   onCreatePage: (parentNodeId: string) => void;
+  openMenuKey: string | null;
+  onOpenMenu: OpenRowMenu;
   onNavigate?: () => void;
 }) {
   const { tree, data, run } = props;
@@ -479,6 +637,9 @@ function DocumentTree(props: {
       expand(parentNodeId);
       props.onCreatePage(parentNodeId);
     },
+    page: (n) => data.pages[n.pageId],
+    openMenuKey: props.openMenuKey,
+    onOpenMenu: props.onOpenMenu,
     onNavigate: props.onNavigate,
     motionMs: reducedMotion ? 0 : TREE_MOTION_MS,
   };
@@ -521,9 +682,13 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
   const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
   const title = ctx.label(node);
   const visibility = ctx.visibility(node);
+  const page = ctx.page(node);
+  const menuKey = `tree:${node.nodeId}`;
+  const menuOpen = ctx.openMenuKey === menuKey;
 
   // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
-  const labelSx = { ...ellipsis, display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
+  // 行の高さいっぱいを押せるようにする（文字の高さだけだと、行の上下の余白を押しても開かない）
+  const labelSx = { ...ellipsis, alignSelf: "stretch", display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
 
   return (
     <Box role="treeitem" aria-expanded={kids.length > 0 ? isOpen : undefined} aria-selected={isActive}>
@@ -536,6 +701,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
         data-active={isActive}
         sx={{
           ...rowSx,
+          // 行のボタン（「…」「＋」）は、マウスで操作する端末では、マウスを乗せたとき・キーボードのフォーカスがあるとき・メニューが開いている間だけ出す
+          ...rowActionsSx,
           position: "relative",
           gap: 0.25,
           pl: `${4 + depth * 16}px`,
@@ -543,9 +710,6 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           opacity: drag.isDragging ? 0.4 : 1,
           boxShadow: (t) => (before.isOver ? `inset 0 2px 0 ${(t.vars ?? t).palette.primary.main}` : "none"),
           ...(into.isOver && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
-          // 行の操作は、いつも出しておく（マウスを乗せたときだけ出すと、タッチ端末では押せない）。ふだんは薄く、行に乗せたら濃くする
-          "& .row-actions": { display: "flex", opacity: 0.55 },
-          "&:hover .row-actions, &:focus-within .row-actions": { opacity: 1 },
         }}
       >
         <Box ref={before.setNodeRef} sx={{ ...dropZone, top: 0, height: "35%" }} />
@@ -554,9 +718,10 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           size="small"
           aria-label={isOpen ? "たたむ" : "ひらく"}
           onClick={() => ctx.toggle(node.nodeId)}
-          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36 } }}
+          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36, "&::after": { display: "none" } } }}
         >
-          <Box component={ChevronRight} size={18} sx={{ transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
+          {/* 矢印の向きも、「視差効果を減らす」が有効なら動かさずに切り替える（子ページの行の出し入れと揃える） */}
+          <Box component={ChevronRight} size={18} sx={{ transition: ctx.motionMs > 0 ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
         <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
           <Box component="span" sx={ellipsis}>
@@ -564,8 +729,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           </Box>
           <VisibilityMark visibility={visibility} />
         </RouterLink>
-        <Box className="row-actions" sx={{ flexShrink: 0 }}>
-          <StarButton pageId={node.pageId} title={title} iconSize={18} sx={rowButtonSx} />
+        <Box className="row-actions" data-open={menuOpen}>
+          {page && <PageRowMenuButton title={title} open={menuOpen} onOpen={(anchor) => ctx.onOpenMenu({ key: menuKey, page, anchor })} sx={rowButtonSx} />}
           <Tooltip title="この下に新しいページ">
             <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={rowButtonSx}>
               <Plus size={18} />

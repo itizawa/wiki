@@ -31,7 +31,7 @@ export default defineConfig({
       manifest: {
         name: "wiki 管理画面",
         short_name: "wiki 管理",
-        description: "wiki のページを書き、承認し、公開する",
+        description: "wiki のページを書き、公開する",
         lang: "ja",
         start_url: "/",
         scope: "/",

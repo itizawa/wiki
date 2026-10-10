@@ -9,17 +9,14 @@ import DialogTitle from "@mui/material/DialogTitle";
 import InputAdornment from "@mui/material/InputAdornment";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
-import { useState } from "react";
+import { checkWikiKey, isWikiIconUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
+import { useState, type ReactNode } from "react";
+import { DataList, type DataListColumn } from "../components/DataList";
+import { ImageUploader } from "../components/ImageUploader";
 import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
@@ -34,6 +31,9 @@ export function keyChecks(key: string, taken: readonly string[]): { label: strin
   ];
 }
 
+/** 「使用中の wiki」の行の高さ（読み込み中の行も、この高さで出す）。 */
+const WIKI_ROW_HEIGHT = 54;
+
 /** wiki の一覧・作成・表示名と画像の変更・アーカイブ・戻す。オーナーにだけ出す。 */
 export function WikisPage() {
   const session = useSession();
@@ -41,6 +41,38 @@ export function WikisPage() {
   const [done, setDone] = useState<string | null>(null);
   const [editing, setEditing] = useState<WikiSummary | null>(null);
   const [archiving, setArchiving] = useState<WikiSummary | null>(null);
+
+  const activeColumns: DataListColumn<WikiSummary>[] = [
+    {
+      key: "name",
+      header: "表示名 / key",
+      width: "minmax(200px, 1fr)",
+      render: (w) => (
+        <WikiName wiki={w}>
+          <RouterLink to="/w/$wikiKey" params={{ wikiKey: w.key }} sx={{ fontWeight: 600 }}>
+            {w.name}
+          </RouterLink>
+        </WikiName>
+      ),
+    },
+    { key: "origin", header: "公開 URL", render: (w) => <SiteLink origin={w.origin} /> },
+    { key: "publishedPages", header: "公開中のページ", align: "right", sx: { whiteSpace: "nowrap" }, render: (w) => `${w.publishedPages}件` },
+    {
+      key: "actions",
+      header: "操作",
+      render: (w) => (
+        // 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く
+        <Row sx={{ flexWrap: "nowrap" }}>
+          <Button variant="outlined" onClick={() => setEditing(w)}>
+            表示名と画像
+          </Button>
+          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3 }}>
+            アーカイブ
+          </Button>
+        </Row>
+      ),
+    },
+  ];
 
   const all = wikis.data?.wikis ?? [];
   const active = all.filter((w) => w.archivedAt === null);
@@ -56,7 +88,7 @@ export function WikisPage() {
         <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
           wiki の管理
         </Typography>
-        <Muted>wiki ごとに、ページ・ツリー・ルール・予約を分け、それぞれ別のサブドメインで公開します。</Muted>
+        <Muted>wiki ごとに、ページ・ツリー・予約を分け、それぞれ別のサブドメインで公開します。</Muted>
       </Box>
 
       {!session.isOwner && <Alert severity="info">wiki の作成・アーカイブは、オーナーだけが行えます。</Alert>}
@@ -73,57 +105,18 @@ export function WikisPage() {
               {done}
             </Alert>
           )}
-          {wikis.isPending && <Muted>読み込み中…</Muted>}
-          {wikis.data && active.length === 0 && (
-            <Muted>使用中の wiki はありません。上の「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。</Muted>
-          )}
-          {active.length > 0 && (
-            <Box sx={{ overflowX: "auto" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>表示名 / key</TableCell>
-                    <TableCell>公開 URL</TableCell>
-                    <TableCell align="right">公開中のページ</TableCell>
-                    <TableCell>操作</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {active.map((w) => (
-                    <TableRow key={w.key}>
-                      <TableCell>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                          <WikiIcon wiki={w} size={32} />
-                          <div>
-                            <RouterLink to="/w/$wikiKey" params={{ wikiKey: w.key }} sx={{ fontWeight: 600 }}>
-                              {w.name}
-                            </RouterLink>
-                            <Muted>
-                              <Mono>{w.key}</Mono>
-                            </Muted>
-                          </div>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <SiteLink origin={w.origin} />
-                      </TableCell>
-                      <TableCell align="right">{w.publishedPages}件</TableCell>
-                      <TableCell>
-                        {/* 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く */}
-                        <Row sx={{ flexWrap: "nowrap" }}>
-                          <Button variant="outlined" onClick={() => setEditing(w)}>
-                            表示名と画像
-                          </Button>
-                          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3 }}>
-                            アーカイブ
-                          </Button>
-                        </Row>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Box>
+          {/* 読み込みのエラーは、上でまとめて出している */}
+          {(wikis.data || wikis.isPending) && (
+            <DataList
+              label="使用中の wiki"
+              columns={activeColumns}
+              rows={wikis.data ? active : undefined}
+              rowKey={(w) => w.key}
+              rowLink={(w) => ({ to: "/w/$wikiKey", params: { wikiKey: w.key } })}
+              empty="使用中の wiki はありません。上の「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。"
+              rowHeight={WIKI_ROW_HEIGHT}
+              skeletonRows={3}
+            />
           )}
         </Section>
       )}
@@ -155,6 +148,21 @@ export function WikisPage() {
         />
       )}
     </Stack>
+  );
+}
+
+/** 一覧の「表示名 / key」の列。アイコンの横に、表示名（children）と key を2段で出す。 */
+function WikiName({ wiki, children }: { wiki: WikiSummary; children: ReactNode }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
+      <WikiIcon wiki={wiki} size={32} />
+      <Box sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
+        {children}
+        <Muted>
+          <Mono>{wiki.key}</Mono>
+        </Muted>
+      </Box>
+    </Box>
   );
 }
 
@@ -253,7 +261,7 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
             </Box>
           </Box>
         </Box>
-        <Muted>作った wiki には、空のツリーを1本用意します。ルールは、どれも無効で始まります。</Muted>
+        <Muted>作った wiki には、空のツリーを1本用意します。</Muted>
         {create.error && !keyTaken && <Alert severity="error">{errorMessage(create.error)}</Alert>}
         <Box>
           <Button type="submit" variant="contained" size="medium" disabled={!valid || create.isPending}>
@@ -265,12 +273,12 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
   );
 }
 
-/** 画像の URL の入力欄の確かめ。空なら「画像なし」。 */
+/** 画像の URL の入力欄の確かめ。空なら「画像なし」。アップロードした画像のパス（`/images/{name}`）も通す。 */
 export function iconUrlProblem(value: string): string | null {
   const v = value.trim();
   if (v === "") return null;
   if (v.length > WIKI_ICON_URL_MAX) return `URL が長すぎます（${WIKI_ICON_URL_MAX}文字まで）`;
-  if (!isHttpUrl(v)) return "http:// か https:// で始まる URL を入れてください";
+  if (!isWikiIconUrl(v)) return "http:// か https:// で始まる URL を入れてください";
   return null;
 }
 
@@ -278,6 +286,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
   const qc = useQueryClient();
   const [name, setName] = useState(wiki.name);
   const [iconUrl, setIconUrl] = useState(wiki.iconUrl ?? "");
+  const [uploading, setUploading] = useState(false);
   const nextIcon = iconUrl.trim() === "" ? null : iconUrl.trim();
   const problem = iconUrlProblem(iconUrl);
   const changed = name.trim() !== wiki.name || nextIcon !== wiki.iconUrl;
@@ -294,7 +303,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim() && !problem && changed && !save.isPending) save.mutate();
+          if (name.trim() && !problem && changed && !uploading && !save.isPending) save.mutate();
         }}
       >
         <DialogTitle>表示名と画像</DialogTitle>
@@ -309,29 +318,39 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
               helperText={`公開サイトの名前になります。key（${wiki.key}）と公開 URL は変わりません。`}
               slotProps={{ htmlInput: { maxLength: 100 } }}
             />
-            <Box>
-              <TextField
-                label="画像の URL（任意）"
-                value={iconUrl}
-                onChange={(e) => setIconUrl(e.target.value)}
-                fullWidth
-                placeholder="https://example.com/icon.png"
-                error={problem !== null}
-                helperText={problem ?? "サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。空にすると頭文字に戻ります。"}
-                slotProps={{ htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false }, inputLabel: { shrink: true } }}
-              />
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1.5 }}>
+            <Stack component="fieldset" spacing={1.5} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
+              <Box component="legend" sx={{ p: 0, mb: 0.5 }}>
+                <Typography component="span" sx={{ fontWeight: 600 }}>
+                  画像（任意）
+                </Typography>
+                <Muted component="span" sx={{ display: "block" }}>サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。</Muted>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minHeight: 40 }}>
                 <Muted>見え方</Muted>
                 {/* 入力中の URL で、実際に出る形を見せる（読み込めなければ頭文字になる） */}
-                <WikiIcon key={nextIcon ?? ""} wiki={{ name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
-                <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={40} />
+                <WikiIcon key={nextIcon ?? ""} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
+                <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={40} />
                 {iconUrl !== "" && (
                   <Button variant="text" onClick={() => setIconUrl("")} sx={{ ml: "auto" }}>
                     画像を外す
                   </Button>
                 )}
               </Box>
-            </Box>
+              <ImageUploader wikiKey={wiki.key} onUploaded={setIconUrl} onUploadingChange={setUploading} />
+              <TextField
+                label="画像の URL"
+                value={iconUrl}
+                onChange={(e) => setIconUrl(e.target.value)}
+                fullWidth
+                placeholder="https://example.com/icon.png"
+                error={problem !== null}
+                helperText={
+                  problem ??
+                  "アップロードすると自動で入ります。ほかのサイトで公開されている画像の URL を入れることもできます。空にすると頭文字に戻ります。アップロードした画像は、URL を知っていればだれでも見られます。"
+                }
+                slotProps={{ htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false }, inputLabel: { shrink: true } }}
+              />
+            </Stack>
             {save.error && <Alert severity="error">{errorMessage(save.error)}</Alert>}
           </Stack>
         </DialogContent>
@@ -339,7 +358,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
           <Button variant="text" onClick={onClose}>
             変更しない
           </Button>
-          <Button type="submit" variant="contained" disabled={!name.trim() || problem !== null || !changed || save.isPending}>
+          <Button type="submit" variant="contained" disabled={!name.trim() || problem !== null || !changed || uploading || save.isPending}>
             保存する
           </Button>
         </DialogActions>
@@ -373,7 +392,7 @@ function ArchiveDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: 
           </Box>
           <Box component="ul" sx={{ m: 0, pl: 2.5, "& li": { mb: 0.5 } }}>
             <li>公開サイトは次のビルドで止まり、このサブドメインは「ページが見つかりません」（404）になります。</li>
-            <li>管理画面の wiki の一覧から外れ、予約とルールは実行されなくなります。</li>
+            <li>管理画面の wiki の一覧から外れ、予約は実行されなくなります。</li>
             <li>
               ページなどのデータは残ります。この画面の「アーカイブ中の wiki」から、いつでも元に戻せます。key（<Mono>{wiki.key}</Mono>）は、ほかの wiki では使えないままです。
             </li>
@@ -416,38 +435,35 @@ function ArchivedWikis({ wikis }: { wikis: WikiSummary[] }) {
           {errorMessage(restore.error)}
         </Alert>
       )}
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>表示名 / key</TableCell>
-            <TableCell>アーカイブした日時</TableCell>
-            <TableCell>操作</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {wikis.map((w) => (
-            <TableRow key={w.key}>
-              <TableCell>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                  <WikiIcon wiki={w} size={32} />
-                  <div>
-                    <Box sx={{ fontWeight: 600 }}>{w.name}</Box>
-                    <Muted>
-                      <Mono>{w.key}</Mono>
-                    </Muted>
-                  </div>
-                </Box>
-              </TableCell>
-              <TableCell>{formatDateTime(w.archivedAt!)}</TableCell>
-              <TableCell>
-                <Button variant="outlined" disabled={restore.isPending} onClick={() => restore.mutate(w.key)}>
-                  元に戻す
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {/* アーカイブ中の wiki は開けないので、行の遷移先は渡さない（押せる見た目にならない） */}
+      <DataList
+        label="アーカイブ中の wiki"
+        columns={[
+          {
+            key: "name",
+            header: "表示名 / key",
+            width: "minmax(200px, 1fr)",
+            render: (w) => (
+              <WikiName wiki={w}>
+                <Box sx={{ fontWeight: 600 }}>{w.name}</Box>
+              </WikiName>
+            ),
+          },
+          { key: "archivedAt", header: "アーカイブした日時", sx: { whiteSpace: "nowrap" }, render: (w) => formatDateTime(w.archivedAt!) },
+          {
+            key: "actions",
+            header: "操作",
+            render: (w) => (
+              <Button variant="outlined" disabled={restore.isPending} onClick={() => restore.mutate(w.key)}>
+                元に戻す
+              </Button>
+            ),
+          },
+        ]}
+        rows={wikis}
+        rowKey={(w) => w.key}
+        empty="アーカイブ中の wiki はありません。"
+      />
       {restored && (
         <Alert severity="success" onClose={() => setRestored(null)} sx={{ mt: 1 }}>
           「{restored.name}」を元に戻しました。

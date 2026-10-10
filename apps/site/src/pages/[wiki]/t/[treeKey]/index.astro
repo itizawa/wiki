@@ -18,5 +18,5 @@ const { pagesById } = await siteData(wiki);
 <Base wiki={wiki} title={TREE_LABEL}>
   <h1>{TREE_LABEL}</h1>
   {tree.nodes.length === 0 && <p class={layout.muted}>まだ記事はありません。</p>}
-  <TreeNav client:idle items={navItems(tree, (id) => pagesById.get(id)?.title)} />
+  <TreeNav client:idle items={navItems(tree, (id) => pagesById.get(id)?.title, (id) => pagesById.get(id)?.icon)} />
 </Base>

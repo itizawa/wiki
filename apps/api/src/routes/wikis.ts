@@ -1,8 +1,8 @@
-import { createWikiInput, updateWikiInput, type WikiSummary } from "@wiki/shared";
+import { createWikiInput, updateWikiInput, updateWikiSettingsInput, type WikiSummary } from "@wiki/shared";
 import { Hono, type MiddlewareHandler } from "hono";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
-import { archiveWiki, createWiki, findOpenWiki, listWikis, unarchiveWiki, updateWiki } from "../wikis/service";
+import { archiveWiki, createWiki, findOpenWiki, listWikis, toWikiSettings, unarchiveWiki, updateWiki, updateWikiSettings } from "../wikis/service";
 import { parseJson } from "../validation";
 import { requireOwner } from "../auth/routes";
 import { roleIn, rolesByWiki } from "../users/service";
@@ -62,6 +62,17 @@ export const wikiRoutes = new Hono<AppEnv>()
     const { db, config } = c.get("deps");
     const row = await unarchiveWiki(db, c.req.param("key"), auditActor(c));
     return c.json(await summary(db, config, row.key));
+  });
+
+/**
+ * /admin/w/:wikiKey/settings：wiki ごとの設定（公開サイトの外部サービスとの連携）。
+ * 読むのはその wiki を開ける人の全員、変えるのはオーナーだけ。アーカイブ中の wiki は resolveWiki が 404 にする。
+ */
+export const wikiSettingsRoutes = new Hono<AppEnv>()
+  .get("/", (c) => c.json(toWikiSettings(c.get("wiki"))))
+  .patch("/", requireOwner, async (c) => {
+    const input = await parseJson(c, updateWikiSettingsInput);
+    return c.json(toWikiSettings(await updateWikiSettings(c.get("deps").db, c.get("wiki").key, input)));
   });
 
 async function summary(db: Parameters<typeof listWikis>[0], config: Parameters<typeof listWikis>[1], key: string): Promise<WikiSummary> {

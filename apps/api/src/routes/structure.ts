@@ -35,6 +35,8 @@ export const structureRoutes = new Hono<AppEnv>()
               title: pages.title,
               visibility: pages.visibility,
               publishedVersionId: pages.publishedVersionId,
+              unlistedKey: pages.unlistedKey,
+              updatedAt: pages.updatedAt,
             })
             .from(pages)
             .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, pageIds)));
@@ -42,7 +44,7 @@ export const structureRoutes = new Hono<AppEnv>()
       headCommitId: branch.headCommitId,
       // ツリーは1本。レスポンスの形は配列のまま保っている
       trees: [{ ...tree, nodes }],
-      pages: Object.fromEntries(pageRows.map((p) => [p.id, p])),
+      pages: Object.fromEntries(pageRows.map((p) => [p.id, { ...p, updatedAt: p.updatedAt.toISOString() }])),
     });
   })
   .post("/commits", async (c) => {

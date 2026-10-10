@@ -5,7 +5,7 @@ import Popover from "@mui/material/Popover";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "../components/Tooltip";
-import { currentHeadingIndex, outlineOf, type OutlineHeading } from "./outline";
+import { currentHeadingIndex, outlineOf, type OutlineHeading } from "./outlineHeadings";
 
 /** 見出しへ飛んだとき・いまの節を決めるときに空けておく、画面の上の余白（固定したヘッダー 48px ＋少し）。 */
 export const OUTLINE_SCROLL_MARGIN = 64;

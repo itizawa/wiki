@@ -9,7 +9,7 @@ export async function getStaticPaths() {
 const { wiki } = Astro.params;
 ---
 
-<Base wiki={wiki} title="ページが見つかりません" noindex>
+<Base wiki={wiki} title="ページが見つかりません" noindex notFound>
   <h1>ページが見つかりません</h1>
   <p><a href="/">トップへ</a> ・ <a href="/search">検索</a></p>
 </Base>

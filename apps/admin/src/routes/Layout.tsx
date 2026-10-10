@@ -2,15 +2,19 @@ import { Plus } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
 import type { Me } from "@wiki/shared";
 import { createContext, useContext, type ReactNode } from "react";
-import { Muted, Section } from "../components/ui";
+import { SIDEBAR_WIDTH } from "../components/Sidebar";
+import { clampSidebarWidth } from "../components/SidebarResizer";
+import { LoadingRegion, Muted, PageBody, Section } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
+import { usePersistentState } from "../lib/storage";
 import { lastWikiKey, pickWiki } from "../lib/wiki";
 
 /** ログイン中の人と、ログアウトの操作。ログインの確認が済んだ画面（Root の下）で使える。 */
@@ -56,7 +60,9 @@ function LoginGate() {
   const logout = async () => {
     await api.logout();
     qc.clear();
-    await qc.invalidateQueries({ queryKey: ["me"] });
+    // clear() はキャッシュを捨てるだけで、画面は描き直さない（捨てたあとの invalidateQueries は何も取り直さない）。
+    // me を取り直して、ログイン画面に切り替える
+    await me.refetch();
   };
 
   return (
@@ -110,11 +116,71 @@ export function Home() {
   );
 }
 
+/** サイドバーの無い画面（wiki の管理、外部アプリ連携とその同意）。読み込み中も、サイドバーの列を出さない。 */
+const NO_SIDEBAR = /^\/(wikis|connections|consent)(\/|$)/;
+
+/**
+ * 画面全体の読み込み中（ログインの確認中、wiki の一覧の取得中）。あとに出る画面の骨組みを出す。
+ * 形は WikiLayout の Shell に合わせる：左にサイドバーの列（幅と開閉は、覚えている値）、右に本文。狭い画面では、列の代わりに上の帯。
+ */
 export function Loading() {
+  const [sidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
+  const [open] = usePersistentState("wiki.sidebar.open", true);
+  const wide = useMediaQuery((t) => t.breakpoints.up("md"));
+  const sidebar = !NO_SIDEBAR.test(location.pathname);
   return (
-    <Center>
-      <CircularProgress aria-label="読み込み中" />
-    </Center>
+    <LoadingRegion sx={{ display: "flex", flexDirection: wide ? "row" : "column", height: "100vh", overflow: "hidden", bgcolor: sidebar ? "background.paper" : undefined }}>
+      {sidebar &&
+        (wide ? (
+          // 幅は Shell と同じ（開いていれば覚えている幅 + 境界線の 1px、閉じていれば開くボタンだけの 44px）
+          <Box
+            sx={{
+              flexShrink: 0,
+              width: open ? clampSidebarWidth(sidebarWidth) + 1 : 44,
+              borderRight: 1,
+              borderColor: open ? "divider" : "transparent",
+              bgcolor: open ? "background.default" : undefined,
+              overflow: "hidden",
+            }}
+          >
+            {open && (
+              <>
+                {/* wiki の切り替えの枠 */}
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, pl: 1.5, pr: 1.5, pt: 2, pb: 1.5 }}>
+                  <Skeleton variant="rounded" width={28} height={28} sx={{ flexShrink: 0 }} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Skeleton variant="text" width="60%" />
+                    <Skeleton variant="text" width="30%" sx={{ fontSize: "0.75rem" }} />
+                  </Box>
+                </Box>
+                {/* ナビの行 */}
+                <Box sx={{ px: 1 }}>
+                  {["52%", "74%", "66%", "70%", "40%", "62%", "58%"].map((width, i) => (
+                    <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.75, minHeight: 30, px: 1 }}>
+                      <Skeleton variant="rounded" width={18} height={18} sx={{ flexShrink: 0 }} />
+                      <Skeleton variant="text" width={width} sx={{ fontSize: "0.9rem" }} />
+                    </Box>
+                  ))}
+                </Box>
+              </>
+            )}
+          </Box>
+        ) : (
+          // 上の帯（高さは WikiLayout の NARROW_BAR_HEIGHT）
+          <Box sx={{ flexShrink: 0, height: 44, px: 1.5, display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Skeleton variant="rounded" width={18} height={18} />
+            <Skeleton variant="text" width={96} sx={{ fontSize: "0.875rem" }} />
+          </Box>
+        ))}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <PageBody>
+          <Skeleton variant="text" width="34%" sx={{ fontSize: "1.5rem", mb: 1 }} />
+          <Skeleton variant="text" />
+          <Skeleton variant="text" />
+          <Skeleton variant="text" width="60%" />
+        </PageBody>
+      </Box>
+    </LoadingRegion>
   );
 }
 

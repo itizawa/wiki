@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE } from "../auth/session";
 import { auditLogs, scheduledActions, users } from "../db/schema";
 import { runDueActions } from "../publishing/scheduler";
-import { runRules } from "../rules/engine";
 import { setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -113,13 +112,11 @@ describe("audit log: what is recorded", () => {
     expect(entries.map((e) => e.wiki?.key ?? null)).toEqual(["wiki", "wiki", "wiki", "wiki", "wiki", "wiki", "wiki", null, null]);
   });
 
-  it("records approval, publishing, visibility changes, URL rotation, schedules and page deletion", async () => {
+  it("records publishing, visibility changes, URL rotation, schedules and the trash", async () => {
     ctx = await setup();
     const parent = await newPage("はじめに", "本文");
     const child = (await ctx.call("POST", `${W}/pages`, { title: "子", parentPageId: parent.id })).body;
     const call = ctx.call;
-    await call("POST", `${W}/pages/${parent.id}/workflow`, { state: "approved", versionId: parent.headVersionId });
-    await call("POST", `${W}/pages/${parent.id}/workflow`, { state: "draft" });
     await call("POST", `${W}/pages/${parent.id}/publish`, { versionId: parent.headVersionId, visibility: "public" });
     await call("POST", `${W}/pages/${child.id}/publish`, { versionId: child.headVersionId, visibility: "public" });
     await call("POST", `${W}/pages/${parent.id}/publish`, { versionId: parent.headVersionId, visibility: "unlisted", applyToDescendants: true });
@@ -133,11 +130,12 @@ describe("audit log: what is recorded", () => {
     await call("PATCH", `${W}/schedule/${action.id}`, { runAt: later });
     await call("POST", `${W}/schedule/${action.id}/cancel`);
     await call("DELETE", `${W}/pages/${child.id}`);
+    await call("POST", `${W}/pages/${child.id}/restore`);
+    await call("DELETE", `${W}/pages/${parent.id}`);
+    await call("DELETE", `${W}/pages/${parent.id}/trash`);
 
     const at = (iso: string) => new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
     expect(await trail(`${W}/audit-logs`)).toEqual([
-      ["page_approve", "「はじめに」を承認しました"],
-      ["page_unapprove", "「はじめに」の承認を取り消しました（承認済み → 下書き）"],
       ["page_publish", "「はじめに」を公開しました（非公開 → 公開）"],
       ["page_publish", "「子」を公開しました（非公開 → 公開）"],
       ["page_visibility_change", "「はじめに」の公開範囲を変更しました（公開 → 限定公開、配下の 1 ページも）"],
@@ -147,12 +145,14 @@ describe("audit log: what is recorded", () => {
       ["schedule_create", `「子」の非公開化の予約を作成しました（${at(runAt)}）`],
       ["schedule_update", `「子」の非公開化の予約の日時を変更しました（${at(runAt)} → ${at(later)}）`],
       ["schedule_cancel", `「子」の非公開化の予約を取り消しました（${at(later)}）`],
-      ["page_delete", "「子」を削除しました"],
+      ["page_delete", "「子」をゴミ箱に入れました"],
+      ["page_restore", "「子」をゴミ箱から元に戻しました"],
+      ["page_delete", "「はじめに」をゴミ箱に入れました（配下の 1 ページも）"],
+      ["page_purge", "「はじめに」をゴミ箱から完全に削除しました（配下の 1 ページも）"],
     ]);
     // 消したページはリンクにしない
     const entries = await logs(`${W}/audit-logs`);
-    expect(entries.find((e) => e.action === "page_delete")!.targetAvailable).toBe(false);
-    expect(entries.find((e) => e.action === "page_approve")!.targetAvailable).toBe(true);
+    expect(entries.find((e) => e.action === "page_purge")!.targetAvailable).toBe(false);
     expect(entries.find((e) => e.action === "page_publish")!.detail).toMatchObject({ visibility: "unlisted", versionId: edited.headVersionId });
   });
 
@@ -178,30 +178,6 @@ describe("audit log: what is recorded", () => {
       ["schedule_run", "system", "システム", "「予約の記事」の公開の予約を実行しました（予約した人：オーナー）"],
     ]);
     expect(entries[1]!.detail).toMatchObject({ scheduleId: ok.id, scheduledBy: { type: "user", userId: ctx.owner.id } });
-  });
-
-  it("records a rule creating a schedule, as the rule run", async () => {
-    ctx = await setup();
-    const rule = (await ctx.call("GET", `${W}/rules`)).body.rules.find((r: any) => r.id === "fill-slots");
-    await ctx.call("PUT", `${W}/rules/fill-slots`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
-    await ctx.call("PUT", `${W}/rules/fill-slots`, { enabled: true, trigger: { ...rule.trigger, min: 5 }, actions: rule.actions });
-    // 何も変えずに保存したときは残さない
-    await ctx.call("PUT", `${W}/rules/fill-slots`, { enabled: true, trigger: { ...rule.trigger, min: 5 }, actions: rule.actions });
-    const page = await newPage("承認済み");
-    await ctx.call("POST", `${W}/pages/${page.id}/workflow`, { state: "approved", versionId: page.headVersionId });
-    await runRules(ctx.db, new Date());
-
-    const entries = (await logs(`${W}/audit-logs`)).reverse();
-    expect(entries.map((e) => [e.action, e.actor.type, e.actor.label])).toEqual([
-      ["rule_update", "user", "オーナー"],
-      ["rule_update", "user", "オーナー"],
-      ["page_approve", "user", "オーナー"],
-      ["schedule_create", "rule", "承認済みの記事を予約枠に入れる"],
-    ]);
-    expect(auditSentenceText(entries[0]!)).toBe("ルール「承認済みの記事を予約枠に入れる」を有効にしました");
-    expect(auditSentenceText(entries[1]!)).toBe("ルール「承認済みの記事を予約枠に入れる」の設定を変更しました");
-    const runs = (await ctx.call("GET", `${W}/rules/runs`)).body.runs;
-    expect(entries[3]!.actor.ruleRunId).toBe(runs[0].id);
   });
 
   it("records wiki creation, renaming, archiving and restoring", async () => {
@@ -298,7 +274,7 @@ describe("audit log: guarantees", () => {
     const admin = await ctx.addUser("sakura@example.com", { wiki: "admin" });
     const pages = [];
     for (let i = 0; i < 5; i++) pages.push(await newPage(`記事${i}`, "", admin.call));
-    for (const p of pages) await admin.call("POST", `${W}/pages/${p.id}/workflow`, { state: "approved", versionId: p.headVersionId });
+    for (const p of pages) await admin.call("POST", `${W}/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
     await ctx.call("POST", `${W}/invites`, { role: "editor" });
 
     const byAdmin = await logs(`${W}/audit-logs?actor=${admin.user.id}`);

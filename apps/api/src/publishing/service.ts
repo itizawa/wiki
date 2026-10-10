@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pages, pageVersions, publishEvents } from "../db/schema";
 import { HttpError, notFound } from "../errors";
+import { keepVersion } from "../pages/versions";
 import { assertWithinParent, descendantIds, descendantsWider, livePages, loadTreeIndex, widerThan } from "./hierarchy";
 
 export async function recordPublishEvent(
@@ -59,6 +60,8 @@ export async function publishPage(db: Db, input: PublishInput): Promise<PublishR
     .from(pageVersions)
     .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, input.pageId)));
   if (!version) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
+  // 公開に使った版は、自動でできた版でも間引かない
+  await keepVersion(db, input.versionId);
   const index = await loadTreeIndex(db, input.wikiId);
   await assertWithinParent(db, input.wikiId, index, page, input.visibility);
   const descendants = await livePages(db, input.wikiId, descendantIds(index, page.id));

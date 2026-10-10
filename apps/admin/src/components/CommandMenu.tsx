@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Replace, Search, Users, Workflow } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -101,7 +101,13 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
-    { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/rules") },
+    {
+      id: "analytics",
+      label: "「アクセス解析」を開く",
+      keywords: ["analytics", "ga", "google", "search console", "access", "kaiseki"],
+      icon: <ChartColumn size={18} />,
+      run: go("/w/$wikiKey/analytics"),
+    },
     { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
     { id: "members", label: "「メンバー」を開く", keywords: ["members", "invite", "users"], icon: <Users size={18} />, run: go("/w/$wikiKey/members") },
@@ -109,6 +115,14 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     ...(role === "admin"
       ? [{ id: "audit", label: "「監査ログ」を開く", keywords: ["audit", "log", "kansa"], icon: <ClipboardList size={18} />, run: go("/w/$wikiKey/audit") }]
       : []),
+    { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },
+    {
+      id: "settings",
+      label: "「設定」を開く",
+      keywords: ["settings", "analytics", "ga", "google", "search console", "settei"],
+      icon: <SlidersHorizontal size={18} />,
+      run: go("/w/$wikiKey/settings"),
+    },
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis
       .filter((w) => w.key !== wiki.key)
@@ -122,10 +136,12 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           void navigate({ to: "/w/$wikiKey", params: { wikiKey: w.key } });
         },
       })),
-    // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す
+    // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す・スライドにする
     ...(pageActions
       ? [
+          { id: "present", label: "このページをプレゼンモードで表示", keywords: ["present", "slide", "presentation"], icon: <Presentation size={18} />, run: closing(pageActions.present) },
           { id: "find", label: "本文を検索・置換する", keywords: ["find", "search", "replace", "kensaku"], icon: <Replace size={18} />, run: closing(openFindBar) },
+          { id: "keep-version", label: "いまの内容を版として残す", keywords: ["save", "version", "keep", "hozon"], icon: <Save size={18} />, run: closing(pageActions.keepVersion) },
           { id: "copy-md", label: "このページの Markdown をコピー", keywords: ["copy", "markdown", "md", "export"], icon: <Copy size={18} />, run: closing(pageActions.copyMarkdown) },
           {
             id: "download-md",

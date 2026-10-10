@@ -6,10 +6,10 @@ import { HttpError } from "./errors";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
+import { analyticsRoutes } from "./routes/analytics";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
-import { ruleRoutes } from "./routes/rules";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
@@ -17,7 +17,7 @@ import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./rou
 import { templateRoutes } from "./routes/templates";
 import { globalAuditRoutes, wikiAuditRoutes } from "./routes/audit";
 import { viewRoutes } from "./routes/views";
-import { resolveWiki, wikiRoutes } from "./routes/wikis";
+import { resolveWiki, wikiRoutes, wikiSettingsRoutes } from "./routes/wikis";
 
 /**
  * API の応答はどれも JSON かリダイレクトなので、何も読み込ませず、枠にも入れさせない。
@@ -92,7 +92,6 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pageRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
-  wiki.route("/rules", ruleRoutes);
   wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);
   wiki.route("/stars", starRoutes);
@@ -103,6 +102,8 @@ export function createApp(deps: Deps) {
   wiki.route("/invites", inviteAdminRoutes);
   wiki.route("/audit-logs", wikiAuditRoutes);
   wiki.route("/views", viewRoutes);
+  wiki.route("/settings", wikiSettingsRoutes);
+  wiki.route("/analytics", analyticsRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

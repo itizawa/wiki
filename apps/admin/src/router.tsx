@@ -1,7 +1,9 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
+import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
+import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { AuditLogPage } from "./routes/AuditLogPage";
 import { CalendarPage } from "./routes/CalendarPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
@@ -13,9 +15,10 @@ import { MembersPage } from "./routes/MembersPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
-import { RulesPage } from "./routes/RulesPage";
 import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
+import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
+import { SettingsPage } from "./routes/SettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikisPage } from "./routes/WikisPage";
 
@@ -91,7 +94,24 @@ const searchRoute = createRoute({
   },
 });
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
-const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
+// アクセス解析（Google Analytics とサーチコンソールの数字）。?days=7|90：期間（既定の28日は付けない）。再読み込みや URL の共有で同じ期間が開く
+const analyticsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "analytics",
+  validateSearch: (search: Record<string, unknown>): { days?: AnalyticsDays } => {
+    const days = Number(search.days);
+    return isAnalyticsDays(days) && days !== DEFAULT_ANALYTICS_DAYS ? { days } : {};
+  },
+  component: function Analytics() {
+    const { days = DEFAULT_ANALYTICS_DAYS } = analyticsRoute.useSearch();
+    const navigate = analyticsRoute.useNavigate();
+    return (
+      <PageBody>
+        <AnalyticsPage days={days} onDaysChange={(next) => void navigate({ search: next === DEFAULT_ANALYTICS_DAYS ? {} : { days: next }, replace: true })} />
+      </PageBody>
+    );
+  },
+});
 const templatesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "templates", component: padded(TemplatesPage) });
 const templateEditorRoute = createRoute({
   getParentRoute: () => wikiRoute,
@@ -105,6 +125,9 @@ const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "histo
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
 // この wiki の監査ログ（管理者だけ）
 const auditRoute = createRoute({ getParentRoute: () => wikiRoute, path: "audit", component: padded(() => <AuditLogPage scope="wiki" />) });
+const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
+// wiki ごとの設定（公開サイトの連携）。読むのはだれでも、変えるのはオーナーだけ
+const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(SettingsPage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -114,7 +137,7 @@ const legacyEditorRoute = createRoute({
     throw redirect({ to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: FIRST_WIKI, pageId: params.pageId }, replace: true });
   },
 });
-const legacyScreen = (path: "/calendar" | "/rules" | "/history", to: `/w/$wikiKey${typeof path}`) =>
+const legacyScreen = (path: "/calendar" | "/history", to: `/w/$wikiKey${typeof path}`) =>
   createRoute({
     getParentRoute: () => rootRoute,
     path,
@@ -132,10 +155,22 @@ const routeTree = rootRoute.addChildren([
   inviteRoute,
   consentRoute,
   connectionsRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute, auditRoute]),
+  wikiRoute.addChildren([
+    pagesRoute,
+    editorRoute,
+    searchRoute,
+    calendarRoute,
+    analyticsRoute,
+    templatesRoute,
+    templateEditorRoute,
+    historyRoute,
+    membersRoute,
+    auditRoute,
+    trashRoute,
+    settingsRoute,
+  ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
-  legacyScreen("/rules", "/w/$wikiKey/rules"),
   legacyScreen("/history", "/w/$wikiKey/history"),
 ]);
 

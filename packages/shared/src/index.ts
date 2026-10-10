@@ -1,9 +1,9 @@
 export * from "./ids";
 export * from "./paths";
+export * from "./emoji";
 export * from "./page";
 export * from "./publish";
 export * from "./redirect";
-export * from "./rules";
 export * from "./time";
 export * from "./structure/types";
 export * from "./structure/ops";
@@ -22,3 +22,4 @@ export * from "./users";
 export * from "./audit";
 export * from "./oauth";
 export * from "./views";
+export * from "./analytics";

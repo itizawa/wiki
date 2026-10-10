@@ -19,7 +19,6 @@ import { HttpError } from "../errors";
 /** 誰が。人は、その時点の名前とメールアドレスを写して持つ。外部のアプリ（MCP）からの操作なら、via にそのアプリの名前。 */
 export type AuditActor =
   | { type: "user"; userId: string | null; label: string; email: string | null; via?: string }
-  | { type: "rule"; ruleRunId: string; label: string }
   | { type: "system"; label: string };
 
 export const SYSTEM_ACTOR: AuditActor = { type: "system", label: "システム" };
@@ -74,7 +73,6 @@ export async function writeAudit<A extends AuditAction>(db: Db, input: AuditInpu
     actorUserId: actor.type === "user" ? actor.userId : null,
     actorLabel: actor.label,
     actorEmail: actor.type === "user" ? actor.email : null,
-    ruleRunId: actor.type === "rule" ? actor.ruleRunId : null,
     via: actor.type === "user" ? (actor.via ?? null) : null,
     action: input.action,
     targetType: input.target?.type ?? null,
@@ -177,7 +175,6 @@ function toEntry(log: typeof auditLogs.$inferSelect, wiki: { key: string; name: 
       userId: log.actorUserId,
       label: log.actorLabel,
       email: log.actorEmail,
-      ruleRunId: log.ruleRunId,
       via: log.via,
     },
     action,

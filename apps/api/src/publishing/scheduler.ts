@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { RULE_PRESETS, type AuditScheduledBy } from "@wiki/shared";
-import { ruleRuns, scheduledActions, users, wikis } from "../db/schema";
+import type { AuditScheduledBy } from "@wiki/shared";
+import { scheduledActions, users, wikis } from "../db/schema";
 import { SYSTEM_ACTOR, writeAudit } from "../audit/service";
 import { scheduleRef, scheduleTarget } from "../audit/schedule";
 import { depthOf, loadTreeIndex } from "./hierarchy";
@@ -83,16 +83,11 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
   return summary;
 }
 
-/** 予約を入れたのは誰か（その時点の名前）。ルールが入れた予約は、どのルールの実行か。 */
+/** 予約を入れたのは誰か（その時点の名前）。人が入れた予約でなければ null。 */
 async function scheduledBy(db: Db, action: ActionRow): Promise<AuditScheduledBy> {
   if (action.createdBy) {
     const [user] = await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, action.createdBy));
     return { type: "user", userId: action.createdBy, label: user ? (user.name ?? user.email) : action.createdBy };
-  }
-  if (action.ruleRunId) {
-    const [run] = await db.select({ ruleId: ruleRuns.ruleId }).from(ruleRuns).where(eq(ruleRuns.id, action.ruleRunId));
-    const name = RULE_PRESETS.find((p) => p.id === run?.ruleId)?.name ?? run?.ruleId ?? "ルール";
-    return { type: "rule", ruleRunId: action.ruleRunId, label: name };
   }
   return null;
 }

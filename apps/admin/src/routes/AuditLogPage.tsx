@@ -196,7 +196,6 @@ function EntryRow({ entry, showWiki }: { entry: AuditLogEntry; showWiki: boolean
       <Box sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>
         {entry.actor.label}
         {entry.actor.via && <Chip size="small" label={`${entry.actor.via} 経由`} variant="outlined" sx={{ ml: 1 }} />}
-        {entry.actor.type === "rule" && <Chip size="small" label="ルール" variant="outlined" sx={{ ml: 1 }} />}
         {entry.actor.type === "system" && <Chip size="small" label="予約の実行" variant="outlined" sx={{ ml: 1 }} />}
       </Box>
       <Box sx={{ gridColumn: { xs: "1 / -1", md: "auto" } }}>

@@ -52,6 +52,16 @@ describe("images", () => {
     expect((await ctx.call("POST", `${W}/images`, PNG, { origin: "https://evil.example" })).status).toBe(403);
   });
 
+  it("refuses uploads through a wiki that does not exist or is archived", async () => {
+    ctx = await setup();
+    expect((await ctx.call("POST", "/admin/w/nope/images", PNG)).status).toBe(404);
+    await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" });
+    expect((await ctx.call("POST", "/admin/w/notes/images", PNG)).status).toBe(201);
+    await ctx.call("POST", "/admin/wikis/notes/archive");
+    expect((await ctx.call("POST", "/admin/w/notes/images", PNG)).status).toBe(404);
+    expect((ctx.images as ReturnType<typeof memoryImageStore>).files.size).toBe(1);
+  });
+
   it("returns 404 for unknown or malformed names", async () => {
     ctx = await setup();
     expect((await ctx.app.request("/images/aaaaaaaaaaaaaaaaaaaaaaaa.png")).status).toBe(404);

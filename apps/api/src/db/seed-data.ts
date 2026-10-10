@@ -13,6 +13,8 @@ const DAY = 24 * 3600_000;
 
 type SeedPage = {
   title: string;
+  /** アイコン（絵文字1つ）。省略時は付けない */
+  icon?: string;
   /** 本文。`{{キー}}` は先に作ったページの `/p/{id}` に置き換える */
   body: string;
   /** 本文中から参照するための名前 */
@@ -22,17 +24,17 @@ type SeedPage = {
   /** 公開日を何日前にするか（public のみ） */
   daysAgo?: number;
   /** 記事の状態。省略時は draft */
-  workflow?: "idea" | "approved";
   /** 保存し直して版を増やす（公開済みなら「公開後に編集あり」の状態になる） */
   revisedBody?: string;
   children?: SeedPage[];
 };
 
-/** ローカル確認用のデータ。階層3段、公開・限定公開・予約・下書き、記事の状態（ネタ・承認済み）、版の履歴、内部リンクを一通り含む。 */
+/** ローカル確認用のデータ。階層3段、公開・限定公開・予約・下書き、版の履歴、内部リンクを一通り含む。 */
 const SEED: SeedPage[] = [
   {
     key: "intro",
     title: "はじめに",
+    icon: "👋",
     state: "public",
     daysAgo: 30,
     body: "# ようこそ\n\nこの wiki は、書いたページをそのまま公開できる場所です。\n\n- ページの下にページを置いて階層を作ります\n- フォルダはありません。まとめ役が欲しければ、それもページとして書きます",
@@ -40,6 +42,7 @@ const SEED: SeedPage[] = [
       {
         key: "howto",
         title: "この wiki の使い方",
+        icon: "📖",
         state: "public",
         daysAgo: 28,
         body: "## 基本の流れ\n\n1. サイドバーの「＋」でページを作る\n2. 書く\n3. 公開する\n\nまずは [はじめに]({{intro}}) を読んでください。",
@@ -72,6 +75,7 @@ const SEED: SeedPage[] = [
   },
   {
     title: "開発メモ",
+    icon: "🛠️",
     state: "public",
     daysAgo: 15,
     body: "開発まわりのメモをこの下にまとめる。",
@@ -92,13 +96,13 @@ const SEED: SeedPage[] = [
           },
           {
             title: "公開パイプライン",
-            workflow: "approved",
             body: "## 流れ（下書き）\n\n操作 → publish_events → ワーカーがデバウンス → ビルド\n\nTODO: 図を入れる。[ツリーとページの階層]({{hierarchy}}) と合わせて読めるようにする。",
           },
         ],
       },
       {
         title: "議事録",
+        icon: "🗓️",
         body: "定例の記録。",
         children: [
           { title: "2026-10-01 定例", body: "- フォルダと Inbox をやめる\n- URL は `/p/{id}` だけにする" },
@@ -111,7 +115,7 @@ const SEED: SeedPage[] = [
     title: "下書き置き場",
     body: "",
     children: [
-      { title: "ネタ：予約投稿の運用", workflow: "idea", body: "週2本、火曜と金曜の朝に出す案。" },
+      { title: "ネタ：予約投稿の運用", body: "週2本、火曜と金曜の朝に出す案。" },
       { title: "無題", body: "" },
     ],
   },
@@ -132,7 +136,7 @@ const SECOND_SEED: SeedPage[] = [
     title: "このノートについて",
     state: "public",
     daysAgo: 10,
-    body: "# 開発ノート\n\n開発中に調べたことを置く、2つめの wiki です。最初の wiki とは、ページもツリーもルールも別です。",
+    body: "# 開発ノート\n\n開発中に調べたことを置く、2つめの wiki です。最初の wiki とは、ページもツリーも別です。",
     children: [
       {
         title: "Cloudflare Workers のメモ",
@@ -143,7 +147,7 @@ const SECOND_SEED: SeedPage[] = [
       { title: "共有前のメモ", state: "unlisted", body: "URL を知っている人だけが読めるメモ。" },
     ],
   },
-  { title: "あとで書く", workflow: "idea", body: "ビルド時間を測る。" },
+  { title: "あとで書く", body: "ビルド時間を測る。" },
 ];
 
 /** 最初の wiki のテンプレート。変数（`{date}` など）はページを作るときに置き換わる。 */
@@ -214,7 +218,7 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
     let count = 0;
 
     const add = async (page: SeedPage, parentPageId: string | null) => {
-      const id = await createPage(tx, wikiId, { title: page.title, bodyMd: fill(page.body), parentPageId });
+      const id = await createPage(tx, wikiId, { title: page.title, bodyMd: fill(page.body), parentPageId, icon: page.icon });
       count++;
       if (page.key) paths.set(page.key, pagePath(id));
       const [row] = await tx.select().from(pages).where(eq(pages.id, id));
@@ -239,12 +243,6 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
           targetVisibility: "public",
           runAt: new Date(now.getTime() + 3 * DAY),
         });
-      }
-
-      if (page.workflow === "approved") {
-        await tx.update(pages).set({ workflowState: "approved", approvedVersionId: versionId, approvedAt: now }).where(eq(pages.id, id));
-      } else if (page.workflow) {
-        await tx.update(pages).set({ workflowState: page.workflow }).where(eq(pages.id, id));
       }
 
       if (page.revisedBody !== undefined) {

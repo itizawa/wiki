@@ -11,8 +11,6 @@ afterEach(async () => {
   ctx = undefined as unknown as typeof ctx;
 });
 
-const RULE = "review-stale";
-const ruleInput = { enabled: true, trigger: { type: "stale", days: 90 }, actions: [{ type: "request_review" }] };
 
 /** 2つめの wiki を作る（オーナーとして）。 */
 async function secondWiki(key = "notes") {
@@ -34,10 +32,8 @@ describe("roles", () => {
 
     const page = await editor.call("POST", `${W}/pages`, { title: "編集者のページ" });
     expect(page.status).toBe(201);
-    expect((await editor.call("GET", `${W}/rules`)).status).toBe(200);
     expect((await editor.call("GET", `${W}/members`)).status).toBe(200);
 
-    expect((await editor.call("PUT", `${W}/rules/${RULE}`, ruleInput)).status).toBe(403);
     expect((await editor.call("POST", `${W}/invites`, { role: "editor" })).status).toBe(403);
     expect((await editor.call("GET", `${W}/invites`)).status).toBe(403);
     expect((await editor.call("PATCH", `${W}/members/${editor.user.id}`, { role: "admin" })).status).toBe(403);
@@ -48,11 +44,10 @@ describe("roles", () => {
     expect(wikiList.map((w: any) => [w.key, w.role])).toEqual([["wiki", "editor"]]);
   });
 
-  it("lets an admin of the wiki set rules and manage members", async () => {
+  it("lets an admin of the wiki manage members", async () => {
     ctx = await setup();
     const admin = await ctx.addUser("wiki-admin@example.com", { wiki: "admin" });
     const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
-    expect((await admin.call("PUT", `${W}/rules/${RULE}`, ruleInput)).status).toBe(200);
     const changed = await admin.call("PATCH", `${W}/members/${editor.user.id}`, { role: "admin" });
     expect(changed.status).toBe(200);
     expect(changed.body.members.find((m: any) => m.userId === editor.user.id).role).toBe("admin");

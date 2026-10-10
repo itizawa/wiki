@@ -4,7 +4,7 @@ import { actionsIn, AUDIT_ACTIONS, auditSentenceText, describeAudit, formatAudit
 const base = {
   id: "1",
   wiki: { key: "wiki", name: "メイン" },
-  actor: { type: "user" as const, userId: "u", label: "山田 太郎", email: "taro@example.com", ruleRunId: null, via: null },
+  actor: { type: "user" as const, userId: "u", label: "山田 太郎", email: "taro@example.com", via: null },
   target: { type: "page" as const, id: "p", label: "はじめに" },
   targetAvailable: true,
   ip: null,
@@ -26,22 +26,21 @@ describe("audit sentences", () => {
     expect(parts).toEqual([{ text: "「" }, { text: "はじめに", target: true }, { text: "」" }, { text: "を公開しました（非公開 → 公開）" }]);
   });
 
-  it("describes role changes, rule toggles and the rule that scheduled a run", () => {
+  it("describes role changes, the trash and who scheduled a run", () => {
     expect(auditSentenceText(entry({ action: "member_role_change", target: { type: "user", id: "u2", label: "鈴木" }, detail: { from: "editor", to: "admin" } }))).toBe(
       "鈴木 のロールを変更しました（編集者 → 管理者）",
     );
-    const def = { trigger: { type: "stale" as const, days: 90 }, actions: [{ type: "request_review" as const }] };
-    expect(
-      auditSentenceText(entry({ action: "rule_update", target: { type: "rule", id: "r", label: "見直し" }, detail: { from: { enabled: true, ...def }, to: { enabled: false, ...def } } })),
-    ).toBe("ルール「見直し」を無効にしました");
+    expect(auditSentenceText(entry({ action: "page_delete", detail: { descendants: 2 } }))).toBe("「はじめに」をゴミ箱に入れました（配下の 2 ページも）");
+    expect(auditSentenceText(entry({ action: "page_restore", detail: {} }))).toBe("「はじめに」をゴミ箱から元に戻しました");
+    expect(auditSentenceText(entry({ action: "page_purge", detail: { descendants: 1 } }))).toBe("「はじめに」をゴミ箱から完全に削除しました（配下の 1 ページも）");
     expect(
       auditSentenceText(
         entry({
           action: "schedule_run",
-          detail: { scheduleId: "s", actionType: "publish_page", visibility: "public", runAt: base.createdAt, scheduledBy: { type: "rule", ruleRunId: "r", label: "予約枠" } },
+          detail: { scheduleId: "s", actionType: "publish_page", visibility: "public", runAt: base.createdAt, scheduledBy: { type: "user", userId: "u", label: "山田 太郎" } },
         }),
       ),
-    ).toBe("「はじめに」の公開の予約を実行しました（ルール「予約枠」が予約）");
+    ).toBe("「はじめに」の公開の予約を実行しました（予約した人：山田 太郎）");
   });
 
   it("puts every action in one category", () => {

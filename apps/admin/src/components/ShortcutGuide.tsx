@@ -85,10 +85,23 @@ export function shortcutGroups(mod: string): Group[] {
         { keys: ["`code`"], label: "インラインコード" },
       ],
     },
+    {
+      title: "プレゼンモード（編集画面の「…」メニューから始める）",
+      entries: [
+        { keys: ["Space / → / PageDown"], label: "次のスライド" },
+        { keys: ["← / PageUp"], label: "前のスライド" },
+        { keys: ["Home / End"], label: "最初／最後のスライド" },
+        { keys: ["F"], label: "全画面表示にする／やめる" },
+        { keys: ["Esc"], label: "全画面ならやめる。全画面でなければプレゼンモードを終了" },
+      ],
+    },
   ];
 }
 
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** ショートカットの修飾キーの表示。Mac なら ⌘、それ以外は Ctrl。 */
+export const modKey = () => (isMac() ? "⌘" : "Ctrl");
 
 /** キーボードショートカットと Markdown 記法の一覧。「?」か、サイドバー下のキーボードのボタンで開く。 */
 export function ShortcutGuide() {
@@ -117,7 +130,7 @@ export function ShortcutGuide() {
         </Tooltip>
       </DialogTitle>
       <DialogContent>
-        {shortcutGroups(isMac() ? "⌘" : "Ctrl").map((group) => (
+        {shortcutGroups(modKey()).map((group) => (
           <Box key={group.title} component="section" sx={{ mb: 2.5, "&:last-of-type": { mb: 0 } }}>
             <Typography variant="subtitle2" component="h3" sx={{ mb: 0.5, color: "text.secondary" }}>
               {group.title}
