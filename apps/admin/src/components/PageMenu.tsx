@@ -20,7 +20,7 @@ import { Muted } from "./ui";
 
 /**
  * 編集画面の「…」メニュー。いまの内容を版として残す・版履歴を開く・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
- * テンプレートにする・ページを削除する。
+ * テンプレートにする・ページをゴミ箱に入れる。
  */
 export function PageMenu(props: {
   title: string;
@@ -149,12 +149,12 @@ export function PageMenu(props: {
             setAnchor(null);
             props.onDelete();
           }}
-          sx={{ color: "error.main" }}
         >
-          <ListItemIcon sx={{ color: "inherit" }}>
+          {/* ゴミ箱から元に戻せるので、赤にはしない */}
+          <ListItemIcon>
             <Trash2 size={18} />
           </ListItemIcon>
-          <ListItemText>このページを削除…</ListItemText>
+          <ListItemText>ゴミ箱に入れる…</ListItemText>
         </MenuItem>
       </Menu>
       {/* 結果は、押したメニューの近く（右上）に出す */}

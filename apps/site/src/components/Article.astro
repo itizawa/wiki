@@ -31,6 +31,8 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
     {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
     {sponsored && <span class={s.adNotice}>広告を含みます</span>}
+    {/* スクリプトが、スライドが2枚以上になる記事でだけ見えるようにする（スクリプトが動かなければ出ない） */}
+    <button type="button" class={s.presentOpen} hidden data-presentation-open data-pagefind-ignore>プレゼンモードで表示</button>
   </div>
   {
     showToc && (
@@ -48,10 +50,14 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
       </nav>
     )
   }
-  <div class={s.body} set:html={html} />
+  <div class={s.body} data-article-body set:html={html} />
+  {/* プレゼンモードの枠。中身は「プレゼンモードで表示」を押したときにスクリプトが作る */}
+  <dialog class={s.presentation} aria-label="プレゼンモード" data-presentation data-pagefind-ignore></dialog>
 </article>
 
 <script>
+  import { slideBlockOf, splitIntoSlides } from "../lib/slides";
+
   // 目次の中で、いま読んでいる節を示す（画面の上端を過ぎた、いちばん下の見出し）
   const tocLinks = [...document.querySelectorAll<HTMLAnchorElement>("nav[data-toc] a")];
   if (tocLinks.length > 0) {
@@ -170,6 +176,201 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
       img.replaceWith(button);
       button.append(img);
       button.addEventListener("click", () => openZoom(button, img));
+    }
+  }
+
+  // プレゼンモード。本文を見出しと区切り線でスライドに分け（lib/slides.ts）、記事のページの上に重ねて1枚ずつ出す。
+  // スライドの中身は本文の要素の複製で、元の要素は動かさない（目次の現在地表示と、コードブロックのボタンを壊さないため）
+  const presentOpen = document.querySelector<HTMLButtonElement>("button[data-presentation-open]");
+  const presentation = document.querySelector<HTMLDialogElement>("dialog[data-presentation]");
+  const articleBody = document.querySelector<HTMLElement>("[data-article-body]");
+  if (article && presentOpen && presentation && articleBody && typeof presentation.showModal === "function") {
+    /** 1枚に収まらないスライドを縮める下限。ここまで縮めても収まらなければ、スライドの中で縦にスクロールする */
+    const MIN_SCALE = 0.5;
+    /** 本文のいちばん上の階層の要素を、スライドごとに分ける（タイトルのスライドは含まない） */
+    const bodySlides = () => {
+      const blocks = [...articleBody.children];
+      return splitIntoSlides(blocks.map((el) => slideBlockOf(el.tagName))).map((indexes) => indexes.map((i) => blocks[i]!));
+    };
+    /** スライドに出す複製を作る */
+    const cloneForSlide = (blocks: Element[]) => {
+      const holder = document.createElement("div");
+      holder.append(...blocks.map((el) => el.cloneNode(true)));
+      // 見出しの id はページの中で重なるので外す。コードブロックのボタンは、複製では動かないので外す
+      for (const el of holder.querySelectorAll("h1, h2, h3, h4, h5, h6")) el.removeAttribute("id");
+      for (const el of holder.querySelectorAll("[data-code-tools]")) el.remove();
+      // トグルは、記事の側で開いていても、閉じた状態から始める
+      for (const el of holder.querySelectorAll("details")) el.removeAttribute("open");
+      // 画像を包む拡大表示のボタンも複製では動かないので、画像だけに戻す（スライドの中では拡大表示をしない）
+      for (const el of holder.querySelectorAll("button[data-image-zoom-open]")) el.replaceWith(...el.childNodes);
+      return [...holder.children];
+    };
+    const makeButton = (label: string, options: { icon?: string } = {}) => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.textContent = options.icon ?? label;
+      // アイコンだけのボタンは、名前を aria-label と title で補う
+      if (options.icon) {
+        el.setAttribute("aria-label", label);
+        el.title = label;
+      }
+      return el;
+    };
+
+    const startPresentation = () => {
+      const titleSlide = document.createElement("h1");
+      titleSlide.textContent = article.querySelector("h1")?.textContent ?? "";
+      const slides = [[titleSlide], ...bodySlides().map(cloneForSlide)];
+      let index = 0;
+      let fade: Animation | undefined;
+      // このプレゼンの間だけ付けるイベントは、終了するときにまとめて外す
+      const session = new AbortController();
+      const { signal } = session;
+
+      const exit = makeButton("プレゼンモードを終了");
+      exit.dataset.presentationExit = "";
+      // Fullscreen API が使えない環境（iPhone の Safari など）では、全画面表示のボタンを出さない
+      const canFullscreen = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === "function";
+      const fullscreen = canFullscreen ? makeButton("全画面表示") : undefined;
+      const bar = document.createElement("div");
+      bar.dataset.presentationBar = "";
+      bar.append(...(fullscreen ? [fullscreen] : []), exit);
+
+      const slide = document.createElement("div");
+      // 本文と同じクラスを付けて、本文の見た目（Article.module.css の .body 以下）をそのまま当てる
+      slide.className = articleBody.className;
+      slide.dataset.presentationSlide = "";
+      const stage = document.createElement("div");
+      stage.dataset.presentationStage = "";
+      stage.tabIndex = -1;
+      stage.append(slide);
+
+      const prev = makeButton("前のスライド", { icon: "←" });
+      const next = makeButton("次のスライド", { icon: "→" });
+      const counter = document.createElement("span");
+      counter.dataset.presentationCounter = "";
+      counter.setAttribute("aria-live", "polite");
+      const nav = document.createElement("div");
+      nav.dataset.presentationNav = "";
+      nav.append(prev, counter, next);
+
+      /** スライドが1枚に収まるまで、全体を縮める（MIN_SCALE まで） */
+      const fit = () => {
+        const fits = () => stage.scrollHeight <= stage.clientHeight + 1 && stage.scrollWidth <= stage.clientWidth + 1;
+        // zoom は幅も縮めるので、CSS の側で幅を倍率で割り戻す（狭い画面で、縮めたスライドの横が空かないようにする）
+        const scale = (value: number) => {
+          slide.style.setProperty("zoom", String(value));
+          slide.style.setProperty("--presentation-scale", String(value));
+        };
+        scale(1);
+        if (fits()) return;
+        // 縮めると行の折り返しも変わるので、収まるいちばん大きい倍率を二分探索で探す
+        let low = MIN_SCALE;
+        let high = 1;
+        for (let i = 0; i < 6; i++) {
+          const middle = (low + high) / 2;
+          scale(middle);
+          if (fits()) low = middle;
+          else high = middle;
+        }
+        scale(low);
+      };
+      const show = (to: number) => {
+        index = Math.max(0, Math.min(slides.length - 1, to));
+        slide.replaceChildren(...slides[index]!);
+        slide.toggleAttribute("data-presentation-title", index === 0);
+        counter.textContent = `${index + 1} / ${slides.length}`;
+        // 無効にするボタンにフォーカスがあると、キー操作が届かなくなるので、スライドへ移す
+        const focused = document.activeElement;
+        prev.disabled = index === 0;
+        next.disabled = index === slides.length - 1;
+        if ((focused === prev && prev.disabled) || (focused === next && next.disabled)) stage.focus({ preventScroll: true });
+        stage.scrollTop = 0;
+        fit();
+        // 切り替えを短いフェードでつなぐ（動きを減らす設定のときは付けない）
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          fade?.cancel();
+          fade = slide.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: "ease-out" });
+        }
+      };
+      const go = (to: number) => {
+        if (Math.max(0, Math.min(slides.length - 1, to)) !== index) show(to);
+      };
+      const toggleFullscreen = () => {
+        if (!canFullscreen) return;
+        // dialog そのものは全画面にできないので、ページごと全画面にする（モーダルの dialog は、その上に出たまま）。
+        // 断られても（権限が無いなど）、プレゼンはそのまま続ける
+        (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
+      };
+
+      prev.addEventListener("click", () => go(index - 1));
+      next.addEventListener("click", () => go(index + 1));
+      exit.addEventListener("click", () => presentation.close());
+      fullscreen?.addEventListener("click", toggleFullscreen);
+      // マウスで押したボタンにフォーカスを残さない（次に Space を押したとき、そのボタンがもう一度押されてしまうため）
+      for (const controls of [bar, nav]) controls.addEventListener("mousedown", (e) => e.preventDefault());
+      document.addEventListener(
+        "fullscreenchange",
+        () => {
+          if (fullscreen) fullscreen.textContent = document.fullscreenElement ? "全画面表示をやめる" : "全画面表示";
+          fit();
+        },
+        { signal },
+      );
+      window.addEventListener("resize", fit, { signal });
+      // トグルを開いたときと、画像を読み込み終えたときも、大きさが変わるので収め直す（どちらのイベントも親へ伝わらないので capture で受ける）
+      slide.addEventListener("toggle", fit, { capture: true, signal });
+      slide.addEventListener("load", fit, { capture: true, signal });
+      document.addEventListener(
+        "keydown",
+        (e) => {
+          if (e.altKey || e.ctrlKey || e.metaKey) return;
+          // ボタン・リンク・トグルの見出しにフォーカスがあるときの Space は、その部品の操作にする
+          const onControl = e.target instanceof Element && e.target.closest("button, a, summary") !== null;
+          if (e.key === " " && !onControl) go(index + 1);
+          else if (e.key === "ArrowRight" || e.key === "PageDown") go(index + 1);
+          else if (e.key === "ArrowLeft" || e.key === "PageUp") go(index - 1);
+          else if (e.key === "Home") go(0);
+          else if (e.key === "End") go(slides.length - 1);
+          else if (e.key === "f" || e.key === "F") toggleFullscreen();
+          else return;
+          e.preventDefault();
+        },
+        { signal },
+      );
+      // Esc は、全画面ならそれをやめるだけにする（ブラウザが先に全画面を解かない環境でも、同じ動きにする）
+      presentation.addEventListener(
+        "cancel",
+        (e) => {
+          if (!document.fullscreenElement) return;
+          e.preventDefault();
+          document.exitFullscreen().catch(() => {});
+        },
+        { signal },
+      );
+      // 終了したら、全画面を解き、中身を空に戻し、フォーカスを元のボタンに戻す。記事のスクロール位置は動かさない
+      presentation.addEventListener(
+        "close",
+        () => {
+          session.abort();
+          if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+          presentation.replaceChildren();
+          presentOpen.focus({ preventScroll: true });
+        },
+        { once: true },
+      );
+
+      presentation.replaceChildren(bar, stage, nav);
+      presentation.showModal();
+      // 最初のフォーカスはスライドに置く（ボタンに置くと、Space でそのボタンが押されてしまう）
+      stage.focus({ preventScroll: true });
+      show(0);
+    };
+
+    // スライドが2枚以上（タイトル＋本文1枚以上）になる記事でだけ、ボタンを出す
+    if (bodySlides().length > 0) {
+      presentOpen.addEventListener("click", startPresentation);
+      presentOpen.hidden = false;
     }
   }
 </script>

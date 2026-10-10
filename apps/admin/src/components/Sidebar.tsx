@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, Star, Workflow } from "lucide-react";
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, Star, Trash2, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -171,6 +171,9 @@ export function Sidebar(props: {
         </NavItem>
         <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
           構造の履歴
+        </NavItem>
+        <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
+          ゴミ箱
         </NavItem>
         {/* wiki の管理は /w/ の外の画面なので、NavItem ではなくリンクを直接置く。オーナーにだけ出す */}
         {isOwner && (
