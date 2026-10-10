@@ -5,7 +5,8 @@ main = "worker/index.ts"
 compatibility_date = "2026-10-01"
 routes = [{ pattern = "wiki.hatchery-works.com", custom_domain = true }]
 workers_dev = false
-preview_urls = false
+# main 以外のブランチは Workers Builds が版だけ上げる（本番には出ない）。その確認用に版ごとの URL（*.workers.dev）を出す
+preview_urls = true
 
 [assets]
 directory = "dist"
