@@ -12,7 +12,7 @@ import type { Rule, RuleAction, RuleTrigger } from "@wiki/shared";
 import { useState } from "react";
 import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
-import { pageLink } from "../lib/wiki";
+import { pageLink, useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -20,6 +20,8 @@ const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 /** ルール：定型ルールの設定、見直しキュー、実行ログ。 */
 export function RulesPage() {
   const qc = useQueryClient();
+  // ルールの設定を変えられるのは管理者だけ。編集者には、いまの設定を見せるだけにする
+  const canEdit = useWiki().role === "admin";
   const rules = useQuery({ queryKey: ["rules"], queryFn: api.listRules });
   const runs = useQuery({ queryKey: ["rules", "runs"], queryFn: api.listRuleRuns });
   const pages = useQuery({ queryKey: ["pages", ""], queryFn: () => api.listPages() });
@@ -45,10 +47,11 @@ export function RulesPage() {
         <Muted>
           有効なルールは5分ごとに動きます。ルールは公開しません。予約枠に入るのは、エディタで「承認済み」にした版だけです。
         </Muted>
+        {!canEdit && <Muted sx={{ mt: 1 }}>ルールの設定は、この wiki の管理者だけが変えられます。</Muted>}
       </Section>
 
       {rules.data.rules.map((rule) => (
-        <RuleCard key={`${rule.id}:${rule.updatedAt}`} rule={rule} />
+        <RuleCard key={`${rule.id}:${rule.updatedAt}`} rule={rule} readOnly={!canEdit} />
       ))}
 
       <Section>
@@ -107,7 +110,7 @@ export function RulesPage() {
   );
 }
 
-function RuleCard({ rule }: { rule: Rule }) {
+function RuleCard({ rule, readOnly }: { rule: Rule; readOnly: boolean }) {
   const qc = useQueryClient();
   const [enabled, setEnabled] = useState(rule.enabled);
   const [trigger, setTrigger] = useState<RuleTrigger>(rule.trigger);
@@ -131,7 +134,7 @@ function RuleCard({ rule }: { rule: Rule }) {
             <Muted>{rule.description}</Muted>
           </Box>
           <FormControlLabel
-            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
+            control={<Switch checked={enabled} disabled={readOnly} onChange={(e) => setEnabled(e.target.checked)} />}
             label={enabled ? "有効" : "無効"}
           />
         </Row>
@@ -139,16 +142,16 @@ function RuleCard({ rule }: { rule: Rule }) {
         {trigger.type === "stock_below" && (
           <Row>
             今後
-            <NumberField value={trigger.days} min={1} max={90} onChange={(days) => setTrigger({ ...trigger, days })} />
+            <NumberField disabled={readOnly} value={trigger.days} min={1} max={90} onChange={(days) => setTrigger({ ...trigger, days })} />
             日の公開予約が
-            <NumberField value={trigger.min} min={1} max={100} onChange={(min) => setTrigger({ ...trigger, min })} />
+            <NumberField disabled={readOnly} value={trigger.min} min={1} max={100} onChange={(min) => setTrigger({ ...trigger, min })} />
             件を下回ったら
           </Row>
         )}
         {trigger.type === "stale" && (
           <Row>
             公開中の記事が
-            <NumberField value={trigger.days} min={1} max={3650} onChange={(days) => setTrigger({ ...trigger, days })} />
+            <NumberField disabled={readOnly} value={trigger.days} min={1} max={3650} onChange={(days) => setTrigger({ ...trigger, days })} />
             日のあいだ更新も見直しもされていなければ
           </Row>
         )}
@@ -165,6 +168,7 @@ function RuleCard({ rule }: { rule: Rule }) {
                     control={
                       <Checkbox
                         size="small"
+                        disabled={readOnly}
                         checked={action.weekdays.includes(day)}
                         onChange={(e) =>
                           setAction(i, {
@@ -181,6 +185,7 @@ function RuleCard({ rule }: { rule: Rule }) {
                 ))}
                 <TextField
                   type="time"
+                  disabled={readOnly}
                   value={action.time}
                   onChange={(e) => e.target.value && setAction(i, { ...action, time: e.target.value.slice(0, 5) })}
                   slotProps={{ htmlInput: { "aria-label": "予約枠の時刻" } }}
@@ -192,6 +197,7 @@ function RuleCard({ rule }: { rule: Rule }) {
               <Row>
                 通知する。続けて通知するのは
                 <NumberField
+                  disabled={readOnly}
                   value={action.cooldownHours}
                   min={1}
                   max={720}
@@ -204,18 +210,21 @@ function RuleCard({ rule }: { rule: Rule }) {
         ))}
 
         {save.error && <Alert severity="error">{errorMessage(save.error)}</Alert>}
-        <Button variant="contained" size="medium" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-          保存
-        </Button>
+        {!readOnly && (
+          <Button variant="contained" size="medium" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+            保存
+          </Button>
+        )}
       </Stack>
     </Section>
   );
 }
 
-function NumberField(props: { value: number; min: number; max: number; onChange: (value: number) => void }) {
+function NumberField(props: { value: number; min: number; max: number; disabled?: boolean; onChange: (value: number) => void }) {
   return (
     <TextField
       type="number"
+      disabled={props.disabled}
       value={props.value}
       onChange={(e) => {
         const n = Number(e.target.value);

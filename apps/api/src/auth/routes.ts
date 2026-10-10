@@ -2,6 +2,8 @@ import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
+import { users } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { acceptInvite, ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, type UserRow } from "../users/service";
 import {
   OAUTH_COOKIE,
@@ -107,6 +109,7 @@ export const authRoutes = new Hono<AppEnv>()
     const email = config.devLoginEmail;
     if (!email) throw new HttpError(404, "not_found", "not found");
     const user = await ensureOwnerByEmail(db, email);
+    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
     await startSession(c, user.id);
     return c.json({ email: user.email });
   })

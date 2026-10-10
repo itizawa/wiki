@@ -6,6 +6,7 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import FindReplaceIcon from "@mui/icons-material/FindReplace";
 import HistoryIcon from "@mui/icons-material/History";
+import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -88,6 +89,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <CalendarMonthOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey/calendar") },
     { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <AutoModeIcon fontSize="small" />, run: go("/w/$wikiKey/rules") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <HistoryIcon fontSize="small" />, run: go("/w/$wikiKey/history") },
+    { id: "members", label: "「メンバー」を開く", keywords: ["members", "invite", "users"], icon: <PeopleOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey/members") },
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis
       .filter((w) => w.key !== wiki.key)

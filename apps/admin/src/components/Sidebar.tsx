@@ -17,6 +17,8 @@ import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import HistoryIcon from "@mui/icons-material/History";
+import AdminPanelSettingsOutlinedIcon from "@mui/icons-material/AdminPanelSettingsOutlined";
+import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
@@ -178,6 +180,9 @@ export function Sidebar(props: {
             <NavItem to="/w/$wikiKey/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴
             </NavItem>
+            <NavItem to="/w/$wikiKey/members" icon={<PeopleOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+              メンバー
+            </NavItem>
 
             {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 
@@ -317,6 +322,14 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               <SettingsOutlinedIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
+          </MenuItemLink>
+        )}
+        {isOwner && (
+          <MenuItemLink to="/owners" onClick={close}>
+            <ListItemIcon>
+              <AdminPanelSettingsOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>オーナーの管理</ListItemText>
           </MenuItemLink>
         )}
       </Menu>

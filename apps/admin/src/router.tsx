@@ -5,6 +5,9 @@ import { Home, Root } from "./routes/Layout";
 import { CalendarPage } from "./routes/CalendarPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
+import { InvitePage } from "./routes/InvitePage";
+import { MembersPage } from "./routes/MembersPage";
+import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { RulesPage } from "./routes/RulesPage";
 import { WikiLayout } from "./routes/WikiLayout";
@@ -26,6 +29,17 @@ const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", comp
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: Home });
 // wiki の一覧・作成・アーカイブ（オーナーだけ）。wiki が1つも無くても開けるよう、/w/ の外に置く
 const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
+// オーナーの追加・解除（オーナーだけ）
+const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
+// 招待リンク。ログインしていなくても開ける（Root がログインの確認を飛ばす）
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$token",
+  component: function Invite() {
+    const { token } = inviteRoute.useParams();
+    return <InvitePage token={token} />;
+  },
+});
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -48,6 +62,7 @@ const editorRoute = createRoute({
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
 const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
+const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const FIRST_WIKI = "wiki";
@@ -71,7 +86,9 @@ const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
   wikisRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, calendarRoute, rulesRoute, historyRoute]),
+  ownersRoute,
+  inviteRoute,
+  wikiRoute.addChildren([pagesRoute, editorRoute, calendarRoute, rulesRoute, historyRoute, membersRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),

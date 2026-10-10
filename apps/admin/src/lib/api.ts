@@ -1,4 +1,8 @@
 import type {
+  Invite,
+  InviteInfo,
+  Me,
+  Member,
   PageDetail,
   PageSummary,
   PageVersion,
@@ -12,6 +16,8 @@ import type {
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
+  UserSummary,
+  WikiRole,
   WikiSummary,
 } from "@wiki/shared";
 
@@ -74,7 +80,15 @@ export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
-  me: () => request<{ email: string; isOwner: boolean }>("GET", "/admin/me"),
+  me: () => request<Me>("GET", "/admin/me"),
+
+  // 招待リンクを開いた人向け（ログインしていなくても呼べる）
+  inviteInfo: (token: string) => request<InviteInfo>("GET", `/invites/${encodeURIComponent(token)}`),
+  acceptInvite: (token: string) =>
+    request<{ wikiKey: string; alreadyMember: boolean }>("POST", `/invites/${encodeURIComponent(token)}/accept`),
+
+  listUsers: () => request<{ users: UserSummary[] }>("GET", "/admin/users"),
+  setOwner: (userId: string, isOwner: boolean) => request<{ users: UserSummary[] }>("PUT", `/admin/users/${userId}/owner`, { isOwner }),
 
   listWikis: () => request<{ wikis: WikiSummary[]; baseDomain: string }>("GET", "/admin/wikis"),
   createWiki: (input: { key: string; name: string }) => request<WikiSummary>("POST", "/admin/wikis", input),
@@ -116,6 +130,13 @@ export const api = {
   saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", w(`/rules/${id}`), input),
   listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", w("/rules/runs")),
 
+  listMembers: () => request<{ members: Member[] }>("GET", w("/members")),
+  changeRole: (userId: string, role: WikiRole) => request<{ members: Member[] }>("PATCH", w(`/members/${userId}`), { role }),
+  removeMember: (userId: string) => request<{ ok: true }>("DELETE", w(`/members/${userId}`)),
+  listInvites: () => request<{ invites: Invite[] }>("GET", w("/invites")),
+  createInvite: (role: WikiRole) => request<{ token: string; invite: Invite }>("POST", w("/invites"), { role }),
+  revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
+
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
     request<{ commitId: string }>("POST", w("/structure/commits"), input),
@@ -144,7 +165,21 @@ export function errorMessage(err: unknown): string {
       case "wiki_not_found":
         return "この wiki は見つかりません。アーカイブされたか、URL が違います。";
       case "owner_only":
-        return "wiki の作成・アーカイブは、オーナーだけが行えます。";
+        return "この操作は、オーナーだけが行えます。";
+      case "admin_only":
+        return "この操作は、この wiki の管理者だけが行えます。";
+      case "last_admin":
+        return "管理者が1人もいなくなるため、できません。先にほかのメンバーを管理者にしてください。";
+      case "last_owner":
+        return "最後のオーナーは解除できません。先にほかの人をオーナーにしてください。";
+      case "invite_used":
+        return "この招待リンクは、すでに使われています。";
+      case "invite_expired":
+        return "この招待リンクは、期限が切れています。";
+      case "invite_revoked":
+        return "この招待リンクは、無効にされています。";
+      case "invite_not_found":
+        return "この招待リンクは見つかりません。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
       default:
