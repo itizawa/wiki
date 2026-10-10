@@ -86,6 +86,8 @@ export type PageVersion = {
   title: string;
   bodyMd: string;
   authorType: AuthorType;
+  /** 版を作った人（いまの名前）。自動でできた版は、もとの下書きを書いていた人。これより前の版は null */
+  createdBy: { id: string; name: string } | null;
   /** 間引かずに残す版か。下書きから自動でできた版は false。人が操作して作った版と、公開・予約に使った版は true */
   keep: boolean;
   createdAt: string;

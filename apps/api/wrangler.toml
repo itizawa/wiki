@@ -40,7 +40,6 @@ enabled = true
 
 # secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
 # SESSION_SECRET        セッションCookieの署名鍵（32文字以上）
-# ADMIN_EMAILS          管理者として許可するGoogleアカウント（カンマ区切り）
 # GOOGLE_CLIENT_ID      Google OAuth クライアント
 # GOOGLE_CLIENT_SECRET
 # INTERNAL_TOKEN        /export/public と /internal/* 用トークン（ワーカー・サイトのビルドと同じ値）

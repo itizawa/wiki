@@ -7,7 +7,8 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createLink, Navigate, Outlet } from "@tanstack/react-router";
+import { createLink, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
+import type { Me } from "@wiki/shared";
 import { createContext, useContext, type ReactNode } from "react";
 import { SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth } from "../components/SidebarResizer";
@@ -17,7 +18,7 @@ import { usePersistentState } from "../lib/storage";
 import { lastWikiKey, pickWiki } from "../lib/wiki";
 
 /** ログイン中の人と、ログアウトの操作。ログインの確認が済んだ画面（Root の下）で使える。 */
-export type Session = { email: string; isOwner: boolean; logout: () => void };
+export type Session = Me & { logout: () => void };
 const SessionContext = createContext<Session | null>(null);
 
 export function useSession(): Session {
@@ -31,14 +32,22 @@ export function useWikis() {
   return useQuery({ queryKey: ["wikis"], queryFn: api.listWikis });
 }
 
-/** すべての画面の入口：ログインを確かめ、済んでいれば中の画面を出す。 */
+/** すべての画面の入口：ログインを確かめ、済んでいれば中の画面を出す。招待リンクの画面だけは、ログインしていなくても開ける。 */
 export function Root() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (pathname === "/invite") return <Outlet />;
+  return <LoginGate />;
+}
+
+function LoginGate() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
 
   if (me.isPending) return <Loading />;
-  if (me.error instanceof ApiError && (me.error.status === 401 || me.error.status === 403)) {
-    return <Login forbidden={me.error.status === 403} />;
+  if (me.error instanceof ApiError && me.error.status === 401) return <Login />;
+  // ログインはできたが、どの wiki のメンバーでもない
+  if (me.error instanceof ApiError && me.error.code === "invite_only") {
+    return <InviteOnly email={(me.error.details as { email?: string } | undefined)?.email ?? null} />;
   }
   if (me.error) {
     return (
@@ -187,18 +196,24 @@ function googleLoginHref(): string {
     : `/api/auth/google/login?${new URLSearchParams({ next: here })}`;
 }
 
-function Login({ forbidden }: { forbidden: boolean }) {
+function Login() {
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.providers });
   const qc = useQueryClient();
-  const denied = forbidden || new URLSearchParams(location.search).get("error") === "forbidden";
+  const params = new URLSearchParams(location.search);
+  const error = params.get("error");
+  // Google でログインできたが、招待されていない（ユーザーの行は作っていない）
+  if (error === "invite_only") return <InviteOnly email={params.get("email")} />;
   return (
     <Center>
-      <Section sx={{ minWidth: 300, textAlign: "center" }}>
+      <Section sx={{ minWidth: 300, maxWidth: 420, textAlign: "center" }}>
         <Stack spacing={1.5}>
           <Typography variant="h5" component="h1">
             wiki 管理画面
           </Typography>
-          {denied && <Alert severity="error">このアカウントには管理権限がありません。</Alert>}
+          {error === "unverified" && (
+            <Alert severity="error">Google でメールアドレスが確認されていないアカウントでは、ログインできません。</Alert>
+          )}
+          {error === "forbidden" && <Alert severity="error">ログインできませんでした。もう一度お試しください。</Alert>}
           {providers.data?.google !== false && (
             <Button variant="contained" size="medium" href={googleLoginHref()}>
               Googleでログイン
@@ -219,6 +234,36 @@ function Login({ forbidden }: { forbidden: boolean }) {
           {providers.data && !providers.data.google && !providers.data.devLogin && (
             <Muted>Googleログインが未設定です（GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET）。</Muted>
           )}
+        </Stack>
+      </Section>
+    </Center>
+  );
+}
+
+/** どの wiki のメンバーでもない人に出す。招待制であることと、いまログインしているアカウントを伝える。 */
+function InviteOnly({ email }: { email: string | null }) {
+  const providers = useQuery({ queryKey: ["providers"], queryFn: api.providers });
+  const switchAccount = async () => {
+    await api.logout().catch(() => {});
+    // Google はアカウントを選ぶ画面から始まる
+    location.assign(providers.data?.google === false ? "/" : "/api/auth/google/login");
+  };
+  return (
+    <Center>
+      <Section sx={{ maxWidth: 440, textAlign: "center" }}>
+        <Stack spacing={1.5} sx={{ alignItems: "center" }}>
+          <Typography variant="h5" component="h1">
+            この管理画面は招待制です
+          </Typography>
+          <Muted>管理者から招待リンクを受け取ってください。リンクを開くと、その wiki に参加できます。</Muted>
+          {email && (
+            <Typography variant="body2">
+              いまログインしているアカウント：<strong>{email}</strong>
+            </Typography>
+          )}
+          <Button variant="outlined" size="medium" onClick={switchAccount}>
+            別のアカウントでログインする
+          </Button>
         </Stack>
       </Section>
     </Center>

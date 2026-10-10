@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Db } from "../db/client";
 import * as schema from "../db/schema";
 import { runDueActions } from "../publishing/scheduler";
-import { createPage } from "../routes/pages";
 import { bootstrapStructure } from "../structure/repo";
 import { wikiManifest } from "./harness";
 
@@ -308,9 +307,16 @@ describe("0018_remove_rules", () => {
     const pg = (client = new PGlite());
     for (const tag of before) await runMigration(pg, tag);
     const db = drizzle(pg, { schema }) as unknown as Db;
-    await bootstrapStructure(db);
     const wikiId = (await pg.query<{ id: string }>(`select id from wikis where key = 'wiki'`)).rows[0]!.id;
-    const newPage = (title: string) => db.transaction((tx) => createPage(tx, wikiId, { title, bodyMd: `${title} の本文` }));
+    // いまのコード（createPage）は最新のスキーマに合わせて書くので、この時点の列だけで行を作る
+    let seq = 0;
+    const newPage = async (title: string) => {
+      const id = `pagerule${String(++seq).padStart(2, "0")}`;
+      const versionId = `00000000-0000-0000-0000-0000000000e${seq}`;
+      await pg.query(`insert into pages (id, wiki_id, title, head_version_id) values ($1, $2, $3, $4)`, [id, wikiId, title, versionId]);
+      await pg.query(`insert into page_versions (id, page_id, title, body_md, author_type) values ($1, $2, $3, $4, 'human')`, [versionId, id, title, `${title} の本文`]);
+      return id;
+    };
     const approved = await newPage("承認済みで、ルールが予約した");
     const idea = await newPage("ネタ");
     const stale = await newPage("見直し待ち");
@@ -357,7 +363,12 @@ describe("0018_remove_rules", () => {
     expect(await snapshot("scheduled_actions", actionCols)).toEqual(actionsBefore);
     expect(actionsBefore.map((a: any) => a.status)).toEqual(["scheduled", "scheduled"]);
 
-    // 時刻が来る前は実行されず、来ると、ルールが入れた予約も人が入れた予約も公開される
+    // 時刻が来る前は実行されず、来ると、ルールが入れた予約も人が入れた予約も公開される。
+    // 予約を実行するいまのコードは最新のスキーマで動くので、このあとの移行も流してから確かめる
+    const { readdir } = await import("node:fs/promises");
+    const later = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).filter((t) => t > "0018_remove_rules").sort();
+    for (const tag of later) await runMigration(pg, tag);
+    await bootstrapStructure(db);
     expect((await runDueActions(db, new Date(runAt.getTime() - 60_000))).done).toEqual([]);
     const run = await runDueActions(db, new Date(runAt.getTime() + 60_000));
     expect(run.failed).toEqual([]);
@@ -374,5 +385,61 @@ describe("0018_remove_rules", () => {
     for (const tag of [...before, "0018_remove_rules"]) await runMigration(pg, tag);
     expect(await tables(pg)).not.toContain("rules");
     expect((await pg.query(`select 1 from pages`)).rows).toEqual([]);
+  });
+});
+
+describe("0019_users_and_invites", () => {
+  it("keeps stars, drafts, app grants and version authors by turning their emails into users, which ADMIN_EMAILS then makes owners", async () => {
+    const db = (client = new PGlite());
+    const { readdir } = await import("node:fs/promises");
+    const tags = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).sort();
+    for (const tag of tags.filter((t) => t < "0019")) await runMigration(db, tag);
+
+    await db.exec(`
+      insert into wikis (id, key, name) values ('w_first', 'wiki', 'メイン') on conflict do nothing;
+      insert into pages (id, wiki_id, title, head_version_id) values ('pageaaaaa1', (select id from wikis where key = 'wiki'), 'one', gen_random_uuid());
+      insert into page_versions (page_id, title, body_md, author_type, author_email, keep) values
+        ('pageaaaaa1', 'one', 'by hand', 'human', 'Owner@example.com', true),
+        ('pageaaaaa1', 'one', 'auto', 'human', 'writer@example.com', false),
+        ('pageaaaaa1', 'one', 'by app', 'human', null, true);
+      insert into page_stars (admin_email, page_id, position) values ('Owner@example.com', 'pageaaaaa1', 0), ('former@example.com', 'pageaaaaa1', 0);
+      insert into page_drafts (page_id, author_email, base_version_id, title, body_md) values ('pageaaaaa1', 'owner@example.com', gen_random_uuid(), 't', 'b');
+      insert into oauth_clients (id, name, redirect_uris) values ('wc_app', 'app', '["https://app.example/cb"]');
+      insert into oauth_grants (client_id, user_email, scopes, expires_at) values ('wc_app', 'OWNER@example.com', '["wiki.read"]', now() + interval '1 day');
+    `);
+    await runMigration(db, tags.find((t) => t.startsWith("0019"))!);
+
+    const users = (await db.query<{ id: string; email: string; is_owner: boolean }>(`select id, email, is_owner from users order by email`)).rows;
+    expect(users.map((u) => [u.email, u.is_owner])).toEqual([
+      ["former@example.com", false],
+      ["owner@example.com", false],
+      ["writer@example.com", false],
+    ]);
+    const owner = users.find((u) => u.email === "owner@example.com")!;
+    expect((await db.query(`select user_id from page_stars order by user_id`)).rows).toHaveLength(2);
+    expect((await db.query<{ user_id: string }>(`select user_id from page_drafts`)).rows).toEqual([{ user_id: owner.id }]);
+    expect((await db.query<{ user_id: string }>(`select user_id from oauth_grants`)).rows).toEqual([{ user_id: owner.id }]);
+    // 版を作った人も、ユーザーに結びつく。外部のアプリからの版は null のまま
+    const versions = (await db.query<{ body_md: string; created_by: string | null; keep: boolean }>(`select body_md, created_by, keep from page_versions order by body_md`)).rows;
+    expect(versions).toEqual([
+      { body_md: "auto", created_by: users.find((u) => u.email === "writer@example.com")!.id, keep: false },
+      { body_md: "by app", created_by: null, keep: true },
+      { body_md: "by hand", created_by: owner.id, keep: true },
+    ]);
+
+    // pnpm db:migrate が続けて ADMIN_EMAILS をオーナーにする。スターのために作った行をそのまま使う
+    const { drizzle } = await import("drizzle-orm/pglite");
+    const schema = await import("../db/schema");
+    const { bootstrapOwners } = await import("../users/service");
+    expect(await bootstrapOwners(drizzle(db, { schema }) as never, ["owner@example.com", "new@example.com"])).toBe(2);
+    const after = (await db.query<{ email: string; is_owner: boolean }>(`select email, is_owner from users order by email`)).rows;
+    expect(after.map((u) => [u.email, u.is_owner])).toEqual([
+      ["former@example.com", false],
+      ["new@example.com", true],
+      ["owner@example.com", true],
+      ["writer@example.com", false],
+    ]);
+    const members = (await db.query<{ user_id: string }>(`select user_id from wiki_members where role = 'admin'`)).rows;
+    expect(members.map((m) => m.user_id)).toContain(owner.id);
   });
 });

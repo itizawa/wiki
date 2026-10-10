@@ -15,7 +15,7 @@ export const PROMOTE_BATCH_SIZE = 100;
 /** 版のタイトルの長さ（`savePageInput` と同じ） */
 const MAX_TITLE_LENGTH = 200;
 
-export const ownDraft = (pageId: string, email: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.authorEmail, email));
+export const ownDraft = (pageId: string, userId: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.userId, userId));
 
 /** 本文中の `/p/{id}` 形式の内部リンクを抽出する。 */
 export function extractPageLinks(bodyMd: string): string[] {
@@ -44,8 +44,8 @@ export async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyM
  * 開いたままの画面は、ワーカーが版を作ったことを知らずに古い `baseVersionId` を送ってくる。
  * 中身は自分の続きなので、別の画面で先に保存された扱い（409）にはしない。
  */
-export const isOwnAutoVersion = (head: VersionRow, email: string, baseVersionId: string) =>
-  !head.keep && head.authorEmail === email && head.baseVersionId === baseVersionId;
+export const isOwnAutoVersion = (head: VersionRow, userId: string, baseVersionId: string) =>
+  !head.keep && head.createdBy === userId && head.baseVersionId === baseVersionId;
 
 /**
  * いまの head の次の版を作る。版を足す、`pages` の title / head_version_id / updated_at を進める、
@@ -60,10 +60,10 @@ export async function createVersion(
   opts: {
     /** 間引かずに残す版か。人が操作して作るなら true、ワーカーが作るなら false */
     keep: boolean;
-    /** 作った人。外部のアプリ（MCP）からなら null */
-    authorEmail: string | null;
+    /** 作った人（ユーザーの ID）。外部のアプリ（MCP）からなら、許可した人 */
+    createdBy: string | null;
     oauthGrantId?: string;
-    /** 版になったら要らなくなる下書きの持ち主 */
+    /** 版になったら要らなくなる下書きの持ち主（ユーザーの ID） */
     draftOwner?: string;
   },
 ): Promise<{ versionId: string; created: boolean }> {
@@ -83,7 +83,7 @@ export async function createVersion(
       title: content.title,
       bodyMd: content.bodyMd,
       authorType: "human",
-      authorEmail: opts.authorEmail,
+      createdBy: opts.createdBy,
       keep: opts.keep,
       oauthGrantId: opts.oauthGrantId ?? null,
     })
@@ -125,7 +125,7 @@ const isDue = (draft: { createdAt: Date; updatedAt: Date }, now: Date) =>
 export async function promoteDrafts(db: Db, now = new Date()): Promise<PromoteDraftsResult> {
   // 版にできない下書き（古い版をもとにしたもの、タイトルが空のもの）が上限を埋めないよう、ここで外しておく
   const candidates = await db
-    .select({ pageId: pageDrafts.pageId, authorEmail: pageDrafts.authorEmail })
+    .select({ pageId: pageDrafts.pageId, userId: pageDrafts.userId })
     .from(pageDrafts)
     .innerJoin(pages, eq(pages.id, pageDrafts.pageId))
     .innerJoin(wikis, eq(wikis.id, pages.wikiId))
@@ -150,7 +150,7 @@ export async function promoteDrafts(db: Db, now = new Date()): Promise<PromoteDr
         if (!page || page.deletedAt) return false;
         const [wiki] = await tx.select({ archivedAt: wikis.archivedAt }).from(wikis).where(eq(wikis.id, page.wikiId));
         if (!wiki || wiki.archivedAt) return false;
-        const [draft] = await tx.select().from(pageDrafts).where(ownDraft(c.pageId, c.authorEmail));
+        const [draft] = await tx.select().from(pageDrafts).where(ownDraft(c.pageId, c.userId));
         // 待っているあいだに打ち直された・版になった・破棄された
         if (!draft || !isDue(draft, now)) return false;
         if (draft.baseVersionId !== page.headVersionId) return false;
@@ -160,7 +160,7 @@ export async function promoteDrafts(db: Db, now = new Date()): Promise<PromoteDr
           tx,
           page,
           { title, bodyMd: draft.bodyMd },
-          { keep: false, authorEmail: draft.authorEmail, draftOwner: draft.authorEmail },
+          { keep: false, createdBy: draft.userId, draftOwner: draft.userId },
         );
         return created;
       });

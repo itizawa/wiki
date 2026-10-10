@@ -126,6 +126,7 @@ export function VersionHistory(props: {
                   この版に戻す
                 </Button>
               </Stack>
+              {version.data.createdBy && <Muted>{version.data.createdBy.name} が作った版です。</Muted>}
               <Muted>
                 「この版に戻す」は、この版の内容をエディタに入れて閉じます。戻した内容は、ほかの編集と同じく自動で保存され、新しい版になります。公開中の内容は、公開し直すまで変わりません。
               </Muted>
@@ -161,7 +162,7 @@ export function VersionHistory(props: {
                   setMissing(false);
                   props.onSelect(v.id);
                 }}
-                sx={{ px: 1, gap: 0.75, borderRadius: 1 }}
+                sx={{ px: 1, gap: 0.75, borderRadius: 1, flexWrap: "wrap" }}
               >
                 {formatDateTime(v.createdAt)}
                 {v.id === props.headVersionId && <StatusChip label="最新" size="small" />}
@@ -169,6 +170,12 @@ export function VersionHistory(props: {
                 {!v.keep && <StatusChip label="自動" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
                 {v.via && <StatusChip label={`${v.via} 経由`} size="small" />}
+                {/* 作った人。これより前の版と、ルール・AI による版には無い */}
+                {v.createdBy && (
+                  <Box component="span" sx={{ width: "100%", color: "text.secondary", fontSize: "0.8rem" }}>
+                    {v.createdBy.name}
+                  </Box>
+                )}
               </ListItemButton>
             ))}
           </List>

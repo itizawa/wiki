@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -32,6 +33,11 @@ export const wikis = pgTable("wikis", {
   name: text("name").notNull(),
   /** 管理画面で wiki を見分けるための画像の URL（http(s)）。null なら表示名の頭文字を出す */
   iconUrl: text("icon_url"),
+  /**
+   * 公開サイトの見た目（アクセント色・ロゴ・ファビコン。`WikiTheme`）。null なら既定。
+   * 読むときは resolveTheme を通し、欠けた・正しくない項目は既定に戻す
+   */
+  theme: jsonb("theme"),
   /** Google Analytics（GA4）の測定 ID（`G-` で始まる）。null なら公開サイトに Google タグを出さない */
   gaMeasurementId: text("ga_measurement_id"),
   /** Google サーチコンソールの確認用の値（meta タグの content の中身）。null なら出さない */
@@ -118,8 +124,8 @@ export const pageVersions = pgTable(
     sourceProposalId: uuid("source_proposal_id"),
     /** 外部のアプリ（MCP）から保存した版なら、その連携 */
     oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
-    /** 作った人のメールアドレス。外部のアプリ（MCP）から保存した版と、この列を足す前の版は null */
-    authorEmail: text("author_email"),
+    /** 作った人（自動でできた版は、もとの下書きを書いていた人。外部のアプリ（MCP）から保存した版は、許可した人）。この列を足す前の版は null */
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
     /**
      * 間引かずに残す版か。人が操作して作った版と、公開・予約に使った版は true。
      * ワーカーが下書きから自動で作った版は false（あとで間引いてよい）
@@ -144,7 +150,10 @@ export const pageDrafts = pgTable(
     pageId: text("page_id")
       .notNull()
       .references(() => pages.id),
-    authorEmail: text("author_email").notNull(),
+    /** 書いている人。下書きは人ごとに持つ */
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
     baseVersionId: uuid("base_version_id").notNull(),
     title: text("title").notNull(),
     bodyMd: text("body_md").notNull(),
@@ -152,7 +161,7 @@ export const pageDrafts = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.pageId, t.authorEmail] })],
+  (t) => [primaryKey({ columns: [t.pageId, t.userId] })],
 );
 
 export const pageLinks = pgTable(
@@ -182,11 +191,13 @@ export const pageTemplates = pgTable(
   (t) => [index("page_templates_wiki_idx").on(t.wikiId, t.updatedAt)],
 );
 
-/** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
+/** スター（よく開くページの目印）。ユーザーごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
 export const pageStars = pgTable(
   "page_stars",
   {
-    adminEmail: text("admin_email").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
     pageId: text("page_id")
       .notNull()
       .references(() => pages.id),
@@ -194,7 +205,7 @@ export const pageStars = pgTable(
     position: integer("position").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.adminEmail, t.pageId] })],
+  (t) => [primaryKey({ columns: [t.userId, t.pageId] })],
 );
 
 /**
@@ -277,6 +288,8 @@ export const structureCommits = pgTable("structure_commits", {
   message: text("message"),
   authorType: text("author_type", { enum: ["human", "ai"] }).notNull().default("human"),
   sourceProposalId: uuid("source_proposal_id"),
+  /** 構造を変えた人。これより前のコミットと、ルール・AI・システムによるものは null */
+  createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
   /** 外部のアプリ（MCP）からの操作なら、その連携 */
   oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
   createdAt: createdAt(),
@@ -356,6 +369,8 @@ export const scheduledActions = pgTable(
     branchName: text("branch_name"),
     /** 同時公開グループ（シリーズ記事など）。同じ batch_id は1トランザクションで実行する */
     batchId: uuid("batch_id"),
+    /** 予約を入れた人。これより前の予約は null */
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
     /** 外部のアプリ（MCP）が入れた予約なら、その許可 */
     oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
     /** UTC保存。入出力はJST */
@@ -403,6 +418,116 @@ export const siteBuilds = pgTable("site_builds", {
 });
 
 // ---------------------------------------------------------------------------
+// ユーザー・wiki のメンバー・招待（管理画面に入れる人）
+// ---------------------------------------------------------------------------
+
+/**
+ * 管理画面に入れる人。Google のアカウント ID（sub）で見分ける。
+ * 行を消さない（外した人が書いた版や履歴を残すため）。
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Google のアカウント ID。ADMIN_EMAILS からの移行と締め出し用のスクリプトで作った行は、最初のログインまで空 */
+    googleSub: text("google_sub").unique(),
+    /** 表示用。ログインのたびに Google から受け取ったもので更新する（小文字） */
+    email: text("email").notNull(),
+    name: text("name"),
+    /** すべての wiki に管理者として入れ、wiki の作成・アーカイブとオーナーの追加・解除ができる */
+    isOwner: boolean("is_owner").notNull().default(false),
+    createdAt: createdAt(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  },
+  (t) => [index("users_email_idx").on(t.email)],
+);
+
+/** wiki ごとのメンバー。オーナーは行が無くても、すべての wiki に管理者として入れる。 */
+export const wikiMembers = pgTable(
+  "wiki_members",
+  {
+    wikiId: wikiId(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role", { enum: ["admin", "editor"] }).notNull(),
+    createdAt: createdAt(),
+    /** 参加に使った招待。招待を通さずに入った人（wiki を作ったオーナー・移行）は null */
+    inviteId: uuid("invite_id").references((): AnyPgColumn => invites.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.wikiId, t.userId] }),
+    check("wiki_members_role_check", sql`${t.role} in ('admin', 'editor')`),
+    index("wiki_members_user_idx").on(t.userId),
+  ],
+);
+
+/** 招待リンク。1リンクで1人、期限つき。値そのものは持たず、ハッシュだけを持つ。 */
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    role: text("role", { enum: ["admin", "editor"] }).notNull(),
+    /** リンクの値（128bit の乱数）の SHA-256（16進） */
+    tokenHash: text("token_hash").notNull().unique(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedBy: uuid("used_by").references(() => users.id),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("invites_role_check", sql`${t.role} in ('admin', 'editor')`),
+    index("invites_wiki_idx").on(t.wikiId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// 監査ログ（誰が・いつ・何をしたか）。追記だけ。直す・消す API は無い
+// ---------------------------------------------------------------------------
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** 全体にかかわる操作（ログイン・オーナーの変更・wiki の作成とアーカイブ）は null */
+    wikiId: text("wiki_id").references(() => wikis.id),
+    actorType: text("actor_type", { enum: ["user", "system"] }).notNull(),
+    /** 人のとき。ログインの拒否は、ユーザーの行が無いので null */
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    /** その時点の名前（無ければメールアドレス）。システムなら「システム」 */
+    actorLabel: text("actor_label").notNull(),
+    /** その時点のメールアドレス（人のとき） */
+    actorEmail: text("actor_email"),
+    /** 外部のアプリ（MCP）からの操作なら、その時点のアプリの名前 */
+    via: text("via"),
+    /** 操作の種類（shared の AUDIT_ACTIONS） */
+    action: text("action").notNull(),
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    /** その時点の対象のタイトル・名前（あとで変わっても、消えても読めるように） */
+    targetLabel: text("target_label"),
+    /** 変更の前と後など（shared の AuditDetailMap）。本文・招待リンクやトークンの値・シークレットは入れない */
+    detail: jsonb("detail").notNull().default({}),
+    /** ログイン・ログインの拒否のときだけ */
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("audit_logs_actor_type_check", sql`${t.actorType} in ('user', 'system')`),
+    index("audit_logs_wiki_created_idx").on(t.wikiId, t.createdAt, t.id),
+    index("audit_logs_created_idx").on(t.createdAt, t.id),
+    index("audit_logs_actor_idx").on(t.actorUserId, t.createdAt),
+    index("audit_logs_target_idx").on(t.targetType, t.targetId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // 外部のアプリ（MCP クライアント）からの操作：OAuth 2.1
 // トークン・認可コードは平文を持たず、SHA-256 のハッシュだけを持つ
 // ---------------------------------------------------------------------------
@@ -424,8 +549,10 @@ export const oauthGrants = pgTable(
     clientId: text("client_id")
       .notNull()
       .references(() => oauthClients.id),
-    /** 許可した人。ADMIN_EMAILS から外れると、この許可も使えなくなる */
-    userEmail: text("user_email").notNull(),
+    /** 許可した人。どの wiki のメンバーでもなくなると、この許可も使えなくなる */
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
     scopes: jsonb("scopes").$type<string[]>().notNull(),
     createdAt: createdAt(),
     /** これを過ぎたら、もう一度同意し直す */
@@ -436,7 +563,7 @@ export const oauthGrants = pgTable(
     rateWindowStart: timestamp("rate_window_start", { withTimezone: true }),
     rateWindowCount: integer("rate_window_count").notNull().default(0),
   },
-  (t) => [index("oauth_grants_user_idx").on(t.userEmail, t.createdAt)],
+  (t) => [index("oauth_grants_user_idx").on(t.userId, t.createdAt)],
 );
 
 /** 認可コード。1回だけ使える */

@@ -107,6 +107,8 @@ export async function commitOps(
     oauthGrantId?: string;
     /** 移動で公開範囲の親子の決まりを破らないかを確かめる（ページをゴミ箱に入れる・元に戻すときは確かめない） */
     checkVisibility?: boolean;
+    /** 構造を変えた人。人の操作でなければ省く */
+    createdBy?: string | null;
   },
 ): Promise<CommitResult> {
   return db.transaction(async (tx) => {
@@ -143,6 +145,7 @@ export async function commitOps(
       parents: [branch.headCommitId],
       message: input.message ?? describeOps(input.ops),
       authorType: input.authorType ?? "human",
+      createdBy: input.createdBy ?? null,
       oauthGrantId: input.oauthGrantId ?? null,
       state: result.state,
       changedTreeIds: new Set(result.changedTreeIds),
@@ -192,6 +195,7 @@ async function writeCommit(
     parents: string[];
     message: string;
     authorType: "human" | "ai";
+    createdBy?: string | null;
     oauthGrantId?: string | null;
     state: StructureState;
     changedTreeIds: Set<string>;
@@ -200,7 +204,13 @@ async function writeCommit(
 ): Promise<string> {
   const [commit] = await db
     .insert(structureCommits)
-    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType, oauthGrantId: input.oauthGrantId ?? null })
+    .values({
+      wikiId: input.wikiId,
+      message: input.message,
+      authorType: input.authorType,
+      createdBy: input.createdBy ?? null,
+      oauthGrantId: input.oauthGrantId ?? null,
+    })
     .returning({ id: structureCommits.id });
   const commitId = commit!.id;
   if (input.parents.length > 0) {
@@ -302,6 +312,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     author_type: string;
     created_at: string | Date;
     parent_ids: string[] | null;
+    created_by: string | null;
+    created_by_name: string | null;
     via: string | null;
   };
   const result = await db.execute(sql`
@@ -313,13 +325,15 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
       join structure_commit_parents p on p.commit_id = h.id and p.ordinal = 0
       where h.depth < ${limit - 1}
     )
-    select c.id, c.message, c.author_type, c.created_at,
+    select c.id, c.message, c.author_type, c.created_at, c.created_by,
+      coalesce(u.name, u.email) as created_by_name,
       (select array_agg(p.parent_commit_id::text order by p.ordinal)
          from structure_commit_parents p where p.commit_id = c.id) as parent_ids,
       -- 外部のアプリ（MCP）からの操作なら、そのアプリの名前
       (select oc.name from oauth_grants g join oauth_clients oc on oc.id = g.client_id
          where g.id = c.oauth_grant_id) as via
     from history h join structure_commits c on c.id = h.id
+    left join users u on u.id = c.created_by
     order by h.depth
   `);
   return rowsOf<Row>(result).map((r) => ({
@@ -328,6 +342,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     authorType: r.author_type,
     createdAt: new Date(r.created_at).toISOString(),
     parentIds: r.parent_ids ?? [],
+    /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
+    createdBy: r.created_by && r.created_by_name ? { id: r.created_by, name: r.created_by_name } : null,
     via: r.via,
   }));
 }

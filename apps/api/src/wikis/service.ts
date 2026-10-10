@@ -1,11 +1,25 @@
-import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type UpdateWikiSettingsInput, type Wiki, type WikiSettings, type WikiSummary } from "@wiki/shared";
+import {
+  newWikiId,
+  resolveTheme,
+  wikiOrigin,
+  type CreateWikiInput,
+  type UpdateAppearanceInput,
+  type UpdateWikiInput,
+  type UpdateWikiSettingsInput,
+  type Wiki,
+  type WikiAppearance,
+  type WikiRole,
+  type WikiSettings,
+  type WikiSummary,
+} from "@wiki/shared";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { scheduledActions, wikis } from "../db/schema";
+import { scheduledActions, wikiMembers, wikis } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { recordPublishEvent } from "../publishing/service";
 import { createStructure } from "../structure/repo";
+import { SYSTEM_ACTOR, userActor, writeAudit, type AuditActor } from "../audit/service";
 
 type WikiRow = typeof wikis.$inferSelect;
 
@@ -29,8 +43,15 @@ export function toWikiSettings(row: WikiRow): WikiSettings {
   return { gaMeasurementId: row.gaMeasurementId, searchConsoleVerification: row.searchConsoleVerification, gaPropertyId: row.gaPropertyId };
 }
 
-/** 作成順に返す（最初の wiki が先頭）。 */
-export async function listWikis(db: Db, config: Pick<AppConfig, "siteBaseDomain">, opts: { includeArchived: boolean }): Promise<WikiSummary[]> {
+/**
+ * 作成順に返す（最初の wiki が先頭）。
+ * roles を渡すと、そこにある wiki だけを、そのロールつきで返す（メンバー）。null ならすべてを管理者として返す（オーナー）。
+ */
+export async function listWikis(
+  db: Db,
+  config: Pick<AppConfig, "siteBaseDomain">,
+  opts: { includeArchived: boolean; roles: ReadonlyMap<string, WikiRole> | null },
+): Promise<WikiSummary[]> {
   const rows = await db
     .select({
       wiki: wikis,
@@ -46,7 +67,10 @@ export async function listWikis(db: Db, config: Pick<AppConfig, "siteBaseDomain"
     .from(wikis)
     .where(opts.includeArchived ? undefined : isNull(wikis.archivedAt))
     .orderBy(asc(wikis.createdAt), asc(wikis.key));
-  return rows.map((r) => ({ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages) }));
+  return rows.flatMap((r) => {
+    const role = opts.roles ? opts.roles.get(r.wiki.id) : "admin";
+    return role ? [{ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages), role }] : [];
+  });
 }
 
 export async function findWiki(db: Db, key: string, forUpdate = false): Promise<WikiRow> {
@@ -58,25 +82,39 @@ export async function findWiki(db: Db, key: string, forUpdate = false): Promise<
 
 /**
  * wiki を作り、空のツリーを1本用意する。
+ * 作った人（オーナー）は、その wiki の管理者としてメンバーに入る。
  * key はアーカイブ中のものも含めて重ねられない。
  */
-export async function createWiki(db: Db, input: CreateWikiInput, createdBy: string | null): Promise<WikiRow> {
+export async function createWiki(
+  db: Db,
+  input: CreateWikiInput,
+  creator: { id: string; email: string; name: string | null } | null,
+): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(wikis)
-      .values({ id: newWikiId(), key: input.key, name: input.name, iconUrl: input.iconUrl ?? null, createdBy })
+      .values({ id: newWikiId(), key: input.key, name: input.name, iconUrl: input.iconUrl ?? null, createdBy: creator?.email ?? null })
       .onConflictDoNothing({ target: wikis.key })
       .returning();
     if (!row) throw new HttpError(409, "wiki_key_taken", `the key ${input.key} is already used`);
+    if (creator) await tx.insert(wikiMembers).values({ wikiId: row.id, userId: creator.id, role: "admin" });
     await createStructure(tx, row.id);
     // 新しいサブドメインを公開サイトに出す
     await recordPublishEvent(tx, row.id, "wiki_create");
+    // wiki の作成・アーカイブ・戻すは、全体にかかわる操作として残す（オーナーだけが見る）
+    await writeAudit(tx, {
+      wikiId: null,
+      actor: creator ? userActor(creator) : SYSTEM_ACTOR,
+      action: "wiki_create",
+      target: { type: "wiki", id: row.id, label: row.name },
+      detail: { key: row.key },
+    });
     return row;
   });
 }
 
 /** 表示名と画像の変更。画像は管理画面でだけ使うので、変えても公開サイトはビルドし直さない。 */
-export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): Promise<WikiRow> {
+export async function updateWiki(db: Db, key: string, input: UpdateWikiInput, actor: AuditActor): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     const renamed = input.name !== undefined && input.name !== wiki.name;
@@ -89,7 +127,38 @@ export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): P
       .returning();
     // 公開サイトの名前が変わる
     if (renamed && !wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_rename");
+    await writeAudit(tx, {
+      wikiId: wiki.id,
+      actor,
+      action: "wiki_update",
+      target: { type: "wiki", id: wiki.id, label: row!.name },
+      detail: {
+        ...(renamed && { name: { from: wiki.name, to: input.name! } }),
+        ...(iconChanged && { iconUrl: { from: wiki.iconUrl, to: input.iconUrl ?? null } }),
+      },
+    });
     return row!;
+  });
+}
+
+export function toAppearance(row: WikiRow): WikiAppearance {
+  return { name: row.name, theme: resolveTheme(row.theme) };
+}
+
+/**
+ * 「外観」（サイト名とテーマ）の保存。input は検証済み（色のコントラスト比を含む）のもの。
+ * 変わったときだけ公開イベントを記録し、いつものデバウンスを通して公開サイトをビルドし直す。
+ */
+export async function updateAppearance(db: Db, wikiId: string, input: UpdateAppearanceInput): Promise<WikiAppearance> {
+  return db.transaction(async (tx) => {
+    const [wiki] = await tx.select().from(wikis).where(eq(wikis.id, wikiId)).for("update");
+    if (!wiki) throw notFound(`wiki ${wikiId}`);
+    const before = toAppearance(wiki);
+    const theme = resolveTheme(input.theme);
+    if (before.name === input.name && JSON.stringify(before.theme) === JSON.stringify(theme)) return before;
+    const [row] = await tx.update(wikis).set({ name: input.name, theme }).where(eq(wikis.id, wiki.id)).returning();
+    if (!wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_theme");
+    return toAppearance(row!);
   });
 }
 
@@ -122,12 +191,13 @@ export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiS
 }
 
 /** アーカイブ。データは残す。公開サイトは次のビルドで止まり、予約は実行されなくなる。 */
-export async function archiveWiki(db: Db, key: string, now = new Date()): Promise<WikiRow> {
+export async function archiveWiki(db: Db, key: string, actor: AuditActor, now = new Date()): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     if (wiki.archivedAt) return wiki;
     const [row] = await tx.update(wikis).set({ archivedAt: now }).where(eq(wikis.id, wiki.id)).returning();
     await recordPublishEvent(tx, wiki.id, "wiki_archive");
+    await writeAudit(tx, { wikiId: null, actor, action: "wiki_archive", target: { type: "wiki", id: wiki.id, label: wiki.name }, detail: { key: wiki.key } });
     return row!;
   });
 }
@@ -136,7 +206,7 @@ export async function archiveWiki(db: Db, key: string, now = new Date()): Promis
  * アーカイブから戻す。止まっていた間に時刻を過ぎた予約は実行せず、失敗として一覧に出す
  * （戻した途端に、古い予定の記事が公開されないようにする）。
  */
-export async function unarchiveWiki(db: Db, key: string, now = new Date()): Promise<WikiRow> {
+export async function unarchiveWiki(db: Db, key: string, actor: AuditActor, now = new Date()): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     if (!wiki.archivedAt) return wiki;
@@ -152,6 +222,7 @@ export async function unarchiveWiki(db: Db, key: string, now = new Date()): Prom
       );
     const [row] = await tx.update(wikis).set({ archivedAt: null }).where(eq(wikis.id, wiki.id)).returning();
     await recordPublishEvent(tx, wiki.id, "wiki_unarchive");
+    await writeAudit(tx, { wikiId: null, actor, action: "wiki_unarchive", target: { type: "wiki", id: wiki.id, label: wiki.name }, detail: { key: wiki.key } });
     return row!;
   });
 }

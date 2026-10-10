@@ -1,6 +1,7 @@
 import { StructureOpError, StructureValidationError } from "@wiki/shared";
 import { Hono } from "hono";
-import { authRoutes, requireAdmin } from "./auth/routes";
+import { authRoutes, requireAccess, requireUser } from "./auth/routes";
+import { appearanceRoutes } from "./routes/appearance";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
@@ -13,9 +14,11 @@ import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
+import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
+import { globalAuditRoutes, wikiAuditRoutes } from "./routes/audit";
 import { viewRoutes } from "./routes/views";
-import { isOwner, resolveWiki, wikiRoutes, wikiSettingsRoutes } from "./routes/wikis";
+import { resolveWiki, wikiRoutes, wikiSettingsRoutes } from "./routes/wikis";
 
 /**
  * API の応答はどれも JSON かリダイレクトなので、何も読み込ませず、枠にも入れさせない。
@@ -65,15 +68,23 @@ export function createApp(deps: Deps) {
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
   app.route("/images", imageServeRoutes);
+  // 招待リンクを開いた人向け。メンバーでなくても使える
+  app.route("/invites", inviteRoutes);
   // 外部のアプリ（MCP クライアント）：OAuth 2.1 の認可サーバーと、MCP サーバー
   app.route("/.well-known", wellKnownRoutes);
   app.route("/oauth", oauthRoutes);
   app.route("/mcp", mcpRoutes);
 
+  // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
-  admin.use("*", requireAdmin);
-  admin.get("/me", (c) => c.json({ email: c.get("adminEmail"), isOwner: isOwner(deps.config, c.get("adminEmail")) }));
+  admin.use("*", requireUser, requireAccess);
+  admin.get("/me", (c) => {
+    const user = c.get("user");
+    return c.json({ id: user.id, email: user.email, name: user.name, isOwner: user.isOwner });
+  });
   admin.route("/wikis", wikiRoutes);
+  admin.route("/users", userRoutes);
+  admin.route("/audit-logs", globalAuditRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
   // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
@@ -88,6 +99,10 @@ export function createApp(deps: Deps) {
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
   wiki.route("/images", imageUploadRoutes);
+  wiki.route("/members", memberRoutes);
+  wiki.route("/invites", inviteAdminRoutes);
+  wiki.route("/audit-logs", wikiAuditRoutes);
+  wiki.route("/appearance", appearanceRoutes);
   wiki.route("/views", viewRoutes);
   wiki.route("/settings", wikiSettingsRoutes);
   wiki.route("/analytics", analyticsRoutes);

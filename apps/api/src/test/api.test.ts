@@ -27,11 +27,22 @@ describe("auth", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a valid session whose email left the allowlist", async () => {
+  it("rejects a session from before users were kept in the DB (it carried the email)", async () => {
     ctx = await setup();
-    const token = await signSession(ctx.config.sessionSecret, "someone@example.com");
+    const { SignJWT } = await import("jose");
+    const old = await new SignJWT({ email: "admin@example.com", typ: "session" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(ctx.config.sessionSecret));
+    const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${old}` } });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a valid session whose user does not exist", async () => {
+    ctx = await setup();
+    const token = await signSession(ctx.config.sessionSecret, "00000000-0000-4000-8000-000000000000");
     const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 
   it("sends security headers on API responses", async () => {
@@ -51,32 +62,76 @@ describe("auth", () => {
     expect(res.status).toBe(403);
   });
 
-  it("logs in through Google only for allowlisted, verified emails", async () => {
-    let email = "admin@example.com";
+  it("logs in through Google only for registered users with a verified email", async () => {
+    let identity = { sub: "g-1", email: "admin@example.com", emailVerified: true, name: "Admin" };
     ctx = await setup({
       google: {
         authorizationUrl: ({ state }) => `https://accounts.example/auth?state=${state}`,
-        exchangeCode: async () => ({ email, emailVerified: true }),
+        exchangeCode: async () => identity,
       },
     });
+    // ADMIN_EMAILS からの移行と同じ形：メールアドレスだけの行は、最初のログインで結びつく
+    const { db } = ctx;
+    const { users } = await import("../db/schema");
+    const { eq } = await import("drizzle-orm");
+    await db.update(users).set({ googleSub: null }).where(eq(users.id, ctx.owner.id));
+
     const login = await ctx.app.request("/auth/google/login");
     expect(login.status).toBe(302);
     const state = new URL(login.headers.get("location")!).searchParams.get("state");
     const oauthCookie = login.headers.get("set-cookie")!.split(";")[0]!;
+    const callback = () => ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
 
-    const ok = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
+    const ok = await callback();
     expect(ok.headers.get("location")).toBe("http://admin.test/");
     const session = ok.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
     const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
-    expect(await me.json()).toEqual({ email: "admin@example.com", isOwner: true });
+    expect(await me.json()).toEqual({ id: ctx.owner.id, email: "admin@example.com", name: "Admin", isOwner: true });
+    const [linked] = await db.select().from(users).where(eq(users.id, ctx.owner.id));
+    expect(linked!.googleSub).toBe("g-1");
+    expect(linked!.lastLoginAt).not.toBeNull();
 
-    email = "intruder@example.com";
-    const denied = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
-    expect(denied.headers.get("location")).toBe("http://admin.test/login?error=forbidden");
+    // メールアドレスが変わっても、同じアカウント ID なら同じ人
+    identity = { ...identity, email: "renamed@example.com", name: "Renamed" };
+    const renamed = await callback();
+    expect(renamed.headers.get("location")).toBe("http://admin.test/");
+    const [after] = await db.select().from(users).where(eq(users.id, ctx.owner.id));
+    expect(after).toMatchObject({ email: "renamed@example.com", name: "Renamed" });
+
+    // どの wiki のメンバーでもない人は入れず、行も作らない
+    const before = (await db.select().from(users)).length;
+    identity = { sub: "g-2", email: "intruder@example.com", emailVerified: true, name: null as unknown as string };
+    const denied = await callback();
+    expect(denied.headers.get("location")).toBe("http://admin.test/login?error=invite_only&email=intruder%40example.com");
     expect(denied.headers.getSetCookie().some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
+    expect((await db.select().from(users)).length).toBe(before);
+
+    // メールアドレスが未確認なら、登録済みのアドレスでも結びつけない
+    await db.insert(users).values({ email: "pending@example.com", isOwner: true });
+    identity = { sub: "g-3", email: "pending@example.com", emailVerified: false, name: "x" };
+    const unverified = await callback();
+    expect(unverified.headers.get("location")).toBe("http://admin.test/login?error=unverified");
+    expect(unverified.headers.getSetCookie().some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
 
     const badState = await ctx.app.request(`/auth/google/callback?code=c&state=wrong`, { headers: { cookie: oauthCookie } });
     expect(badState.status).toBe(400);
+  });
+
+  it("tells a logged-in user who is in no wiki that the admin is invite-only", async () => {
+    ctx = await setup();
+    const { call } = await ctx.addUser("lonely@example.com");
+    const me = await call("GET", "/admin/me");
+    expect(me.status).toBe(403);
+    expect(me.body.error).toMatchObject({ code: "invite_only", details: { email: "lonely@example.com" } });
+  });
+
+  it("dev login creates the DEV_LOGIN_EMAIL user as an owner", async () => {
+    ctx = await setup({ config: { devLoginEmail: "dev@example.com" } });
+    const res = await ctx.app.request("/auth/dev-login", { method: "POST", headers: { origin: ctx.config.adminOrigin } });
+    expect(res.status).toBe(200);
+    const session = res.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
+    const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
+    expect(await me.json()).toMatchObject({ email: "dev@example.com", isOwner: true });
   });
 });
 
@@ -177,8 +232,9 @@ describe("pages", () => {
 
   it("autosaves a draft per person without creating a version, and clears it when a version is kept", async () => {
     const other = "other@example.com";
-    ctx = await setup({ config: { adminEmails: [ADMIN, other] } });
-    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, other)}` };
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
     const created = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
     const base = created.headVersionId;
     const url = `${W}/pages/${created.id}/draft`;
@@ -253,8 +309,8 @@ describe("pages", () => {
     const versions = (await ctx.call("GET", `${W}/pages/${a.id}/versions`)).body.versions;
     expect(versions.map((v: any) => v.keep)).toEqual([false, true]);
     expect(versions[0]).not.toHaveProperty("authorEmail");
-    const rows = await ctx.client.query<{ author_email: string }>(`select author_email from page_versions where id = $1`, [detail.headVersionId]);
-    expect(rows.rows[0]!.author_email).toBe(ADMIN);
+    const rows = await ctx.client.query<{ created_by: string }>(`select created_by from page_versions where id = $1`, [detail.headVersionId]);
+    expect(rows.rows[0]!.created_by).toBe(ctx.owner.id);
     const links = await ctx.client.query(`select to_page_id from page_links where from_page_id = $1`, [a.id]);
     expect(links.rows).toEqual([{ to_page_id: b.id }]);
     // 版になった下書きは消える。まだの下書きは残る
@@ -267,8 +323,9 @@ describe("pages", () => {
 
   it("leaves drafts that must not become versions: stale base, empty title, deleted page, archived wiki", async () => {
     const other = "other@example.com";
-    ctx = await setup({ config: { adminEmails: [ADMIN, other] } });
-    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, other)}` };
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
     const draftCount = async () => Number((await ctx.client.query<{ n: number }>(`select count(*)::int as n from page_drafts`)).rows[0]!.n);
 
     // 2人が同じページの下書きを持つ。先に版になった方が head になり、もう一方は古い版をもとにした下書きとして残る
@@ -289,7 +346,7 @@ describe("pages", () => {
     expect((await ctx.call("POST", "/admin/wikis/notes/archive")).status).toBe(200);
     // どれも一段落している。同じページの2つは、自分の方が先
     await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes'`);
-    await ctx.client.query(`update page_drafts set updated_at = now() - interval '7 minutes' where author_email = $1 and page_id = $2`, [ADMIN, shared.id]);
+    await ctx.client.query(`update page_drafts set updated_at = now() - interval '7 minutes' where user_id = $1 and page_id = $2`, [ctx.owner.id, shared.id]);
     expect(await draftCount()).toBe(5);
 
     const run = (await internal("POST", "/internal/drafts/promote")).body;
@@ -313,8 +370,9 @@ describe("pages", () => {
 
   it("keeps typing in an open tab after the worker made a version from the own draft, but not after someone else's version", async () => {
     const other = "other@example.com";
-    ctx = await setup({ config: { adminEmails: [ADMIN, other] } });
-    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, other)}` };
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
     const page = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
     const base = page.headVersionId;
     const url = `${W}/pages/${page.id}/draft`;

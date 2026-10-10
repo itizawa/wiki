@@ -437,8 +437,8 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     expect((await ctx.call("PATCH", `${N}/settings`, { gaPropertyId: "" })).body).toEqual({ ...UNSET, gaMeasurementId: GA });
     expect(await builds()).toBe(1);
 
-    const stranger = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, "stranger@example.com")}` };
-    expect((await ctx.call("PATCH", `${N}/settings`, { gaPropertyId: PROPERTY }, stranger)).status).toBe(403);
+    const admin = await ctx.addUser("notes-admin@example.com", { notes: "admin" });
+    expect((await admin.call("PATCH", `${N}/settings`, { gaPropertyId: PROPERTY })).status).toBe(403);
   });
 
   it("cannot be read or changed while the wiki is archived, and keeps the values when it is restored", async () => {
@@ -455,9 +455,14 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
 
   it("cannot be changed by someone who is not an owner", async () => {
     ctx = await setup();
-    // いまは ADMIN_EMAILS の全員がオーナーで、それ以外の人は管理画面の API に入れない（#52 まで）
-    const stranger = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, "stranger@example.com")}` };
-    expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA }, stranger)).status).toBe(403);
+    // wiki の管理者でも変えられない（読むことはできる）。どの wiki のメンバーでもない人は、管理画面の API に入れない
+    const admin = await ctx.addUser("wiki-admin@example.com", { wiki: "admin" });
+    const denied = await admin.call("PATCH", `${W}/settings`, { gaMeasurementId: GA });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe("owner_only");
+    expect((await admin.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+    const stranger = await ctx.addUser("stranger@example.com");
+    expect((await stranger.call("PATCH", `${W}/settings`, { gaMeasurementId: GA })).status).toBe(403);
     expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA }, { cookie: "" })).status).toBe(401);
     expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
   });

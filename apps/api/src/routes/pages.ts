@@ -16,7 +16,7 @@ import {
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions } from "../db/schema";
+import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
 import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks } from "../pages/versions";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent } from "../publishing/service";
@@ -25,6 +25,7 @@ import { HttpError, notFound } from "../errors";
 import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePages } from "../structure/repo";
 import { parseJson } from "../validation";
 import { findTemplate, renderTemplate } from "./templates";
+import { actorUserId, auditActor, writeAudit, type AuditActor } from "../audit/service";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
@@ -43,16 +44,27 @@ const toSummary = (p: PageRow): PageSummary => ({
   updatedAt: p.updatedAt.toISOString(),
 });
 
-const toVersion = (v: VersionRow): PageVersion => ({
+const toVersion = (v: VersionRow, author: { name: string | null; email: string } | null): PageVersion => ({
   id: v.id,
   pageId: v.pageId,
   baseVersionId: v.baseVersionId,
   title: v.title,
   bodyMd: v.bodyMd,
   authorType: v.authorType,
+  createdBy: v.createdBy && author ? { id: v.createdBy, name: author.name ?? author.email } : null,
   keep: v.keep,
   createdAt: v.createdAt.toISOString(),
 });
+
+/** 版と、それを作った人（いまの名前）。 */
+async function findVersion(db: Db, where: ReturnType<typeof eq>): Promise<PageVersion | null> {
+  const [row] = await db
+    .select({ version: pageVersions, name: users.name, email: users.email })
+    .from(pageVersions)
+    .leftJoin(users, eq(users.id, pageVersions.createdBy))
+    .where(where);
+  return row ? toVersion(row.version, row.email === null ? null : { name: row.name, email: row.email }) : null;
+}
 
 const toDraft = (d: DraftRow): PageDraft => ({
   baseVersionId: d.baseVersionId,
@@ -107,8 +119,8 @@ export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate
 
 export async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
   const page = await findLivePage(db, wikiId, id);
-  const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-  return { ...toSummary(page), head: toVersion(head!) };
+  const head = await findVersion(db, eq(pageVersions.id, page.headVersionId));
+  return { ...toSummary(page), head: head! };
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
@@ -116,7 +128,11 @@ export async function createPage(
   tx: Db,
   wikiId: string,
   input: { title: string; bodyMd: string; parentPageId?: string | null; icon?: string | null },
-  opts: { oauthGrantId?: string } = {},
+  opts: {
+    /** 作った人（版と構造の履歴に残す）。シードなど人の操作でなければ無し */
+    createdBy?: string | null;
+    oauthGrantId?: string;
+  } = {},
 ): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
@@ -127,10 +143,12 @@ export async function createPage(
     title: input.title,
     bodyMd: input.bodyMd,
     authorType: "human",
+    createdBy: opts.createdBy ?? null,
     oauthGrantId: opts.oauthGrantId ?? null,
   });
   await replaceLinks(tx, wikiId, id, input.bodyMd);
   await commitOps(tx, wikiId, {
+    createdBy: opts.createdBy ?? null,
     message: `「${input.title}」を追加`,
     ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx, wikiId)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
     oauthGrantId: opts.oauthGrantId,
@@ -148,16 +166,21 @@ export async function savePage(
   id: string,
   input: SavePageInput,
   opts: {
+    /** 保存した人（版の履歴に残す） */
+    createdBy: string;
     oauthGrantId?: string;
-    /** 管理画面から保存した人。版の作者になり、版になったらこの人の下書きを消す */
-    authorEmail?: string;
-  } = {},
+    /**
+     * 管理画面から保存した人（ユーザーの ID）。版になったらこの人の下書きを消す。
+     * 自分の下書きからワーカーが作った版の上には、古い baseVersionId のままでも保存できる
+     */
+    draftOwner?: string;
+  },
 ): Promise<void> {
   const page = await findLivePage(tx, wikiId, id, true);
   // 楽観ロック：別タブ等で先に保存されていたら保存しない。自分の下書きからワーカーが作った版は、先に保存されたうちに入れない
   if (page.headVersionId !== input.baseVersionId) {
     const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-    if (!opts.authorEmail || !isOwnAutoVersion(head!, opts.authorEmail, input.baseVersionId)) {
+    if (!opts.draftOwner || !isOwnAutoVersion(head!, opts.draftOwner, input.baseVersionId)) {
       throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
         headVersionId: page.headVersionId,
       });
@@ -165,9 +188,9 @@ export async function savePage(
   }
   await createVersion(tx, page, input, {
     keep: true,
-    authorEmail: opts.authorEmail ?? null,
+    createdBy: opts.createdBy,
     oauthGrantId: opts.oauthGrantId,
-    draftOwner: opts.authorEmail,
+    draftOwner: opts.draftOwner,
   });
 }
 
@@ -186,13 +209,13 @@ export async function setPageIcon(tx: Db, wikiId: string, id: string, icon: stri
 /**
  * ページの削除 = ゴミ箱に入れる。選んだページと配下のページをまとめてツリーから外し、公開をやめ、予約を取り消す。
  * いっしょに入れたページは1つのまとまり（trash_root_id）になり、元に戻す・完全に削除するのはまとまりごと。
- * 先にゴミ箱に入れてあった配下のページは、別のまとまりのまま残る。トランザクション内で呼ぶ。
+ * 先にゴミ箱に入れてあった配下のページは、別のまとまりのまま残る。監査ログに残す。トランザクション内で呼ぶ。
  */
 export async function deletePage(
   tx: Db,
   wikiId: string,
   id: string,
-  opts: { oauthGrantId?: string } = {},
+  opts: { actor: AuditActor; oauthGrantId?: string },
 ): Promise<{ trashedPageIds: string[] }> {
   const page = await findLivePage(tx, wikiId, id, true);
   const main = await getBranch(tx, wikiId, MAIN_BRANCH);
@@ -214,6 +237,7 @@ export async function deletePage(
       message: ids.length > 1 ? `「${page.title}」と配下の ${ids.length - 1} ページをゴミ箱に入れる` : `「${page.title}」をゴミ箱に入れる`,
       ops,
       checkVisibility: false,
+      createdBy: actorUserId(opts.actor),
       oauthGrantId: opts.oauthGrantId,
     });
   }
@@ -241,6 +265,13 @@ export async function deletePage(
   for (const m of members) {
     if (m.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: m.id, oauthGrantId: opts.oauthGrantId });
   }
+  await writeAudit(tx, {
+    wikiId,
+    actor: opts.actor,
+    action: "page_delete",
+    target: { type: "page", id, label: page.title },
+    detail: members.length > 1 ? { descendants: members.length - 1 } : {},
+  });
   return { trashedPageIds: members.map((m) => m.id) };
 }
 
@@ -295,7 +326,7 @@ export async function restorePage(
   tx: Db,
   wikiId: string,
   id: string,
-  opts: { oauthGrantId?: string } = {},
+  opts: { actor: AuditActor; oauthGrantId?: string },
 ): Promise<{
   restoredPageIds: string[];
   /** 戻した先の親ページ（nullなら最上位） */
@@ -341,22 +372,30 @@ export async function restorePage(
     message: ids.length > 1 ? `「${root.title}」と配下の ${ids.length - 1} ページをゴミ箱から元に戻す` : `「${root.title}」をゴミ箱から元に戻す`,
     ops,
     checkVisibility: false,
+    createdBy: actorUserId(opts.actor),
     oauthGrantId: opts.oauthGrantId,
   });
   // 公開したことがあるページは、公開サイトで 410 を返すのをやめる（非公開なので 404 になる）
   for (const m of members) {
     if (m.firstPublishedAt) await recordPublishEvent(tx, wikiId, "restore", { pageId: m.id, oauthGrantId: opts.oauthGrantId });
   }
+  await writeAudit(tx, {
+    wikiId,
+    actor: opts.actor,
+    action: "page_restore",
+    target: { type: "page", id, label: root.title },
+    detail: ids.length > 1 ? { descendants: ids.length - 1 } : {},
+  });
   return { restoredPageIds: ids, parentPageId, parentMissing: root.trashedParentId !== null && parentPageId === null };
 }
 
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
  * 版・下書き・リンク・スター・予約を消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
- * 構造の履歴（過去のツリー）がこの行を指しているため。閲覧数の行も残す（画面には出ない）。トランザクション内で呼ぶ。
+ * 構造の履歴（過去のツリー）がこの行を指しているため。閲覧数の行も残す（画面には出ない）。監査ログに残す。トランザクション内で呼ぶ。
  */
-export async function purgePage(tx: Db, wikiId: string, id: string): Promise<{ purgedPageIds: string[] }> {
-  const { members } = await lockTrashGroup(tx, wikiId, id);
+export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
+  const { root, members } = await lockTrashGroup(tx, wikiId, id);
   const ids = members.map((m) => m.id);
   // 予約は版を指しているので、版より先に消す
   await tx.delete(scheduledActions).where(inArray(scheduledActions.pageId, ids));
@@ -374,6 +413,13 @@ export async function purgePage(tx: Db, wikiId: string, id: string): Promise<{ p
       unlistedKey: null,
     })
     .where(inArray(pages.id, ids));
+  await writeAudit(tx, {
+    wikiId,
+    actor: opts.actor,
+    action: "page_purge",
+    target: { type: "page", id, label: root.title },
+    detail: ids.length > 1 ? { descendants: ids.length - 1 } : {},
+  });
   return { purgedPageIds: ids };
 }
 
@@ -415,10 +461,16 @@ export const pageRoutes = new Hono<AppEnv>()
     const input = await parseJson(c, createPageInput);
     const wikiId = c.get("wiki").id;
     const id = await db.transaction(async (tx) => {
-      if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! });
+      const userId = c.get("user").id;
+      if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! }, { createdBy: userId });
       // テンプレートから作る：変数を置き換えた本文で始める。タイトルの指定が無ければテンプレートのタイトルにする
-      const filled = renderTemplate(await findTemplate(tx, wikiId, input.templateId), c.get("adminEmail"));
-      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId, icon: input.icon });
+      const filled = renderTemplate(await findTemplate(tx, wikiId, input.templateId), c.get("user").email);
+      return createPage(
+        tx,
+        wikiId,
+        { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId, icon: input.icon },
+        { createdBy: userId },
+      );
     });
     return c.json(await getDetail(db, wikiId, id), 201);
   })
@@ -436,7 +488,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, savePageInput);
-    await db.transaction((tx) => savePage(tx, wikiId, id, input, { authorEmail: c.get("adminEmail") }));
+    await db.transaction((tx) => savePage(tx, wikiId, id, input, { draftOwner: c.get("user").id, createdBy: c.get("user").id }));
     return c.json(await getDetail(db, wikiId, id));
   })
   // アイコン（絵文字1つ）。本文の保存とは別に、選んだらすぐに反映する
@@ -452,27 +504,27 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const id = c.req.param("id");
     await findLivePage(db, c.get("wiki").id, id);
-    const [draft] = await db.select().from(pageDrafts).where(ownDraft(id, c.get("adminEmail")));
+    const [draft] = await db.select().from(pageDrafts).where(ownDraft(id, c.get("user").id));
     return c.json({ draft: draft ? toDraft(draft) : null });
   })
   .put("/:id/draft", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
-    const email = c.get("adminEmail");
+    const userId = c.get("user").id;
     const input = await parseJson(c, savePageDraftInput);
     const result = await db.transaction(async (tx) => {
       const page = await findLivePage(tx, c.get("wiki").id, id, true);
       const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
       // 別のタブや人が先に版を作っていたら、その版を知らないまま書いた下書きでは上書きしない。
       // 自分の下書きからワーカーが作った版は別で、開いたままの画面で続きを打てるよう、head をもとにした下書きとして受け取る
-      if (page.headVersionId !== input.baseVersionId && !isOwnAutoVersion(head!, email, input.baseVersionId)) {
+      if (page.headVersionId !== input.baseVersionId && !isOwnAutoVersion(head!, userId, input.baseVersionId)) {
         throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
           headVersionId: page.headVersionId,
         });
       }
       // head と同じ内容に戻したら、下書きは無いのと同じ
       if (head!.title === input.title && head!.bodyMd === input.bodyMd) {
-        await tx.delete(pageDrafts).where(ownDraft(id, email));
+        await tx.delete(pageDrafts).where(ownDraft(id, userId));
         return { draft: null, headVersionId: page.headVersionId };
       }
       const now = new Date();
@@ -480,8 +532,8 @@ export const pageRoutes = new Hono<AppEnv>()
       // 始めた時刻（created_at）は、行を新しく作るときだけ入れる。上書きでは変えない
       const [row] = await tx
         .insert(pageDrafts)
-        .values({ pageId: id, authorEmail: email, createdAt: now, ...values })
-        .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.authorEmail], set: values })
+        .values({ pageId: id, userId, createdAt: now, ...values })
+        .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.userId], set: values })
         .returning();
       return { draft: toDraft(row!), headVersionId: page.headVersionId };
     });
@@ -492,13 +544,13 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const id = c.req.param("id");
     await findLivePage(db, c.get("wiki").id, id);
-    await db.delete(pageDrafts).where(ownDraft(id, c.get("adminEmail")));
+    await db.delete(pageDrafts).where(ownDraft(id, c.get("user").id));
     return c.json({ draft: null });
   })
   .delete("/:id", async (c) => {
     const { db } = c.get("deps");
     const wikiId = c.get("wiki").id;
-    const { trashedPageIds } = await db.transaction((tx) => deletePage(tx, wikiId, c.req.param("id")));
+    const { trashedPageIds } = await db.transaction((tx) => deletePage(tx, wikiId, c.req.param("id"), { actor: auditActor(c) }));
     return c.json({ ok: true, trashedPages: trashedPageIds.length });
   })
   // ゴミ箱から元に戻す（配下ごと）
@@ -506,14 +558,14 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
-    const { restoredPageIds, ...placed } = await db.transaction((tx) => restorePage(tx, wikiId, id));
+    const { restoredPageIds, ...placed } = await db.transaction((tx) => restorePage(tx, wikiId, id, { actor: auditActor(c) }));
     return c.json({ id, restoredPages: restoredPageIds.length, ...placed });
   })
   // ゴミ箱から完全に削除する（配下ごと。元に戻せない）
   .delete("/:id/trash", async (c) => {
     const { db } = c.get("deps");
     const wikiId = c.get("wiki").id;
-    const { purgedPageIds } = await db.transaction((tx) => purgePage(tx, wikiId, c.req.param("id")));
+    const { purgedPageIds } = await db.transaction((tx) => purgePage(tx, wikiId, c.req.param("id"), { actor: auditActor(c) }));
     return c.json({ ok: true, purgedPages: purgedPageIds.length });
   })
   .get("/:id/versions", async (c) => {
@@ -529,25 +581,31 @@ export const pageRoutes = new Hono<AppEnv>()
         authorType: pageVersions.authorType,
         keep: pageVersions.keep,
         createdAt: pageVersions.createdAt,
+        createdById: pageVersions.createdBy,
+        createdByName: sql<string | null>`coalesce(${users.name}, ${users.email})`,
         // 外部のアプリ（MCP）から保存した版なら、そのアプリの名前
         via: oauthClients.name,
       })
       .from(pageVersions)
+      .leftJoin(users, eq(users.id, pageVersions.createdBy))
       .leftJoin(oauthGrants, eq(oauthGrants.id, pageVersions.oauthGrantId))
       .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
       .where(eq(pageVersions.pageId, id))
       .orderBy(desc(pageVersions.createdAt));
-    return c.json({ versions: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
+    return c.json({
+      versions: rows.map(({ createdById, createdByName, ...r }) => ({
+        ...r,
+        createdBy: createdById && createdByName ? { id: createdById, name: createdByName } : null,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    });
   })
   .get("/:id/versions/:versionId", async (c) => {
     const { db } = c.get("deps");
     const versionId = c.req.param("versionId");
     if (!/^[0-9a-f-]{36}$/.test(versionId)) throw notFound("version");
     await findLivePage(db, c.get("wiki").id, c.req.param("id"));
-    const [v] = await db
-      .select()
-      .from(pageVersions)
-      .where(and(eq(pageVersions.pageId, c.req.param("id")), eq(pageVersions.id, versionId)));
+    const v = await findVersion(db, and(eq(pageVersions.pageId, c.req.param("id")), eq(pageVersions.id, versionId))!);
     if (!v) throw notFound("version");
-    return c.json(toVersion(v));
+    return c.json(v);
   });

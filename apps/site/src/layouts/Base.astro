@@ -1,4 +1,5 @@
 ---
+import { resolveTheme } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import "../styles/global.css";
@@ -20,6 +21,10 @@ interface Props {
 const { wiki, title, description, canonical, noindex = false, notFound = false } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
+// 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
+const theme = resolveTheme(site.wiki.theme);
+// wiki ごとのアクセント色。global.css の :root より強い詳細度（html:root）で上書きし、読み込みの順番に頼らない
+const themeCss = `html:root{--accent:${theme.accentLight}}@media (prefers-color-scheme: dark){html:root{--accent:${theme.accentDark}}}`;
 const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
@@ -31,7 +36,14 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {
+      theme.favicon ? (
+        <link rel="icon" type={theme.favicon.endsWith(".webp") ? "image/webp" : "image/png"} href={theme.favicon} />
+      ) : (
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+      )
+    }
+    <style is:inline set:html={themeCss} />
     <title>{fullTitle}</title>
     {description && <meta name="description" content={description} />}
     {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
@@ -75,7 +87,9 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
   </head>
   <body>
     <header class={s.header} data-site-header>
-      <a class={s.brand} href="/">{SITE_NAME}</a>
+      <a class={s.brand} href="/">
+        {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
+      </a>
       {
         !noindex && (
           <nav class={s.nav}>

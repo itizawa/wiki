@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { SITE_NAME_MAX } from "./theme";
+import type { WikiRole } from "./users";
 import { isGaPropertyId } from "./analytics";
 import { imageNameFromPath } from "./images";
 
@@ -76,7 +78,8 @@ export function isValidWikiKey(key: string): boolean {
 
 export const wikiKeySchema = z.string().refine(isValidWikiKey, { message: "invalid wiki key" });
 
-const wikiName = z.string().trim().min(1).max(100);
+/** 表示名は公開サイトの名前（ヘッダー・タイトル・RSS・フッター）になる */
+const wikiName = z.string().trim().min(1).max(SITE_NAME_MAX);
 
 export const WIKI_ICON_URL_MAX = 2048;
 
@@ -184,4 +187,6 @@ export function wikiKeyFromHost(host: string, baseDomain: string): string | null
 export type WikiSummary = Wiki & {
   /** 公開サイトに出ているページ（公開・限定公開）の件数 */
   publishedPages: number;
+  /** ログインしている人の、この wiki でのロール（オーナーは管理者） */
+  role: WikiRole;
 };

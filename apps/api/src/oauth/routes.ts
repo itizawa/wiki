@@ -156,14 +156,14 @@ export const oauthRoutes = new Hono<AppEnv>()
       if (resource && resource !== mcpResource(config)) throw new OAuthError("invalid_target", "unknown resource");
       let tokens;
       if (field("grant_type") === "authorization_code") {
-        tokens = await exchangeCode(db, config, {
+        tokens = await exchangeCode(db, {
           code: field("code"),
           clientId,
           redirectUri: field("redirect_uri"),
           codeVerifier: field("code_verifier"),
         });
       } else if (field("grant_type") === "refresh_token") {
-        tokens = await refreshTokens(db, config, { refreshToken: field("refresh_token"), clientId });
+        tokens = await refreshTokens(db, { refreshToken: field("refresh_token"), clientId });
       } else {
         throw new OAuthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token");
       }
@@ -220,11 +220,11 @@ export const oauthAdminRoutes = new Hono<AppEnv>()
     }
     // 依頼に無いスコープは足せない。読むことは外せない
     const scopes = SCOPES.filter((s) => s === "wiki.read" || (req.scopes.includes(s) && input.scopes.includes(s)));
-    const code = await approveAuthorization(db, req, c.get("adminEmail"), scopes);
+    const code = await approveAuthorization(db, req, c.get("user").id, scopes);
     return c.json({ redirectTo: redirectWithParams(req.redirectUri, { code, state: req.state, iss: config.adminOrigin }) });
   })
   .get("/grants", async (c) => {
-    return c.json({ grants: await listGrants(c.get("deps").db, c.get("adminEmail")) });
+    return c.json({ grants: await listGrants(c.get("deps").db, c.get("user").id) });
   })
   .post("/grants/:id/revoke", async (c) => {
     const { db } = c.get("deps");
@@ -234,7 +234,7 @@ export const oauthAdminRoutes = new Hono<AppEnv>()
     const [grant] = await db
       .select({ id: oauthGrants.id })
       .from(oauthGrants)
-      .where(and(eq(oauthGrants.id, id), eq(oauthGrants.userEmail, c.get("adminEmail"))));
+      .where(and(eq(oauthGrants.id, id), eq(oauthGrants.userId, c.get("user").id)));
     if (!grant) throw notFound("grant");
     await revokeGrant(db, id);
     return c.json({ ok: true });

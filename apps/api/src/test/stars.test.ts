@@ -62,11 +62,12 @@ describe("stars", () => {
 
   it("keeps stars separate for each admin", async () => {
     const other = "other@example.com";
-    ctx = await setup({ config: { adminEmails: [ADMIN, other] } });
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
     const a = await newPage("a");
     await ctx.call("PUT", `${W}/stars/${a}`);
 
-    const asOther = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, other)}` };
+    const asOther = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
     expect(await stars(asOther)).toEqual([]);
     // もう一人が外しても、自分のスターは残る
     await ctx.call("DELETE", `${W}/stars/${a}`, undefined, asOther);

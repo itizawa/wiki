@@ -1,4 +1,4 @@
-import type { WikiSummary } from "@wiki/shared";
+import type { WikiRole, WikiSummary } from "@wiki/shared";
 import { createContext, useContext } from "react";
 import { currentWikiKey } from "./api";
 
@@ -10,6 +10,8 @@ export type WikiContextValue = {
   wikis: WikiSummary[];
   /** wiki を作成・アーカイブできる人か */
   isOwner: boolean;
+  /** この wiki でのロール（オーナーは管理者）。できない操作は出さない */
+  role: WikiRole;
 };
 
 export const WikiContext = createContext<WikiContextValue | null>(null);
@@ -58,7 +60,7 @@ export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・履歴・ゴミ箱・設定）へのリンク。 */
+/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・履歴・メンバー・監査ログ・外観・ゴミ箱・設定）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"
   | "/w/$wikiKey/search"
@@ -66,6 +68,9 @@ export type WikiScreen =
   | "/w/$wikiKey/analytics"
   | "/w/$wikiKey/templates"
   | "/w/$wikiKey/history"
+  | "/w/$wikiKey/members"
+  | "/w/$wikiKey/audit"
+  | "/w/$wikiKey/appearance"
   | "/w/$wikiKey/trash"
   | "/w/$wikiKey/settings";
 export function screenLink<T extends WikiScreen>(to: T) {

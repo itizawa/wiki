@@ -32,6 +32,18 @@ async function lockLivePage(db: Db, wikiId: string, pageId: string) {
   return page;
 }
 
+export type PublishInput = {
+  wikiId: string;
+  pageId: string;
+  versionId: string;
+  visibility: PublishVisibility;
+  applyToDescendants?: boolean;
+  publishedAt?: Date;
+  scheduledActionId?: string;
+  /** 外部のアプリ（MCP）からの操作なら、その許可 */
+  oauthGrantId?: string;
+};
+
 /**
  * 公開 = published_version_id を進める操作。
  * first_published_at は初回だけ設定する（予約公開では予定時刻を入れ、RSSの並びを自然にする）。
@@ -40,21 +52,9 @@ async function lockLivePage(db: Db, wikiId: string, pageId: string) {
  * applyToDescendants は、配下の公開中のページ（公開版のあるページ）だけを同じ公開範囲にする。
  * まだ公開していないページは公開する版が決まっていないので、非公開のまま飛ばす。
  */
-export async function publishPage(
-  db: Db,
-  input: {
-    wikiId: string;
-    pageId: string;
-    versionId: string;
-    visibility: PublishVisibility;
-    applyToDescendants?: boolean;
-    publishedAt?: Date;
-    scheduledActionId?: string;
-    /** 外部のアプリ（MCP）からの操作なら、その許可 */
-    oauthGrantId?: string;
-  },
-): Promise<void> {
+export async function publishPage(db: Db, input: PublishInput): Promise<PublishResult> {
   const page = await lockLivePage(db, input.wikiId, input.pageId);
+  let changed = 0;
   const [version] = await db
     .select({ id: pageVersions.id })
     .from(pageVersions)
@@ -101,9 +101,19 @@ export async function publishPage(
         scheduledActionId: input.scheduledActionId,
         oauthGrantId: input.oauthGrantId,
       });
+      changed++;
     }
   }
+  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: changed };
 }
+
+/** 公開・非公開化の前の状態（監査ログに残す）。 */
+export type PublishResult = {
+  title: string;
+  from: { visibility: "public" | "unlisted" | "private"; versionId: string | null };
+  /** 配下もまとめて変えたページの数 */
+  descendants: number;
+};
 
 /**
  * 非公開化。再ビルドで静的ファイルが消える。
@@ -114,7 +124,7 @@ export async function unpublishPage(
   wikiId: string,
   pageId: string,
   options: { scheduledActionId?: string; applyToDescendants?: boolean; oauthGrantId?: string } = {},
-): Promise<void> {
+): Promise<PublishResult> {
   const page = await lockLivePage(db, wikiId, pageId);
   const index = await loadTreeIndex(db, wikiId);
   const descendants = await livePages(db, wikiId, descendantIds(index, page.id));
@@ -131,10 +141,11 @@ export async function unpublishPage(
       oauthGrantId: options.oauthGrantId,
     });
   }
+  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: wider.length };
 }
 
 /** 限定公開URLの失効：キーを再発行してリビルドすると旧URLは404になる。 */
-export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string): Promise<string> {
+export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string): Promise<{ key: string; title: string }> {
   const page = await lockLivePage(db, wikiId, pageId);
   if (page.visibility !== "unlisted") {
     throw new HttpError(400, "not_unlisted", "only unlisted pages have a key to rotate");
@@ -142,5 +153,5 @@ export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string):
   const key = newUnlistedKey();
   await db.update(pages).set({ unlistedKey: key, updatedAt: new Date() }).where(eq(pages.id, pageId));
   await recordPublishEvent(db, wikiId, "rotate_unlisted_key", { pageId });
-  return key;
+  return { key, title: page.title };
 }

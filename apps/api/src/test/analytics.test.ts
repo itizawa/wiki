@@ -144,8 +144,9 @@ describe("analytics: before a service account is registered", () => {
     expect((await ctx.call("POST", `${W}/analytics/refresh`, { days: 30 })).status).toBe(400);
     expect((await ctx.call("POST", `${W}/analytics/check`, { target: "other" })).status).toBe(400);
     expect((await ctx.call("GET", `${W}/analytics`, undefined, { cookie: "" })).status).toBe(401);
-    const stranger = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, "stranger@example.com")}` };
-    expect((await ctx.call("GET", `${W}/analytics`, undefined, stranger)).status).toBe(403);
+    // どの wiki のメンバーでもない人は、管理画面の API に入れない
+    const stranger = await ctx.addUser("stranger@example.com");
+    expect((await stranger.call("GET", `${W}/analytics`)).status).toBe(403);
     expect((await ctx.call("GET", "/admin/w/nope/analytics")).status).toBe(404);
   });
 });
@@ -167,7 +168,7 @@ describe("the service account key (GOOGLE_SERVICE_ACCOUNT_JSON)", () => {
   it("leaves every other screen working on Workers when the secret is empty or broken", async () => {
     ctx = await setup();
     const handler = createWorker(() => ({ db: ctx.db, close: async () => {} }));
-    const cookie = `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, ADMIN)}`;
+    const cookie = `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, ctx.owner.id)}`;
     for (const secret of [undefined, "", "{broken", KEY_JSON]) {
       const env = {
         HYPERDRIVE: { connectionString: "postgres://unused" },

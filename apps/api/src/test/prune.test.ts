@@ -188,12 +188,13 @@ describe("pruning automatic versions", () => {
     }
     // 下書きがもとにしている版（古い版をもとにした下書き）
     const draftBase = await addVersion(a.id, day(10));
-    await ctx.client.query(`insert into page_drafts (page_id, author_email, base_version_id, title, body_md) values ($1, 'x@example.com', $2, 'A', 'draft')`, [a.id, draftBase]);
+    await ctx.client.query(`insert into page_drafts (page_id, user_id, base_version_id, title, body_md) values ($1, $3, $2, 'A', 'draft')`, [a.id, draftBase, ctx.owner.id]);
     // 外部のアプリ（MCP）が作った版の派生元。null にすると、そのアプリが「作ったページ」に見えてしまう
     await ctx.client.query(`insert into oauth_clients (id, name, redirect_uris) values ('client1', 'App', '[]'::jsonb)`);
     const grant = (
       await ctx.client.query<{ id: string }>(
-        `insert into oauth_grants (client_id, user_email, scopes, expires_at) values ('client1', 'x@example.com', '[]'::jsonb, now() + interval '1 day') returning id`,
+        `insert into oauth_grants (client_id, user_id, scopes, expires_at) values ('client1', $1, '[]'::jsonb, now() + interval '1 day') returning id`,
+        [ctx.owner.id],
       )
     ).rows[0]!.id;
     const mcpBase = await addVersion(a.id, day(11));

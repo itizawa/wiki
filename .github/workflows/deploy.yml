@@ -37,12 +37,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL: require
+          # ユーザーを DB で持つ移行（0007）で一度だけ読み、オーナーとして登録する。移行が本番に入ったら、この行とシークレットを消す
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
 
       - name: Deploy admin + API
         working-directory: apps/api
         env:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
@@ -51,7 +52,7 @@ jobs:
         run: |
           pnpm --filter @wiki/admin build
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET ADMIN_EMAILS GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
+            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker

@@ -2,6 +2,12 @@ import type {
   AnalyticsDays,
   ConnectionCheck,
   GoogleConnection,
+  AuditActorOption,
+  AuditLogPage,
+  Invite,
+  InviteInfo,
+  Me,
+  Member,
   PageDetail,
   PageDraft,
   SavePageDraftResult,
@@ -19,7 +25,11 @@ import type {
   TrashedPage,
   TreeMeta,
   TreeNode,
+  UserSummary,
+  UpdateAppearanceInput,
   WikiAnalytics,
+  WikiAppearance,
+  WikiRole,
   WikiSettings,
   WikiSummary,
   WikiViews,
@@ -70,8 +80,24 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+/** 画像をアップロードする。本文はファイルの中身そのまま（multipart にしない） */
+async function upload(path: string, file: Blob): Promise<{ url: string }> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = data?.error ?? {};
+    throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
+  }
+  return data as { url: string };
+}
+
 /** via：外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
-export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "keep" | "createdAt"> & { via: string | null };
+export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdBy" | "keep" | "createdAt"> & { via: string | null };
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
@@ -100,13 +126,31 @@ export type CommitListItem = {
   parentIds: string[];
   /** 外部のアプリ（MCP）からの操作なら、そのアプリの名前 */
   via?: string | null;
+  /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
+  createdBy?: { id: string; name: string } | null;
 };
+
+/** 監査ログの絞り込み。from / to は JST の日付（YYYY-MM-DD）。wiki はオーナーの一覧だけ（"global" は全体にかかわるもの） */
+export type AuditLogFilter = { from?: string; to?: string; actor?: string; category?: string; wiki?: string };
+
+/** wiki：開いている wiki の監査ログ（管理者）／all：すべて（オーナー） */
+export type AuditScope = "wiki" | "all";
+
+const auditPath = (scope: AuditScope, path = "") => (scope === "wiki" ? w(`/audit-logs${path}`) : `/admin/audit-logs${path}`);
 
 export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
-  me: () => request<{ email: string; isOwner: boolean }>("GET", "/admin/me"),
+  me: () => request<Me>("GET", "/admin/me"),
+
+  // 招待リンクを開いた人向け（ログインしていなくても呼べる）
+  // リンクの値は、アクセスログに残らないように本文で送る
+  inviteInfo: (token: string) => request<InviteInfo>("POST", "/invites/inspect", { token }),
+  acceptInvite: (token: string) => request<{ wikiKey: string; alreadyMember: boolean }>("POST", "/invites/accept", { token }),
+
+  listUsers: () => request<{ users: UserSummary[] }>("GET", "/admin/users"),
+  setOwner: (userId: string, isOwner: boolean) => request<{ users: UserSummary[] }>("PUT", `/admin/users/${userId}/owner`, { isOwner }),
 
   oauthRequest: (signed: string) =>
     request<OAuthConsentRequest>("GET", `/admin/oauth/request?${new URLSearchParams({ request: signed })}`),
@@ -148,20 +192,7 @@ export const api = {
    * 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る。
    * wiki の外の画面（wiki の管理）から使うときは、どの wiki の経路で送るかを key で渡す
    */
-  uploadImage: async (file: Blob, key: string = wikiKey): Promise<{ url: string }> => {
-    const res = await fetch(`/api/admin/w/${encodeURIComponent(key)}/images`, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      const err = data?.error ?? {};
-      throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
-    }
-    return data as { url: string };
-  },
+  uploadImage: (file: Blob, key: string = wikiKey) => upload(`/admin/w/${encodeURIComponent(key)}/images`, file),
   /** ゴミ箱に入れる（配下のページもいっしょに入る） */
   deletePage: (id: string) => request<{ ok: true; trashedPages: number }>("DELETE", w(`/pages/${id}`)),
   /** ゴミ箱の一覧。削除で選んだページごとに1行、新しい順 */
@@ -223,6 +254,23 @@ export const api = {
   deleteTemplate: (id: string) => request<{ ok: true }>("DELETE", w(`/templates/${id}`)),
   /** 変数を置き換えたタイトルと本文 */
   renderTemplate: (id: string) => request<{ title: string; bodyMd: string }>("GET", w(`/templates/${id}/render`)),
+  listMembers: () => request<{ members: Member[] }>("GET", w("/members")),
+  changeRole: (userId: string, role: WikiRole) => request<{ members: Member[] }>("PATCH", w(`/members/${userId}`), { role }),
+  removeMember: (userId: string) => request<{ ok: true }>("DELETE", w(`/members/${userId}`)),
+  listInvites: () => request<{ invites: Invite[] }>("GET", w("/invites")),
+  createInvite: (role: WikiRole) => request<{ token: string; invite: Invite }>("POST", w("/invites"), { role }),
+  revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
+
+  listAuditLogs: (scope: AuditScope, filter: AuditLogFilter, cursor?: string) => {
+    const q = new URLSearchParams(Object.entries({ ...filter, cursor }).filter(([, v]) => v) as [string, string][]);
+    return request<AuditLogPage>("GET", auditPath(scope, q.size ? `?${q}` : ""));
+  },
+  listAuditActors: (scope: AuditScope) => request<{ actors: AuditActorOption[] }>("GET", auditPath(scope, "/actors")),
+  /** 公開サイトの「外観」（管理者だけ） */
+  getAppearance: () => request<WikiAppearance>("GET", w("/appearance")),
+  saveAppearance: (input: UpdateAppearanceInput) => request<WikiAppearance>("PUT", w("/appearance"), input),
+  /** ロゴ・ファビコンをアップロードし、パス（`/images/{name}`）を返す。PNG・WebP の 512KB まで */
+  uploadThemeImage: (file: Blob) => upload(w("/appearance/images"), file),
 
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
@@ -234,15 +282,21 @@ export const api = {
 
 const VISIBILITY_LABEL = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;
 
+/** 画像の条件。ロゴ・ファビコンは本文の画像より狭いので、API が返した条件があればそれを出す */
+function imageLimit(err: ApiError): string {
+  const limit = (err.details as { limit?: unknown } | undefined)?.limit;
+  return typeof limit === "string" ? limit : IMAGE_LIMIT_LABEL;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "version_conflict":
         return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
       case "image_too_large":
-        return `画像が大きすぎます。${IMAGE_LIMIT_LABEL}です。`;
+        return `画像が大きすぎます。${imageLimit(err)}です。`;
       case "unsupported_image_type":
-        return `この形式の画像はアップロードできません。${IMAGE_LIMIT_LABEL}です。`;
+        return `この形式の画像はアップロードできません。${imageLimit(err)}です。`;
       case "images_not_configured":
         return "画像の置き場所が設定されていないため、アップロードできません。";
       case "head_moved":
@@ -258,7 +312,21 @@ export function errorMessage(err: unknown): string {
       case "wiki_not_found":
         return "この wiki は見つかりません。アーカイブされたか、URL が違います。";
       case "owner_only":
-        return "wiki の作成・アーカイブと設定の変更は、オーナーだけが行えます。";
+        return "この操作は、オーナーだけが行えます。";
+      case "admin_only":
+        return "この操作は、この wiki の管理者だけが行えます。";
+      case "last_admin":
+        return "管理者が1人もいなくなるため、できません。先にほかのメンバーを管理者にしてください。";
+      case "last_owner":
+        return "最後のオーナーは解除できません。先にほかの人をオーナーにしてください。";
+      case "invite_used":
+        return "この招待リンクは、すでに使われています。";
+      case "invite_expired":
+        return "この招待リンクは、期限が切れています。";
+      case "invite_revoked":
+        return "この招待リンクは、無効にされています。";
+      case "invite_not_found":
+        return "この招待リンクは見つかりません。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
       case "exceeds_parent": {

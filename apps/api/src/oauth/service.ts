@@ -4,7 +4,8 @@ import { jwtVerify, SignJWT } from "jose";
 import { randomToken } from "../auth/session";
 import type { AppConfig } from "../config";
 import { rowsOf, type Db } from "../db/client";
-import { oauthClients, oauthCodes, oauthGrants, oauthTokens } from "../db/schema";
+import { oauthClients, oauthCodes, oauthGrants, oauthTokens, users } from "../db/schema";
+import { hasAccess, type UserRow } from "../users/service";
 
 export const ACCESS_TOKEN_TTL_SEC = 60 * 60;
 export const REFRESH_TOKEN_TTL_SEC = 60 * 60 * 24 * 30;
@@ -129,14 +130,14 @@ export async function verifyAuthorizationRequest(secret: string, token: string):
 }
 
 /** 同意した：許可を作り、認可コードを出す */
-export async function approveAuthorization(db: Db, req: AuthorizationRequest, email: string, scopes: OAuthScope[]) {
+export async function approveAuthorization(db: Db, req: AuthorizationRequest, userId: string, scopes: OAuthScope[]) {
   const code = randomToken();
   await db.transaction(async (tx) => {
     const [grant] = await tx
       .insert(oauthGrants)
       .values({
         clientId: req.clientId,
-        userEmail: email,
+        userId,
         scopes,
         expiresAt: new Date(Date.now() + GRANT_TTL_SEC * 1000),
       })
@@ -195,14 +196,16 @@ async function issueTokens(db: Db, grant: GrantRow): Promise<TokenResponse> {
   };
 }
 
-function grantUsable(grant: GrantRow, config: Pick<AppConfig, "adminEmails">): boolean {
-  return !grant.revokedAt && grant.expiresAt.getTime() > Date.now() && config.adminEmails.includes(grant.userEmail);
+/** 取り消し・期限切れでなく、許可した人がまだ管理画面に入れる（オーナーか、どれかの wiki のメンバー）なら使える */
+async function grantUsable(db: Db, grant: GrantRow): Promise<UserRow | null> {
+  if (grant.revokedAt || grant.expiresAt.getTime() <= Date.now()) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, grant.userId));
+  return user && (await hasAccess(db, user)) ? user : null;
 }
 
 /** grant_type=authorization_code */
 export async function exchangeCode(
   db: Db,
-  config: Pick<AppConfig, "adminEmails">,
   input: { code: string; clientId: string; redirectUri: string; codeVerifier: string },
 ): Promise<TokenResponse> {
   const codeHash = await hashSecret(input.code);
@@ -219,7 +222,7 @@ export async function exchangeCode(
     if (row.code.expiresAt.getTime() <= Date.now()) return { error: "code expired" } as const;
     if (row.code.redirectUri !== input.redirectUri) return { error: "redirect_uri mismatch" } as const;
     if (!(await verifyPkce(input.codeVerifier, row.code.codeChallenge))) return { error: "PKCE verification failed" } as const;
-    if (!grantUsable(row.grant, config)) return { error: "grant is no longer valid" } as const;
+    if (!(await grantUsable(tx, row.grant))) return { error: "grant is no longer valid" } as const;
     await tx.update(oauthCodes).set({ usedAt: new Date() }).where(eq(oauthCodes.codeHash, codeHash));
     return { tokens: await issueTokens(tx, row.grant) } as const;
   });
@@ -231,7 +234,6 @@ export async function exchangeCode(
 /** grant_type=refresh_token。使ったリフレッシュトークンは無効にし、新しいものを出す */
 export async function refreshTokens(
   db: Db,
-  config: Pick<AppConfig, "adminEmails">,
   input: { refreshToken: string; clientId: string },
 ): Promise<TokenResponse> {
   const tokenHash = await hashSecret(input.refreshToken);
@@ -246,7 +248,7 @@ export async function refreshTokens(
     // 入れ替え済みのトークンがまた使われた：漏れたものとみなし、許可ごと取り消す
     if (row.token.revokedAt) return { error: "refresh token already used", revoke: row.grant.id } as const;
     if (row.token.expiresAt.getTime() <= Date.now()) return { error: "refresh token expired" } as const;
-    if (!grantUsable(row.grant, config)) return { error: "grant is no longer valid" } as const;
+    if (!(await grantUsable(tx, row.grant))) return { error: "grant is no longer valid" } as const;
     await tx.update(oauthTokens).set({ revokedAt: new Date() }).where(eq(oauthTokens.tokenHash, tokenHash));
     return { tokens: await issueTokens(tx, row.grant) } as const;
   });
@@ -278,18 +280,18 @@ export async function revokeGrant(db: Db, grantId: string) {
 /** MCP のリクエストを送ってきたアプリと、その許可 */
 export type AgentContext = {
   grantId: string;
-  email: string;
+  /** 許可した人。アプリは、この人がメンバーの wiki だけを扱える */
+  user: UserRow;
   scopes: OAuthScope[];
   clientName: string;
 };
 
 /**
  * アクセストークンを確かめ、レート制限の回数を1つ進める。
- * トークン・許可のどちらかが取り消し・期限切れ、または許可した人が ADMIN_EMAILS から外れていれば通さない。
+ * トークン・許可のどちらかが取り消し・期限切れ、または許可した人がどの wiki のメンバーでもなくなっていれば通さない。
  */
 export async function authenticateAccessToken(
   db: Db,
-  config: Pick<AppConfig, "adminEmails">,
   token: string,
 ): Promise<AgentContext | "rate_limited" | null> {
   const [row] = await db
@@ -298,9 +300,9 @@ export async function authenticateAccessToken(
     .innerJoin(oauthGrants, eq(oauthGrants.id, oauthTokens.grantId))
     .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
     .where(and(eq(oauthTokens.tokenHash, await hashSecret(token)), eq(oauthTokens.kind, "access")));
-  if (!row || row.token.revokedAt || row.token.expiresAt.getTime() <= Date.now() || !grantUsable(row.grant, config)) {
-    return null;
-  }
+  if (!row || row.token.revokedAt || row.token.expiresAt.getTime() <= Date.now()) return null;
+  const user = await grantUsable(db, row.grant);
+  if (!user) return null;
   // 固定窓（1分）。SET の右辺は、どれも更新前の値で評価される
   const fresh = sql`(${oauthGrants.rateWindowStart} is null or ${oauthGrants.rateWindowStart} <= now() - interval '1 minute')`;
   const result = await db.execute(sql`
@@ -313,16 +315,16 @@ export async function authenticateAccessToken(
   `);
   const count = Number(rowsOf<{ rate_window_count: number }>(result)[0]?.rate_window_count ?? 0);
   if (count > RATE_LIMIT_PER_MINUTE) return "rate_limited";
-  return { grantId: row.grant.id, email: row.grant.userEmail, scopes: row.grant.scopes as OAuthScope[], clientName: row.clientName };
+  return { grantId: row.grant.id, user, scopes: row.grant.scopes as OAuthScope[], clientName: row.clientName };
 }
 
 /** 管理画面の「外部アプリ連携」：その人が与えた、使える許可 */
-export async function listGrants(db: Db, email: string): Promise<OAuthGrantSummary[]> {
+export async function listGrants(db: Db, userId: string): Promise<OAuthGrantSummary[]> {
   const rows = await db
     .select({ grant: oauthGrants, client: oauthClients })
     .from(oauthGrants)
     .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-    .where(and(eq(oauthGrants.userEmail, email), isNull(oauthGrants.revokedAt), gt(oauthGrants.expiresAt, new Date())))
+    .where(and(eq(oauthGrants.userId, userId), isNull(oauthGrants.revokedAt), gt(oauthGrants.expiresAt, new Date())))
     .orderBy(desc(oauthGrants.createdAt));
   return rows.map(({ grant, client }) => ({
     id: grant.id,

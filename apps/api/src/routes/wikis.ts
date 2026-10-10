@@ -4,28 +4,27 @@ import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { archiveWiki, createWiki, findOpenWiki, listWikis, toWikiSettings, unarchiveWiki, updateWiki, updateWikiSettings } from "../wikis/service";
 import { parseJson } from "../validation";
+import { requireOwner } from "../auth/routes";
+import { roleIn, rolesByWiki } from "../users/service";
+import { auditActor } from "../audit/service";
 
 /**
- * wiki を作成・アーカイブでき、wiki の設定を変えられる人か。
- * オーナーを DB で持つ（#52）までは、ADMIN_EMAILS の全員をオーナーとして扱う。
+ * `/admin/w/:wikiKey/*` の入口。リクエストのたびに wiki と、ログインしている人のロールを引く。
+ * メンバーでない wiki は、無いものとして扱う（オーナーはすべての wiki に管理者として入れる）。
  */
-export function isOwner(config: { adminEmails: string[] }, email: string): boolean {
-  return config.adminEmails.includes(email);
-}
-
-const requireOwner: MiddlewareHandler<AppEnv> = async (c, next) => {
-  if (!isOwner(c.get("deps").config, c.get("adminEmail"))) {
-    throw new HttpError(403, "owner_only", "only owners can manage wikis and their settings");
-  }
+export const resolveWiki: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const { db } = c.get("deps");
+  const wiki = await findOpenWiki(db, c.req.param("wikiKey") ?? "");
+  const role = await roleIn(db, c.get("user"), wiki.id);
+  if (!role) throw new HttpError(404, "wiki_not_found", `wiki ${wiki.key} not found`);
+  c.set("wiki", wiki);
+  c.set("role", role);
   await next();
 };
 
-/**
- * `/admin/w/:wikiKey/*` の入口。リクエストのたびに wiki を引き、開ける人かを確かめる。
- * いまは管理者の全員がすべての wiki を開ける（wiki ごとのメンバーは #52）。
- */
-export const resolveWiki: MiddlewareHandler<AppEnv> = async (c, next) => {
-  c.set("wiki", await findOpenWiki(c.get("deps").db, c.req.param("wikiKey") ?? ""));
+/** 開いている wiki の管理者（とオーナー）だけを通す。 */
+export const requireWikiAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (c.get("role") !== "admin") throw new HttpError(403, "admin_only", "only admins of this wiki can do this");
   await next();
 };
 
@@ -33,31 +32,35 @@ export const resolveWiki: MiddlewareHandler<AppEnv> = async (c, next) => {
 export const wikiRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db, config } = c.get("deps");
-    // アーカイブ中の wiki を見られるのは、戻せる人（オーナー）だけ
-    const list = await listWikis(db, config, { includeArchived: isOwner(config, c.get("adminEmail")) });
+    const user = c.get("user");
+    // アーカイブ中の wiki を見られるのは、戻せる人（オーナー）だけ。メンバーには、入っている wiki だけを出す
+    const list = await listWikis(db, config, {
+      includeArchived: user.isOwner,
+      roles: user.isOwner ? null : await rolesByWiki(db, user.id),
+    });
     // baseDomain は、作成の画面で「できあがる URL」を出すのに使う
     return c.json({ wikis: list, baseDomain: config.siteBaseDomain });
   })
   .post("/", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
     const input = await parseJson(c, createWikiInput);
-    const row = await createWiki(db, input, c.get("adminEmail"));
+    const row = await createWiki(db, input, c.get("user"));
     return c.json(await summary(db, config, row.key), 201);
   })
   .patch("/:key", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
     const input = await parseJson(c, updateWikiInput);
-    const row = await updateWiki(db, c.req.param("key"), input);
+    const row = await updateWiki(db, c.req.param("key"), input, auditActor(c));
     return c.json(await summary(db, config, row.key));
   })
   .post("/:key/archive", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
-    const row = await archiveWiki(db, c.req.param("key"));
+    const row = await archiveWiki(db, c.req.param("key"), auditActor(c));
     return c.json(await summary(db, config, row.key));
   })
   .post("/:key/unarchive", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
-    const row = await unarchiveWiki(db, c.req.param("key"));
+    const row = await unarchiveWiki(db, c.req.param("key"), auditActor(c));
     return c.json(await summary(db, config, row.key));
   });
 
@@ -73,5 +76,5 @@ export const wikiSettingsRoutes = new Hono<AppEnv>()
   });
 
 async function summary(db: Parameters<typeof listWikis>[0], config: Parameters<typeof listWikis>[1], key: string): Promise<WikiSummary> {
-  return (await listWikis(db, config, { includeArchived: true })).find((w) => w.key === key)!;
+  return (await listWikis(db, config, { includeArchived: true, roles: null })).find((w) => w.key === key)!;
 }

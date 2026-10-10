@@ -7,7 +7,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { createWiki, DEFAULT_WIKI_KEY } from "../wikis/service";
 import type { Db } from "./client";
 import * as schema from "./schema";
-import { pages, pageTemplates, pageVersions, pageViewsDaily, scheduledActions, wikis } from "./schema";
+import { pages, pageTemplates, pageVersions, pageViewsDaily, scheduledActions, users, wikiMembers, wikis } from "./schema";
 
 const DAY = 24 * 3600_000;
 
@@ -160,6 +160,15 @@ const SEED_TEMPLATES = [
 ];
 
 /**
+ * テスト用のユーザー。最初の wiki の管理者と編集者（編集者は2つめの wiki にも入る）。
+ * Google でログインすることは無いので、アカウント ID には仮の値を入れる。
+ */
+export const SEED_USERS = [
+  { googleSub: "seed:admin", email: "sakura@example.com", name: "管理者 さくら", roles: { first: "admin", second: null } },
+  { googleSub: "seed:editor", email: "minato@example.com", name: "編集者 みなと", roles: { first: "editor", second: "editor" } },
+] as const;
+
+/**
  * テスト用のデータを投入する。ページが1件でもあれば何もせずに失敗する（先に resetDatabase を呼ぶ）。
  * 最初の wiki と、2つめの wiki（SECOND_WIKI）に入れる。
  */
@@ -173,7 +182,22 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
   const secondId = (second ?? (await createWiki(db, SECOND_WIKI, null))).id;
   const count = (await seedWiki(db, first, SEED, now)) + (await seedWiki(db, secondId, SECOND_SEED, now));
   await db.insert(pageTemplates).values(SEED_TEMPLATES.map((t) => ({ ...t, wikiId: first, createdBy: "seed@example.com" })));
+  await seedUsers(db, { first, second: secondId });
   return { pages: count };
+}
+
+async function seedUsers(db: Db, wikiIds: { first: string; second: string }) {
+  for (const seed of SEED_USERS) {
+    const [user] = await db
+      .insert(users)
+      .values({ googleSub: seed.googleSub, email: seed.email, name: seed.name })
+      .onConflictDoUpdate({ target: users.googleSub, set: { email: seed.email, name: seed.name } })
+      .returning({ id: users.id });
+    for (const which of ["first", "second"] as const) {
+      const role = seed.roles[which];
+      if (role) await db.insert(wikiMembers).values({ wikiId: wikiIds[which], userId: user!.id, role }).onConflictDoNothing();
+    }
+  }
 }
 
 /** 最初の wiki（マイグレーションが作る）の id を返す。無ければ作る。 */

@@ -7,10 +7,11 @@ import { pages, pageVersions, scheduledActions } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import type { AgentContext } from "../oauth/service";
 import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage } from "../routes/pages";
-import { cancelSchedule, createSchedule, listActions } from "../routes/publishing";
+import { cancelSchedule, createSchedule, listActions, publishAudited, unpublishAudited } from "../routes/publishing";
+import { agentActor } from "../audit/service";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
-import { publishPage, unpublishPage } from "../publishing/service";
 import { commitOps, getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
+import { roleIn, rolesByWiki } from "../users/service";
 import { findOpenWiki, listWikis } from "../wikis/service";
 
 /**
@@ -100,6 +101,13 @@ async function canSee(db: Db, agent: AgentContext, id: string): Promise<boolean>
 }
 
 /** 読めないページは、無いものとして扱う */
+/** 許可した人がメンバーの、使用中の wiki。メンバーでない wiki は無いものとして扱う */
+async function memberWiki(db: Db, agent: AgentContext, key: string) {
+  const wiki = await findOpenWiki(db, key);
+  if (!(await roleIn(db, agent.user, wiki.id))) throw new HttpError(404, "wiki_not_found", `wiki ${key} not found`);
+  return wiki;
+}
+
 async function visiblePage(db: Db, agent: AgentContext, wikiId: string, id: string) {
   const page = await findLivePage(db, wikiId, id);
   if (!(await canSee(db, agent, id))) throw notFound(`page ${id}`);
@@ -113,8 +121,9 @@ export const TOOLS = [
     scope: "wiki.read",
     input: z.object({}),
     inputSchema: schema({}, []),
-    async run({ db, config }) {
-      const wikis = await listWikis(db, config, { includeArchived: false });
+    async run({ db, config, agent }) {
+      const roles = agent.user.isOwner ? null : await rolesByWiki(db, agent.user.id);
+      const wikis = await listWikis(db, config, { includeArchived: false, roles });
       return { wikis: wikis.map((w) => ({ key: w.key, name: w.name })) };
     },
   }),
@@ -128,7 +137,7 @@ export const TOOLS = [
       ["wiki"],
     ),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const q = input.query?.trim();
       const like = q ? `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
       const rows = await db
@@ -163,7 +172,7 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey, pageId }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       const versionId = await readableVersion(db, agent, page.id);
       const [version] = await db.select().from(pageVersions).where(eq(pageVersions.id, versionId));
@@ -188,7 +197,7 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey }),
     inputSchema: schema(WIKI_PROP, ["wiki"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const branch = await getBranch(db, wiki.id, MAIN_BRANCH);
       const { state } = await loadCommit(db, branch.headCommitId);
       const tree = await getPrimaryTree(db, wiki.id);
@@ -230,8 +239,8 @@ export const TOOLS = [
       ["wiki", "title"],
     ),
     async run({ db, agent }, { wiki: key, ...input }) {
-      const wiki = await findOpenWiki(db, key);
-      const id = await db.transaction((tx) => createPage(tx, wiki.id, input, { oauthGrantId: agent.grantId }));
+      const wiki = await memberWiki(db, agent, key);
+      const id = await db.transaction((tx) => createPage(tx, wiki.id, input, { createdBy: agent.user.id, oauthGrantId: agent.grantId }));
       const page = await findLivePage(db, wiki.id, id);
       return { id, headVersionId: page.headVersionId };
     },
@@ -253,7 +262,7 @@ export const TOOLS = [
       ["wiki", "pageId", "baseVersionId", "bodyMd"],
     ),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       await db.transaction(async (tx) => {
         const page = await visiblePage(tx, agent, wiki.id, input.pageId);
         if ((await readableVersion(tx, agent, page.id)) !== page.headVersionId) {
@@ -264,7 +273,7 @@ export const TOOLS = [
           wiki.id,
           page.id,
           { baseVersionId: input.baseVersionId, title: input.title ?? page.title, bodyMd: input.bodyMd },
-          { oauthGrantId: agent.grantId },
+          { createdBy: agent.user.id, oauthGrantId: agent.grantId },
         );
       });
       const page = await findLivePage(db, wiki.id, input.pageId);
@@ -292,7 +301,7 @@ export const TOOLS = [
       ["wiki", "pageId", "newParentPageId", "expectedHeadCommitId"],
     ),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       await visiblePage(db, agent, wiki.id, input.pageId);
       if (input.newParentPageId) await visiblePage(db, agent, wiki.id, input.newParentPageId);
       await assertSubtreeVisible(db, agent, wiki.id, input.pageId);
@@ -300,6 +309,7 @@ export const TOOLS = [
       const result = await commitOps(db, wiki.id, {
         expectedHeadCommitId: input.expectedHeadCommitId,
         ops: [{ type: "move", treeId: tree.id, nodeId: input.pageId, newParentNodeId: input.newParentPageId }],
+        createdBy: agent.user.id,
         oauthGrantId: agent.grantId,
       });
       return { headCommitId: result.commitId };
@@ -329,19 +339,23 @@ export const TOOLS = [
       ["wiki", "pageId"],
     ),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       if (input.applyToDescendants) await assertSubtreeVisible(db, agent, wiki.id, page.id);
       const versionId = await usableVersion(db, agent, page.id, input.versionId);
       await db.transaction((tx) =>
-        publishPage(tx, {
-          wikiId: wiki.id,
-          pageId: page.id,
-          versionId,
-          visibility: input.visibility,
-          applyToDescendants: input.applyToDescendants,
-          oauthGrantId: agent.grantId,
-        }),
+        publishAudited(
+          tx,
+          {
+            wikiId: wiki.id,
+            pageId: page.id,
+            versionId,
+            visibility: input.visibility,
+            applyToDescendants: input.applyToDescendants,
+            oauthGrantId: agent.grantId,
+          },
+          agentActor(agent),
+        ),
       );
       return { id: page.id, publishedVersionId: versionId, visibility: input.visibility };
     },
@@ -360,11 +374,11 @@ export const TOOLS = [
       ["wiki", "pageId"],
     ),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       if (input.applyToDescendants) await assertSubtreeVisible(db, agent, wiki.id, page.id);
       await db.transaction((tx) =>
-        unpublishPage(tx, wiki.id, page.id, { applyToDescendants: input.applyToDescendants, oauthGrantId: agent.grantId }),
+        unpublishAudited(tx, wiki.id, page.id, { applyToDescendants: input.applyToDescendants, oauthGrantId: agent.grantId }, agentActor(agent)),
       );
       return { id: page.id, visibility: "private" };
     },
@@ -376,7 +390,7 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey }),
     inputSchema: schema(WIKI_PROP, ["wiki"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const actions = await listActions(
         db,
         wiki.id,
@@ -435,7 +449,7 @@ export const TOOLS = [
       ["wiki", "pageId", "action", "runAt"],
     ),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       const runAt = new Date(input.runAt);
       const versionId = input.action === "publish_page" ? await usableVersion(db, agent, page.id, input.versionId) : undefined;
@@ -451,7 +465,7 @@ export const TOOLS = [
               runAt,
             }
           : { actionType: "unpublish_page", pageId: page.id, runAt },
-        { oauthGrantId: agent.grantId },
+        { actor: agentActor(agent), oauthGrantId: agent.grantId },
       );
       return { id: action.id, actionType: action.actionType, runAt: action.runAt, versionId: action.versionId };
     },
@@ -463,14 +477,14 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey, scheduleId: z.string().uuid() }),
     inputSchema: schema({ ...WIKI_PROP, scheduleId: str("予約の ID") }, ["wiki", "scheduleId"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const [row] = await db
         .select({ pageId: scheduledActions.pageId })
         .from(scheduledActions)
         .where(and(eq(scheduledActions.wikiId, wiki.id), eq(scheduledActions.id, input.scheduleId)));
       if (!row?.pageId) throw notFound("scheduled action");
       await visiblePage(db, agent, wiki.id, row.pageId);
-      const action = await cancelSchedule(db, wiki.id, input.scheduleId);
+      const action = await cancelSchedule(db, wiki.id, input.scheduleId, agentActor(agent));
       return { id: action.id, status: action.status };
     },
   }),
@@ -483,10 +497,10 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey, pageId }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       await assertSubtreeVisible(db, agent, wiki.id, page.id);
-      const { trashedPageIds } = await db.transaction((tx) => deletePage(tx, wiki.id, page.id, { oauthGrantId: agent.grantId }));
+      const { trashedPageIds } = await db.transaction((tx) => deletePage(tx, wiki.id, page.id, { actor: agentActor(agent), oauthGrantId: agent.grantId }));
       return { id: page.id, deleted: true, trashedPages: trashedPageIds.length };
     },
   }),
@@ -499,7 +513,7 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey }),
     inputSchema: schema(WIKI_PROP, ["wiki"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       return { pages: await listTrash(db, wiki.id, visibleTo(agent)) };
     },
   }),
@@ -512,7 +526,7 @@ export const TOOLS = [
     input: z.object({ wiki: wikiKey, pageId }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ゴミ箱のページの ID（list_trash で返す id）") }, ["wiki", "pageId"]),
     async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
+      const wiki = await memberWiki(db, agent, input.wiki);
       const result = await db.transaction(async (tx) => {
         // 読めないページは無いものとして扱い、配下に読めないページがあれば止める（delete_page と同じ）
         const { members } = await lockTrashGroup(tx, wiki.id, input.pageId);
@@ -525,7 +539,7 @@ export const TOOLS = [
             throw new HttpError(403, "insufficient_scope", "pages under this page are not visible to this connection (needs wiki.private)");
           }
         }
-        return restorePage(tx, wiki.id, input.pageId, { oauthGrantId: agent.grantId });
+        return restorePage(tx, wiki.id, input.pageId, { actor: agentActor(agent), oauthGrantId: agent.grantId });
       });
       const { restoredPageIds, ...placed } = result;
       return { id: input.pageId, restored: true, restoredPages: restoredPageIds.length, ...placed };

@@ -37,7 +37,7 @@ async function form(path: string, fields: Record<string, string>, app = ctx.app)
 }
 
 /** アプリの登録 → 認可の依頼 → 同意 → コードの引き換え、までを通す */
-async function connect(opts: { scope?: string; grant?: string[] } = {}) {
+async function connect(opts: { scope?: string; grant?: string[]; call?: typeof ctx.call } = {}) {
   const client = (await register()).body;
   const { verifier, challenge } = pkce();
   const params = new URLSearchParams({
@@ -56,7 +56,7 @@ async function connect(opts: { scope?: string; grant?: string[] } = {}) {
   expect(consent.origin + consent.pathname).toBe("http://admin.test/consent");
   const request = consent.searchParams.get("request")!;
 
-  const decision = await ctx.call("POST", "/admin/oauth/request/decision", {
+  const decision = await (opts.call ?? ctx.call)("POST", "/admin/oauth/request/decision", {
     request,
     approve: true,
     scopes: opts.grant ?? (opts.scope ?? "wiki.read wiki.write").split(" "),
@@ -304,11 +304,25 @@ describe("tokens", () => {
     expect((await ctx.call("GET", "/admin/oauth/grants")).body.grants).toHaveLength(0);
   });
 
-  it("stops working when the user leaves ADMIN_EMAILS", async () => {
+  it("stops working when the user is no longer a member of any wiki", async () => {
     ctx = await setup();
-    const { tokens } = await connect();
-    const app = createApp({ db: ctx.db, config: { ...ctx.config, adminEmails: [] }, google: null });
-    expect((await mcp(tokens.access_token, "tools/list", undefined, {}, app)).status).toBe(401);
+    const member = await ctx.addUser("member@example.com", { wiki: "editor" });
+    const { tokens } = await connect({ call: member.call });
+    expect((await mcp(tokens.access_token, "tools/list")).status).toBe(200);
+    await ctx.client.query(`delete from wiki_members where user_id = $1`, [member.user.id]);
+    expect((await mcp(tokens.access_token, "tools/list")).status).toBe(401);
+  });
+
+  it("only reaches the wikis the user is a member of", async () => {
+    ctx = await setup();
+    expect((await ctx.call("POST", "/admin/wikis", { key: "other", name: "ほかの wiki" })).status).toBe(201);
+    const member = await ctx.addUser("member@example.com", { wiki: "editor" });
+    const { tokens } = await connect({ call: member.call });
+    const wikis = await callTool(tokens.access_token, "list_wikis", {});
+    expect(wikis.data.wikis.map((w: { key: string }) => w.key)).toEqual(["wiki"]);
+    const denied = await callTool(tokens.access_token, "get_tree", { wiki: "other" });
+    expect(denied).toMatchObject({ isError: true, data: { error: { code: "wiki_not_found" } } });
+    expect((await callTool(tokens.access_token, "get_tree", { wiki: "wiki" })).isError).toBe(false);
   });
 
   it("rejects expired access tokens", async () => {
@@ -522,6 +536,17 @@ describe("MCP", () => {
     ]);
     const actions = await ctx.client.query<{ n: number }>(`select count(*)::int as n from scheduled_actions where oauth_grant_id is not null`);
     expect(actions.rows[0]!.n).toBe(1);
+
+    // 監査ログには、許可した人がそのアプリを通して行ったものとして残る
+    const audit = await ctx.call("GET", `${W}/audit-logs`);
+    expect(
+      audit.body.entries.map((e: { action: string; actor: { label: string; via: string | null } }) => [e.action, e.actor.label, e.actor.via]).reverse(),
+    ).toEqual([
+      ["schedule_create", "オーナー", "テストのアプリ"],
+      ["schedule_cancel", "オーナー", "テストのアプリ"],
+      ["page_publish", "オーナー", "テストのアプリ"],
+      ["page_unpublish", "オーナー", "テストのアプリ"],
+    ]);
   });
 
   it("cannot publish or delete pages it cannot read", async () => {
@@ -617,7 +642,7 @@ describe("login return path", () => {
     ctx = await setup({
       google: {
         authorizationUrl: ({ state }) => `https://accounts.example/auth?state=${state}`,
-        exchangeCode: async () => ({ email: "admin@example.com", emailVerified: true }),
+        exchangeCode: async () => ({ sub: "test:owner", email: "admin@example.com", emailVerified: true, name: "オーナー" }),
       },
     });
     const login = await ctx.app.request(`/auth/google/login?next=${encodeURIComponent("/consent?request=r")}`);

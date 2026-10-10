@@ -36,7 +36,7 @@ export const mcpRoutes = new Hono<AppEnv>()
     const header = c.req.header("authorization") ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
     if (!token) return unauthorized(c);
-    const agent = await authenticateAccessToken(db, config, token);
+    const agent = await authenticateAccessToken(db, token);
     if (agent === null) return unauthorized(c, "invalid_token");
     if (agent === "rate_limited") {
       return c.json({ error: { code: "rate_limited", message: "too many requests" } }, 429, { "retry-after": "60" });

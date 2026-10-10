@@ -1,14 +1,19 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
+import { AppearancePage } from "./routes/AppearancePage";
 import { Home, Root } from "./routes/Layout";
 import { AnalyticsPage } from "./routes/AnalyticsPage";
+import { AuditLogPage } from "./routes/AuditLogPage";
 import { CalendarPage } from "./routes/CalendarPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
+import { InvitePage } from "./routes/InvitePage";
+import { MembersPage } from "./routes/MembersPage";
+import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
 import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
@@ -34,6 +39,20 @@ const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", comp
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: Home });
 // wiki の一覧・作成・アーカイブ（オーナーだけ）。wiki が1つも無くても開けるよう、/w/ の外に置く
 const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
+// オーナーの追加・解除（オーナーだけ）
+const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
+// すべての wiki と全体にかかわる監査ログ（オーナーだけ）
+const auditAllRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit", component: padded(() => <AuditLogPage scope="all" />) });
+// 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
+// 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite",
+  component: function Invite() {
+    const hash = useRouterState({ select: (s) => s.location.hash });
+    return <InvitePage token={decodeURIComponent(hash.replace(/^#/, ""))} />;
+  },
+});
 // 外部のアプリ（MCP）：接続の依頼への同意と、与えた許可の一覧。wiki をまたぐので /w/ の外に置く
 const consentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/consent", component: ConsentPage });
 const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/connections", component: padded(ConnectionsPage) });
@@ -104,6 +123,11 @@ const templateEditorRoute = createRoute({
   },
 });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
+const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
+// この wiki の監査ログ（管理者だけ）
+const auditRoute = createRoute({ getParentRoute: () => wikiRoute, path: "audit", component: padded(() => <AuditLogPage scope="wiki" />) });
+// 公開サイトの外観（管理者だけ）
+const appearanceRoute = createRoute({ getParentRoute: () => wikiRoute, path: "appearance", component: padded(AppearancePage) });
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 // wiki ごとの設定（公開サイトの連携）。読むのはだれでも、変えるのはオーナーだけ
 const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(SettingsPage) });
@@ -129,9 +153,26 @@ const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
   wikisRoute,
+  ownersRoute,
+  auditAllRoute,
+  inviteRoute,
   consentRoute,
   connectionsRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, analyticsRoute, templatesRoute, templateEditorRoute, historyRoute, trashRoute, settingsRoute]),
+  wikiRoute.addChildren([
+    pagesRoute,
+    editorRoute,
+    searchRoute,
+    calendarRoute,
+    analyticsRoute,
+    templatesRoute,
+    templateEditorRoute,
+    historyRoute,
+    membersRoute,
+    auditRoute,
+    appearanceRoute,
+    trashRoute,
+    settingsRoute,
+  ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/history", "/w/$wikiKey/history"),

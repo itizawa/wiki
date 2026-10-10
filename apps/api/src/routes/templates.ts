@@ -50,7 +50,7 @@ export const templateRoutes = new Hono<AppEnv>()
     const input = await parseJson(c, templateInput);
     const [row] = await db
       .insert(pageTemplates)
-      .values({ wikiId: c.get("wiki").id, title: input.title, bodyMd: input.bodyMd, createdBy: c.get("adminEmail") })
+      .values({ wikiId: c.get("wiki").id, title: input.title, bodyMd: input.bodyMd, createdBy: c.get("user").email })
       .returning();
     return c.json(toTemplate(row!), 201);
   })
@@ -82,5 +82,5 @@ export const templateRoutes = new Hono<AppEnv>()
   .get("/:id/render", async (c) => {
     const { db } = c.get("deps");
     const row = await findTemplate(db, c.get("wiki").id, c.req.param("id"));
-    return c.json(renderTemplate(row, c.get("adminEmail")));
+    return c.json(renderTemplate(row, c.get("user").email));
   });
