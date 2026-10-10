@@ -3,6 +3,7 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
+import { CalloutBlockquote } from "./callout";
 
 /**
  * 本文エディタの拡張。保存形式はMarkdownのままなので、Markdownで表せない書式（下線など）は入れない。
@@ -11,8 +12,11 @@ import StarterKit from "@tiptap/starter-kit";
 export const editorExtensions = [
   StarterKit.configure({
     underline: false,
+    // 引用は、コールアウトの種類を持てる CalloutBlockquote に置き換える
+    blockquote: false,
     link: { openOnClick: false, autolink: true, defaultProtocol: "https" },
   }),
+  CalloutBlockquote,
   Image,
   TaskList,
   TaskItem.configure({ nested: true }),

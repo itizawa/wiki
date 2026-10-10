@@ -1,6 +1,15 @@
 .article h1 { line-height: 1.4; margin: 0 0 4px; }
 .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .adNotice { font-size: 0.8rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; }
+/* コールアウト（目立たせたい注意書き）。色に加えて、種類の名前と左の線で区別する */
+.body :global(.callout) { margin: 16px 0; padding: 8px 16px; border: 1px solid var(--border); border-left: 4px solid var(--callout, var(--muted)); border-radius: 6px; }
+.body :global(.callout > p) { margin: 4px 0; }
+.body :global(.callout-title) { font-size: 0.8rem; font-weight: 700; color: var(--callout, var(--muted)); }
+.body :global(.callout[data-callout="note"]),
+.body :global(.callout[data-callout="important"]) { --callout: var(--accent); }
+.body :global(.callout[data-callout="tip"]) { --callout: var(--ok); }
+.body :global(.callout[data-callout="warning"]) { --callout: var(--warn); }
+.body :global(.callout[data-callout="caution"]) { --callout: var(--danger); }
 /* Markdownから生成した本文（クラスを付けられないので :global で当てる） */
 .body :global(pre) { overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
 .body :global(img) { max-width: 100%; }

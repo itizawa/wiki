@@ -1,4 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
+import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import CodeIcon from "@mui/icons-material/Code";
 import DataObjectIcon from "@mui/icons-material/DataObject";
@@ -24,6 +25,7 @@ import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { Placeholder } from "@tiptap/extensions";
 import { NodeSelection } from "@tiptap/pm/state";
+import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -65,6 +67,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
   return (
     <Box>
       <SelectionMenu editor={editor} />
+      <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
       <SlashMenu editor={editor} />
@@ -95,6 +98,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               "& li > div": { flex: 1, minWidth: 0 },
             },
             "& blockquote": { m: 0, my: 1.5, pl: 2, borderLeft: "3px solid", borderColor: "divider", color: "text.secondary" },
+            ...calloutSx,
             "& code": { fontFamily: monoFont, fontSize: "0.875em", bgcolor: "action.hover", px: 0.5, py: 0.25, borderRadius: 0.5 },
             "& pre": {
               fontFamily: monoFont,
@@ -284,6 +288,12 @@ function InsertMenu({ editor }: { editor: Editor }) {
             <DataObjectIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>コードブロック</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={insert(() => chain().setBlockquote().setCalloutType("note").run())}>
+          <ListItemIcon>
+            <CampaignOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>コールアウト（目立たせる注意書き）</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().setHorizontalRule().run())}>
           <ListItemIcon>

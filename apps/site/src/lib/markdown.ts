@@ -1,3 +1,4 @@
+import { CALLOUT_LABELS, parseCalloutMarker } from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
 
 export type RenderOptions = {
@@ -74,6 +75,17 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
         return `<a href="${escapeHtml(token.href)}"${title}${rel ? ` rel="${rel}"` : ""}>${text}</a>`;
       },
+      // 先頭行が [!NOTE] などの引用は、コールアウト（種類の名前つきの囲み）として出す
+      blockquote(token: Tokens.Blockquote) {
+        const [first, ...rest] = token.tokens;
+        const marker = first?.type === "paragraph" ? parseCalloutMarker((first as Tokens.Paragraph).text) : null;
+        if (!marker) return `<blockquote>\n${this.parser.parse(token.tokens)}</blockquote>\n`;
+        const body =
+          marker.rest === ""
+            ? rest
+            : [{ ...(first as Tokens.Paragraph), raw: marker.rest, text: marker.rest, tokens: marked.Lexer.lexInline(marker.rest, marked.defaults) }, ...rest];
+        return `<div class="callout" data-callout="${marker.type}" role="note"><p class="callout-title">${CALLOUT_LABELS[marker.type]}</p>\n${this.parser.parse(body)}</div>\n`;
+      },
     },
   });
   return { html: marked.parse(md, { async: false }), headings };
@@ -83,6 +95,7 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
 export function excerpt(md: string, length = 120): string {
   const text = md
     .replace(/```[\s\S]*?```/g, "")
+    .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/[#>*_`~-]/g, "")
