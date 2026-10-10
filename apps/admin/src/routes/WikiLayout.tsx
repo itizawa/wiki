@@ -183,7 +183,12 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         </Box>
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す */}
-      <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
+      {/* 幅は、列のとき（264px）より広げる。指で操作する端末では行のボタンが大きく、264px だと深い階層のタイトルが2〜3文字しか出ない。右には、押して閉じるための背景を 56px 残す */}
+      <Drawer
+        open={!wide && drawer}
+        onClose={() => setDrawer(false)}
+        slotProps={{ paper: { style: { "--sidebar-width": "min(320px, calc(100vw - 56px))" } as CSSProperties } }}
+      >
         <Sidebar
           email={email}
           onNavigate={() => setDrawer(false)}

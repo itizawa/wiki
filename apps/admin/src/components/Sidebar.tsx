@@ -61,8 +61,8 @@ function useDragSensors() {
 const TOUCH = "@media (pointer: coarse)";
 /** マウスで操作する端末。行のボタンは、マウスを乗せたときだけ出す。 */
 const HOVER = "@media (hover: hover) and (pointer: fine)";
-/** 行の中の小さなボタン（「…」、「＋」）。指で操作する端末では、押せる範囲を広げる。 */
-const rowButtonSx = { p: 0.25, [TOUCH]: { p: 1 } } as const;
+/** 行の中の小さなボタン（「…」、「＋」）。指で操作する端末では、ボタンごと大きくする（隣り合うので、テーマの「押せる範囲だけ広げる」は使わない）。 */
+const rowButtonSx = { p: 0.25, [TOUCH]: { p: 1, "&::after": { display: "none" } } } as const;
 
 /**
  * マウスを乗せたときだけ出すボタン（`selector`）を、マウスを乗せたとき・中にキーボードのフォーカスがあるときに出す。
@@ -658,7 +658,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
   const menuOpen = ctx.openMenuKey === menuKey;
 
   // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
-  const labelSx = { ...ellipsis, display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
+  // 行の高さいっぱいを押せるようにする（文字の高さだけだと、行の上下の余白を押しても開かない）
+  const labelSx = { ...ellipsis, alignSelf: "stretch", display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
 
   return (
     <Box role="treeitem" aria-expanded={kids.length > 0 ? isOpen : undefined} aria-selected={isActive}>
@@ -688,7 +689,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           size="small"
           aria-label={isOpen ? "たたむ" : "ひらく"}
           onClick={() => ctx.toggle(node.nodeId)}
-          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36 } }}
+          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36, "&::after": { display: "none" } } }}
         >
           <Box component={ChevronRight} size={18} sx={{ transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>

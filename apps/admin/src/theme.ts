@@ -16,6 +16,12 @@ declare module "@mui/material/styles" {
   }
 }
 
+/** 指で操作する端末（スマホ・タブレット）。押せる範囲を広げるときの条件に使う。マウスで使う端末の見た目は変えない。 */
+export const TOUCH = "@media (pointer: coarse)";
+
+/** 本文の近くに浮かぶメニュー（書式、表の操作）の幅の上限。画面の左右に 8px ずつ空ける。 */
+export const MENU_MAX_WIDTH = "calc(100vw - 16px)";
+
 /** 配色はOSの設定（prefers-color-scheme）に追従する。 */
 export const theme = createTheme({
   cssVariables: true,
@@ -63,6 +69,12 @@ export const theme = createTheme({
     MuiOutlinedInput: { styleOverrides: { root: ({ theme }) => ({ backgroundColor: theme.vars.palette.background.paper }) } },
     MuiChip: { defaultProps: { size: "small", variant: "outlined" } },
     MuiLink: { defaultProps: { underline: "hover" } },
+    // 小さいアイコンのボタン（28px）は、指では押しにくい。見た目と並びは変えず、押せる範囲だけを上下左右に 4px ずつ広げる（36px）。
+    // 隣のボタンとの間が 4px より狭い所では、隣の押せる範囲に食い込むので、その場で `&::after` を消して大きさを決める
+    MuiIconButton: { styleOverrides: { sizeSmall: { [TOUCH]: { "&::after": { content: '""', position: "absolute", inset: -4 } } } } },
+    // メニューと一覧の詰めた行（32px）は、指で操作する端末では 40px にする
+    MuiMenuItem: { styleOverrides: { dense: { [TOUCH]: { minHeight: 40 } } } },
+    MuiListItemButton: { styleOverrides: { dense: { [TOUCH]: { minHeight: 40 } } } },
   },
 });
 
