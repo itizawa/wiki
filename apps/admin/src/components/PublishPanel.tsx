@@ -15,8 +15,6 @@ import {
   isoToJstLocal,
   isWithinParent,
   jstLocalToIso,
-  pagePath,
-  unlistedPath,
   type PageDetail,
   type PublishVisibility,
   type ScheduledAction,
@@ -25,6 +23,7 @@ import { useMemo, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
+import { publicPageUrl } from "../lib/publicUrl";
 import { descendantImpact, pageHierarchy } from "../lib/visibility";
 import { visibilityLabel } from "../routes/PagesPage";
 import { Mono, Muted, Row, StatusChip } from "./ui";
@@ -86,12 +85,7 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
   const published = page.publishedVersionId !== null && page.visibility !== "private";
   // 公開 URL は wiki ごとのサブドメイン
   const { origin } = useWiki().wiki;
-  const url =
-    page.visibility === "public"
-      ? origin + pagePath(page.id)
-      : page.visibility === "unlisted" && page.unlistedKey
-        ? origin + unlistedPath(page.unlistedKey)
-        : null;
+  const url = publicPageUrl(origin, page);
   const pending = (schedule.data?.actions ?? []).filter((a) => a.status === "scheduled" || a.status === "failed" || a.status === "running");
 
   return (

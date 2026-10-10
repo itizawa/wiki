@@ -116,6 +116,27 @@ describe("pages", () => {
     expect(old.body.bodyMd).toBe("# hi");
   });
 
+  it("structure carries each page's last update time and unlisted key", async () => {
+    ctx = await setup();
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "a", bodyMd: "x" })).body;
+    const before = (await structure()).pages[page.id];
+    expect(before.unlistedKey).toBeNull();
+    expect(new Date(before.updatedAt).toISOString()).toBe(before.updatedAt);
+
+    // 版を残すと、最終更新の日時が進む
+    await new Promise((r) => setTimeout(r, 5));
+    await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "a", bodyMd: "y" });
+    const saved = (await structure()).pages[page.id];
+    expect(Date.parse(saved.updatedAt)).toBeGreaterThan(Date.parse(before.updatedAt));
+
+    // 限定公開にすると、URL に入るキーが付く
+    const head = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId;
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: head, visibility: "unlisted" });
+    const detail = (await ctx.call("GET", `${W}/pages/${page.id}`)).body;
+    expect(detail.unlistedKey).toEqual(expect.any(String));
+    expect((await structure()).pages[page.id].unlistedKey).toBe(detail.unlistedKey);
+  });
+
   it("creates a page under another page, after its existing children", async () => {
     ctx = await setup();
     const parent = (await ctx.call("POST", `${W}/pages`, { title: "parent" })).body;
