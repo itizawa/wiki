@@ -3,6 +3,7 @@ import {
   newPageId,
   savePageDraftInput,
   savePageInput,
+  setPageIconInput,
   setWorkflowInput,
   type PageDetail,
   type PageDraft,
@@ -34,6 +35,7 @@ type DraftRow = typeof pageDrafts.$inferSelect;
 const toSummary = (p: PageRow): PageSummary => ({
   id: p.id,
   title: p.title,
+  icon: p.icon,
   headVersionId: p.headVersionId,
   publishedVersionId: p.publishedVersionId,
   visibility: p.visibility,
@@ -118,12 +120,12 @@ export async function getDetail(db: Db, wikiId: string, id: string): Promise<Pag
 export async function createPage(
   tx: Db,
   wikiId: string,
-  input: { title: string; bodyMd: string; parentPageId?: string | null },
+  input: { title: string; bodyMd: string; parentPageId?: string | null; icon?: string | null },
   opts: { oauthGrantId?: string } = {},
 ): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
-  await tx.insert(pages).values({ id, wikiId, title: input.title, headVersionId: versionId });
+  await tx.insert(pages).values({ id, wikiId, title: input.title, icon: input.icon ?? null, headVersionId: versionId });
   await tx.insert(pageVersions).values({
     id: versionId,
     pageId: id,
@@ -172,6 +174,18 @@ export async function savePage(
     oauthGrantId: opts.oauthGrantId,
     draftOwner: opts.authorEmail,
   });
+}
+
+/**
+ * アイコン（絵文字1つ）を付ける・変える・外す（null）。版は作らず、すぐに反映する。
+ * 公開中・限定公開中のページなら、公開サイトにも出るので、ビルドし直すきっかけを残す。
+ * 一覧の並び（updated_at）は変えない。トランザクション内で呼ぶ。
+ */
+export async function setPageIcon(tx: Db, wikiId: string, id: string, icon: string | null): Promise<void> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  if (page.icon === icon) return;
+  await tx.update(pages).set({ icon }).where(eq(pages.id, id));
+  if (page.publishedVersionId !== null && page.visibility !== "private") await recordPublishEvent(tx, wikiId, "icon", { pageId: id });
 }
 
 /**
@@ -439,7 +453,7 @@ export const pageRoutes = new Hono<AppEnv>()
       if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! });
       // テンプレートから作る：変数を置き換えた本文で始める。タイトルの指定が無ければテンプレートのタイトルにする
       const filled = renderTemplate(await findTemplate(tx, wikiId, input.templateId), c.get("adminEmail"));
-      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId });
+      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId, icon: input.icon });
     });
     return c.json(await getDetail(db, wikiId, id), 201);
   })
@@ -458,6 +472,15 @@ export const pageRoutes = new Hono<AppEnv>()
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, savePageInput);
     await db.transaction((tx) => savePage(tx, wikiId, id, input, { authorEmail: c.get("adminEmail") }));
+    return c.json(await getDetail(db, wikiId, id));
+  })
+  // アイコン（絵文字1つ）。本文の保存とは別に、選んだらすぐに反映する
+  .put("/:id/icon", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
+    const { icon } = await parseJson(c, setPageIconInput);
+    await db.transaction((tx) => setPageIcon(tx, wikiId, id, icon));
     return c.json(await getDetail(db, wikiId, id));
   })
   .get("/:id/draft", async (c) => {

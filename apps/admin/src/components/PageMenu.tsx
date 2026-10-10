@@ -1,6 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Presentation as PresentationIcon, Save, Trash2 } from "lucide-react";
+import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Presentation as PresentationIcon, Save, SmilePlus, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -21,7 +21,7 @@ import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
 
 /**
- * 編集画面の「…」メニュー。プレゼンモードで表示する・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * 編集画面の「…」メニュー。プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
  * テンプレートにする・ページをゴミ箱に入れる。
  */
 export function PageMenu(props: {
@@ -30,6 +30,10 @@ export function PageMenu(props: {
   counted: boolean;
   title: string;
   bodyMd: string;
+  /** アイコン（絵文字）が付いているか */
+  hasIcon: boolean;
+  /** アイコンを選ぶ画面を開く（タイトルのそばのボタンと同じ） */
+  onPickIcon: () => void;
   /** いまの内容を版として残す（⌘S と同じ）。結果の知らせは、呼ばれた側が出す */
   onKeepVersion: () => void;
   onOpenHistory: () => void;
@@ -112,6 +116,18 @@ export function PageMenu(props: {
             <PresentationIcon size={18} />
           </ListItemIcon>
           <ListItemText>プレゼンモードで表示</ListItemText>
+        </MenuItem>
+        <MenuItem
+          aria-haspopup="dialog"
+          onClick={() => {
+            setAnchor(null);
+            props.onPickIcon();
+          }}
+        >
+          <ListItemIcon>
+            <SmilePlus size={18} />
+          </ListItemIcon>
+          <ListItemText>{props.hasIcon ? "アイコンを変える…" : "アイコンを付ける…"}</ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem

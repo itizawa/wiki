@@ -356,10 +356,12 @@ describe("MCP", () => {
     const t = tokens.access_token;
     const parent = await callTool(t, "create_page", { wiki: "wiki", title: "親", bodyMd: "a" });
     expect(parent.isError).toBe(false);
-    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子", bodyMd: "b" });
+    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子", bodyMd: "b", icon: "📝" });
+    // アイコンは絵文字1つだけ
+    expect((await callTool(t, "create_page", { wiki: "wiki", title: "x", icon: "<b>" })).isError).toBe(true);
 
     const page = await callTool(t, "get_page", { wiki: "wiki", pageId: child.data.id });
-    expect(page.data).toMatchObject({ title: "子", bodyMd: "b", visibility: "private", published: false, workflowState: "draft" });
+    expect(page.data).toMatchObject({ title: "子", icon: "📝", bodyMd: "b", visibility: "private", published: false, workflowState: "draft" });
 
     const updated = await callTool(t, "update_page", { wiki: "wiki", pageId: child.data.id, baseVersionId: page.data.headVersionId, bodyMd: "b2" });
     expect(updated.isError).toBe(false);

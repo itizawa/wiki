@@ -36,6 +36,13 @@ const top = (await readdir(dist)).sort();
 check(top.join() === ["_astro", "_headers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
 
 const tPage = await read("wiki/t/by-theme/aaaaaaaaa2.html");
+// ページのアイコン（絵文字）：タイトルとツリーのナビには出し、<title> には入れない
+const iconPage = await read("wiki/p/aaaaaaaaa1.html");
+check(/<h1[^>]*>\s*<span[^>]*aria-hidden="true"[^>]*>👋<\/span>\s*はじめに\s*<\/h1>/.test(iconPage), "a page's icon is shown before its title");
+const noIconPage = await read("wiki/p/aaaaaaaaa2.html");
+check(/<a href="\/t\/main\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
+check(!/<h1[^>]*>\s*<span/.test(noIconPage), "a page without an icon has nothing before its title");
+check(!/<title>[^<]*👋/.test(iconPage), "the icon is not part of <title>");
 check(tPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "/t/ page has canonical to /p/ on the wiki's origin");
 
 check(

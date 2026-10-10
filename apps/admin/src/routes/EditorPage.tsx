@@ -23,6 +23,7 @@ import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { isCounted } from "../lib/views";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
 import { PublishMenu } from "../components/PublishMenu";
 import { StarButton } from "../components/StarButton";
@@ -69,6 +70,9 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const [notice, setNotice] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const titleInput = useRef<HTMLTextAreaElement>(null);
+  // アイコン（絵文字）を選ぶ画面。タイトルのそばのボタンと「…」メニューのどちらから開いても、タイトルの下に出す
+  const titleRow = useRef<HTMLDivElement>(null);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const headings = useOutline(editor);
 
   // 版履歴の開閉と選んだ版は URL に持つ。開くときだけ履歴に積み（ブラウザの「戻る」で閉じる）、版の選び直しと閉じるときは積まない
@@ -269,6 +273,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             counted={isCounted(p)}
             title={draft.title}
             bodyMd={draft.bodyMd}
+            hasIcon={p.icon !== null}
+            onPickIcon={() => setIconPickerOpen(true)}
             onKeepVersion={() => void keepVersion()}
             onOpenHistory={() => showVersion(p.headVersionId)}
             onDelete={() => void confirmAndDelete({ id: p.id, title: p.title, publishedVersionId: p.publishedVersionId })}
@@ -313,33 +319,38 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             )}
             {/* 下書きは保存されるが、タイトルが空のあいだは版にならない。押す前から分かるよう、タイトルのすぐ上に出しておく */}
             {draft.title.trim() === "" && !titleRequired && <Muted sx={{ mb: 0.5 }}>タイトルを入れると版履歴に残ります</Muted>}
-            <InputBase
-              fullWidth
-              multiline
-              value={draft.title}
-              onChange={(e) => {
-                setTitleRequired(false);
-                setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") });
-              }}
-              onKeyDown={(e) => {
-                if (!editor || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
-                // 日本語の変換を確定する Enter や、候補を選ぶ ↓ では移らない（Safari は確定の Enter を isComposing にしないので、keyCode でも見る）
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                if (e.key === "Enter") {
-                  // タイトルは分けず、本文の先頭の空の行へ移る
-                  e.preventDefault();
-                  enterBodyFromTitle(editor, { newLine: true });
-                } else if (e.key === "ArrowDown" && caretOnLastLine(e.currentTarget as HTMLTextAreaElement)) {
-                  e.preventDefault();
-                  enterBodyFromTitle(editor, { newLine: false });
-                }
-              }}
-              placeholder="無題"
-              inputRef={titleInput}
-              inputProps={{ "aria-label": "タイトル" }}
-              // 本文とひと続きに見えるよう、間は本文の見出しと段落の間と同じにする
-              sx={{ p: 0, mb: 1, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
-            />
+            {/* アイコンは、タイトルと本文の左端を揃えたまま出す（広い画面では左の余白、狭い画面ではタイトルの上） */}
+            <Box ref={titleRow} sx={{ position: "relative" }}>
+              <PageIconButton icon={p.icon} onClick={() => setIconPickerOpen(true)} />
+              <InputBase
+                fullWidth
+                multiline
+                value={draft.title}
+                onChange={(e) => {
+                  setTitleRequired(false);
+                  setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") });
+                }}
+                onKeyDown={(e) => {
+                  if (!editor || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+                  // 日本語の変換を確定する Enter や、候補を選ぶ ↓ では移らない（Safari は確定の Enter を isComposing にしないので、keyCode でも見る）
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                  if (e.key === "Enter") {
+                    // タイトルは分けず、本文の先頭の空の行へ移る
+                    e.preventDefault();
+                    enterBodyFromTitle(editor, { newLine: true });
+                  } else if (e.key === "ArrowDown" && caretOnLastLine(e.currentTarget as HTMLTextAreaElement)) {
+                    e.preventDefault();
+                    enterBodyFromTitle(editor, { newLine: false });
+                  }
+                }}
+                placeholder="無題"
+                inputRef={titleInput}
+                inputProps={{ "aria-label": "タイトル" }}
+                // 本文とひと続きに見えるよう、間は本文の見出しと段落の間と同じにする
+                sx={{ p: 0, mb: 1, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
+              />
+            </Box>
+            <PageIconPicker pageId={pageId} icon={p.icon} anchorEl={titleRow.current} open={iconPickerOpen} onClose={() => setIconPickerOpen(false)} />
             {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
             {draft.bodyMd.trim() === "" && (
               <TemplatePicker

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pageIconSchema } from "./emoji";
 import type { WorkflowState } from "./rules";
 
 export const visibilitySchema = z.enum(["public", "unlisted", "private"]);
@@ -17,6 +18,8 @@ export const createPageInput = z
     parentPageId: z.string().min(1).max(64).nullable().optional(),
     /** 本文をこのテンプレート（変数を置き換えたもの）で始める。bodyMd は使わない */
     templateId: z.string().uuid().optional(),
+    /** アイコン（絵文字1つ）。省略または null なら付けない */
+    icon: pageIconSchema.nullable().optional(),
   })
   .refine((v) => v.title !== undefined || v.templateId !== undefined, { message: "title is required", path: ["title"] });
 export type CreatePageInput = z.infer<typeof createPageInput>;
@@ -66,6 +69,8 @@ export type ReorderStarsInput = z.infer<typeof reorderStarsInput>;
 export type PageSummary = {
   id: string;
   title: string;
+  /** アイコン（絵文字1つ）。付けていなければ null。版には入らず、変えるとすぐに反映される */
+  icon: string | null;
   headVersionId: string;
   publishedVersionId: string | null;
   visibility: Visibility;
