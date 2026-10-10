@@ -28,6 +28,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
+import { CodeBlockMenu } from "./CodeBlockMenu";
 import { editorExtensions } from "./extensions";
 
 const extensions = [...editorExtensions, Placeholder.configure({ placeholder: "本文を書く…" })];
@@ -61,6 +62,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
 
   return (
     <Box>
+      <CodeBlockMenu editor={editor} />
       <SelectionMenu editor={editor} />
       <InsertMenu editor={editor} />
       <Box
