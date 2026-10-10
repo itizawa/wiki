@@ -1,9 +1,6 @@
-import SearchIcon from "@mui/icons-material/Search";
-import HistoryIcon from "@mui/icons-material/History";
+import { History, Search, Star } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import StarIcon from "@mui/icons-material/Star";
-import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
@@ -158,7 +155,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
           <Tooltip title="本文を検索・置換 (⌘F)">
             <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
-              <SearchIcon fontSize="small" />
+              <Search size={18} />
             </IconButton>
           </Tooltip>
           <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -209,7 +206,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
             </Muted>
             <Button
               color="inherit"
-              startIcon={<HistoryIcon fontSize="small" />}
+              startIcon={<History size={18} />}
               onClick={() => {
                 setPanelOpen(true);
                 setShowHistory(true);
@@ -415,7 +412,7 @@ function StarButton({ pageId }: { pageId: string }) {
   return (
     <Tooltip title={label}>
       <IconButton size="small" aria-label={label} aria-pressed={starred} onClick={() => toggle(pageId)}>
-        {starred ? <StarIcon fontSize="small" sx={{ color: "warning.main" }} /> : <StarBorderIcon fontSize="small" />}
+        {starred ? <Box component={Star} size={18} fill="currentColor" sx={{ color: "warning.main" }} /> : <Star size={18} />}
       </IconButton>
     </Tooltip>
   );

@@ -1,19 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
-import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
-import ChecklistIcon from "@mui/icons-material/Checklist";
-import CodeIcon from "@mui/icons-material/Code";
-import DataObjectIcon from "@mui/icons-material/DataObject";
-import FormatBoldIcon from "@mui/icons-material/FormatBold";
-import FormatItalicIcon from "@mui/icons-material/FormatItalic";
-import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
-import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
-import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
-import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
-import ArrowRightIcon from "@mui/icons-material/ArrowRight";
-import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
-import LinkIcon from "@mui/icons-material/Link";
-import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
-import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
+import { Bold, Braces, ChevronRight, Code, Image, Italic, Link, List, ListChecks, ListOrdered, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -227,19 +212,19 @@ function SelectionMenu({ editor }: { editor: Editor }) {
         )}
         <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", gap: 0.25, p: 0.5 }}>
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
-            <FormatBoldIcon fontSize="small" />
+            <Bold size={18} />
           </Tool>
           <Tool label="斜体 (⌘I)" active={state.italic} onClick={() => chain().toggleItalic().run()}>
-            <FormatItalicIcon fontSize="small" />
+            <Italic size={18} />
           </Tool>
           <Tool label="取り消し線" active={state.strike} onClick={() => chain().toggleStrike().run()}>
-            <StrikethroughSIcon fontSize="small" />
+            <Strikethrough size={18} />
           </Tool>
           <Tool label="インラインコード" active={state.code} onClick={() => chain().toggleCode().run()}>
-            <CodeIcon fontSize="small" />
+            <Code size={18} />
           </Tool>
           <Tool label={state.link ? "リンクを編集" : "リンク"} active={state.link} onClick={() => setLinkEditing(true)}>
-            <LinkIcon fontSize="small" />
+            <Link size={18} />
           </Tool>
           <Sep />
           {([1, 2, 3] as const).map((level) => (
@@ -250,17 +235,17 @@ function SelectionMenu({ editor }: { editor: Editor }) {
             </Tool>
           ))}
           <Tool label="引用" active={state.blockquote} onClick={() => chain().toggleBlockquote().run()}>
-            <FormatQuoteIcon fontSize="small" />
+            <Quote size={18} />
           </Tool>
           <Sep />
           <Tool label="箇条書き" active={state.bulletList} onClick={() => chain().toggleBulletList().run()}>
-            <FormatListBulletedIcon fontSize="small" />
+            <List size={18} />
           </Tool>
           <Tool label="番号つきリスト" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
-            <FormatListNumberedIcon fontSize="small" />
+            <ListOrdered size={18} />
           </Tool>
           <Tool label="チェックリスト" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
-            <ChecklistIcon fontSize="small" />
+            <ListChecks size={18} />
           </Tool>
         </Stack>
       </Paper>
@@ -294,7 +279,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
           onClick={(e) => setAnchor(e.currentTarget)}
           sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary" }}
         >
-          <AddIcon fontSize="small" />
+          <Plus size={18} />
         </IconButton>
       </Tooltip>
       <Menu
@@ -315,37 +300,37 @@ function InsertMenu({ editor }: { editor: Editor }) {
       >
         <MenuItem onClick={insert(() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
           <ListItemIcon>
-            <TableChartOutlinedIcon fontSize="small" />
+            <Table size={18} />
           </ListItemIcon>
           <ListItemText>表</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => setImageOpen(true))}>
           <ListItemIcon>
-            <ImageOutlinedIcon fontSize="small" />
+            <Image size={18} />
           </ListItemIcon>
           <ListItemText>画像…</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
-            <DataObjectIcon fontSize="small" />
+            <Braces size={18} />
           </ListItemIcon>
           <ListItemText>コードブロック</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().setBlockquote().setCalloutType("note").run())}>
           <ListItemIcon>
-            <CampaignOutlinedIcon fontSize="small" />
+            <Megaphone size={18} />
           </ListItemIcon>
           <ListItemText>コールアウト（目立たせる注意書き）</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => insertToggle(editor))}>
           <ListItemIcon>
-            <ArrowRightIcon fontSize="small" />
+            <ChevronRight size={18} />
           </ListItemIcon>
           <ListItemText>トグル（クリックで開閉する折りたたみ）</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().setHorizontalRule().run())}>
           <ListItemIcon>
-            <HorizontalRuleIcon fontSize="small" />
+            <Minus size={18} />
           </ListItemIcon>
           <ListItemText>区切り線</ListItemText>
         </MenuItem>

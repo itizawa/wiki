@@ -1,4 +1,4 @@
-import LinkOffIcon from "@mui/icons-material/LinkOff";
+import { Unlink } from "lucide-react";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -58,7 +58,7 @@ export function LinkForm(props: { initial: string; onSubmit: (href: string) => v
       {props.onRemove && (
         <Tooltip title="リンクを外す">
           <IconButton size="small" aria-label="リンクを外す" onClick={props.onRemove} sx={{ borderRadius: 1, ml: 0.5 }}>
-            <LinkOffIcon fontSize="small" />
+            <Unlink size={18} />
           </IconButton>
         </Tooltip>
       )}
