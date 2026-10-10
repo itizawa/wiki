@@ -1,7 +1,7 @@
 export type Env = {
   API_ORIGIN: string;
   INTERNAL_TOKEN: string;
-  PAGES_DEPLOY_HOOK_URL?: string;
+  SITE_DEPLOY_HOOK_URL?: string;
   NOTIFY_WEBHOOK_URL?: string;
   BUILD_DEBOUNCE_SEC?: string;
 };
@@ -15,7 +15,7 @@ export type TickResult = { run: RunSummary; build: BuildDecision; deployed: bool
  * Cron Triggers の1回分。
  * 1) 期限の来た予約を実行（API側で FOR UPDATE SKIP LOCKED）
  * 2) 最終失敗があれば通知
- * 3) 公開イベントをデバウンスし、必要ならビルド（Pagesのデプロイフック）を起動
+ * 3) 公開イベントをデバウンスし、必要ならビルド（公開サイトのデプロイフック）を起動
  */
 export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<TickResult> {
   const call = async <T>(path: string, body?: unknown): Promise<T> => {
@@ -43,8 +43,8 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<T
   });
   let deployed = false;
   if (build.trigger) {
-    if (!env.PAGES_DEPLOY_HOOK_URL) throw new Error("PAGES_DEPLOY_HOOK_URL is not set");
-    const res = await fetchImpl(env.PAGES_DEPLOY_HOOK_URL, { method: "POST" });
+    if (!env.SITE_DEPLOY_HOOK_URL) throw new Error("SITE_DEPLOY_HOOK_URL is not set");
+    const res = await fetchImpl(env.SITE_DEPLOY_HOOK_URL, { method: "POST" });
     if (!res.ok) throw new Error(`deploy hook failed: ${res.status}`);
     deployed = true;
   }

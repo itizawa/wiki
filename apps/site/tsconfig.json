@@ -6,5 +6,5 @@
     "noUncheckedIndexedAccess": true
   },
   "include": ["src", ".astro/types.d.ts"],
-  "exclude": ["dist", "functions"]
+  "exclude": ["dist", "worker"]
 }

@@ -56,9 +56,9 @@ jobs:
         working-directory: apps/worker
         env:
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
-          PAGES_DEPLOY_HOOK_URL: ${{ secrets.PAGES_DEPLOY_HOOK_URL }}
+          SITE_DEPLOY_HOOK_URL: ${{ secrets.SITE_DEPLOY_HOOK_URL }}
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
         run: |
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/worker-secrets.json" \
-            INTERNAL_TOKEN PAGES_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?"
+            INTERNAL_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"
