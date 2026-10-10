@@ -9,18 +9,14 @@ import DialogTitle from "@mui/material/DialogTitle";
 import InputAdornment from "@mui/material/InputAdornment";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
-import { useState } from "react";
-import { Mono, Muted, RouterLink, Row, Section, SkeletonTableRows } from "../components/ui";
+import { useState, type ReactNode } from "react";
+import { DataList, type DataListColumn } from "../components/DataList";
+import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -44,6 +40,38 @@ export function WikisPage() {
   const [done, setDone] = useState<string | null>(null);
   const [editing, setEditing] = useState<WikiSummary | null>(null);
   const [archiving, setArchiving] = useState<WikiSummary | null>(null);
+
+  const activeColumns: DataListColumn<WikiSummary>[] = [
+    {
+      key: "name",
+      header: "表示名 / key",
+      width: "minmax(200px, 1fr)",
+      render: (w) => (
+        <WikiName wiki={w}>
+          <RouterLink to="/w/$wikiKey" params={{ wikiKey: w.key }} sx={{ fontWeight: 600 }}>
+            {w.name}
+          </RouterLink>
+        </WikiName>
+      ),
+    },
+    { key: "origin", header: "公開 URL", render: (w) => <SiteLink origin={w.origin} /> },
+    { key: "publishedPages", header: "公開中のページ", align: "right", sx: { whiteSpace: "nowrap" }, render: (w) => `${w.publishedPages}件` },
+    {
+      key: "actions",
+      header: "操作",
+      render: (w) => (
+        // 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く
+        <Row sx={{ flexWrap: "nowrap" }}>
+          <Button variant="outlined" onClick={() => setEditing(w)}>
+            表示名と画像
+          </Button>
+          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3 }}>
+            アーカイブ
+          </Button>
+        </Row>
+      ),
+    },
+  ];
 
   const all = wikis.data?.wikis ?? [];
   const active = all.filter((w) => w.archivedAt === null);
@@ -76,58 +104,18 @@ export function WikisPage() {
               {done}
             </Alert>
           )}
-          {wikis.data && active.length === 0 && (
-            <Muted>使用中の wiki はありません。上の「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。</Muted>
-          )}
-          {/* 表の見出しは読み込み中から出し、行だけを Skeleton にする */}
-          {(wikis.isPending || active.length > 0) && (
-            <Box sx={{ overflowX: "auto" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>表示名 / key</TableCell>
-                    <TableCell>公開 URL</TableCell>
-                    <TableCell align="right">公開中のページ</TableCell>
-                    <TableCell>操作</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {wikis.isPending && <SkeletonTableRows columns={4} rows={3} height={WIKI_ROW_HEIGHT} />}
-                  {active.map((w) => (
-                    <TableRow key={w.key}>
-                      <TableCell>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                          <WikiIcon wiki={w} size={32} />
-                          <div>
-                            <RouterLink to="/w/$wikiKey" params={{ wikiKey: w.key }} sx={{ fontWeight: 600 }}>
-                              {w.name}
-                            </RouterLink>
-                            <Muted>
-                              <Mono>{w.key}</Mono>
-                            </Muted>
-                          </div>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <SiteLink origin={w.origin} />
-                      </TableCell>
-                      <TableCell align="right">{w.publishedPages}件</TableCell>
-                      <TableCell>
-                        {/* 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く */}
-                        <Row sx={{ flexWrap: "nowrap" }}>
-                          <Button variant="outlined" onClick={() => setEditing(w)}>
-                            表示名と画像
-                          </Button>
-                          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3 }}>
-                            アーカイブ
-                          </Button>
-                        </Row>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Box>
+          {/* 読み込みのエラーは、上でまとめて出している */}
+          {(wikis.data || wikis.isPending) && (
+            <DataList
+              label="使用中の wiki"
+              columns={activeColumns}
+              rows={wikis.data ? active : undefined}
+              rowKey={(w) => w.key}
+              rowLink={(w) => ({ to: "/w/$wikiKey", params: { wikiKey: w.key } })}
+              empty="使用中の wiki はありません。上の「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。"
+              rowHeight={WIKI_ROW_HEIGHT}
+              skeletonRows={3}
+            />
           )}
         </Section>
       )}
@@ -159,6 +147,21 @@ export function WikisPage() {
         />
       )}
     </Stack>
+  );
+}
+
+/** 一覧の「表示名 / key」の列。アイコンの横に、表示名（children）と key を2段で出す。 */
+function WikiName({ wiki, children }: { wiki: WikiSummary; children: ReactNode }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
+      <WikiIcon wiki={wiki} size={32} />
+      <Box sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
+        {children}
+        <Muted>
+          <Mono>{wiki.key}</Mono>
+        </Muted>
+      </Box>
+    </Box>
   );
 }
 
@@ -420,38 +423,35 @@ function ArchivedWikis({ wikis }: { wikis: WikiSummary[] }) {
           {errorMessage(restore.error)}
         </Alert>
       )}
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>表示名 / key</TableCell>
-            <TableCell>アーカイブした日時</TableCell>
-            <TableCell>操作</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {wikis.map((w) => (
-            <TableRow key={w.key}>
-              <TableCell>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                  <WikiIcon wiki={w} size={32} />
-                  <div>
-                    <Box sx={{ fontWeight: 600 }}>{w.name}</Box>
-                    <Muted>
-                      <Mono>{w.key}</Mono>
-                    </Muted>
-                  </div>
-                </Box>
-              </TableCell>
-              <TableCell>{formatDateTime(w.archivedAt!)}</TableCell>
-              <TableCell>
-                <Button variant="outlined" disabled={restore.isPending} onClick={() => restore.mutate(w.key)}>
-                  元に戻す
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {/* アーカイブ中の wiki は開けないので、行の遷移先は渡さない（押せる見た目にならない） */}
+      <DataList
+        label="アーカイブ中の wiki"
+        columns={[
+          {
+            key: "name",
+            header: "表示名 / key",
+            width: "minmax(200px, 1fr)",
+            render: (w) => (
+              <WikiName wiki={w}>
+                <Box sx={{ fontWeight: 600 }}>{w.name}</Box>
+              </WikiName>
+            ),
+          },
+          { key: "archivedAt", header: "アーカイブした日時", sx: { whiteSpace: "nowrap" }, render: (w) => formatDateTime(w.archivedAt!) },
+          {
+            key: "actions",
+            header: "操作",
+            render: (w) => (
+              <Button variant="outlined" disabled={restore.isPending} onClick={() => restore.mutate(w.key)}>
+                元に戻す
+              </Button>
+            ),
+          },
+        ]}
+        rows={wikis}
+        rowKey={(w) => w.key}
+        empty="アーカイブ中の wiki はありません。"
+      />
       {restored && (
         <Alert severity="success" onClose={() => setRestored(null)} sx={{ mt: 1 }}>
           「{restored.name}」を元に戻しました。
