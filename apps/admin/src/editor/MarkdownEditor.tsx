@@ -22,6 +22,8 @@ import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
@@ -32,6 +34,8 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import { CodeBlockMenu } from "./CodeBlockMenu";
+import { ImageMenu } from "./ImageMenu";
+import { ImageUpload } from "./imageUpload";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
@@ -53,8 +57,12 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
   const onChange = useRef(props.onChange);
   onChange.current = props.onChange;
 
+  // 画像のアップロードに失敗したときの知らせ（貼り付け・ドロップは本文の外に結果を出す場所が無いので、ここに出す）
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [allExtensions] = useState(() => [...extensions, ImageUpload.configure({ onError: setUploadError })]);
+
   const editor = useEditor({
-    extensions,
+    extensions: allExtensions,
     content: props.value,
     contentType: "markdown",
     onUpdate: ({ editor }) => {
@@ -74,6 +82,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
     <Box>
       <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
+      <ImageMenu editor={editor} />
       <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
@@ -141,6 +150,16 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
             "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
             "& img": { maxWidth: "100%", borderRadius: 1 },
             "& img.ProseMirror-selectednode": { outline: "2px solid", outlineColor: "primary.main" },
+            "& .image-uploading": {
+              display: "inline-block",
+              px: 1,
+              py: 0.25,
+              borderRadius: 1,
+              border: "1px dashed",
+              borderColor: "divider",
+              color: "text.secondary",
+              fontSize: "0.85rem",
+            },
             "& table": { borderCollapse: "collapse", my: 1.5, width: "100%", tableLayout: "fixed" },
             "& th, & td": { border: "1px solid", borderColor: "divider", px: 1, py: 0.5, verticalAlign: "top", textAlign: "left" },
             "& th": { bgcolor: "action.hover", fontWeight: 600 },
@@ -163,6 +182,11 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
         <TableMenu editor={editor} />
       </Box>
       <CodeBlockMenu editor={editor} />
+      <Snackbar open={uploadError !== null} autoHideDuration={8000} onClose={() => setUploadError(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity="error" variant="filled" onClose={() => setUploadError(null)}>
+          {uploadError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
