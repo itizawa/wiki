@@ -40,10 +40,25 @@ export async function wikiManifest(db: Db, key = DEFAULT_WIKI_KEY) {
   return wiki;
 }
 
+let migrated: Promise<Blob | File> | undefined;
+
+/**
+ * マイグレーションを流し終えた DB の写し。テストのたびに全部のマイグレーションを流すと遅いので、
+ * テストファイルごとに1回だけ流し、各テストはその写しから始める。
+ */
+function migratedDataDir() {
+  return (migrated ??= (async () => {
+    const client = new PGlite();
+    await migrate(drizzle(client) as never, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
+    const dataDir = await client.dumpDataDir("none");
+    await client.close();
+    return dataDir;
+  })());
+}
+
 export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null; reporting?: GoogleReporting | null } = {}) {
-  const client = new PGlite();
+  const client = new PGlite({ loadDataDir: await migratedDataDir() });
   const db = drizzle(client, { schema }) as unknown as Db;
-  await migrate(db as never, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
