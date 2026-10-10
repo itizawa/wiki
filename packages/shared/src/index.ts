@@ -20,3 +20,4 @@ export * from "./visibility";
 export * from "./images";
 export * from "./users";
 export * from "./oauth";
+export * from "./views";

@@ -6,17 +6,20 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TableSortLabel from "@mui/material/TableSortLabel";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import type { Theme } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import type { PageSummary, PageViewCounts } from "@wiki/shared";
+import { useMemo, useState } from "react";
 import { StarButton } from "../components/StarButton";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
+import { isCounted, measuredSinceLabel, viewCountLabel, viewSortValue, VIEWS_NOTE } from "../lib/views";
 
 const STAR_WIDTH = 36;
 
@@ -35,9 +38,29 @@ const starCell = { left: 0, width: STAR_WIDTH, minWidth: STAR_WIDTH } as const;
 /** タイトルは長ければ折り返す。狭い画面でも1文字ずつに潰れない幅を取る。 */
 const titleCell = { left: STAR_WIDTH, minWidth: 140, maxWidth: { xs: 180, sm: "none" }, whiteSpace: "normal !important", overflowWrap: "anywhere" } as const;
 
+type ViewSort = { key: keyof PageViewCounts; dir: "desc" | "asc" } | null;
+
+const VIEW_COLUMNS = [
+  { key: "total", label: "閲覧（合計）" },
+  { key: "recent", label: "直近30日" },
+] as const;
+
 export function PagesPage() {
   const [q, setQ] = useState("");
   const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q) });
+  const views = useQuery({ queryKey: ["views"], queryFn: api.listViews });
+  // 閲覧数の列の見出しで並べ替える。初めは多い順、もう一度押すと少ない順、その次は元の並び（更新日時の順）
+  const [sort, setSort] = useState<ViewSort>(null);
+  const toggleSort = (key: keyof PageViewCounts) =>
+    setSort((cur) => (cur?.key !== key ? { key, dir: "desc" } : cur.dir === "desc" ? { key, dir: "asc" } : null));
+  const rows = useMemo(() => {
+    const list = pages.data?.pages ?? [];
+    if (!sort) return list;
+    const value = (p: PageSummary) => viewSortValue(views.data?.pages[p.id], sort.key, isCounted(p));
+    const sign = sort.dir === "desc" ? -1 : 1;
+    // 同じ数のあいだは元の並びを保つ
+    return [...list].sort((a, b) => sign * (value(a) - value(b)));
+  }, [pages.data, views.data, sort]);
 
   return (
     <Stack spacing={1.5}>
@@ -48,6 +71,11 @@ export function PagesPage() {
           </Typography>
           <TextField value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" />
         </Row>
+        {views.data && (
+          <Muted sx={{ mb: 1, fontSize: "0.75rem" }}>
+            閲覧数は公開サイトでの数で、{measuredSinceLabel(views.data.since)}。{VIEWS_NOTE}。
+          </Muted>
+        )}
         {pages.isPending && <Muted>読み込み中…</Muted>}
         {pages.error && <Alert severity="error">{errorMessage(pages.error)}</Alert>}
         {pages.data && pages.data.pages.length === 0 && (
@@ -66,11 +94,22 @@ export function PagesPage() {
                   <TableCell sx={[stickyCell, titleCell]}>タイトル</TableCell>
                   <TableCell>ID</TableCell>
                   <TableCell>状態</TableCell>
+                  {VIEW_COLUMNS.map((c) => (
+                    <TableCell key={c.key} align="right" sortDirection={sort?.key === c.key ? sort.dir : false}>
+                      <TableSortLabel
+                        active={sort?.key === c.key}
+                        direction={sort?.key === c.key ? sort.dir : "desc"}
+                        onClick={() => toggleSort(c.key)}
+                      >
+                        {c.label}
+                      </TableSortLabel>
+                    </TableCell>
+                  ))}
                   <TableCell>更新日時</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {pages.data.pages.map((p) => (
+                {rows.map((p) => (
                   <TableRow key={p.id} hover>
                     <TableCell padding="none" sx={[stickyCell, starCell, { pl: 0.5 }]}>
                       <StarButton pageId={p.id} title={p.title} />
@@ -93,6 +132,11 @@ export function PagesPage() {
                         {p.reviewRequestedAt && <StatusChip status="unlisted" label="見直し待ち" />}
                       </Row>
                     </TableCell>
+                    {VIEW_COLUMNS.map((c) => (
+                      <TableCell key={c.key} align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
+                        {views.data ? viewCountLabel(views.data.pages[p.id]?.[c.key], isCounted(p)) : "…"}
+                      </TableCell>
+                    ))}
                     <TableCell>
                       <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>
                     </TableCell>
