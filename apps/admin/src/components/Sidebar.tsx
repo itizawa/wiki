@@ -27,6 +27,7 @@ import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
+import Collapse from "@mui/material/Collapse";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import InputBase from "@mui/material/InputBase";
@@ -35,6 +36,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
@@ -357,7 +359,12 @@ type TreeContext = {
   expand: (nodeId: string) => void;
   onCreatePage: (parentNodeId: string) => void;
   onNavigate?: () => void;
+  /** 折りたたみの動きの長さ。OS の「視差効果を減らす」が有効なら 0 */
+  motionMs: number;
 };
+
+/** ツリーの折りたたみの動きの長さ（ms）。 */
+const TREE_MOTION_MS = 160;
 
 function DocumentTree(props: {
   tree: StructureTree;
@@ -375,6 +382,7 @@ function DocumentTree(props: {
   const [dragging, setDragging] = useState<string | null>(null);
   const childrenOf = useMemo(() => childrenByParent(tree.nodes), [tree.nodes]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const label = (n: TreeNode) => data.pages[n.pageId]?.title ?? n.pageId;
   const expand = (nodeId: string) => {
@@ -405,6 +413,7 @@ function DocumentTree(props: {
       props.onCreatePage(parentNodeId);
     },
     onNavigate: props.onNavigate,
+    motionMs: reducedMotion ? 0 : TREE_MOTION_MS,
   };
 
   return (
@@ -493,12 +502,13 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           </Tooltip>
         </Box>
       </Box>
-      {isOpen && kids.length > 0 && (
-        <Box role="group">
+      {kids.length > 0 && (
+        // 子ページの行は、高さを動かして出し入れする。畳んでいる間は描画しない
+        <Collapse in={isOpen} timeout={ctx.motionMs} unmountOnExit role="group">
           {kids.map((kid) => (
             <TreeRow key={kid.nodeId} node={kid} depth={depth + 1} ctx={ctx} />
           ))}
-        </Box>
+        </Collapse>
       )}
     </Box>
   );
