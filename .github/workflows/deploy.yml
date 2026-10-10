@@ -11,8 +11,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる
   check:
     uses: ./.github/workflows/ci.yml
+    with:
+      tests: false
 
   deploy:
     needs: check
