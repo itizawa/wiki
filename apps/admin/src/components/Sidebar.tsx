@@ -3,8 +3,9 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
   pointerWithin,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -45,6 +46,22 @@ const UNTITLED = "無題";
 /** これ以上動かしたらドラッグとみなす距離（px）。 */
 const DRAG_DISTANCE = 4;
 
+/**
+ * 並び替えのドラッグの始め方。マウスは少し動かしたら、タッチは長押ししたら始める。
+ * タッチで「動かしたら始める」にすると、サイドバーのスクロールと取り合いになってドラッグできない。
+ */
+function useDragSensors() {
+  return useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: DRAG_DISTANCE } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  );
+}
+
+/** 指で操作する端末（スマホ・タブレット）。行と行の中のボタンを大きくして、押し間違いを減らす。 */
+const TOUCH = "@media (pointer: coarse)";
+/** 行の中の小さなボタン（スター、「＋」）。指で操作する端末では、押せる範囲を広げる。 */
+const rowButtonSx = { p: 0.25, [TOUCH]: { p: 1 } } as const;
+
 /** 行の共通の見た目（ナビ項目・ツリーの行・検索結果）。 */
 const rowSx = {
   display: "flex",
@@ -58,7 +75,10 @@ const rowSx = {
   textDecoration: "none",
   cursor: "pointer",
   userSelect: "none",
+  // 長押しはドラッグに使うので、iOS のリンクのプレビューは出さない
+  WebkitTouchCallout: "none",
   "&:hover": { bgcolor: "action.hover" },
+  [TOUCH]: { minHeight: 40 },
   '&[data-status="active"], &[data-active="true"]': { bgcolor: "action.selected", color: "text.primary", fontWeight: 600 },
 } as const;
 
@@ -308,7 +328,7 @@ function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; chil
 /** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。ドラッグで並べ替えられる。1つも無ければ何も出さない。 */
 function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]; onNavigate?: () => void }) {
   const { ids, reorder } = useStars();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_DISTANCE } }));
+  const sensors = useDragSensors();
   // 削除されたページのスターは出さない
   const starred = ids.flatMap((id) => (pages[id] ? [pages[id]] : []));
   if (starred.length === 0) return null;
@@ -395,7 +415,7 @@ function DocumentTree(props: {
   const collapsed = useMemo(() => new Set(collapsedIds), [collapsedIds]);
   const [dragging, setDragging] = useState<string | null>(null);
   const childrenOf = useMemo(() => childrenByParent(tree.nodes), [tree.nodes]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const sensors = useDragSensors();
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const label = (n: TreeNode) => data.pages[n.pageId]?.title ?? n.pageId;
@@ -503,7 +523,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           size="small"
           aria-label={isOpen ? "たたむ" : "ひらく"}
           onClick={() => ctx.toggle(node.nodeId)}
-          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden" }}
+          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36 } }}
         >
           <Box component={ChevronRight} size={18} sx={{ transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
@@ -514,9 +534,9 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           <VisibilityMark visibility={visibility} />
         </RouterLink>
         <Box className="row-actions" sx={{ flexShrink: 0 }}>
-          <StarButton pageId={node.pageId} title={title} iconSize={18} sx={{ p: 0.25 }} />
+          <StarButton pageId={node.pageId} title={title} iconSize={18} sx={rowButtonSx} />
           <Tooltip title="この下に新しいページ">
-            <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={{ p: 0.25 }}>
+            <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={rowButtonSx}>
               <Plus size={18} />
             </IconButton>
           </Tooltip>
