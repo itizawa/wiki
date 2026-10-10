@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
+import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 
 export function PagesPage() {
@@ -22,7 +23,7 @@ export function PagesPage() {
   const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q) });
   const create = useMutation({
     mutationFn: () => api.createPage({ title }),
-    onSuccess: (page) => navigate({ to: "/pages/$pageId", params: { pageId: page.id } }),
+    onSuccess: (page) => navigate(pageLink(page.id)),
   });
 
   return (
@@ -65,7 +66,7 @@ export function PagesPage() {
             {pages.data?.pages.map((p) => (
               <TableRow key={p.id} hover>
                 <TableCell>
-                  <RouterLink to="/pages/$pageId" params={{ pageId: p.id }}>
+                  <RouterLink {...pageLink(p.id)}>
                     {p.title}
                   </RouterLink>
                 </TableCell>

@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstLocalToIso, pagePath, unlistedPath, type PageDetail, type PublishVisibility, type ScheduledAction } from "@wiki/shared";
 import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
+import { useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 import { Mono, Muted, Row, Section, StatusChip } from "./ui";
 
@@ -34,7 +35,6 @@ export const actionLabel = (a: Pick<ScheduledAction, "actionType" | "targetVisib
 /** エディタ横の公開設定：公開/非公開化、限定公開URL、予約。 */
 export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean }) {
   const qc = useQueryClient();
-  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: Infinity });
   const schedule = useQuery({ queryKey: ["schedule", page.id], queryFn: () => api.listSchedule({ pageId: page.id }) });
   const [visibility, setVisibility] = useState<PublishVisibility>(page.visibility === "unlisted" ? "unlisted" : "public");
   const [runAt, setRunAt] = useState(() => isoToJstLocal(new Date(Date.now() + 24 * 3600_000).toISOString()).slice(0, 11) + "07:00");
@@ -48,7 +48,8 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
   const action = useMutation({ mutationFn: (fn: () => Promise<unknown>) => fn(), onSuccess: refresh });
 
   const published = page.publishedVersionId !== null && page.visibility !== "private";
-  const origin = settings.data?.siteOrigin ?? "";
+  // 公開 URL は wiki ごとのサブドメイン
+  const { origin } = useWiki().wiki;
   const url =
     page.visibility === "public"
       ? origin + pagePath(page.id)

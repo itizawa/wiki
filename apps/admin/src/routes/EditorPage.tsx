@@ -17,6 +17,7 @@ import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
+import { screenLink } from "../lib/wiki";
 import { useStars } from "../lib/stars";
 import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
@@ -90,7 +91,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
     onSuccess: async () => {
       removed.current = true;
       await qc.invalidateQueries();
-      await navigate({ to: "/" });
+      await navigate(screenLink("/w/$wikiKey"));
     },
   });
 

@@ -6,6 +6,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SearchIcon from "@mui/icons-material/Search";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import ViewSidebarOutlinedIcon from "@mui/icons-material/ViewSidebarOutlined";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
@@ -20,6 +21,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
+import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { Muted } from "./ui";
 
 const MAX_PAGES = 8;
@@ -52,13 +54,14 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       void qc.invalidateQueries({ queryKey: ["structure"] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
       onClose();
-      await navigate({ to: "/pages/$pageId", params: { pageId: page.id } });
+      await navigate(pageLink(page.id));
     },
   });
 
-  const go = (to: "/" | "/calendar" | "/rules" | "/history") => () => {
+  const { wiki, wikis } = useWiki();
+  const go = (to: WikiScreen) => () => {
     onClose();
-    void navigate({ to });
+    void navigate(screenLink(to));
   };
   const commands: Command[] = [
     {
@@ -68,10 +71,23 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       icon: <AddIcon fontSize="small" />,
       run: () => !create.isPending && create.mutate(),
     },
-    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <HomeOutlinedIcon fontSize="small" />, run: go("/") },
-    { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <CalendarMonthOutlinedIcon fontSize="small" />, run: go("/calendar") },
-    { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <AutoModeIcon fontSize="small" />, run: go("/rules") },
-    { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <HistoryIcon fontSize="small" />, run: go("/history") },
+    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <HomeOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey") },
+    { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <CalendarMonthOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey/calendar") },
+    { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <AutoModeIcon fontSize="small" />, run: go("/w/$wikiKey/rules") },
+    { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <HistoryIcon fontSize="small" />, run: go("/w/$wikiKey/history") },
+    // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
+    ...wikis
+      .filter((w) => w.key !== wiki.key)
+      .map((w) => ({
+        id: `wiki:${w.key}`,
+        label: `wiki「${w.name}」に切り替える`,
+        keywords: ["wiki", "switch", w.key],
+        icon: <SwapHorizIcon fontSize="small" />,
+        run: () => {
+          onClose();
+          void navigate({ to: "/w/$wikiKey", params: { wikiKey: w.key } });
+        },
+      })),
     ...(props.onToggleSidebar
       ? [
           {
@@ -113,7 +129,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
 
   function openPage(pageId: string) {
     onClose();
-    void navigate({ to: "/pages/$pageId", params: { pageId } });
+    void navigate(pageLink(pageId));
   }
 
   useEffect(() => setIndex(0), [q]);

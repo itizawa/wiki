@@ -37,6 +37,7 @@ describe("wikis", () => {
   it("starts with the first wiki, which keeps the existing public URL", async () => {
     ctx = await setup();
     const res = await ctx.call("GET", "/admin/wikis");
+    expect(res.body.baseDomain).toBe("site.test");
     expect(res.body.wikis).toEqual([
       expect.objectContaining({ key: "wiki", origin: "https://wiki.site.test", archivedAt: null, publishedPages: 0 }),
     ]);

@@ -35,7 +35,8 @@ export const wikiRoutes = new Hono<AppEnv>()
     const { db, config } = c.get("deps");
     // アーカイブ中の wiki を見られるのは、戻せる人（オーナー）だけ
     const list = await listWikis(db, config, { includeArchived: isOwner(config, c.get("adminEmail")) });
-    return c.json({ wikis: list });
+    // baseDomain は、作成の画面で「できあがる URL」を出すのに使う
+    return c.json({ wikis: list, baseDomain: config.siteBaseDomain });
   })
   .post("/", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
