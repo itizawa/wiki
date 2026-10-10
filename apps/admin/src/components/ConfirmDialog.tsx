@@ -33,7 +33,7 @@ const subscribe = (l: () => void) => {
 
 /**
  * 画面内の確認ダイアログを出し、実行するなら true を返す。ブラウザ標準の confirm() の代わりに使う。
- * 画面のどこからでも呼べる（Layout に置いた ConfirmHost が表示する）。
+ * 画面のどこからでも呼べる（ログイン後の画面の入口 Root に置いた ConfirmHost が表示する）。
  */
 export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   // 前の確認が残っていたら、やめた扱いにする

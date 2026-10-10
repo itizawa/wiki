@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { WikiRole } from "./members";
 
 /**
  * wiki = ページ・ツリー（1本）・ルール・予約・設定のまとまり。wiki どうしは内容を共有しない。
@@ -112,4 +113,6 @@ export function wikiKeyFromHost(host: string, baseDomain: string): string | null
 export type WikiSummary = Wiki & {
   /** 公開サイトに出ているページ（公開・限定公開）の件数 */
   publishedPages: number;
+  /** 開いている人のこの wiki でのロール。オーナーは、メンバーでなくても管理者として扱う */
+  role: WikiRole;
 };

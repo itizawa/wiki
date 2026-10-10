@@ -19,7 +19,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import MenuItem from "@mui/material/MenuItem";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
 import { useState } from "react";
@@ -27,6 +28,7 @@ import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { confirmDialog } from "../components/ConfirmDialog";
 import { useSession, useWikis } from "./Layout";
 
 /** key の決まりに、「ほかの wiki が使っていない」を足したもの。入力欄のそばに、どれを満たしたかを出す。 */
@@ -132,6 +134,7 @@ export function WikisPage() {
       )}
 
       {session.isOwner && archived.length > 0 && <ArchivedWikis wikis={archived} />}
+      {session.isOwner && <Owners />}
 
       {editing && (
         <EditDialog
@@ -158,6 +161,102 @@ export function WikisPage() {
         />
       )}
     </Stack>
+  );
+}
+
+/**
+ * オーナー：すべての wiki に管理者として入れ、wiki の作成・アーカイブとオーナーの追加・解除ができる人。
+ * オーナーにできるのは、一度でもログインしたか、招待された登録済みのユーザー。最後のオーナーは解除できない。
+ */
+function Owners() {
+  const session = useSession();
+  const qc = useQueryClient();
+  const users = useQuery({ queryKey: ["users"], queryFn: api.listUsers });
+  const set = useMutation({
+    mutationFn: (v: { id: string; isOwner: boolean }) => api.setOwner(v.id, v.isOwner),
+    onSuccess: async (_u, v) => {
+      await qc.invalidateQueries({ queryKey: ["users"] });
+      // 自分を解除したら、オーナーだけの画面は出せなくなる
+      if (v.id === session.id && !v.isOwner) await qc.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+  const owners = users.data?.users.filter((u) => u.isOwner) ?? [];
+  const others = users.data?.users.filter((u) => !u.isOwner) ?? [];
+  const [candidate, setCandidate] = useState("");
+
+  return (
+    <Section>
+      <Typography variant="h6" component="h2" gutterBottom>
+        オーナー
+      </Typography>
+      <Muted sx={{ mb: 1 }}>
+        オーナーは、すべての wiki に管理者として入れ、wiki の作成・アーカイブと、オーナーの追加・解除ができます。オーナーにできるのは、登録済みのユーザーだけです。
+      </Muted>
+      {users.error && <Alert severity="error">{errorMessage(users.error)}</Alert>}
+      {set.error && <Alert severity="error">{errorMessage(set.error)}</Alert>}
+      <Table size="small" aria-label="オーナー">
+        <TableBody>
+          {owners.map((u) => (
+            <TableRow key={u.id}>
+              <TableCell>
+                {u.name ?? u.email}
+                {u.id === session.id && <Muted component="span">（あなた）</Muted>}
+                {u.name && <Muted>{u.email}</Muted>}
+              </TableCell>
+              <TableCell align="right">
+                {/* 最後のオーナーは解除できないので、ボタンを出さない */}
+                {owners.length > 1 && (
+                  <Button
+                    variant="text"
+                    color="error"
+                    disabled={set.isPending}
+                    onClick={async () => {
+                      const ok = await confirmDialog({
+                        title: `${u.name ?? u.email} をオーナーから外しますか？`,
+                        body: "wiki の作成・アーカイブと、メンバーでない wiki を開くことができなくなります。",
+                        confirmLabel: "オーナーから外す",
+                        cancelLabel: "外さずに戻る",
+                        danger: true,
+                      });
+                      if (ok) set.mutate({ id: u.id, isOwner: false });
+                    }}
+                  >
+                    オーナーから外す
+                  </Button>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {owners.length === 1 && <Muted sx={{ mt: 1 }}>オーナーが1人のときは、その人を外せません。</Muted>}
+      {others.length > 0 && (
+        <Row sx={{ mt: 1.5 }}>
+          <TextField
+            select
+            size="small"
+            label="オーナーにするユーザー"
+            value={candidate}
+            onChange={(e) => setCandidate(e.target.value)}
+            sx={{ minWidth: 260 }}
+          >
+            {others.map((u) => (
+              <MenuItem key={u.id} value={u.id}>
+                {u.name ? `${u.name}（${u.email}）` : u.email}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Button
+            variant="outlined"
+            size="medium"
+            disabled={!candidate || set.isPending}
+            onClick={() => set.mutate({ id: candidate, isOwner: true }, { onSuccess: () => setCandidate("") })}
+          >
+            オーナーにする
+          </Button>
+        </Row>
+      )}
+    </Section>
   );
 }
 

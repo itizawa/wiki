@@ -50,6 +50,13 @@
       "when": 1791628935184,
       "tag": "0006_wiki_icon",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791632062142,
+      "tag": "0007_users",
+      "breakpoints": true
     }
   ]
 }

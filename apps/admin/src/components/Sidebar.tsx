@@ -17,6 +17,7 @@ import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import HistoryIcon from "@mui/icons-material/History";
+import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
@@ -177,6 +178,9 @@ export function Sidebar(props: {
             </NavItem>
             <NavItem to="/w/$wikiKey/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴
+            </NavItem>
+            <NavItem to="/w/$wikiKey/members" icon={<GroupOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+              メンバー
             </NavItem>
 
             {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}

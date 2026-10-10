@@ -1,6 +1,6 @@
 import { StructureOpError, StructureValidationError } from "@wiki/shared";
 import { Hono } from "hono";
-import { authRoutes, requireAdmin } from "./auth/routes";
+import { authRoutes, requireUser } from "./auth/routes";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
 import { exportRoutes, internalRoutes } from "./routes/internal";
@@ -8,7 +8,9 @@ import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
 import { structureRoutes, treeRoutes } from "./routes/structure";
-import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
+import { acceptInviteRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
+import { resolveWiki, wikiRoutes } from "./routes/wikis";
+import { toUser } from "./users/service";
 
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
@@ -34,9 +36,11 @@ export function createApp(deps: Deps) {
   app.route("/internal", internalRoutes);
 
   const admin = new Hono<AppEnv>();
-  admin.use("*", requireAdmin);
-  admin.get("/me", (c) => c.json({ email: c.get("adminEmail"), isOwner: isOwner(deps.config, c.get("adminEmail")) }));
+  admin.use("*", requireUser);
+  admin.get("/me", (c) => c.json(toUser(c.get("user"))));
   admin.route("/wikis", wikiRoutes);
+  admin.route("/invites", acceptInviteRoutes);
+  admin.route("/users", userRoutes);
 
   // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
   const wiki = new Hono<AppEnv>();
@@ -45,6 +49,8 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/rules", ruleRoutes);
+  wiki.route("/members", memberRoutes);
+  wiki.route("/invites", inviteRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
   admin.route("/w/:wikiKey", wiki);

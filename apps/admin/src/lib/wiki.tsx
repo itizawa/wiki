@@ -4,7 +4,7 @@ import { currentWikiKey } from "./api";
 
 /** `/w/{key}/...` の画面が共有するもの。 */
 export type WikiContextValue = {
-  /** いま開いている wiki */
+  /** いま開いている wiki（role は、開いている人のこの wiki でのロール） */
   wiki: WikiSummary;
   /** 切り替え先として選べる wiki（使用中のもの） */
   wikis: WikiSummary[];
@@ -51,7 +51,7 @@ export function pageLink(pageId: string) {
 }
 
 /** 開いている wiki の画面（一覧・カレンダー・ルール・履歴）へのリンク。 */
-export type WikiScreen = "/w/$wikiKey" | "/w/$wikiKey/calendar" | "/w/$wikiKey/rules" | "/w/$wikiKey/history";
+export type WikiScreen = "/w/$wikiKey" | "/w/$wikiKey/calendar" | "/w/$wikiKey/rules" | "/w/$wikiKey/history" | "/w/$wikiKey/members";
 export function screenLink<T extends WikiScreen>(to: T) {
   return { to, params: { wikiKey: currentWikiKey() } } as const;
 }

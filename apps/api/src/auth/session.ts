@@ -6,8 +6,12 @@ export const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
 
 const key = (secret: string) => new TextEncoder().encode(secret);
 
-export async function signSession(secret: string, email: string): Promise<string> {
-  return new SignJWT({ email, typ: "session" })
+/**
+ * セッションにはユーザーの ID だけを入れる。メールアドレスを入れていた頃のセッション（uid が無い）は通さない。
+ * 中身はリクエストのたびに DB で確かめる（外したメンバーは次のリクエストから通らない）
+ */
+export async function signSession(secret: string, userId: string): Promise<string> {
+  return new SignJWT({ uid: userId, typ: "session" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SEC}s`)
@@ -17,14 +21,16 @@ export async function signSession(secret: string, email: string): Promise<string
 export async function verifySession(secret: string, token: string): Promise<string | null> {
   try {
     const { payload } = await jwtVerify(token, key(secret), { algorithms: ["HS256"] });
-    return payload.typ === "session" && typeof payload.email === "string" ? payload.email : null;
+    return payload.typ === "session" && typeof payload.uid === "string" ? payload.uid : null;
   } catch {
     return null;
   }
 }
 
-/** OAuthの state / nonce を短命の署名付きCookieに入れて往復させる。 */
-export async function signOAuthState(secret: string, data: { state: string; nonce: string }): Promise<string> {
+/** OAuthの state / nonce（と、招待リンクから来たときはその値）を短命の署名付きCookieに入れて往復させる。 */
+export type OAuthState = { state: string; nonce: string; invite?: string };
+
+export async function signOAuthState(secret: string, data: OAuthState): Promise<string> {
   return new SignJWT({ ...data, typ: "oauth" })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("10m")
@@ -34,11 +40,12 @@ export async function signOAuthState(secret: string, data: { state: string; nonc
 export async function verifyOAuthState(
   secret: string,
   token: string,
-): Promise<{ state: string; nonce: string } | null> {
+): Promise<OAuthState | null> {
   try {
     const { payload } = await jwtVerify(token, key(secret), { algorithms: ["HS256"] });
     if (payload.typ !== "oauth" || typeof payload.state !== "string" || typeof payload.nonce !== "string") return null;
-    return { state: payload.state, nonce: payload.nonce };
+    const invite = typeof payload.invite === "string" ? payload.invite : undefined;
+    return { state: payload.state, nonce: payload.nonce, ...(invite && { invite }) };
   } catch {
     return null;
   }

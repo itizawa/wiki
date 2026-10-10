@@ -348,3 +348,69 @@ export const siteBuilds = pgTable("site_builds", {
   contentHash: text("content_hash").notNull(),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// ユーザー・メンバー・招待（#52）
+// ---------------------------------------------------------------------------
+
+/**
+ * 管理画面に入れる人。Google のアカウント ID（sub）で見分ける。
+ * メールアドレスと名前は表示用で、ログインのたびに更新する。行は消さない（書いた版・履歴を残すため）
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    /** 最初のログインまで空（移行や締め出し用スクリプトでメールアドレスだけの行を作る） */
+    googleSub: text("google_sub").unique(),
+    email: text("email").notNull(),
+    name: text("name"),
+    /** 全体の権限。すべての wiki に管理者として入れ、wiki の作成・アーカイブとオーナーの追加・解除ができる */
+    isOwner: boolean("is_owner").notNull().default(false),
+    createdAt: createdAt(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  },
+  (t) => [index("users_email_idx").on(t.email)],
+);
+
+export const wikiMembers = pgTable(
+  "wiki_members",
+  {
+    wikiId: wikiId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role", { enum: ["admin", "editor"] }).notNull(),
+    createdAt: createdAt(),
+    /** 招待リンクで入った場合のリンク */
+    inviteId: text("invite_id"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.wikiId, t.userId] }),
+    index("wiki_members_user_idx").on(t.userId),
+    check("wiki_members_role_check", sql`${t.role} in ('admin', 'editor')`),
+  ],
+);
+
+/** 招待リンク。1リンクで1人、期限つき。値そのものは持たず、SHA-256 のハッシュだけを持つ */
+export const invites = pgTable(
+  "invites",
+  {
+    id: text("id").primaryKey(),
+    wikiId: wikiId(),
+    role: text("role", { enum: ["admin", "editor"] }).notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedBy: text("used_by").references(() => users.id),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("invites_wiki_idx").on(t.wikiId),
+    check("invites_role_check", sql`${t.role} in ('admin', 'editor')`),
+  ],
+);

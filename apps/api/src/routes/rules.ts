@@ -4,8 +4,9 @@ import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { listRuleRuns, listRules, saveRule } from "../rules/engine";
 import { parseJson } from "../validation";
+import { requireWikiAdmin } from "./wikis";
 
-/** /admin/w/:wikiKey/rules：定型ルールの設定と実行ログ */
+/** /admin/w/:wikiKey/rules：定型ルールの設定と実行ログ。見るのはメンバー全員、変えるのは管理者だけ */
 export const ruleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     return c.json({ rules: await listRules(c.get("deps").db, c.get("wiki").id) });
@@ -13,7 +14,7 @@ export const ruleRoutes = new Hono<AppEnv>()
   .get("/runs", async (c) => {
     return c.json({ runs: await listRuleRuns(c.get("deps").db, c.get("wiki").id) });
   })
-  .put("/:id", async (c) => {
+  .put("/:id", requireWikiAdmin, async (c) => {
     const { db } = c.get("deps");
     const preset = RULE_PRESETS.find((p) => p.id === c.req.param("id"));
     if (!preset) throw notFound("rule");

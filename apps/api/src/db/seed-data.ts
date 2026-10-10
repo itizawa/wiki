@@ -7,7 +7,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { createWiki, DEFAULT_WIKI_KEY } from "../wikis/service";
 import type { Db } from "./client";
 import * as schema from "./schema";
-import { pages, pageVersions, scheduledActions, wikis } from "./schema";
+import { pages, pageVersions, scheduledActions, users, wikiMembers, wikis } from "./schema";
 
 const DAY = 24 * 3600_000;
 
@@ -157,7 +157,26 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
   const [second] = await db.select().from(wikis).where(eq(wikis.key, SECOND_WIKI.key));
   const secondId = (second ?? (await createWiki(db, SECOND_WIKI, null))).id;
   const count = (await seedWiki(db, first, SEED, now)) + (await seedWiki(db, secondId, SECOND_SEED, now));
+  await seedMembers(db, [first, secondId]);
   return { pages: count };
+}
+
+/**
+ * 管理者と編集者。ローカルでは DEV_LOGIN_EMAIL をこのどちらかにすると、そのロールで入れる
+ * （開発用ログインは、まだいないメールアドレスならオーナーとして作る）。
+ */
+export const SEED_USERS = [
+  { id: "u_seedadmin", email: "admin@example.com", name: "管理者のサンプル", role: "admin" },
+  { id: "u_seededitor", email: "editor@example.com", name: "編集者のサンプル", role: "editor" },
+] as const;
+
+async function seedMembers(db: Db, wikiIds: string[]) {
+  for (const u of SEED_USERS) {
+    await db.insert(users).values({ id: u.id, email: u.email, name: u.name }).onConflictDoNothing();
+    for (const wikiId of wikiIds) {
+      await db.insert(wikiMembers).values({ wikiId, userId: u.id, role: u.role }).onConflictDoNothing();
+    }
+  }
 }
 
 /** 最初の wiki（マイグレーションが作る）の id を返す。無ければ作る。 */
@@ -224,10 +243,13 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
   });
 }
 
-/** すべてのテーブルを空にして、最初の wiki と空のツリーだけがある初期状態に戻す。 */
+/**
+ * すべてのテーブルを空にして、最初の wiki と空のツリーだけがある初期状態に戻す。
+ * ユーザーだけは残す（ログインし直さずに続けられるように。メンバーは wiki と一緒に消える）。
+ */
 export async function resetDatabase(db: Db): Promise<void> {
   const tables = Object.values(schema)
-    .flatMap((t) => (is(t, PgTable) ? [`"${getTableName(t)}"`] : []));
+    .flatMap((t) => (is(t, PgTable) && t !== schema.users ? [`"${getTableName(t)}"`] : []));
   await db.execute(sql.raw(`truncate table ${tables.join(", ")} restart identity cascade`));
   await ensureDefaultWiki(db);
 }

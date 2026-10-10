@@ -32,24 +32,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Hyperdrive を通さず、DBへ直接つないでマイグレーションする
+      # ADMIN_EMAILS は、オーナーがまだ1人もいないときに一度だけ読む（ユーザーを DB で持つ前の許可リストからの移行）。
+      # 本番に入ったのを確かめたら、ここと GitHub のシークレットから消す
       - name: Migrate database
         run: pnpm db:migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_SSL: require
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
 
       - name: Deploy admin + API
         working-directory: apps/api
         env:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
         run: |
           pnpm --filter @wiki/admin build
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET ADMIN_EMAILS GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN
+            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker

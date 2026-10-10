@@ -9,7 +9,6 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Outlet } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { CommandMenu } from "../components/CommandMenu";
-import { ConfirmHost } from "../components/ConfirmDialog";
 import { ShortcutGuide } from "../components/ShortcutGuide";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
@@ -54,7 +53,7 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
             <Typography variant="h5" component="h1">
               この wiki は開けません
             </Typography>
-            <Muted>「{wikiKey}」という wiki は見つかりません。アーカイブされたか、URL が違います。</Muted>
+            <Muted>「{wikiKey}」という wiki は見つかりません。アーカイブされたか、URL が違うか、この wiki のメンバーではありません。</Muted>
             <RouterLink to="/">ほかの wiki を開く</RouterLink>
           </Stack>
         </Section>
@@ -183,7 +182,6 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         />
       </Drawer>
       <ShortcutGuide />
-      <ConfirmHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>

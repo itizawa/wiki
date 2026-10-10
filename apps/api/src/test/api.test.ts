@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { SignJWT } from "jose";
 import { SESSION_COOKIE, signSession } from "../auth/session";
 import { adoptUnplacedPages } from "../structure/repo";
 import { addLegacyTree, setup, W } from "./harness";
@@ -23,11 +24,21 @@ describe("auth", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a valid session whose email left the allowlist", async () => {
+  it("rejects a signed session for a user that does not exist", async () => {
     ctx = await setup();
-    const token = await signSession(ctx.config.sessionSecret, "someone@example.com");
+    const token = await signSession(ctx.config.sessionSecret, "u_nobody");
     const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects sessions from before users were kept in the DB (email in the cookie)", async () => {
+    ctx = await setup();
+    const token = await new SignJWT({ email: "admin@example.com", typ: "session" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(ctx.config.sessionSecret));
+    const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
+    expect(res.status).toBe(401);
   });
 
   it("rejects cross-origin mutations", async () => {
@@ -36,12 +47,12 @@ describe("auth", () => {
     expect(res.status).toBe(403);
   });
 
-  it("logs in through Google only for allowlisted, verified emails", async () => {
-    let email = "admin@example.com";
+  it("logs in through Google only for registered users with verified emails", async () => {
+    let identity = { sub: "g-admin", email: "admin@example.com", emailVerified: true, name: "Admin" as string | null };
     ctx = await setup({
       google: {
         authorizationUrl: ({ state }) => `https://accounts.example/auth?state=${state}`,
-        exchangeCode: async () => ({ email, emailVerified: true }),
+        exchangeCode: async () => identity,
       },
     });
     const login = await ctx.app.request("/auth/google/login");
@@ -53,12 +64,28 @@ describe("auth", () => {
     expect(ok.headers.get("location")).toBe("http://admin.test/");
     const session = ok.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
     const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
-    expect(await me.json()).toEqual({ email: "admin@example.com", isOwner: true });
+    // 移行で作ったメールアドレスだけの行に、最初のログインで Google のアカウントが結びつく
+    expect(await me.json()).toEqual({ id: ctx.ownerId, email: "admin@example.com", name: "Admin", isOwner: true });
 
-    email = "intruder@example.com";
+    // メールアドレスが変わっても、同じアカウントなら同じ人
+    identity = { ...identity, email: "renamed@example.com" };
+    const again = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
+    const session2 = again.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
+    expect(await (await ctx.app.request("/admin/me", { headers: { cookie: session2 } })).json()).toMatchObject({
+      id: ctx.ownerId,
+      email: "renamed@example.com",
+    });
+
+    identity = { sub: "g-intruder", email: "intruder@example.com", emailVerified: true, name: null };
     const denied = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
-    expect(denied.headers.get("location")).toBe("http://admin.test/login?error=forbidden");
+    expect(denied.headers.get("location")).toBe("http://admin.test/login?error=invite_only&email=intruder%40example.com");
     expect(denied.headers.getSetCookie().some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
+    // 招待されていない人の行は作らない
+    expect((await ctx.call("GET", "/admin/users")).body.users.map((u: { email: string }) => u.email)).toEqual(["renamed@example.com"]);
+
+    identity = { sub: "g-unverified", email: "admin@example.com", emailVerified: false, name: null };
+    const unverified = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
+    expect(unverified.headers.get("location")).toBe("http://admin.test/login?error=unverified");
 
     const badState = await ctx.app.request(`/auth/google/callback?code=c&state=wrong`, { headers: { cookie: oauthCookie } });
     expect(badState.status).toBe(400);

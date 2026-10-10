@@ -35,7 +35,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
 
 - **key**：公開サイトのサブドメインになる名前。半角の英小文字・数字・ハイフン、3〜32文字、先頭は英字、末尾はハイフン以外。`wiki-admin` `www` `api` など、使用中・紛らわしい名前は使えない（`packages/shared/src/wiki.ts` の `RESERVED_WIKI_KEYS`）。**作成後は変えられない**（公開 URL がすべて変わるため）。表示名（`name`）はあとから変えられ、公開サイトの名前になる
 - 最初の wiki は `key = wiki`（`wiki.hatchery-works.com`）。wiki が1つだった頃の内容は、すべてここにある
-- **作成・名前の変更・アーカイブ・戻す**は、管理画面の「wiki の管理」（`/wikis`）から、オーナーだけが行える。いまは `ADMIN_EMAILS` の全員をオーナーとして扱う
+- **作成・名前の変更・アーカイブ・戻す**は、管理画面の「wiki の管理」（`/wikis`）から、オーナーだけが行える（「ユーザーとメンバー」）
   - 作った wiki には空のツリーを1本用意する。ルールはどれも無効で始まる
   - 削除は**アーカイブ**（完全な削除は無い）。公開サイトは次のビルドで止まり（そのサブドメインは 404）、管理画面の一覧から外れ、予約とルールは実行されなくなる。データは残り、オーナーが元に戻せる。アーカイブ中も、その key はほかの wiki で使えない
   - 元に戻しても、止まっていた間に時刻を過ぎた予約は実行せず、失敗として編集カレンダーに出す
@@ -48,11 +48,44 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
   - 検索・新着・RSS・サイトマップ・Pagefind の索引、管理画面の検索・編集カレンダー・ルール・見直しキュー・構造の履歴は、wiki ごと
   - 通知先（`NOTIFY_WEBHOOK_URL`）は全体で1つ。通知の文面に wiki の名前が入る
 - **公開サイト**は Worker もビルドも1つ。1回のビルドで全 wiki のぶんを wiki ごとのディレクトリに出力し、Worker が `Host` を見てその wiki のディレクトリから返す（`apps/site/README.md`）。どれか1つの wiki の内容が変わると全体をビルドし直す（`contentHash` は全 wiki の内容から作る）
-- データ：`wikis`（`id` / `key` / `name` / `archived_at` / `created_at` / `created_by`）。`pages` `trees` `rules` `rule_runs` `scheduled_actions` `publish_events` `structure_commits` `structure_branches` が `wiki_id` を持つ
+- データ：`wikis`（`id` / `key` / `name` / `archived_at` / `created_at` / `created_by`（作った人のメールアドレス））。`pages` `trees` `rules` `rule_runs` `scheduled_actions` `publish_events` `structure_commits` `structure_branches` が `wiki_id` を持つ
+
+## ユーザーとメンバー
+
+管理画面に入れるのは、招待された人だけ。公開サイトは今までどおり誰でも読める。
+
+- ログインは **Google 認証**。ユーザーは Google のアカウント ID（`sub`）で見分ける（メールアドレスが変わっても同じ人）。メールアドレスと名前は表示用に持ち、ログインのたびに更新する
+- **メンバーは wiki ごと**。ロールは「編集者」と「管理者」の2つ
+
+  | できること | 編集者 | 管理者 |
+  |---|---|---|
+  | ページの作成・編集・移動・削除、承認・公開・非公開化・予約・見直し済み | ○ | ○ |
+  | メンバーの一覧を見る、自分で抜ける | ○ | ○ |
+  | 招待リンクの発行・無効化、メンバーのロール変更・外す | — | ○ |
+  | ルールの設定（見るのは編集者もできる） | — | ○ |
+
+- **オーナー**は wiki のロールとは別の、全体の権限。すべての wiki に管理者として入れ（メンバーの一覧には出ない）、wiki の作成・アーカイブと、オーナーの追加・解除ができる（「wiki の管理」の画面）。wiki を作ったオーナーは、その wiki の管理者としてメンバーに入る。**最後のオーナーは解除できない**
+- 権限は API がリクエストのたびに DB で確かめる。管理画面は、できない操作のボタンを出さない。メンバーでない wiki は、あることも見せない（404）
+- **招待リンク**：管理者が「メンバー」の画面で、ロールを選んで発行する。1リンクで1人、期限は7日。リンクは発行した直後に一度だけ出し、DB には SHA-256 のハッシュだけを持つ（値は 256bit の乱数）。メールは送らない
+  - リンクを開くと、wiki の名前・ロール・期限を出す。ログインしていなければ「Google でログインして参加する」（招待は OAuth の state と同じ短命の署名付き Cookie でログインをまたぐ）、ログイン済みなら「参加する」
+  - すでにメンバーなら、リンクは使わずに残す（ロールは変えない）。期限切れ・使用済み・無効のときは理由を出す。Google 側でメールアドレスが未確認のアカウントは参加できない
+  - 使用済みにする更新に「まだ使われていない」を条件として入れるので、同じリンクを2人が同時に使っても1人しか入れない
+- **メンバーの管理者が0人になる操作は止める**（最後の管理者のロール変更・外す・自分で抜ける）。オーナーは人数に数えない
+- 外した人は、次のリクエストからその wiki を開けない。書いた版・履歴は残し、ユーザーの行も消さない
+- どの wiki のメンバーでもなく、オーナーでもない人は中に入れない（「この管理画面は招待制です」と、ログインしたメールアドレスを出す）。招待されていない人のユーザーの行は作らない
+- セッションは署名付き Cookie にユーザーの ID を入れる。中身はリクエストのたびに DB で確かめる
+- **締め出されたとき**（オーナー全員がログインできなくなった等）は、DB に直接つないでオーナーを付ける：`DATABASE_URL=... pnpm --filter @wiki/api owner:grant <メールアドレス>`。まだ登録されていなければメールアドレスだけの行を作り、その Google アカウントで最初にログインしたときに結びつく
+- データ：`users`（`id` / `google_sub`（一意、最初のログインまで空）/ `email` / `name` / `is_owner` / `created_at` / `last_login_at`）、`wiki_members`（`wiki_id` / `user_id` / `role` / `created_at` / `invite_id`）、`invites`（`id` / `wiki_id` / `role` / `token_hash` / `created_by` / `expires_at` / `used_by` / `used_at` / `revoked_at`）
+
+### メールアドレスの許可リスト（`ADMIN_EMAILS`）からの移行
+
+1. `main` に入れる。デプロイのマイグレーション（`pnpm db:migrate`）が、オーナーがまだ1人もいないときだけ `ADMIN_EMAILS` を読み、そのメールアドレスを**オーナー兼最初の wiki の管理者**として登録する。この時点では Google のアカウント ID が分からないので、メールアドレスだけの行を作り、最初のログイン（確認済みのメールアドレスが一致）で結びつける
+2. セッションの中身が変わるので、いまのセッションはすべて無効になる。一度ログインし直す
+3. 本番でログインでき、「wiki の管理」にオーナーが出ているのを確かめたら、次の変更で `deploy.yml` のマイグレーションの手順と GitHub のシークレットから `ADMIN_EMAILS` を消す（API はもう読んでいない）
 
 ## フェーズ1で入っているもの
 
-- Google認証（OIDC）＋ 許可メールの allowlist（`ADMIN_EMAILS`）。セッションは署名付きCookie。allowlistから外すと次のリクエストから拒否
+- Google認証（OIDC）。セッションは署名付きCookie（入れる人は「ユーザーとメンバー」）
 - `pages` / `page_versions`：Markdownエディタ、版履歴と差分、楽観ロック（`base_version_id` が head と一致する場合のみ保存）
 - 構造：`trees` / `tree_snapshots` / `tree_nodes` / `structure_commits` / `structure_commit_parents` / `commit_trees` / `structure_branches`
   - すべての構造変更はコミットとして記録し、履歴と差分の確認に使う
@@ -125,7 +158,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
    | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare のアカウントID |
    | `DATABASE_URL` | 手順1の接続文字列（マイグレーション用） |
    | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
-   | `ADMIN_EMAILS` | 管理者として許可する Google アカウント（カンマ区切り） |
+   | `ADMIN_EMAILS` | 移行用（「`ADMIN_EMAILS` からの移行」）。最初のオーナーにする Google アカウント（カンマ区切り）。マイグレーションが、オーナーがまだいないときだけ読む |
    | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順3のクライアント |
    | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数と同じ値 |
    | `SITE_DEPLOY_HOOK_URL` | 手順4のデプロイフックURL |
@@ -155,7 +188,7 @@ Node 22 と pnpm、PostgreSQL が必要。
 
 ```sh
 pnpm install
-cp apps/api/.env.example apps/api/.env   # DATABASE_URL, ADMIN_EMAILS, SESSION_SECRET を設定
+cp apps/api/.env.example apps/api/.env   # DATABASE_URL, SESSION_SECRET, DEV_LOGIN_EMAIL を設定
 pnpm db:migrate                          # マイグレーション + 最初の wiki のツリー（空）の初期化
 pnpm db:seed                             # テスト用データを投入（任意。ページが1件も無いときだけ入る）
 pnpm dev                                 # API :8787 と管理画面 :5173
@@ -169,9 +202,9 @@ pnpm --filter @wiki/site build:sample   # dist/ に出力し、限定公開の�
 
 APIのデータでビルドする場合は `API_ORIGIN=http://localhost:8787 INTERNAL_TOKEN=... pnpm --filter @wiki/site build`。手元では `Host` で wiki が決まらないので、表示する wiki は `?wiki={key}`（`pnpm preview`）か環境変数 `WIKI`（`astro dev`）で選ぶ（`apps/site/README.md`）。
 
-テスト用データ（`pnpm db:seed`）は、3段の階層に公開・限定公開・予約・下書き・公開後に編集あり・ネタ・承認済みのページを一通り含む。2つめの wiki（`notes`「開発ノート」）にも数ページ入るので、wiki の切り替えを確かめられる。既存のデータを消して入れ直す場合は `pnpm db:seed --reset`（すべてのテーブルを空にするので、ローカル専用。`NODE_ENV=production` では動かない）。
+テスト用データ（`pnpm db:seed`）は、管理者と編集者のユーザー（上の2人）と、3段の階層に公開・限定公開・予約・下書き・公開後に編集あり・ネタ・承認済みのページを一通り含む。2つめの wiki（`notes`「開発ノート」）にも数ページ入るので、wiki の切り替えを確かめられる。既存のデータを消して入れ直す場合は `pnpm db:seed --reset`（すべてのテーブルを空にするので、ローカル専用。`NODE_ENV=production` では動かない）。
 
-`DEV_LOGIN_EMAIL` を設定すると、Googleを通さない「開発用ログイン」ボタンが出る（`NODE_ENV=production` では無効）。
+`DEV_LOGIN_EMAIL` を設定すると、Googleを通さない「開発用ログイン」ボタンが出る（`NODE_ENV=production` では無効）。そのメールアドレスのユーザーがいなければオーナーとして作る。テスト用データの `admin@example.com`（管理者）・`editor@example.com`（編集者）にすると、そのロールで入れる。
 Googleログインを試す場合は OAuth クライアントを作り、承認済みリダイレクトURIに `http://localhost:5173/api/auth/google/callback` を登録する。
 
 テスト・型チェック（DBはPGliteで動くのでPostgreSQL不要）：

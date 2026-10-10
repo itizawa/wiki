@@ -10,12 +10,13 @@ import type { Db } from "../db/client";
 import * as schema from "../db/schema";
 import { buildManifest } from "../publishing/manifest";
 import { bootstrapStructure } from "../structure/repo";
+import { bootstrapOwners } from "../users/service";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
+import { eq } from "drizzle-orm";
 
 export const ADMIN = "admin@example.com";
 
 export const testConfig: AppConfig = {
-  adminEmails: [ADMIN],
   sessionSecret: "test-secret-test-secret-test-secret!!",
   adminOrigin: "http://admin.test",
   googleRedirectUri: "http://admin.test/api/auth/google/callback",
@@ -42,7 +43,31 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const app = createApp({ db, config, google: opts.google ?? null });
-  const cookie = `${SESSION_COOKIE}=${await signSession(config.sessionSecret, ADMIN)}`;
+  // 既定で呼ぶ人は、最初の wiki の管理者でもあるオーナー（移行で ADMIN_EMAILS から登録されるのと同じ形）
+  await bootstrapOwners(db, [ADMIN], DEFAULT_WIKI_KEY);
+  const [owner] = await db.select().from(schema.users).where(eq(schema.users.email, ADMIN));
+  const sessionCookie = async (userId: string) => `${SESSION_COOKIE}=${await signSession(config.sessionSecret, userId)}`;
+  const cookie = await sessionCookie(owner!.id);
+
+  /**
+   * ほかの人として呼ぶ。ユーザーを作り、wikis に挙げた wiki のメンバーにする。
+   * 返す call は、既定の call と同じ形
+   */
+  async function as(email: string, wikis: Record<string, "admin" | "editor"> = {}) {
+    const id = `u_${email.split("@")[0]!.replace(/[^a-z0-9]/g, "")}`;
+    await db.insert(schema.users).values({ id, email, googleSub: `sub-${id}` }).onConflictDoNothing();
+    for (const [key, role] of Object.entries(wikis)) {
+      const [wiki] = await db.select().from(schema.wikis).where(eq(schema.wikis.key, key));
+      await db.insert(schema.wikiMembers).values({ wikiId: wiki!.id, userId: id, role }).onConflictDoNothing();
+    }
+    const userCookie = await sessionCookie(id);
+    return {
+      id,
+      cookie: userCookie,
+      call: <T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
+        call<T>(method, path, body, { cookie: userCookie, ...headers }),
+    };
+  }
 
   async function call<T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
     const res = await app.request(path, {
@@ -59,7 +84,7 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
     return { status: res.status, body: (text ? JSON.parse(text) : null) as T, headers: res.headers };
   }
 
-  return { app, db, client, config, call, close: () => client.close() };
+  return { app, db, client, config, call, as, ownerId: owner!.id, close: () => client.close() };
 }
 
 /** 複数ツリー時代のデータを再現する：primary以外のツリーを現在のheadコミットに直接足す。 */

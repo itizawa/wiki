@@ -1,4 +1,8 @@
 import type {
+  CreatedInvite,
+  Invite,
+  InvitePreview,
+  Me,
   PageDetail,
   PageSummary,
   PageVersion,
@@ -12,6 +16,9 @@ import type {
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
+  User,
+  WikiMember,
+  WikiRole,
   WikiSummary,
 } from "@wiki/shared";
 
@@ -74,7 +81,12 @@ export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
-  me: () => request<{ email: string; isOwner: boolean }>("GET", "/admin/me"),
+  me: () => request<Me>("GET", "/admin/me"),
+  invitePreview: (token: string) => request<InvitePreview>("GET", `/auth/invites/${encodeURIComponent(token)}`),
+  acceptInvite: (token: string) =>
+    request<{ wikiKey: string; alreadyMember: boolean }>("POST", `/admin/invites/${encodeURIComponent(token)}/accept`),
+  listUsers: () => request<{ users: User[] }>("GET", "/admin/users"),
+  setOwner: (userId: string, isOwner: boolean) => request<User>("PATCH", `/admin/users/${userId}`, { isOwner }),
 
   listWikis: () => request<{ wikis: WikiSummary[]; baseDomain: string }>("GET", "/admin/wikis"),
   createWiki: (input: { key: string; name: string }) => request<WikiSummary>("POST", "/admin/wikis", input),
@@ -82,6 +94,12 @@ export const api = {
   archiveWiki: (key: string) => request<WikiSummary>("POST", `/admin/wikis/${key}/archive`),
   unarchiveWiki: (key: string) => request<WikiSummary>("POST", `/admin/wikis/${key}/unarchive`),
 
+  listMembers: () => request<{ members: WikiMember[] }>("GET", w("/members")),
+  changeRole: (userId: string, role: WikiRole) => request<{ ok: true }>("PATCH", w(`/members/${userId}`), { role }),
+  removeMember: (userId: string) => request<{ ok: true }>("DELETE", w(`/members/${userId}`)),
+  listInvites: () => request<{ invites: Invite[] }>("GET", w("/invites")),
+  createInvite: (role: WikiRole) => request<CreatedInvite>("POST", w("/invites"), { role }),
+  revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", w("/pages"), input),
