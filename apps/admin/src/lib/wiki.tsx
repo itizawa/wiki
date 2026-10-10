@@ -53,8 +53,8 @@ export function pageLink(pageId: string) {
   return { to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: currentWikiKey(), pageId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・カレンダー・ルール・履歴）へのリンク。 */
-export type WikiScreen = "/w/$wikiKey" | "/w/$wikiKey/calendar" | "/w/$wikiKey/rules" | "/w/$wikiKey/history";
+/** 開いている wiki の画面（一覧・検索・カレンダー・ルール・履歴）へのリンク。 */
+export type WikiScreen = "/w/$wikiKey" | "/w/$wikiKey/search" | "/w/$wikiKey/calendar" | "/w/$wikiKey/rules" | "/w/$wikiKey/history";
 export function screenLink<T extends WikiScreen>(to: T) {
   return { to, params: { wikiKey: currentWikiKey() } } as const;
 }

@@ -6,6 +6,7 @@ import type {
   PublishVisibility,
   Rule,
   RuleRun,
+  SearchResult,
   ScheduledAction,
   SetWorkflowInput,
   OAuthConsentRequest,
@@ -104,6 +105,8 @@ export const api = {
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
+  /** タイトルと本文の検索。語が無ければ、最近更新したページ */
+  search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
   createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", w("/pages"), input),
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
