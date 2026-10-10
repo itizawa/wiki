@@ -19,3 +19,4 @@ export * from "./template";
 export * from "./visibility";
 export * from "./images";
 export * from "./oauth";
+export * from "./views";

@@ -19,8 +19,10 @@ import { screenLink } from "../lib/wiki";
 import { FULL_HEIGHT } from "./WikiLayout";
 import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
+import { isCounted } from "../lib/views";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { PageMenu } from "../components/PageMenu";
+import { PageViewsButton } from "../components/PageViews";
 import { PublishMenu } from "../components/PublishMenu";
 import { StarButton } from "../components/StarButton";
 import { Tooltip } from "../components/Tooltip";
@@ -282,6 +284,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               >
                 版履歴を見る
               </Button>
+              <PageViewsButton pageId={p.id} counted={isCounted(p)} />
             </Stack>
             {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
             {draft.bodyMd.trim() === "" && (

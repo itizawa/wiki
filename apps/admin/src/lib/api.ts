@@ -1,6 +1,7 @@
 import type {
   PageDetail,
   PageDraft,
+  PageViews,
   PageTemplate,
   PageSummary,
   PageVersion,
@@ -18,6 +19,7 @@ import type {
   TreeNode,
   UpdateRuleInput,
   WikiSummary,
+  WikiViews,
 } from "@wiki/shared";
 import { IMAGE_LIMIT_LABEL } from "@wiki/shared";
 
@@ -136,6 +138,11 @@ export const api = {
   deletePage: (id: string) => request<{ ok: true }>("DELETE", w(`/pages/${id}`)),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
+
+  /** 閲覧数（ページごとの合計・直近30日） */
+  listViews: () => request<WikiViews>("GET", w("/views")),
+  /** 1ページの閲覧数（直近30日の日別を含む） */
+  pageViews: (id: string) => request<PageViews>("GET", w(`/views/pages/${id}`)),
 
   listStars: () => request<{ pageIds: string[] }>("GET", w("/stars")),
   addStar: (pageId: string) => request<{ pageIds: string[] }>("PUT", w(`/stars/${pageId}`)),
