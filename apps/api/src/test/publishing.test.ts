@@ -88,9 +88,6 @@ describe("manifest", () => {
     const pub = await newPage("pub");
     const priv = await newPage("priv");
     const child = await newPage("child");
-    for (const p of [docs, pub, child]) {
-      await ctx.call("POST", `${W}/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
-    }
     const s = (await ctx.call("GET", `${W}/structure`)).body;
     const treeId = s.trees[0].id;
     await ctx.call("POST", `${W}/structure/commits`, {
@@ -101,6 +98,11 @@ describe("manifest", () => {
         { type: "move", treeId, nodeId: child.id, newParentNodeId: priv.id },
       ],
     });
+    for (const p of [docs, pub]) {
+      await ctx.call("POST", `${W}/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
+    }
+    // 非公開の親の下の公開ページは、親子の決まりを入れる前のデータとして残っていることがある
+    await ctx.client.query(`update pages set visibility = 'public', published_version_id = head_version_id where id = $1`, [child.id]);
     const m = await wikiManifest(ctx.db);
     const nodes = m.trees[0]!.nodes;
     // 非公開ページは出さず、その子は最も近い公開の祖先へ繰り上げる

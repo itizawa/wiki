@@ -1,6 +1,8 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
@@ -9,11 +11,22 @@ import { confirmDialog } from "./ConfirmDialog";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { isoToJstLocal, jstLocalToIso, pagePath, unlistedPath, type PageDetail, type PublishVisibility, type ScheduledAction } from "@wiki/shared";
-import { useState } from "react";
+import {
+  isoToJstLocal,
+  isWithinParent,
+  jstLocalToIso,
+  pagePath,
+  unlistedPath,
+  type PageDetail,
+  type PublishVisibility,
+  type ScheduledAction,
+} from "@wiki/shared";
+import { useMemo, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
+import { descendantImpact, pageHierarchy } from "../lib/visibility";
+import { visibilityLabel } from "../routes/PagesPage";
 import { Mono, Muted, Row, Section, StatusChip } from "./ui";
 
 const statusLabel: Record<ScheduledAction["status"], string> = {
@@ -37,12 +50,25 @@ export const actionLabel = (a: Pick<ScheduledAction, "actionType" | "targetVisib
 export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean }) {
   const qc = useQueryClient();
   const schedule = useQuery({ queryKey: ["schedule", page.id], queryFn: () => api.listSchedule({ pageId: page.id }) });
-  const [visibility, setVisibility] = useState<PublishVisibility>(page.visibility === "unlisted" ? "unlisted" : "public");
+  const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
+  const [picked, setVisibility] = useState<PublishVisibility>(page.visibility === "unlisted" ? "unlisted" : "public");
+  const [applyToDescendants, setApplyToDescendants] = useState(false);
   const [runAt, setRunAt] = useState(() => isoToJstLocal(new Date(Date.now() + 24 * 3600_000).toISOString()).slice(0, 11) + "07:00");
   const [scheduleKind, setScheduleKind] = useState<"publish_page" | "unpublish_page">("publish_page");
 
+  // 配下のページには、親と同じか、より狭い公開範囲しか設定できない
+  const { parent, descendants } = useMemo(() => pageHierarchy(structure.data, page.id), [structure.data, page.id]);
+  const canPick = (v: PublishVisibility) => isWithinParent(v, parent?.visibility ?? null);
+  const parentReason = parent ? `親ページが${visibilityLabel[parent.visibility]}のため` : "";
+  const visibility: PublishVisibility = canPick(picked) ? picked : "unlisted";
+  const blockedByParent = !canPick("unlisted");
+  const impact = descendantImpact(descendants, visibility);
+  const publishedDescendants = descendants.filter((d) => d.published).length;
+  const blockedByDescendants = impact.wider > 0 && !applyToDescendants;
+
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ["page", page.id] });
+    await qc.invalidateQueries({ queryKey: ["structure"] });
     await qc.invalidateQueries({ queryKey: ["schedule"] });
     await qc.invalidateQueries({ queryKey: ["pages"] });
   };
@@ -88,37 +114,82 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
           {published && <Muted>サイトへの反映は数分後（ビルド後）です。</Muted>}
         </Stack>
 
+        {blockedByParent && parent && (
+          <Alert severity="info">
+            親ページ「{parent.title}」が非公開のため、このページは公開できません。先に親ページを公開してください。
+          </Alert>
+        )}
         <Row>
-          <TextField select value={visibility} onChange={(e) => setVisibility(e.target.value as PublishVisibility)} sx={{ flex: 1, minWidth: 0 }}>
-            <MenuItem value="public">公開</MenuItem>
-            <MenuItem value="unlisted">限定公開（URLを知る人のみ）</MenuItem>
+          <TextField
+            select
+            value={visibility}
+            disabled={blockedByParent}
+            onChange={(e) => setVisibility(e.target.value as PublishVisibility)}
+            sx={{ flex: 1, minWidth: 0 }}
+          >
+            <MenuItem value="public" disabled={!canPick("public")}>
+              公開{!canPick("public") && `（${parentReason}選べません）`}
+            </MenuItem>
+            <MenuItem value="unlisted" disabled={!canPick("unlisted")}>
+              限定公開（URLを知る人のみ）{!canPick("unlisted") && `（${parentReason}選べません）`}
+            </MenuItem>
           </TextField>
-          <Tooltip title={needsSave}>
+          <Tooltip title={needsSave || (blockedByParent ? `${parentReason}公開できません` : "")}>
             <span>
               <Button
                 variant="contained"
                 size="medium"
-                disabled={dirty || action.isPending}
-                onClick={() => action.mutate(() => api.publish(page.id, { versionId: page.headVersionId, visibility }))}
+                disabled={dirty || action.isPending || blockedByParent || blockedByDescendants}
+                onClick={async () => {
+                  if (applyToDescendants && impact.changed > 0) {
+                    const ok = await confirmDialog({
+                      title: "配下のページもまとめて変えますか？",
+                      body: `このページと、配下の公開中のページ ${impact.changed} 件を「${visibilityLabel[visibility]}」にします。まだ公開していない配下のページは非公開のままです。あとから、それぞれのページで個別に変えられます。`,
+                      confirmLabel: `${impact.changed + 1} 件を${visibilityLabel[visibility]}にする`,
+                      cancelLabel: "やめる",
+                    });
+                    if (!ok) return;
+                  }
+                  action.mutate(() => api.publish(page.id, { versionId: page.headVersionId, visibility, applyToDescendants }));
+                }}
               >
                 {published ? "最新版で公開し直す" : "今すぐ公開"}
               </Button>
             </span>
           </Tooltip>
         </Row>
+        {publishedDescendants > 0 && !blockedByParent && (
+          <FormControlLabel
+            control={<Checkbox size="small" checked={applyToDescendants} onChange={(e) => setApplyToDescendants(e.target.checked)} />}
+            label={
+              <Typography variant="body2">
+                配下のすべてのページも同じ公開範囲にする
+                {impact.changed > 0 && `（${impact.changed} 件が変わります）`}
+              </Typography>
+            }
+          />
+        )}
+        {blockedByDescendants && (
+          <Typography variant="body2" color="warning.main">
+            配下に「{visibilityLabel[visibility]}」より広い公開範囲のページが {impact.wider} 件あるため、このままでは変えられません。「配下のすべてのページも同じ公開範囲にする」を選んでください。
+          </Typography>
+        )}
         {published && (
           <Row>
             <Button
               variant="outlined"
               disabled={action.isPending}
               onClick={async () => {
+                // 配下に公開中のページがあれば、まとめて非公開にする（配下は親より広くできないため）
                 const ok = await confirmDialog({
-                  title: "このページを非公開にしますか？",
-                  body: "公開サイトから見られなくなります（反映は数分後、ビルドのあとです）。あとでもう一度公開できます。",
-                  confirmLabel: "非公開にする",
+                  title: publishedDescendants > 0 ? "このページと配下のページを非公開にしますか？" : "このページを非公開にしますか？",
+                  body:
+                    (publishedDescendants > 0 ? `配下の公開中のページ ${publishedDescendants} 件も、まとめて非公開になります。` : "") +
+                    "公開サイトから見られなくなります（反映は数分後、ビルドのあとです）。あとでもう一度公開できます。",
+                  confirmLabel: publishedDescendants > 0 ? `${publishedDescendants + 1} 件を非公開にする` : "非公開にする",
                   cancelLabel: "公開したままにする",
                 });
-                if (ok) action.mutate(() => api.unpublish(page.id));
+                if (ok) action.mutate(() => api.unpublish(page.id, publishedDescendants > 0 ? { applyToDescendants: true } : undefined));
               }}
             >
               非公開にする…

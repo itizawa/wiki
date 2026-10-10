@@ -168,7 +168,7 @@ export const pageRoutes = new Hono<AppEnv>()
       const main = await getBranch(tx, wikiId, MAIN_BRANCH);
       const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
       if (ops.length > 0) {
-        await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops });
+        await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops, checkVisibility: false });
       }
       await tx
         .update(pages)

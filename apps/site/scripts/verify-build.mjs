@@ -48,6 +48,8 @@ check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 
 const publicHtml = [await read("wiki/index.html"), await read("wiki/p/aaaaaaaaa1.html"), await read("wiki/sitemap.xml"), await read("wiki/feed.xml")];
 check(publicHtml.every((h) => !h.includes(key)), "unlisted key does not appear in public pages, sitemap or RSS");
+// 親子：限定公開・非公開のページは、公開ページの親としてもツリーやパンくずに出さない
+check(publicHtml.every((h) => !h.includes("限定公開のメモ")), "an unlisted page's title does not appear in public pages, sitemap or RSS (not even as a parent)");
 
 const intro = await read("wiki/p/aaaaaaaaa1.html");
 check(intro.includes('href="/p/aaaaaaaaa2"'), "internal links point to canonical URLs");

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { scheduledActions, wikis } from "../db/schema";
+import { depthOf, loadTreeIndex } from "./hierarchy";
 import { publishPage, unpublishPage } from "./service";
 
 export const MAX_ATTEMPTS = 3;
@@ -31,7 +32,7 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
     if (claimed.length === 0) break;
     try {
       await db.transaction(async (tx) => {
-        for (const action of claimed) await execute(tx, action);
+        for (const action of await orderForHierarchy(tx, claimed)) await execute(tx, action);
         await tx
           .update(scheduledActions)
           .set({ status: "done", executedAt: new Date(), lastError: null })
@@ -91,6 +92,20 @@ async function claimNext(db: Db, now: Date, skip: string[]): Promise<ActionRow[]
   });
 }
 
+/**
+ * 同じ batch の中は、親子の決まりを途中で破らない順に並べる。
+ * 非公開化は深いページから、公開は浅いページから。非公開化を先に行う。
+ */
+async function orderForHierarchy(db: Db, actions: ActionRow[]): Promise<ActionRow[]> {
+  if (actions.length < 2) return actions;
+  const index = await loadTreeIndex(db, actions[0]!.wikiId);
+  const depth = (a: ActionRow) => (a.pageId ? depthOf(index, a.pageId) : 0);
+  const unpublish = actions.filter((a) => a.actionType === "unpublish_page").sort((a, b) => depth(b) - depth(a));
+  const publish = actions.filter((a) => a.actionType === "publish_page").sort((a, b) => depth(a) - depth(b));
+  const rest = actions.filter((a) => a.actionType !== "unpublish_page" && a.actionType !== "publish_page");
+  return [...unpublish, ...publish, ...rest];
+}
+
 async function execute(db: Db, action: ActionRow): Promise<void> {
   switch (action.actionType) {
     case "publish_page":
@@ -104,7 +119,7 @@ async function execute(db: Db, action: ActionRow): Promise<void> {
       });
       return;
     case "unpublish_page":
-      await unpublishPage(db, action.wikiId, action.pageId!, action.id);
+      await unpublishPage(db, action.wikiId, action.pageId!, { scheduledActionId: action.id });
       return;
     case "merge_branch":
       // フェーズ3で実装（実行時に3-wayマージと検証を再実施し、失敗ならmainを変えない）
