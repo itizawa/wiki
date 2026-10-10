@@ -112,6 +112,25 @@ export const pageVersions = pgTable(
   ],
 );
 
+/**
+ * 編集中の下書き（自動保存）。版にはせず、人ごとに1つだけ持つ。「版として残す」で版を作ったら消す。
+ * base_version_id は下書きを始めたときの head。head が先に進んでいたら、下書きは古い版をもとにしている。
+ */
+export const pageDrafts = pgTable(
+  "page_drafts",
+  {
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    authorEmail: text("author_email").notNull(),
+    baseVersionId: uuid("base_version_id").notNull(),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.authorEmail] })],
+);
+
 export const pageLinks = pgTable(
   "page_links",
   {

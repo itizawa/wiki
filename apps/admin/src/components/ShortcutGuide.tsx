@@ -41,7 +41,7 @@ export function shortcutGroups(mod: string): Group[] {
         { keys: ["?"], label: "このガイドを開く" },
         { keys: [mod, "K"], label: "コマンドメニューを開く（ページを探す・画面を移る）" },
         { keys: [mod, "."], label: "サイドバーを開く／閉じる" },
-        { keys: [mod, "S"], label: "編集中のページを保存する" },
+        { keys: [mod, "S"], label: "編集中の内容を版として残す" },
         { keys: [mod, "F"], label: "本文を検索・置換する（編集画面で）" },
       ],
     },

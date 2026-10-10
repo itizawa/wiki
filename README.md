@@ -54,6 +54,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
 
 - Google認証（OIDC）＋ 許可メールの allowlist（`ADMIN_EMAILS`）。セッションは署名付きCookie。allowlistから外すと次のリクエストから拒否
 - `pages` / `page_versions`：Markdownエディタ、版履歴と差分、楽観ロック（`base_version_id` が head と一致する場合のみ保存）
+- `page_drafts`：編集中の内容は、打つのが止まると人ごとの下書きとして自動保存する（版は作らない）。「版として残す」（⌘S）を押したときだけ版を作り、自分の下書きを消す。承認・公開・予約は版に対して行う
 - 構造：`trees` / `tree_snapshots` / `tree_nodes` / `structure_commits` / `structure_commit_parents` / `commit_trees` / `structure_branches`
   - すべての構造変更はコミットとして記録し、履歴と差分の確認に使う
   - 1つの wiki にツリーは1本（primary）だけを扱う。テーブルは複数ツリー・ブランチを前提にした形のまま残してあり、API と UI からは作れない

@@ -24,6 +24,26 @@ export const savePageInput = z.object({
 });
 export type SavePageInput = z.infer<typeof savePageInput>;
 
+/**
+ * 下書きの自動保存。版は作らない。baseVersionId が現在の head と一致する場合のみ保存できる。
+ * タイトルは打ちかけで空のこともあるので、空でも受け付ける（版として残すときに確かめる）。
+ */
+export const savePageDraftInput = z.object({
+  baseVersionId: z.string().uuid(),
+  title: z.string().max(200),
+  bodyMd: z.string().max(500_000),
+});
+export type SavePageDraftInput = z.infer<typeof savePageDraftInput>;
+
+/** 自分の下書き。版として残すか破棄するまで、ページを開き直しても続きから書ける。 */
+export type PageDraft = {
+  /** 下書きを始めたときの head。いまの head と違えば、その後に別の版ができている */
+  baseVersionId: string;
+  title: string;
+  bodyMd: string;
+  updatedAt: string;
+};
+
 export type PageSummary = {
   id: string;
   title: string;

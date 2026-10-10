@@ -1,5 +1,6 @@
 import type {
   PageDetail,
+  PageDraft,
   PageSummary,
   PageVersion,
   PublishVisibility,
@@ -88,6 +89,10 @@ export const api = {
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
+  getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
+  saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
+    request<{ draft: PageDraft | null }>("PUT", w(`/pages/${id}/draft`), input),
+  discardDraft: (id: string) => request<{ draft: null }>("DELETE", w(`/pages/${id}/draft`)),
   deletePage: (id: string) => request<{ ok: true }>("DELETE", w(`/pages/${id}`)),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
@@ -130,7 +135,7 @@ export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "version_conflict":
-        return "別の画面で先に保存されています。再読み込みしてから編集してください。";
+        return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
       case "head_moved":
         return "ツリーが別の操作で更新されました。最新の状態を読み込みました。もう一度操作してください。";
       case "has_children":

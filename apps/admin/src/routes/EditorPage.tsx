@@ -13,15 +13,16 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
-import { pagePath, type PageDetail } from "@wiki/shared";
+import { pagePath, type PageDetail, type PageDraft } from "@wiki/shared";
 import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openFindBar } from "../editor/FindBar";
+import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { screenLink } from "../lib/wiki";
 import { useStars } from "../lib/stars";
-import { formatDateTime } from "../lib/format";
+import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
 import { confirmDialog } from "../components/ConfirmDialog";
@@ -43,8 +44,12 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+  // 自動保存した下書きは、開くたびにサーバーから読む（前に開いたときのキャッシュは使わない）
+  const savedDraft = useQuery({ queryKey: ["draft", pageId], queryFn: () => api.getDraft(pageId), gcTime: 0 });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
+  /** 開いたときに続きから書けるようにした下書き。版として残すか破棄したら消す */
+  const [restored, setRestored] = useState<PageDraft | null>(null);
   const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
 
@@ -56,30 +61,17 @@ export function EditorPage({ pageId }: { pageId: string }) {
     setShowHistory(false);
   }, [showHistory, panelOpen]);
 
-  // 初回読み込み時だけサーバーの内容で下書きを作る（以降はローカルの編集を優先）
-  useEffect(() => {
-    if (page.data && draft === null) {
-      setDraft(draftOf(page.data));
-      setBaseVersionId(page.data.headVersionId);
-    }
-  }, [page.data, draft]);
-
-  const saved = page.data ? draftOf(page.data) : null;
-  const dirty =
-    draft !== null &&
-    saved !== null &&
-    (draft.title !== saved.title || draft.bodyMd !== saved.bodyMd);
-
   const save = useMutation({
-    mutationFn: () =>
-      api.savePage(pageId, {
-        baseVersionId: baseVersionId!,
-        title: draft!.title,
-        bodyMd: draft!.bodyMd,
-      }),
-    onSuccess: (p) => {
+    mutationFn: async (content: Draft) => {
+      await autosave.settle();
+      return api.savePage(pageId, { baseVersionId: baseVersionId!, ...content });
+    },
+    onSuccess: (p, content) => {
       qc.setQueryData(["page", pageId], p);
       setBaseVersionId(p.headVersionId);
+      // 版を作ると、サーバーの下書きは消える
+      autosave.markSynced(content);
+      setRestored(null);
       void qc.invalidateQueries({ queryKey: ["versions", pageId] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
       void qc.invalidateQueries({ queryKey: ["structure"] });
@@ -87,6 +79,37 @@ export function EditorPage({ pageId }: { pageId: string }) {
       void qc.invalidateQueries({ queryKey: ["schedule"] });
     },
   });
+
+  const autosave = useDraftAutosave(pageId, draft, baseVersionId, save.isPending);
+
+  // 初回読み込み時だけサーバーの内容で編集を始める（以降はローカルの編集を優先）。
+  // 自分の下書きがあればその続きから。下書きのあとに別の版ができていても、いまの head をもとに続ける（上書きになることは画面で知らせる）
+  useEffect(() => {
+    if (page.data && savedDraft.data && draft === null) {
+      const d = savedDraft.data.draft;
+      const content = d ? { title: d.title, bodyMd: d.bodyMd } : draftOf(page.data);
+      setDraft(content);
+      setBaseVersionId(page.data.headVersionId);
+      setRestored(d);
+      autosave.markSynced(content, d?.updatedAt ?? null);
+    }
+  }, [page.data, savedDraft.data, draft, autosave]);
+
+  const saved = page.data ? draftOf(page.data) : null;
+  /** 版として残していない変更がある */
+  const dirty = draft !== null && saved !== null && !sameContent(draft, saved);
+
+  /** 下書きを捨てて、いまの head の内容に戻す */
+  const revertToLatest = async () => {
+    await autosave.settle();
+    await api.discardDraft(pageId);
+    const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+    setDraft(draftOf(latest));
+    setBaseVersionId(latest.headVersionId);
+    autosave.markSynced(draftOf(latest));
+    setRestored(null);
+    save.reset();
+  };
 
   const removed = useRef(false);
   const remove = useMutation({
@@ -104,37 +127,42 @@ export function EditorPage({ pageId }: { pageId: string }) {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        if (canSave) save.mutate();
+        if (canSave) save.mutate(draft);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [canSave, save]);
+  }, [canSave, save, draft]);
 
-  // 未保存のまま別のページへ移ろうとしたら確認する（削除後の移動は除く）
+  // 下書きの保存が済んでいないまま別のページへ移るときは、先に保存する。保存できなかったときだけ確認する（削除後の移動は除く）
+  const unsynced = autosave.pending || autosave.saving;
   useBlocker({
     shouldBlockFn: async () =>
-      dirty &&
+      unsynced &&
       !removed.current &&
+      !(await autosave.flush()) &&
       !(await confirmDialog({
-        title: "保存していない変更があります",
-        body: "このまま移動すると、保存していない変更は失われます。",
+        title: "下書きを保存できていません",
+        body: "このまま移動すると、最後に保存した下書きのあとの変更は失われます。",
         confirmLabel: "変更を破棄して移動する",
         cancelLabel: "編集に戻る",
         danger: true,
       })),
-    enableBeforeUnload: dirty,
+    enableBeforeUnload: unsynced,
   });
 
-  if (page.isPending || !draft) return <Muted sx={{ p: 3 }}>読み込み中…</Muted>;
-  if (page.error) {
+  const loadError = page.error ?? savedDraft.error;
+  if (loadError) {
     return (
       <Alert severity="error" sx={{ m: 3 }}>
-        {errorMessage(page.error)}
+        {errorMessage(loadError)}
       </Alert>
     );
   }
+  if (!page.data || !draft) return <Muted sx={{ p: 3 }}>読み込み中…</Muted>;
   const p = page.data;
+  // 版を作れなかった・下書きを保存できなかった（どちらも、別の画面で先に版ができたときは読み直すしかない）
+  const saveError = save.error ?? autosave.error;
 
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
@@ -161,9 +189,13 @@ export function EditorPage({ pageId }: { pageId: string }) {
               <SearchIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-            {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
-          </Button>
+          <Tooltip title="いまの内容を版として残します。承認・公開・予約は版に対して行います">
+            <Box component="span" sx={{ flexShrink: 0 }}>
+              <Button variant="contained" disabled={!canSave} onClick={() => save.mutate(draft)} sx={{ whiteSpace: "nowrap" }}>
+                {save.isPending ? "版を作成中…" : "版として残す (⌘S)"}
+              </Button>
+            </Box>
+          </Tooltip>
           <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
             公開・履歴
           </Button>
@@ -171,27 +203,36 @@ export function EditorPage({ pageId }: { pageId: string }) {
         </Box>
 
         <Box sx={{ width: "100%", maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
-          {save.error && (
+          {saveError ? (
             <Alert
               severity="error"
               sx={{ mb: 2 }}
               action={
-                <Button
-                  color="inherit"
-                  onClick={async () => {
-                    // 競合時：サーバーの最新版を読み直す（ローカルの編集は破棄される）
-                    const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
-                    setDraft(draftOf(latest));
-                    setBaseVersionId(latest.headVersionId);
-                    save.reset();
-                  }}
-                >
+                // 競合時：サーバーの最新版を読み直す（ローカルの編集と下書きは破棄される）
+                <Button color="inherit" onClick={() => void revertToLatest()}>
                   最新版を読み込む
                 </Button>
               }
             >
-              {errorMessage(save.error)}
+              {errorMessage(saveError)}
             </Alert>
+          ) : (
+            restored && (
+              <RestoredDraftNotice
+                draft={restored}
+                stale={restored.baseVersionId !== p.headVersionId}
+                onDiscard={async () => {
+                  const ok = await confirmDialog({
+                    title: "下書きを破棄しますか？",
+                    body: "自動保存した下書きを捨てて、最後に残した版の内容に戻します。",
+                    confirmLabel: "破棄して最新の版に戻す",
+                    cancelLabel: "下書きを続ける",
+                    danger: true,
+                  });
+                  if (ok) await revertToLatest();
+                }}
+              />
+            )
           )}
           <InputBase
             fullWidth
@@ -204,8 +245,13 @@ export function EditorPage({ pageId }: { pageId: string }) {
           />
           <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", columnGap: 1, mt: 0.5, mb: 2 }}>
             <Muted>
-              最終保存 <time dateTime={p.head.createdAt}>{formatDateTime(p.head.createdAt)}</time>
-              {dirty && "（保存していない変更があります）"}
+              最後に残した版 <time dateTime={p.head.createdAt}>{formatDateTime(p.head.createdAt)}</time>
+              {dirty && (
+                <>
+                  {" ・ "}
+                  <AutosaveStatus pending={autosave.pending} saving={autosave.saving} failed={autosave.error !== null} savedAt={autosave.savedAt} />
+                </>
+              )}
             </Muted>
             <Button
               color="inherit"
@@ -286,6 +332,40 @@ export function EditorPage({ pageId }: { pageId: string }) {
         </Stack>
       )}
     </Box>
+  );
+}
+
+/** 下書きの自動保存の状況。版として残していない変更があるあいだ、最後に残した版の日時の横に出す。 */
+function AutosaveStatus(props: { pending: boolean; saving: boolean; failed: boolean; savedAt: string | null }) {
+  const text = props.failed
+    ? "下書きを保存できませんでした"
+    : props.pending || props.saving
+      ? "下書きを保存中…"
+      : props.savedAt
+        ? `下書きを自動保存しました（${formatTime(props.savedAt)}）`
+        : "下書きを自動保存しました";
+  return (
+    <Box component="span" role="status" sx={{ color: props.failed ? "error.main" : undefined }}>
+      {text}
+    </Box>
+  );
+}
+
+/** 開いたときに、前回自動保存した下書きの続きから始めたことを知らせる。 */
+function RestoredDraftNotice({ draft, stale, onDiscard }: { draft: PageDraft; stale: boolean; onDiscard: () => void }) {
+  return (
+    <Alert
+      severity={stale ? "warning" : "info"}
+      sx={{ mb: 2 }}
+      action={
+        <Button color="inherit" onClick={onDiscard} sx={{ whiteSpace: "nowrap" }}>
+          破棄して最新の版に戻す
+        </Button>
+      }
+    >
+      {formatDateTime(draft.updatedAt)} に自動保存した下書きの続きを開いています。版として残すまで、公開中の内容や版履歴は変わりません。
+      {stale && "この下書きのあとに別の版が作られています。このまま版として残すと、その版の変更は上書きされます。"}
+    </Alert>
   );
 }
 
