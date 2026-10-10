@@ -69,6 +69,11 @@ export const api = {
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", `/admin/pages/${id}/versions`),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", `/admin/pages/${id}/versions/${versionId}`),
 
+  listStars: () => request<{ pageIds: string[] }>("GET", "/admin/stars"),
+  addStar: (pageId: string) => request<{ pageIds: string[] }>("PUT", `/admin/stars/${pageId}`),
+  removeStar: (pageId: string) => request<{ pageIds: string[] }>("DELETE", `/admin/stars/${pageId}`),
+  reorderStars: (pageIds: string[]) => request<{ pageIds: string[] }>("PUT", "/admin/stars", { pageIds }),
+
   setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", `/admin/pages/${id}/workflow`, input),
   reviewDone: (id: string) => request<PageDetail>("POST", `/admin/pages/${id}/review-done`),
 

@@ -5,6 +5,7 @@ import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
+import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -17,7 +18,8 @@ import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { CommandMenu } from "../components/CommandMenu";
 import { Muted, Section } from "../components/ui";
 import { ShortcutGuide } from "../components/ShortcutGuide";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, errorMessage } from "../lib/api";
+import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 
 export function Layout() {
@@ -109,11 +111,29 @@ export function Layout() {
         />
       </Drawer>
       <ShortcutGuide />
+      <StarsHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} onToggleSidebar={wide ? () => setOpen(!open) : undefined} onLogout={logout} />
     </Box>
+  );
+}
+
+/**
+ * スターの、画面をまたぐ仕事をまとめて受け持つ。
+ * - ログイン後に1回だけ、以前ブラウザに覚えさせていたスターをサーバーへ移す
+ * - 付け外しや並び替えに失敗したら知らせる（画面の表示は、失敗した時点で元に戻っている）
+ */
+function StarsHost() {
+  useMigrateLegacyStars();
+  const [error, clear] = useStarsError();
+  return (
+    <Snackbar open={error !== null} onClose={clear} anchorOrigin={{ vertical: "bottom", horizontal: "left" }}>
+      <Alert severity="error" variant="filled" onClose={clear}>
+        スターを変更できませんでした。{error && errorMessage(error)}
+      </Alert>
+    </Snackbar>
   );
 }
 

@@ -10,6 +10,7 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { StarButton } from "../components/StarButton";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
@@ -64,6 +65,9 @@ export function PagesPage() {
           <TableBody>
             {pages.data?.pages.map((p) => (
               <TableRow key={p.id} hover>
+                <TableCell padding="none" sx={{ width: 36, pl: 0.5 }}>
+                  <StarButton pageId={p.id} title={p.title} />
+                </TableCell>
                 <TableCell>
                   <RouterLink to="/pages/$pageId" params={{ pageId: p.id }}>
                     {p.title}

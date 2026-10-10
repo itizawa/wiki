@@ -1,10 +1,7 @@
 import HistoryIcon from "@mui/icons-material/History";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import StarIcon from "@mui/icons-material/Star";
-import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -17,12 +14,12 @@ import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
-import { useStars } from "../lib/stars";
 import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
 import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
+import { StarButton } from "../components/StarButton";
 import { Tooltip } from "../components/Tooltip";
 import { WorkflowPanel } from "../components/WorkflowPanel";
 import { Mono, Muted, Section, StatusChip } from "../components/ui";
@@ -379,19 +376,5 @@ function Diff({ before, after }: { before: string; after: string }) {
         </Box>
       ))}
     </Box>
-  );
-}
-
-/** スターの付け外し。付いているときは塗りつぶした星にし、ラベルでも状態を伝える。 */
-function StarButton({ pageId }: { pageId: string }) {
-  const { ids, toggle } = useStars();
-  const starred = ids.includes(pageId);
-  const label = starred ? "スターを外す" : "スターを付ける（サイドバーの上に出す）";
-  return (
-    <Tooltip title={label}>
-      <IconButton size="small" aria-label={label} aria-pressed={starred} onClick={() => toggle(pageId)}>
-        {starred ? <StarIcon fontSize="small" sx={{ color: "warning.main" }} /> : <StarBorderIcon fontSize="small" />}
-      </IconButton>
-    </Tooltip>
   );
 }
