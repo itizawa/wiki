@@ -15,7 +15,7 @@ import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { templateRoutes } from "./routes/templates";
 import { viewRoutes } from "./routes/views";
-import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
+import { isOwner, resolveWiki, wikiRoutes, wikiSettingsRoutes } from "./routes/wikis";
 
 /**
  * API の応答はどれも JSON かリダイレクトなので、何も読み込ませず、枠にも入れさせない。
@@ -90,6 +90,7 @@ export function createApp(deps: Deps) {
   wiki.route("/trees", treeRoutes);
   wiki.route("/images", imageUploadRoutes);
   wiki.route("/views", viewRoutes);
+  wiki.route("/settings", wikiSettingsRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

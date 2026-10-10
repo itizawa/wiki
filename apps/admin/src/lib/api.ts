@@ -20,6 +20,7 @@ import type {
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
+  WikiSettings,
   WikiSummary,
   WikiViews,
 } from "@wiki/shared";
@@ -122,6 +123,13 @@ export const api = {
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
+  /** ページの一覧を、続きから取る（「すべてのページ」の一覧）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
+  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number }) => {
+    const params = new URLSearchParams({ limit: String(input.limit) });
+    if (input.q) params.set("q", input.q);
+    if (input.cursor) params.set("cursor", input.cursor);
+    return request<{ pages: PageSummary[]; nextCursor: string | null }>("GET", w(`/pages?${params}`));
+  },
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
   search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
   /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */
@@ -160,6 +168,10 @@ export const api = {
   purgePage: (id: string) => request<{ ok: true; purgedPages: number }>("DELETE", w(`/pages/${id}/trash`)),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
+
+  /** wiki ごとの設定（Google Analytics の測定 ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
+  getSettings: () => request<WikiSettings>("GET", w("/settings")),
+  updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
 
   /** 閲覧数（ページごとの合計・直近30日） */
   listViews: () => request<WikiViews>("GET", w("/views")),
@@ -237,7 +249,7 @@ export function errorMessage(err: unknown): string {
       case "wiki_not_found":
         return "この wiki は見つかりません。アーカイブされたか、URL が違います。";
       case "owner_only":
-        return "wiki の作成・アーカイブは、オーナーだけが行えます。";
+        return "wiki の作成・アーカイブと設定の変更は、オーナーだけが行えます。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
       case "exceeds_parent": {

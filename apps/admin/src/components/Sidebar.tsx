@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, Star, Trash2, Workflow } from "lucide-react";
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -214,6 +214,10 @@ export function Sidebar(props: {
         </NavItem>
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
           ゴミ箱
+        </NavItem>
+        {/* この wiki の設定（公開サイトの連携）。変えられるのはオーナーだけだが、いまの値はだれでも見られる */}
+        <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
+          設定
         </NavItem>
         {/* wiki の管理は /w/ の外の画面なので、NavItem ではなくリンクを直接置く。オーナーにだけ出す */}
         {isOwner && (
@@ -691,7 +695,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           onClick={() => ctx.toggle(node.nodeId)}
           sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36, "&::after": { display: "none" } } }}
         >
-          <Box component={ChevronRight} size={18} sx={{ transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
+          {/* 矢印の向きも、「視差効果を減らす」が有効なら動かさずに切り替える（子ページの行の出し入れと揃える） */}
+          <Box component={ChevronRight} size={18} sx={{ transition: ctx.motionMs > 0 ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
         <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
           <Box component="span" sx={ellipsis}>

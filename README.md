@@ -47,6 +47,11 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
   - 別の wiki のページへのリンクは外部リンクと同じ扱い（`page_links` に残さず、公開サイトでも内部リンクにしない）
   - 検索・新着・RSS・サイトマップ・Pagefind の索引、管理画面の検索・編集カレンダー・ルール・見直しキュー・構造の履歴は、wiki ごと
   - 通知先（`NOTIFY_WEBHOOK_URL`）は全体で1つ。通知の文面に wiki の名前が入る
+- **Google Analytics とサーチコンソール**は wiki ごとに設定する（GA のデータストリームも、サーチコンソールのプロパティも wiki ごと）。管理画面のサイドバーの「設定」（`/w/{key}/settings`）に、GA4 の測定 ID（`G-` で始まる）と、サーチコンソールの確認用の値（「HTML タグ」の `content` の値。タグごと貼ってもよい）を入れて保存すると、数分後のビルドで、その wiki の公開サイトの `<head>` に Google タグと `<meta name="google-site-verification">` が入る。空にして保存すると外れる
+  - 読むのはその wiki を開ける人の全員、変えるのはオーナーだけ（`GET` / `PATCH /admin/w/{key}/settings`）。値が実際に変わったときだけビルドし直す
+  - **限定公開のページ（`/u/{key}/`）には、どちらのタグも出さない**（Google へ限定公開の URL を送らないため）。404 のページには出すが、開いている URL が `/u/` で始まるとき（無くなった限定公開の URL）は、Google タグを読み込まない。`build:sample` の検査で確かめる
+  - 値は公開サイトの HTML にそのまま出るので、決まった形のものだけを通す（測定 ID は `G-` + 英大文字と数字4〜20文字、確認用の値は英数字と `-` `_` で100文字まで。`packages/shared/src/wiki.ts`）。`UA-`・`GTM-`・`AW-` は使えない。API は形の合わない値を 400 にし、公開サイトのビルドも形の合わない値は出さない
+  - Cookie の同意バナーは無い。GA は閲覧者のブラウザに Cookie を置く
 - **公開サイト**は Worker もビルドも1つ。1回のビルドで全 wiki のぶんを wiki ごとのディレクトリに出力し、Worker が `Host` を見てその wiki のディレクトリから返す（`apps/site/README.md`）。どれか1つの wiki の内容が変わると全体をビルドし直す（`contentHash` は全 wiki の内容から作る）
 - データ：`wikis`（`id` / `key` / `name` / `archived_at` / `created_at` / `created_by`）。`pages` `trees` `rules` `rule_runs` `scheduled_actions` `publish_events` `structure_commits` `structure_branches` が `wiki_id` を持つ
 

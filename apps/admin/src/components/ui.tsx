@@ -64,7 +64,7 @@ export function LoadingRegion({ label = "読み込み中", ...props }: BoxProps 
 
 /** 行ごとに変える幅。件数や長さは当てにいかず、決まった並びを繰り返す。 */
 const SKELETON_WIDTHS = ["72%", "54%", "86%", "63%", "45%"];
-const skeletonWidth = (i: number) => SKELETON_WIDTHS[i % SKELETON_WIDTHS.length];
+export const skeletonWidth = (i: number) => SKELETON_WIDTHS[i % SKELETON_WIDTHS.length];
 
 function Lines({ lines }: { lines: number }) {
   return (

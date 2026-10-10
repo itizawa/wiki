@@ -1,4 +1,4 @@
-import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type Wiki, type WikiSummary } from "@wiki/shared";
+import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type UpdateWikiSettingsInput, type Wiki, type WikiSettings, type WikiSummary } from "@wiki/shared";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -21,7 +21,12 @@ export function toWiki(row: WikiRow, config: Pick<AppConfig, "siteBaseDomain">):
     origin: wikiOrigin(row.key, config.siteBaseDomain),
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
+    ...toWikiSettings(row),
   };
+}
+
+export function toWikiSettings(row: WikiRow): WikiSettings {
+  return { gaMeasurementId: row.gaMeasurementId, searchConsoleVerification: row.searchConsoleVerification };
 }
 
 /** 作成順に返す（最初の wiki が先頭）。 */
@@ -84,6 +89,31 @@ export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): P
       .returning();
     // 公開サイトの名前が変わる
     if (renamed && !wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_rename");
+    return row!;
+  });
+}
+
+/**
+ * 連携の設定（GA の測定 ID、サーチコンソールの確認用の値）の変更。null で外す。
+ * どちらも公開サイトの HTML に出るので、実際に変わったときだけビルドし直す。
+ */
+export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiSettingsInput): Promise<WikiRow> {
+  return db.transaction(async (tx) => {
+    const wiki = await findWiki(tx, key, true);
+    // 行を待っている間にアーカイブされたら、開けない wiki として扱う
+    if (wiki.archivedAt) throw notFound(`wiki ${key}`);
+    const gaChanged = input.gaMeasurementId !== undefined && input.gaMeasurementId !== wiki.gaMeasurementId;
+    const verificationChanged = input.searchConsoleVerification !== undefined && input.searchConsoleVerification !== wiki.searchConsoleVerification;
+    if (!gaChanged && !verificationChanged) return wiki;
+    const [row] = await tx
+      .update(wikis)
+      .set({
+        ...(gaChanged && { gaMeasurementId: input.gaMeasurementId }),
+        ...(verificationChanged && { searchConsoleVerification: input.searchConsoleVerification }),
+      })
+      .where(eq(wikis.id, wiki.id))
+      .returning();
+    await recordPublishEvent(tx, wiki.id, "wiki_settings");
     return row!;
   });
 }
