@@ -8,9 +8,15 @@ import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import Alert from "@mui/material/Alert";
 import type { Editor } from "@tiptap/react";
-import { useState } from "react";
+import { IMAGE_LIMIT_LABEL, IMAGE_TYPES } from "@wiki/shared";
+import { useRef, useState } from "react";
 import { Tooltip } from "../components/Tooltip";
+import { Muted } from "../components/ui";
+import { api, errorMessage } from "../lib/api";
+import { imageFileProblem } from "./imageUpload";
 
 /**
  * 入力されたリンク先を整える。`example.com` のようにスキームが無ければ https:// を補う。
@@ -72,11 +78,29 @@ export function insertImage(editor: Editor, image: { src: string; alt: string })
   editor.chain().focus().insertContent([{ type: "image", attrs: image }, { type: "paragraph" }]).run();
 }
 
-/** 画像のURLと説明を入れるダイアログ。 */
+/** 画像を入れるダイアログ。ファイルをアップロードするか、公開されている画像のURLを入れる。説明もここで入れる。 */
 export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: string; alt: string }) => void; onClose: () => void }) {
   const [src, setSrc] = useState("");
   const [alt, setAlt] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const href = normalizeHref(src);
+
+  const upload = async (file: File) => {
+    const problem = imageFileProblem(file);
+    setUploadError(problem);
+    if (problem) return;
+    setUploading(true);
+    try {
+      const { url } = await api.uploadImage(file);
+      setSrc(url);
+    } catch (err) {
+      setUploadError(`画像をアップロードできませんでした。${errorMessage(err)}`);
+    } finally {
+      setUploading(false);
+    }
+  };
   return (
     <Dialog
       open={props.open}
@@ -90,6 +114,7 @@ export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: str
           onExited: () => {
             setSrc("");
             setAlt("");
+            setUploadError(null);
           },
         },
       }}
@@ -97,12 +122,36 @@ export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: str
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (href) props.onSubmit({ src: href, alt: alt.trim() });
+          if (href && !uploading) props.onSubmit({ src: href, alt: alt.trim() });
         }}
       >
         <DialogTitle>画像を挿入</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 0.5 }}>
+            <Stack spacing={0.75} sx={{ alignItems: "flex-start" }}>
+              <Button variant="outlined" startIcon={<UploadFileIcon />} disabled={uploading} onClick={() => fileInput.current?.click()}>
+                {uploading ? "アップロード中…" : "ファイルを選んでアップロード…"}
+              </Button>
+              <input
+                ref={fileInput}
+                type="file"
+                hidden
+                accept={Object.keys(IMAGE_TYPES).join(",")}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) void upload(file);
+                }}
+              />
+              <Muted sx={{ fontSize: "0.8rem" }}>
+                {IMAGE_LIMIT_LABEL}。本文への貼り付けやドラッグでも入れられます。アップロードした画像は、URL を知っていればだれでも見られます（非公開のページに貼ったものも）。
+              </Muted>
+              {uploadError && (
+                <Alert severity="error" sx={{ alignSelf: "stretch" }}>
+                  {uploadError}
+                </Alert>
+              )}
+            </Stack>
             <TextField
               autoFocus
               fullWidth
@@ -110,7 +159,7 @@ export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: str
               value={src}
               onChange={(e) => setSrc(e.target.value)}
               placeholder="例：https://example.com/photo.png"
-              helperText="公開されている画像のURLを入れます。アップロードはできません。"
+              helperText="アップロードすると自動で入ります。ほかのサイトで公開されている画像のURLを入れることもできます。"
             />
             <TextField
               fullWidth
@@ -124,7 +173,7 @@ export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: str
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={props.onClose}>挿入しない</Button>
-          <Button type="submit" variant="contained" disabled={!href}>
+          <Button type="submit" variant="contained" disabled={!href || uploading}>
             画像を挿入
           </Button>
         </DialogActions>
