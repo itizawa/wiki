@@ -2,22 +2,58 @@ name: CI
 
 on:
   pull_request:
+    # 文書だけの変更では走らせない
+    paths-ignore:
+      - "**/*.md"
   # main への push では deploy.yml がこれを呼んでからデプロイする
   workflow_call:
+    inputs:
+      # false なら、型チェックとビルドだけにする（テストは PR で済ませている）
+      tests:
+        type: boolean
+        default: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    # PR に push し直したら、前の実行は止める。PR 以外（デプロイの前の確認）は止めない
+    concurrency:
+      group: ci-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
+        with:
+          # 変更したパッケージを、マージ先との差分から決める
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm --filter @wiki/admin build
+
+      # PR では、変更したパッケージと、それに依存するパッケージだけを確かめる。
+      # apps/ と packages/ の外（pnpm-lock.yaml、tsconfig.base.json、ワークフローなど）を変えたときと、PR 以外では全部を確かめる
+      - name: Decide what to check
+        id: scope
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: |
+          if [ -z "$BASE" ] || git diff --name-only "$BASE...HEAD" | grep -qvE '^(apps|packages)/|\.md$'; then
+            filter="-r"
+          else
+            filter="--filter='...[$BASE]' --filter='!wiki'"
+          fi
+          affected=$(eval "pnpm $filter ls --depth -1 --json" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(JSON.parse(s||"[]").map((p)=>p.name).join(" ")))')
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+          echo "affected=$affected" >> "$GITHUB_OUTPUT"
+          echo "確かめるパッケージ: ${affected:-（なし）}"
+
+      - run: pnpm ${{ steps.scope.outputs.filter }} typecheck
+      - if: github.event_name == 'pull_request' || inputs.tests
+        run: pnpm ${{ steps.scope.outputs.filter }} test
+      - if: contains(steps.scope.outputs.affected, '@wiki/admin')
+        run: pnpm --filter @wiki/admin build
       # サンプルのマニフェストで公開サイトをビルドし、限定公開の漏れ等を検査する
-      - run: pnpm --filter @wiki/site build:sample
+      - if: contains(steps.scope.outputs.affected, '@wiki/site')
+        run: pnpm --filter @wiki/site build:sample
