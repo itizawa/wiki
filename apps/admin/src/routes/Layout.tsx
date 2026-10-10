@@ -47,7 +47,9 @@ export function Root() {
   const logout = async () => {
     await api.logout();
     qc.clear();
-    await qc.invalidateQueries({ queryKey: ["me"] });
+    // clear() はキャッシュを捨てるだけで、画面は描き直さない（捨てたあとの invalidateQueries は何も取り直さない）。
+    // me を取り直して、ログイン画面に切り替える
+    await me.refetch();
   };
 
   return (
