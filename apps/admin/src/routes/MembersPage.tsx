@@ -1,4 +1,4 @@
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { Copy } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -261,7 +261,7 @@ function Invites() {
               fullWidth
               slotProps={{ htmlInput: { readOnly: true, "aria-label": "招待リンク", onFocus: (e: React.FocusEvent<HTMLInputElement>) => e.target.select() } }}
             />
-            <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={copy} sx={{ flexShrink: 0 }}>
+            <Button variant="outlined" startIcon={<Copy size={16} />} onClick={copy} sx={{ flexShrink: 0 }}>
               {copied ? "コピーしました" : "コピー"}
             </Button>
           </Row>

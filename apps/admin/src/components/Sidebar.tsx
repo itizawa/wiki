@@ -1,6 +1,8 @@
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LogOut, Plus, Search, Settings, ShieldUser, Star, Users, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
+  closestCenter,
   PointerSensor,
   pointerWithin,
   useDraggable,
@@ -9,35 +11,15 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import AddIcon from "@mui/icons-material/Add";
-import AutoModeIcon from "@mui/icons-material/AutoMode";
-import CheckIcon from "@mui/icons-material/Check";
-import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
-import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
-import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import HistoryIcon from "@mui/icons-material/History";
-import AdminPanelSettingsOutlinedIcon from "@mui/icons-material/AdminPanelSettingsOutlined";
-import PeopleOutlinedIcon from "@mui/icons-material/PeopleOutlined";
-import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
-import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
-import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
-import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
-import LogoutIcon from "@mui/icons-material/Logout";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import SearchIcon from "@mui/icons-material/Search";
-import StarIcon from "@mui/icons-material/Star";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Checkbox from "@mui/material/Checkbox";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
 import IconButton from "@mui/material/IconButton";
-import InputAdornment from "@mui/material/InputAdornment";
-import InputBase from "@mui/material/InputBase";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -47,18 +29,21 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useNavigate, useParams } from "@tanstack/react-router";
 import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
-import { useStars } from "../lib/stars";
+import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
+import { StarButton } from "./StarButton";
 import { WikiIcon } from "./WikiIcon";
 import { Muted, RouterLink } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
 const UNTITLED = "無題";
+/** これ以上動かしたらドラッグとみなす距離（px）。 */
+const DRAG_DISTANCE = 4;
 
 /** 行の共通の見た目（ナビ項目・ツリーの行・検索結果）。 */
 const rowSx = {
@@ -91,7 +76,6 @@ export function Sidebar(props: {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
-  const [q, setQ] = useState("");
   const tree = structure.data?.trees[0];
 
   const refreshStructure = () => {
@@ -112,6 +96,7 @@ export function Sidebar(props: {
     onSettled: () => {
       refreshStructure();
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
     },
     onSuccess: async (page) => {
       await navigate(pageLink(page.id));
@@ -132,88 +117,68 @@ export function Sidebar(props: {
         {props.onCollapse && (
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
-              <KeyboardDoubleArrowLeftIcon fontSize="small" />
+              <ChevronsLeft size={18} />
             </IconButton>
           </Tooltip>
         )}
       </Box>
 
-      <Box sx={{ px: 1.5, pb: 1 }}>
-        <InputBase
-          fullWidth
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="検索…"
-          inputProps={{ "aria-label": "ページを検索" }}
-          startAdornment={
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" />
-            </InputAdornment>
-          }
-          sx={{ px: 1, height: 32, fontSize: "0.9rem", borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper" }}
-        />
-      </Box>
-
       <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 1, pb: 2 }}>
-        {q.trim() ? (
-          <SearchResults q={q.trim()} onNavigate={props.onNavigate} />
-        ) : (
-          <>
-            <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
-              <KeyboardCommandKeyIcon fontSize="small" />
-              <Box component="span" sx={ellipsis}>
-                コマンドメニュー
-              </Box>
-              <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
-                ⌘K
-              </Box>
-            </Box>
-            <NavItem to="/w/$wikiKey" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
-              すべてのページ
-            </NavItem>
-            <NavItem to="/w/$wikiKey/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
-              編集カレンダー
-            </NavItem>
-            <NavItem to="/w/$wikiKey/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
-              ルール
-            </NavItem>
-            <NavItem to="/w/$wikiKey/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
-              構造の履歴
-            </NavItem>
-            <NavItem to="/w/$wikiKey/members" icon={<PeopleOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
-              メンバー
-            </NavItem>
+        <NavItem to="/w/$wikiKey/search" icon={<Search size={18} />} onClick={props.onNavigate}>
+          検索
+        </NavItem>
+        <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
+          <Command size={18} />
+          <Box component="span" sx={ellipsis}>
+            コマンドメニュー
+          </Box>
+          <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
+            ⌘K
+          </Box>
+        </Box>
+        <NavItem to="/w/$wikiKey" exact icon={<House size={18} />} onClick={props.onNavigate}>
+          すべてのページ
+        </NavItem>
+        <NavItem to="/w/$wikiKey/calendar" icon={<Calendar size={18} />} onClick={props.onNavigate}>
+          編集カレンダー
+        </NavItem>
+        <NavItem to="/w/$wikiKey/rules" icon={<Workflow size={18} />} onClick={props.onNavigate}>
+          ルール
+        </NavItem>
+        <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
+          構造の履歴
+        </NavItem>
+        <NavItem to="/w/$wikiKey/members" icon={<Users size={18} />} onClick={props.onNavigate}>
+          メンバー
+        </NavItem>
 
-            {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
+        {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 
-            <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
-              <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
-                ドキュメント
-              </Typography>
-              {tree && <TreeSettings tree={tree} />}
-              <Tooltip title="最上位に新しいページ">
-                <span>
-                  <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
-                    <AddIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
-            {structure.isPending && <Muted sx={{ px: 1 }}>読み込み中…</Muted>}
-            {tree && structure.data && (
-              <DocumentTree
-                tree={tree}
-                data={structure.data}
-                busy={commit.isPending || create.isPending}
-                run={(ops) => {
-                  commit.reset();
-                  commit.mutate(ops);
-                }}
-                onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
-                onNavigate={props.onNavigate}
-              />
-            )}
-          </>
+        <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
+          <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
+            ドキュメント
+          </Typography>
+          <Tooltip title="最上位に新しいページ">
+            <span>
+              <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
+                <Plus size={18} />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+        {structure.isPending && <Muted sx={{ px: 1 }}>読み込み中…</Muted>}
+        {tree && structure.data && (
+          <DocumentTree
+            tree={tree}
+            data={structure.data}
+            busy={commit.isPending || create.isPending}
+            run={(ops) => {
+              commit.reset();
+              commit.mutate(ops);
+            }}
+            onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
+            onNavigate={props.onNavigate}
+          />
         )}
       </Box>
 
@@ -236,12 +201,12 @@ export function Sidebar(props: {
         </Muted>
         <Tooltip title="キーボードショートカットと記法 (?)">
           <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide}>
-            <KeyboardOutlinedIcon fontSize="small" />
+            <Keyboard size={18} />
           </IconButton>
         </Tooltip>
         <Tooltip title="ログアウト">
           <IconButton size="small" aria-label="ログアウト" onClick={props.onLogout}>
-            <LogoutIcon fontSize="small" />
+            <LogOut size={18} />
           </IconButton>
         </Tooltip>
       </Box>
@@ -298,7 +263,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               {wiki.key}
             </Box>
           </Box>
-          <UnfoldMoreIcon sx={{ fontSize: 18, flexShrink: 0, color: "text.secondary" }} />
+          <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0, color: "text.secondary" }} />
         </Box>
       </Tooltip>
       <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true, sx: { minWidth: 240 } } }}>
@@ -308,7 +273,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         {wikis.map((w) => (
           <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
             {/* いまの wiki は、色だけでなくチェックの印でも示す */}
-            <ListItemIcon>{w.key === wiki.key && <CheckIcon fontSize="small" />}</ListItemIcon>
+            <ListItemIcon>{w.key === wiki.key && <Check size={18} />}</ListItemIcon>
             <Box sx={{ mr: 1.25, display: "flex" }}>
               <WikiIcon wiki={w} size={24} />
             </Box>
@@ -319,7 +284,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         {isOwner && (
           <MenuItemLink to="/wikis" onClick={close}>
             <ListItemIcon>
-              <SettingsOutlinedIcon fontSize="small" />
+              <Settings size={18} />
             </ListItemIcon>
             <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
           </MenuItemLink>
@@ -327,7 +292,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         {isOwner && (
           <MenuItemLink to="/owners" onClick={close}>
             <ListItemIcon>
-              <AdminPanelSettingsOutlinedIcon fontSize="small" />
+              <ShieldUser size={18} />
             </ListItemIcon>
             <ListItemText>オーナーの管理</ListItemText>
           </MenuItemLink>
@@ -348,9 +313,10 @@ function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; chil
   );
 }
 
-/** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。1つも無ければ何も出さない。 */
+/** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。ドラッグで並べ替えられる。1つも無ければ何も出さない。 */
 function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]; onNavigate?: () => void }) {
-  const { ids } = useStars();
+  const { ids, reorder } = useStars();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_DISTANCE } }));
   // 削除されたページのスターは出さない
   const starred = ids.flatMap((id) => (pages[id] ? [pages[id]] : []));
   if (starred.length === 0) return null;
@@ -359,67 +325,49 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
       <Typography variant="caption" sx={{ display: "block", mt: 2.5, mb: 0.5, pl: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
         スター
       </Typography>
-      {starred.map((p) => (
-        <RouterLink key={p.id} {...pageLink(p.id)} onClick={onNavigate} underline="none" sx={rowSx}>
-          <StarIcon sx={{ fontSize: 18, color: "warning.main" }} />
-          <Box component="span" sx={ellipsis}>
-            {p.title}
-          </Box>
-        </RouterLink>
-      ))}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={(e) => {
+          if (e.over && e.active.id !== e.over.id) reorder(moveStar(ids, String(e.active.id), String(e.over.id)));
+        }}
+      >
+        <SortableContext items={starred.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          {starred.map((p) => (
+            <StarredRow key={p.id} page={p} onNavigate={onNavigate} />
+          ))}
+        </SortableContext>
+      </DndContext>
     </Box>
   );
 }
 
-function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }) {
-  const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q) });
-  if (pages.isPending) return <Muted sx={{ px: 1 }}>検索中…</Muted>;
-  if (pages.error) return <Muted sx={{ px: 1 }}>{errorMessage(pages.error)}</Muted>;
-  if (pages.data.pages.length === 0) return <Muted sx={{ px: 1 }}>「{q}」に一致するページはありません。</Muted>;
+function StarredRow({ page, onNavigate }: { page: StructureResponse["pages"][string]; onNavigate?: () => void }) {
+  const sortable = useSortable({ id: page.id });
+  // 押した位置。ドラッグして離したときの click で、そのページを開いてしまわないようにするために覚える
+  const pressedAt = useRef<{ x: number; y: number } | null>(null);
   return (
-    <>
-      {pages.data.pages.map((p) => (
-        <RouterLink key={p.id} {...pageLink(p.id)} onClick={onNavigate} underline="none" sx={rowSx}>
-          <Box component="span" sx={ellipsis}>
-            {p.title}
-          </Box>
-        </RouterLink>
-      ))}
-    </>
-  );
-}
-
-/** ツリーそのものの設定（表示名と、公開サイトに出すか）。 */
-function TreeSettings({ tree }: { tree: StructureTree }) {
-  const qc = useQueryClient();
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const update = useMutation({
-    mutationFn: (input: Parameters<typeof api.updateTree>[1]) => api.updateTree(tree.id, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["structure"] }),
-  });
-  return (
-    <>
-      <Tooltip title={update.error ? errorMessage(update.error) : "ツリーの設定"}>
-        <IconButton size="small" aria-label="ツリーの設定" color={update.error ? "error" : "default"} onClick={(e) => setAnchor(e.currentTarget)}>
-          <MoreHorizIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Tooltip>
-      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
-        <MenuItem
-          onClick={() => {
-            setAnchor(null);
-            const name = prompt("表示名", tree.name);
-            if (name && name !== tree.name) update.mutate({ name });
-          }}
-        >
-          名前を変更
-        </MenuItem>
-        <MenuItem disabled={update.isPending} onClick={() => update.mutate({ isPublic: !tree.isPublic })}>
-          <Checkbox size="small" edge="start" checked={tree.isPublic} tabIndex={-1} disableRipple sx={{ p: 0, mr: 1 }} />
-          公開サイトに表示
-        </MenuItem>
-      </Menu>
-    </>
+    <Box
+      ref={sortable.setNodeRef}
+      {...sortable.listeners}
+      onPointerDownCapture={(e) => (pressedAt.current = { x: e.clientX, y: e.clientY })}
+      onClickCapture={(e) => {
+        const from = pressedAt.current;
+        // キーボードで開いたとき（座標が 0）は、いつでも通す
+        if (!from || e.detail === 0 || Math.hypot(e.clientX - from.x, e.clientY - from.y) < DRAG_DISTANCE) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      style={{ transform: sortable.transform ? `translate3d(0, ${sortable.transform.y}px, 0)` : undefined, transition: sortable.transition }}
+      sx={[sortable.isDragging && { position: "relative", zIndex: 1, opacity: 0.7 }]}
+    >
+      <RouterLink {...pageLink(page.id)} draggable={false} onClick={onNavigate} underline="none" sx={rowSx}>
+        <Box component={Star} size={18} fill="currentColor" sx={{ color: "warning.main" }} />
+        <Box component="span" sx={ellipsis}>
+          {page.title}
+        </Box>
+      </RouterLink>
+    </Box>
   );
 }
 
@@ -561,7 +509,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           onClick={() => ctx.toggle(node.nodeId)}
           sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden" }}
         >
-          <ChevronRightIcon sx={{ fontSize: 18, transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
+          <Box component={ChevronRight} size={18} sx={{ transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
         <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
           <Box component="span" sx={ellipsis}>
@@ -569,9 +517,10 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           </Box>
         </RouterLink>
         <Box className="row-actions" sx={{ flexShrink: 0 }}>
+          <StarButton pageId={node.pageId} title={title} iconSize={18} sx={{ p: 0.25 }} />
           <Tooltip title="この下に新しいページ">
             <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={{ p: 0.25 }}>
-              <AddIcon sx={{ fontSize: 18 }} />
+              <Plus size={18} />
             </IconButton>
           </Tooltip>
         </Box>

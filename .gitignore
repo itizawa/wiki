@@ -8,3 +8,4 @@ dist
 .dev.vars
 .manifest.json
 .astro
+.data

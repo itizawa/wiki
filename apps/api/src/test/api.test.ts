@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE, signSession } from "../auth/session";
 import { adoptUnplacedPages } from "../structure/repo";
-import { addLegacyTree, setup, W } from "./harness";
+import { ADMIN, addLegacyTree, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -194,6 +194,49 @@ describe("pages", () => {
     expect(saved.body.headVersionId).toBe(created.body.headVersionId);
   });
 
+  it("autosaves a draft per person without creating a version, and clears it when a version is kept", async () => {
+    const other = "other@example.com";
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const created = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
+    const base = created.headVersionId;
+    const url = `${W}/pages/${created.id}/draft`;
+    expect((await ctx.call("GET", url)).body).toEqual({ draft: null });
+
+    // 打ちかけで空のタイトルでも下書きにはできる。版は増えない
+    const saved = await ctx.call("PUT", url, { baseVersionId: base, title: "", bodyMd: "x y" });
+    expect(saved.status).toBe(200);
+    expect(saved.body.draft).toEqual(expect.objectContaining({ baseVersionId: base, title: "", bodyMd: "x y" }));
+    await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "x y z" });
+    expect((await ctx.call("GET", url)).body.draft.bodyMd).toBe("x y z");
+    expect((await ctx.call("GET", `${W}/pages/${created.id}/versions`)).body.versions).toHaveLength(1);
+    expect((await ctx.call("GET", `${W}/pages/${created.id}`)).body.head.bodyMd).toBe("x");
+
+    // 下書きは人ごと。ほかの人の下書きは見えない
+    expect((await ctx.call("GET", url, undefined, otherCookie)).body).toEqual({ draft: null });
+    await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "other" }, otherCookie);
+
+    // 版として残すと、自分の下書きだけ消える
+    const kept = await ctx.call("PUT", `${W}/pages/${created.id}`, { baseVersionId: base, title: "A", bodyMd: "x y z" });
+    expect(kept.status).toBe(200);
+    expect((await ctx.call("GET", url)).body).toEqual({ draft: null });
+    const stale = (await ctx.call("GET", url, undefined, otherCookie)).body.draft;
+    expect(stale).toEqual(expect.objectContaining({ baseVersionId: base, bodyMd: "other" }));
+
+    // 古い版をもとにした下書きは、そのままでは上書きできない
+    const conflict = await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "again" }, otherCookie);
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error.details.headVersionId).toBe(kept.body.headVersionId);
+
+    // head と同じ内容に戻したら下書きは消える。破棄もできる
+    await ctx.call("PUT", url, { baseVersionId: kept.body.headVersionId, title: "A", bodyMd: "x y z" }, otherCookie);
+    expect((await ctx.call("GET", url, undefined, otherCookie)).body).toEqual({ draft: null });
+    await ctx.call("PUT", url, { baseVersionId: kept.body.headVersionId, title: "A", bodyMd: "drop me" });
+    expect((await ctx.call("DELETE", url)).status).toBe(200);
+    expect((await ctx.call("GET", url)).body).toEqual({ draft: null });
+  });
+
   it("deletes a page and lifts its children to the parent of the deleted page", async () => {
     ctx = await setup();
     const top = (await ctx.call("POST", `${W}/pages`, { title: "top" })).body;
@@ -305,12 +348,12 @@ describe("structure commits", () => {
     expect(rows.rows.map((r) => r.key)).toEqual(["main"]);
   });
 
-  it("renames the tree", async () => {
+  it("has no way to change the tree settings", async () => {
     ctx = await setup();
     const s = await structure();
     const res = await ctx.call("PATCH", `${W}/trees/${s.trees[0].id}`, { name: "ブログ" });
-    expect(res.status).toBe(200);
-    expect((await structure()).trees[0].name).toBe("ブログ");
+    expect(res.status).toBe(404);
+    expect((await structure()).trees[0]).not.toHaveProperty("isPublic");
   });
 
   it("adopts live pages that are not in the tree to the top level", async () => {

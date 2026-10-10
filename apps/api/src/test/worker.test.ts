@@ -77,6 +77,30 @@ describe("worker entry", () => {
     expect(run.status).toBe(200);
   });
 
+  it("uploads images to R2 and serves them at /images, the path written in the body", async () => {
+    const objects = new Map<string, { value: Uint8Array; contentType?: string }>();
+    const IMAGES = {
+      async put(key: string, value: Uint8Array, options?: { httpMetadata?: { contentType?: string } }) {
+        objects.set(key, { value, contentType: options?.httpMetadata?.contentType });
+      },
+      async get(key: string) {
+        const o = objects.get(key);
+        return o ? { body: new Response(o.value as BodyInit).body!, httpMetadata: { contentType: o.contentType } } : null;
+      },
+    };
+    const w = await worker({ IMAGES });
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const uploaded = await w.fetch("/api/admin/w/wiki/images", { method: "POST", headers: { cookie: w.cookie, origin: ORIGIN }, body: png as BodyInit });
+    expect(uploaded.status).toBe(201);
+    const { url } = (await uploaded.json()) as { url: string };
+    expect(objects.get(url.slice("/images/".length))?.contentType).toBe("image/png");
+
+    const served = await w.fetch(url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+  });
+
   it("does not expose the admin API outside /api", async () => {
     const w = await worker();
     expect((await w.fetch("/admin/me", { headers: { cookie: w.cookie } })).status).toBe(404);

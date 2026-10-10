@@ -3,10 +3,13 @@ import { Hono } from "hono";
 import { authRoutes, requireAccess, requireUser } from "./auth/routes";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
+import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
+import { searchRoutes } from "./routes/search";
+import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { resolveWiki, wikiRoutes } from "./routes/wikis";
@@ -33,6 +36,7 @@ export function createApp(deps: Deps) {
   app.route("/auth", authRoutes);
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
+  app.route("/images", imageServeRoutes);
   // 招待リンクを開いた人向け。メンバーでなくても使える
   app.route("/invites", inviteRoutes);
 
@@ -53,8 +57,11 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/rules", ruleRoutes);
+  wiki.route("/search", searchRoutes);
+  wiki.route("/stars", starRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
+  wiki.route("/images", imageUploadRoutes);
   wiki.route("/members", memberRoutes);
   wiki.route("/invites", inviteAdminRoutes);
   admin.route("/w/:wikiKey", wiki);

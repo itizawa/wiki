@@ -60,7 +60,7 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
   const pending = (schedule.data?.actions ?? []).filter((a) => a.status === "scheduled" || a.status === "failed" || a.status === "running");
 
   // 無効なボタンはホバーを受けないので、理由は外側の span に出す
-  const needsSave = dirty ? "先に保存してください" : "";
+  const needsSave = dirty ? "先に版として残してください" : "";
 
   return (
     <Section>

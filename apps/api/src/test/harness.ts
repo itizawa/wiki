@@ -13,6 +13,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { users, wikiMembers, wikis } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
+import { memoryImageStore, type ImageStore } from "../images/store";
 
 /** setup が作るオーナー（すべての wiki に管理者として入れる）。call はこの人として呼ぶ */
 export const ADMIN = "admin@example.com";
@@ -37,31 +38,37 @@ export async function wikiManifest(db: Db, key = DEFAULT_WIKI_KEY) {
   return wiki;
 }
 
-export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig> } = {}) {
+export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null } = {}) {
   const client = new PGlite();
   const db = drizzle(client, { schema }) as unknown as Db;
   await migrate(db as never, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
-  const app = createApp({ db, config, google: opts.google ?? null });
+  const images = opts.images === undefined ? memoryImageStore() : opts.images;
+  const app = createApp({ db, config, google: opts.google ?? null, images });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 
-  /** userId の人として API を呼ぶ関数を返す（null ならログインしていない）。 */
+  /**
+   * userId の人として API を呼ぶ関数を返す（null ならログインしていない）。
+   * body が Uint8Array なら、そのまま（JSON にせず）送る
+   */
   async function callAs(userId: string | null) {
     const cookie = userId ? `${SESSION_COOKIE}=${await signSession(config.sessionSecret, userId)}` : "";
     return async function <T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
+      const raw = body instanceof Uint8Array;
       const res = await app.request(path, {
         method,
         headers: {
           ...(cookie && { cookie }),
           origin: config.adminOrigin,
-          ...(body !== undefined && { "content-type": "application/json" }),
+          ...(body !== undefined && { "content-type": raw ? "application/octet-stream" : "application/json" }),
           ...headers,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : raw ? (body as BodyInit) : JSON.stringify(body),
       });
-      const text = await res.text();
-      return { status: res.status, body: (text ? JSON.parse(text) : null) as T, headers: res.headers };
+      const isJson = res.headers.get("content-type")?.startsWith("application/json") ?? false;
+      const text = isJson ? await res.text() : "";
+      return { status: res.status, body: (text ? JSON.parse(text) : null) as T, headers: res.headers, res };
     };
   }
   const call = await callAs(owner!.id);
@@ -79,14 +86,14 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
     return { user: user!, call: await callAs(user!.id) };
   }
 
-  return { app, db, client, config, call, callAs, addUser, owner: owner!, close: () => client.close() };
+  return { app, db, client, config, images, call, callAs, addUser, owner: owner!, close: () => client.close() };
 }
 
 /** 複数ツリー時代のデータを再現する：primary以外のツリーを現在のheadコミットに直接足す。 */
 export async function addLegacyTree(client: PGlite, key = "by-theme") {
   const id = `t_${key}`;
   await client.query(
-    `insert into trees (id, wiki_id, key, name, is_public, is_primary) select $1, id, $2, $3, true, false from wikis where key = 'wiki'`,
+    `insert into trees (id, wiki_id, key, name, is_primary) select $1, id, $2, $3, false from wikis where key = 'wiki'`,
     [id, key, key],
   );
   const snap = await client.query<{ id: string }>(`insert into tree_snapshots (tree_id) values ($1) returning id`, [id]);

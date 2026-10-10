@@ -1,7 +1,9 @@
-import MenuIcon from "@mui/icons-material/Menu";
+import { Menu } from "lucide-react";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
+import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -15,7 +17,8 @@ import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
 import { Tooltip } from "../components/Tooltip";
 import { Muted, RouterLink, Section } from "../components/ui";
-import { setApiWiki } from "../lib/api";
+import { errorMessage, setApiWiki } from "../lib/api";
+import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { rememberWiki, WikiContext } from "../lib/wiki";
 import { Center, Loading, useSession, useWikis } from "./Layout";
@@ -156,7 +159,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
           >
             <Tooltip title="サイドバーを開く (⌘.)" placement="right">
               <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setOpen(true)}>
-                <MenuIcon fontSize="small" />
+                <Menu size={18} />
               </IconButton>
             </Tooltip>
           </Box>
@@ -165,7 +168,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         <Box sx={{ flexShrink: 0, width: COLLAPSED_WIDTH, pt: 1.25, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
           <Tooltip title="サイドバーを開く (⌘.)" placement="right">
             <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setDrawer(true)}>
-              <MenuIcon fontSize="small" />
+              <Menu size={18} />
             </IconButton>
           </Tooltip>
         </Box>
@@ -184,10 +187,28 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
       </Drawer>
       <ShortcutGuide />
       <ConfirmHost />
+      <StarsHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} onToggleSidebar={wide ? () => setOpen(!open) : undefined} onLogout={onLogout} />
     </Box>
+  );
+}
+
+/**
+ * スターの、画面をまたぐ仕事をまとめて受け持つ。
+ * - wiki を開いたときに、以前ブラウザに覚えさせていたスターをサーバーへ移す
+ * - 付け外しや並び替えに失敗したら知らせる（画面の表示は、失敗した時点で元に戻っている）
+ */
+function StarsHost() {
+  useMigrateLegacyStars();
+  const [error, clear] = useStarsError();
+  return (
+    <Snackbar open={error !== null} onClose={clear} anchorOrigin={{ vertical: "bottom", horizontal: "left" }}>
+      <Alert severity="error" variant="filled" onClose={clear}>
+        スターを変更できませんでした。{error && errorMessage(error)}
+      </Alert>
+    </Snackbar>
   );
 }

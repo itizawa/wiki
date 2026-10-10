@@ -10,7 +10,7 @@ describe("ショートカットのガイド", () => {
   });
 
   it("修飾キーは、Mac なら ⌘、それ以外は Ctrl で出す", () => {
-    const save = (mod: string) => shortcutGroups(mod)[0]!.entries.find((e) => e.label.includes("保存"))!.keys;
+    const save = (mod: string) => shortcutGroups(mod)[0]!.entries.find((e) => e.label.includes("版として残す"))!.keys;
     expect(save("⌘")).toEqual(["⌘", "S"]);
     expect(save("Ctrl")).toEqual(["Ctrl", "S"]);
   });

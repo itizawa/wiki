@@ -9,7 +9,9 @@ import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
+import { FIRST_WIKI } from "./lib/wiki";
 import { RulesPage } from "./routes/RulesPage";
+import { SearchPage } from "./routes/SearchPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikisPage } from "./routes/WikisPage";
 
@@ -59,13 +61,27 @@ const editorRoute = createRoute({
     return <EditorPage key={pageId} pageId={pageId} />;
   },
 });
+const searchRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "search",
+  validateSearch: (search: Record<string, unknown>): { q?: string } => (typeof search.q === "string" && search.q !== "" ? { q: search.q } : {}),
+  component: function Search() {
+    const { q = "" } = searchRoute.useSearch();
+    const navigate = searchRoute.useNavigate();
+    return (
+      <PageBody>
+        {/* 打つたびに履歴を増やさない */}
+        <SearchPage q={q} onChange={(next) => void navigate({ search: next ? { q: next } : {}, replace: true })} />
+      </PageBody>
+    );
+  },
+});
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
 const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
-const FIRST_WIKI = "wiki";
 const legacyEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/pages/$pageId",
@@ -88,7 +104,7 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   ownersRoute,
   inviteRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, calendarRoute, rulesRoute, historyRoute, membersRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, historyRoute, membersRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),

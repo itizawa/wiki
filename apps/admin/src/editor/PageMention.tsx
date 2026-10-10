@@ -1,5 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import { FileText, Plus } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,8 +27,9 @@ export function PageMention({ editor }: { editor: Editor }) {
   const match = useTriggerMatch(editor, mentionTrigger);
   const q = match?.query.trim() ?? "";
   const pages = useQuery({
-    queryKey: ["pages", q],
-    queryFn: () => api.listPages(q),
+    // 検索の画面と同じ検索（タイトルと本文）。タイトルに一致したページが先に来る
+    queryKey: ["search", q],
+    queryFn: () => api.search(q),
     enabled: match !== null,
     placeholderData: keepPreviousData,
   });
@@ -51,10 +51,11 @@ export function PageMention({ editor }: { editor: Editor }) {
       insertLink(v.range, page);
       void qc.invalidateQueries({ queryKey: ["structure"] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
     },
   });
 
-  const items: Item[] = (pages.data?.pages ?? []).slice(0, MAX_ITEMS).map((p) => ({ kind: "page", id: p.id, title: p.title }));
+  const items: Item[] = (pages.data?.results ?? []).slice(0, MAX_ITEMS).map((p) => ({ kind: "page", id: p.id, title: p.title }));
   // 打った名前のページが無ければ、その名前で新しく作れるようにする
   if (q !== "" && !items.some((i) => i.title === q)) items.push({ kind: "create", title: q });
 
@@ -71,14 +72,14 @@ export function PageMention({ editor }: { editor: Editor }) {
         i.kind === "page" ? (
           <>
             <ListItemIcon>
-              <DescriptionOutlinedIcon fontSize="small" />
+              <FileText size={18} />
             </ListItemIcon>
             <ListItemText slotProps={{ primary: { noWrap: true } }}>{i.title}</ListItemText>
           </>
         ) : (
           <>
             <ListItemIcon>
-              <AddIcon fontSize="small" />
+              <Plus size={18} />
             </ListItemIcon>
             <ListItemText slotProps={{ primary: { noWrap: true } }}>「{i.title}」を新しく作ってリンクする</ListItemText>
           </>
