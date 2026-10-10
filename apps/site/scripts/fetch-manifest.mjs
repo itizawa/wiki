@@ -17,5 +17,8 @@ if (!process.env.MANIFEST_PATH) {
   }
   const manifest = await res.json();
   await writeFile(".manifest.json", JSON.stringify(manifest));
-  console.log(`manifest: ${manifest.pages.length} pages, ${manifest.unlisted.length} unlisted, hash ${manifest.contentHash.slice(0, 12)}`);
+  for (const wiki of manifest.wikis) {
+    console.log(`manifest: ${wiki.key}: ${wiki.pages.length} pages, ${wiki.unlisted.length} unlisted`);
+  }
+  console.log(`manifest: ${manifest.wikis.length} wikis, hash ${manifest.contentHash.slice(0, 12)}`);
 }
