@@ -19,12 +19,19 @@ const UNUSABLE: Record<Exclude<InviteStatus, "active">, string> = {
 };
 
 /**
- * `/invite/{token}`：招待リンクを開いた人に、wiki の名前・ロール・期限を出し、参加させる。
+ * `/invite#{token}`：招待リンクを開いた人に、wiki の名前・ロール・期限を出し、参加させる。
  * ログインしていなくても開ける（ログインは参加のボタンから行い、終わるとそのまま参加する）。
  */
 export function InvitePage({ token }: { token: string }) {
-  const info = useQuery({ queryKey: ["invite", token], queryFn: () => api.inviteInfo(token), retry: false });
+  const info = useQuery({ queryKey: ["invite", token], queryFn: () => api.inviteInfo(token), retry: false, enabled: Boolean(token) });
 
+  if (!token) {
+    return (
+      <Frame title="招待リンクを使えません">
+        <Alert severity="error">この招待リンクは見つかりません。URL が途中で切れていないか確かめてください。</Alert>
+      </Frame>
+    );
+  }
   if (info.isPending) return <Loading />;
   if (info.error) {
     const missing = info.error instanceof ApiError && info.error.status === 404;
@@ -97,9 +104,16 @@ function InviteBody({ token, info }: { token: string; info: InviteInfo }) {
           <Muted>{info.viewerEmail} として参加します。</Muted>
         </>
       ) : (
-        <Button variant="contained" size="medium" href={`/api/auth/google/login?invite=${encodeURIComponent(token)}`}>
-          Google でログインして参加する
-        </Button>
+        // リンクの値を URL に載せないよう、フォームの POST でログインを始める。ログインのあと、この画面に戻る
+        <>
+          <form method="post" action="/api/auth/google/login">
+            <input type="hidden" name="invite" value={token} />
+            <Button type="submit" variant="contained" size="medium">
+              Google でログインする
+            </Button>
+          </form>
+          <Muted>ログインのあと、この画面に戻ってから参加します。</Muted>
+        </>
       )}
     </Frame>
   );

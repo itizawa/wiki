@@ -4,7 +4,7 @@ import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { acceptInvite, ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, type UserRow } from "../users/service";
+import { ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, userForInviteLogin, type UserRow } from "../users/service";
 import {
   OAUTH_COOKIE,
   randomToken,
@@ -50,22 +50,29 @@ export const requireOwner: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
+/** Google のログインを始める。招待リンクの値があれば OAuth の state の Cookie に入れ、ログインのあとで招待の画面に戻す。 */
+async function startGoogleLogin(c: Context<AppEnv>, invite: string | undefined) {
+  const { config, google } = c.get("deps");
+  if (!google) throw new HttpError(400, "google_not_configured", "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set");
+  const state = randomToken();
+  const nonce = randomToken();
+  setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, invite }), {
+    httpOnly: true,
+    secure: config.secureCookies,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 600,
+  });
+  return c.redirect(google.authorizationUrl({ state, nonce }));
+}
+
 export const authRoutes = new Hono<AppEnv>()
-  .get("/google/login", async (c) => {
-    const { config, google } = c.get("deps");
-    if (!google) throw new HttpError(400, "google_not_configured", "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set");
-    const state = randomToken();
-    const nonce = randomToken();
-    // 招待リンクから来たら、ログインのあとで参加させる
-    const invite = c.req.query("invite") || undefined;
-    setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, invite }), {
-      httpOnly: true,
-      secure: config.secureCookies,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 600,
-    });
-    return c.redirect(google.authorizationUrl({ state, nonce }));
+  .get("/google/login", (c) => startGoogleLogin(c, undefined))
+  // 招待の画面からは、リンクの値を URL に載せないようにフォームの POST で来る（アクセスログに残さない）
+  .post("/google/login", async (c) => {
+    const form = await c.req.parseBody();
+    const invite = typeof form.invite === "string" && form.invite ? form.invite : undefined;
+    return startGoogleLogin(c, invite);
   })
   .get("/google/callback", async (c) => {
     const { config, google } = c.get("deps");
@@ -84,17 +91,11 @@ export const authRoutes = new Hono<AppEnv>()
     const login = { sub: identity.sub, email: identity.email, name: identity.name };
 
     if (saved.invite) {
-      const invitePage = `${config.adminOrigin}/invite/${encodeURIComponent(saved.invite)}`;
-      const result = await acceptInvite(db, saved.invite, { identity: login });
-      if (result.ok) {
-        await startSession(c, result.user.id);
-        // すでにメンバーなら、リンクを使っていないことを招待の画面で伝える
-        return c.redirect(result.alreadyMember ? invitePage : `${config.adminOrigin}/w/${encodeURIComponent(result.wikiKey)}`);
-      }
-      // 使えないリンクなら、理由を招待の画面に出す。行のある人はログインだけはさせる
-      const user = await findUserForLogin(db, login);
+      // 招待リンクから来たら、参加はさせずに招待の画面に戻し、「参加する」を押してもらう
+      // （リンクを踏ませただけで、知らない wiki に入ってしまわないように）。リンクの値は URL のフラグメントに入れる
+      const user = await userForInviteLogin(db, saved.invite, login);
       if (user) await startSession(c, user.id);
-      return c.redirect(invitePage);
+      return c.redirect(`${config.adminOrigin}/invite#${encodeURIComponent(saved.invite)}`);
     }
 
     const user = await findUserForLogin(db, login);

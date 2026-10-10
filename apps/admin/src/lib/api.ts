@@ -86,9 +86,9 @@ export const api = {
   me: () => request<Me>("GET", "/admin/me"),
 
   // 招待リンクを開いた人向け（ログインしていなくても呼べる）
-  inviteInfo: (token: string) => request<InviteInfo>("GET", `/invites/${encodeURIComponent(token)}`),
-  acceptInvite: (token: string) =>
-    request<{ wikiKey: string; alreadyMember: boolean }>("POST", `/invites/${encodeURIComponent(token)}/accept`),
+  // リンクの値は、アクセスログに残らないように本文で送る
+  inviteInfo: (token: string) => request<InviteInfo>("POST", "/invites/inspect", { token }),
+  acceptInvite: (token: string) => request<{ wikiKey: string; alreadyMember: boolean }>("POST", "/invites/accept", { token }),
 
   listUsers: () => request<{ users: UserSummary[] }>("GET", "/admin/users"),
   setOwner: (userId: string, isOwner: boolean) => request<{ users: UserSummary[] }>("PUT", `/admin/users/${userId}/owner`, { isOwner }),
