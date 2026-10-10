@@ -42,7 +42,7 @@ const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
     }
   </head>
   <body>
-    <header class={s.header}>
+    <header class={s.header} data-site-header>
       <a class={s.brand} href="/">{SITE_NAME}</a>
       {
         !noindex && (
@@ -59,3 +59,37 @@ const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
     <footer class={s.footer}>© {SITE_NAME}</footer>
   </body>
 </html>
+
+<script>
+  import { nextHeaderVisibility } from "../lib/headerVisibility";
+
+  // 狭い画面で張り付くヘッダーを、下スクロールで隠し、上スクロールで戻す。
+  // 張り付けるのも隠すのも CSS（Base.module.css）で、ここでは data-hidden を付け外しするだけ
+  const header = document.querySelector<HTMLElement>("[data-site-header]");
+  if (header) {
+    let state = { hidden: false, anchorY: window.scrollY };
+    let queued = false;
+    const apply = (next: typeof state) => {
+      if (next.hidden !== state.hidden) header.toggleAttribute("data-hidden", next.hidden);
+      state = next;
+    };
+    const update = () => {
+      queued = false;
+      apply(
+        nextHeaderVisibility(state, {
+          scrollY: window.scrollY,
+          maxScrollY: document.documentElement.scrollHeight - window.innerHeight,
+          headerHeight: header.offsetHeight,
+        }),
+      );
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    // フォーカスが入って出たヘッダーが、フォーカスが外れたとたんに隠れ直さないようにする
+    header.addEventListener("focusin", () => apply({ hidden: false, anchorY: window.scrollY }));
+  }
+</script>

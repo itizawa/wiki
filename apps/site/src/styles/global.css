@@ -9,6 +9,8 @@
   --ok: #1a7f37;
   --warn: #8a5a00;
   --danger: #c0362c;
+  /* ヘッダーの高さ（1行ぶん 1.8rem + 上下の余白 24px + 下の線 1px）。狭い画面で張り付くヘッダーと、見出しの scroll-margin-top が使う */
+  --header-height: calc(1.8rem + 25px);
   /* スクロールバーなどブラウザが描く部品も、ライト・ダークに合わせる */
   color-scheme: light dark;
   font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
