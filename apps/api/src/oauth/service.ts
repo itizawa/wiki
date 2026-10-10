@@ -68,7 +68,24 @@ export function isAllowedRedirectUri(raw: string): boolean {
   return url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
 }
 
+/** 許可の無いクライアントを残しておく時間。これを過ぎたら、次の登録のときに消す */
+export const UNUSED_CLIENT_TTL_SEC = 60 * 60 * 24;
+/** 許可の無いクライアントを持てる数。登録はログイン無しでできるので、表が際限なく増えないようにする */
+export const MAX_UNUSED_CLIENTS = 200;
+
+const unused = sql`not exists (select 1 from "oauth_grants" g where g."client_id" = "oauth_clients"."id")`;
+
 export async function registerClient(db: Db, input: { name: string; redirectUris: string[] }) {
+  await db
+    .delete(oauthClients)
+    .where(and(unused, sql`"oauth_clients"."created_at" < now() - make_interval(secs => ${UNUSED_CLIENT_TTL_SEC})`));
+  const [{ count } = { count: 0 }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(oauthClients)
+    .where(unused);
+  if (count >= MAX_UNUSED_CLIENTS) {
+    throw new OAuthError("temporarily_unavailable", "too many unused clients; try again later", 429);
+  }
   const id = `wc_${randomToken(16)}`;
   const [row] = await db.insert(oauthClients).values({ id, name: input.name, redirectUris: input.redirectUris }).returning();
   return row!;

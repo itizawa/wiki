@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wiki": {
+      "type": "http",
+      "url": "https://wiki-admin.hatchery-works.com/mcp"
+    }
+  }
+}
