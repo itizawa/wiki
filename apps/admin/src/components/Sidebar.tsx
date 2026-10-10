@@ -37,7 +37,7 @@ import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
-import { StarButton } from "./StarButton";
+import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
 import { WikiIcon } from "./WikiIcon";
 import { Muted, RouterLink, SkeletonRows } from "./ui";
 
@@ -59,8 +59,38 @@ function useDragSensors() {
 
 /** 指で操作する端末（スマホ・タブレット）。行と行の中のボタンを大きくして、押し間違いを減らす。 */
 const TOUCH = "@media (pointer: coarse)";
-/** 行の中の小さなボタン（スター、「＋」）。指で操作する端末では、押せる範囲を広げる。 */
+/** マウスで操作する端末。行のボタンは、マウスを乗せたときだけ出す。 */
+const HOVER = "@media (hover: hover) and (pointer: fine)";
+/** 行の中の小さなボタン（「…」、「＋」）。指で操作する端末では、押せる範囲を広げる。 */
 const rowButtonSx = { p: 0.25, [TOUCH]: { p: 1 } } as const;
+
+/**
+ * マウスを乗せたときだけ出すボタン（`selector`）を、マウスを乗せたとき・中にキーボードのフォーカスがあるときに出す。
+ * フォーカスは `:focus-visible` で見る（`:focus-within` だと、行をクリックして開いたあとも、フォーカスが残ってボタンが出たままになる）。
+ * `:has()` が使えないブラウザでは `:focus-within` で代える。
+ */
+const revealOnHoverOrFocus = (selector: string) =>
+  ({
+    [`&:hover ${selector}`]: { opacity: 1 },
+    [`&:has(:focus-visible) ${selector}`]: { opacity: 1 },
+    "@supports not selector(:has(*))": { [`&:focus-within ${selector}`]: { opacity: 1 } },
+  }) as const;
+
+/**
+ * 行の右端のボタン（`.row-actions`）の出し方。
+ * - マウスで操作する端末では、ふだんは見えなくし、行にマウスを乗せたとき・行の中にキーボードのフォーカスがあるとき・その行のメニューが開いている間だけ出す。
+ *   Tab で届かなくならないよう、`display: none` ではなく透明にして隠す（幅も空けたままなので、出したときにタイトルの省略位置が動かない）
+ * - 指で操作する端末などでは、乗せる操作が無く押せなくなるので、いつも薄く出しておく
+ */
+const rowActionsSx = {
+  "& .row-actions": { display: "flex", flexShrink: 0, opacity: 0.55 },
+  ...revealOnHoverOrFocus(".row-actions"),
+  '& .row-actions[data-open="true"]': { opacity: 1 },
+  [HOVER]: { "& .row-actions": { opacity: 0 } },
+} as const;
+
+/** 行の「…」メニューを開く。`key` は行ごとの名前 */
+type OpenRowMenu = (target: RowMenuTarget) => void;
 
 /** 行の共通の見た目（ナビ項目・ツリーの行・検索結果）。 */
 const rowSx = {
@@ -127,6 +157,16 @@ export function Sidebar(props: {
 
   const error = commit.error ?? create.error ?? structure.error;
 
+  // 行の「…」メニューは、サイドバーに1つだけ置く。閉じたあとも、最後に開いた行を覚えておく（閉じる動きの間、中身を出しておく）
+  const [menuTarget, setMenuTarget] = useState<RowMenuTarget | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const openMenu: OpenRowMenu = (target) => {
+    setMenuTarget(target);
+    setMenuOpen(true);
+  };
+  const openMenuKey = menuOpen ? (menuTarget?.key ?? null) : null;
+  const isEmpty = tree?.nodes.length === 0;
+
   return (
     <Box
       component="nav"
@@ -189,36 +229,42 @@ export function Sidebar(props: {
           </RouterLink>
         )}
 
-        {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
+        {structure.data && <StarredPages pages={structure.data.pages} openMenuKey={openMenuKey} onOpenMenu={openMenu} onNavigate={props.onNavigate} />}
 
-        <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
-          <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
-            ドキュメント
-          </Typography>
-          <Tooltip title="最上位に新しいページ">
-            <span>
-              <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
-                <Plus size={18} />
-              </IconButton>
-            </span>
-          </Tooltip>
+        {/* 「最上位に新しいページ」も行のボタンと同じく、マウスで操作する端末では、見出しかツリーにマウスが乗っている間・キーボードのフォーカスがある間だけ出す。
+            ページが1つも無いときは、作る入口が見つからなくなるので、いつも出す */}
+        <Box sx={[!isEmpty && { [HOVER]: { "& .section-action": { opacity: 0 } }, ...revealOnHoverOrFocus(".section-action") }]}>
+          <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
+            <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
+              ドキュメント
+            </Typography>
+            <Tooltip title="最上位に新しいページ">
+              <span className="section-action">
+                <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
+                  <Plus size={18} />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+          {structure.isPending && <SkeletonRows rows={5} indents={[0, 16, 16, 0, 16]} />}
+          {tree && structure.data && (
+            <DocumentTree
+              tree={tree}
+              data={structure.data}
+              busy={commit.isPending || create.isPending}
+              run={(ops) => {
+                commit.reset();
+                commit.mutate(ops);
+              }}
+              onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
+              openMenuKey={openMenuKey}
+              onOpenMenu={openMenu}
+              onNavigate={props.onNavigate}
+            />
+          )}
         </Box>
-        {/* ツリーの行と同じ高さ。いくつかは字下げして、階層があるように見せる */}
-        {structure.isPending && <SkeletonRows rows={5} indents={[0, 16, 16, 0, 16]} />}
-        {tree && structure.data && (
-          <DocumentTree
-            tree={tree}
-            data={structure.data}
-            busy={commit.isPending || create.isPending}
-            run={(ops) => {
-              commit.reset();
-              commit.mutate(ops);
-            }}
-            onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
-            onNavigate={props.onNavigate}
-          />
-        )}
       </Box>
+      <PageRowMenu target={menuTarget} open={menuOpen} onClose={() => setMenuOpen(false)} nodes={tree?.nodes ?? []} onNavigate={props.onNavigate} />
 
       {error && (
         <Alert
@@ -414,7 +460,17 @@ function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; chil
 }
 
 /** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。ドラッグで並べ替えられる。1つも無ければ何も出さない。 */
-function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]; onNavigate?: () => void }) {
+function StarredPages({
+  pages,
+  openMenuKey,
+  onOpenMenu,
+  onNavigate,
+}: {
+  pages: StructureResponse["pages"];
+  openMenuKey: string | null;
+  onOpenMenu: OpenRowMenu;
+  onNavigate?: () => void;
+}) {
   const { ids, reorder } = useStars();
   const sensors = useDragSensors();
   // 削除されたページのスターは出さない
@@ -434,7 +490,7 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
       >
         <SortableContext items={starred.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           {starred.map((p) => (
-            <StarredRow key={p.id} page={p} onNavigate={onNavigate} />
+            <StarredRow key={p.id} page={p} menuOpen={openMenuKey === `star:${p.id}`} onOpenMenu={onOpenMenu} onNavigate={onNavigate} />
           ))}
         </SortableContext>
       </DndContext>
@@ -442,8 +498,9 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
   );
 }
 
-function StarredRow({ page, onNavigate }: { page: StructureResponse["pages"][string]; onNavigate?: () => void }) {
+function StarredRow({ page, menuOpen, onOpenMenu, onNavigate }: { page: RowMenuPage; menuOpen: boolean; onOpenMenu: OpenRowMenu; onNavigate?: () => void }) {
   const sortable = useSortable({ id: page.id });
+  const { pageId: activePageId } = useParams({ strict: false });
   // 押した位置。ドラッグして離したときの click で、そのページを開いてしまわないようにするために覚える
   const pressedAt = useRef<{ x: number; y: number } | null>(null);
   return (
@@ -461,12 +518,25 @@ function StarredRow({ page, onNavigate }: { page: StructureResponse["pages"][str
       style={{ transform: sortable.transform ? `translate3d(0, ${sortable.transform.y}px, 0)` : undefined, transition: sortable.transition }}
       sx={[sortable.isDragging && { position: "relative", zIndex: 1, opacity: 0.7 }]}
     >
-      <RouterLink {...pageLink(page.id)} draggable={false} onClick={onNavigate} underline="none" sx={rowSx}>
-        <Box component={Star} size={18} fill="currentColor" sx={{ color: "warning.main" }} />
-        <Box component="span" sx={ellipsis}>
-          {page.title}
+      {/* 「…」をリンクの中に入れないよう、行の枠とリンクを分ける */}
+      <Box data-active={page.id === activePageId} sx={{ ...rowSx, ...rowActionsSx, pr: 0.5 }}>
+        <RouterLink
+          {...pageLink(page.id)}
+          draggable={false}
+          onClick={onNavigate}
+          underline="none"
+          sx={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", gap: 0.75, color: "inherit" }}
+        >
+          <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />
+          <Box component="span" sx={ellipsis}>
+            {page.title}
+          </Box>
+        </RouterLink>
+        {/* 「…」を押しても、行のドラッグ（並べ替え）が始まらないようにする */}
+        <Box className="row-actions" data-open={menuOpen} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+          <PageRowMenuButton title={page.title} open={menuOpen} onOpen={(anchor) => onOpenMenu({ key: `star:${page.id}`, page, anchor })} sx={rowButtonSx} />
         </Box>
-      </RouterLink>
+      </Box>
     </Box>
   );
 }
@@ -480,6 +550,10 @@ type TreeContext = {
   toggle: (nodeId: string) => void;
   expand: (nodeId: string) => void;
   onCreatePage: (parentNodeId: string) => void;
+  page: (node: TreeNode) => RowMenuPage | undefined;
+  /** 「…」メニューを開いている行の名前（開いていなければ null） */
+  openMenuKey: string | null;
+  onOpenMenu: OpenRowMenu;
   onNavigate?: () => void;
   /** 折りたたみの動きの長さ。OS の「視差効果を減らす」が有効なら 0 */
   motionMs: number;
@@ -494,6 +568,8 @@ function DocumentTree(props: {
   busy: boolean;
   run: (ops: StructureOpInput[]) => void;
   onCreatePage: (parentNodeId: string) => void;
+  openMenuKey: string | null;
+  onOpenMenu: OpenRowMenu;
   onNavigate?: () => void;
 }) {
   const { tree, data, run } = props;
@@ -536,6 +612,9 @@ function DocumentTree(props: {
       expand(parentNodeId);
       props.onCreatePage(parentNodeId);
     },
+    page: (n) => data.pages[n.pageId],
+    openMenuKey: props.openMenuKey,
+    onOpenMenu: props.onOpenMenu,
     onNavigate: props.onNavigate,
     motionMs: reducedMotion ? 0 : TREE_MOTION_MS,
   };
@@ -578,6 +657,9 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
   const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
   const title = ctx.label(node);
   const visibility = ctx.visibility(node);
+  const page = ctx.page(node);
+  const menuKey = `tree:${node.nodeId}`;
+  const menuOpen = ctx.openMenuKey === menuKey;
 
   // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
   const labelSx = { ...ellipsis, display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
@@ -593,6 +675,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
         data-active={isActive}
         sx={{
           ...rowSx,
+          // 行のボタン（「…」「＋」）は、マウスで操作する端末では、マウスを乗せたとき・キーボードのフォーカスがあるとき・メニューが開いている間だけ出す
+          ...rowActionsSx,
           position: "relative",
           gap: 0.25,
           pl: `${4 + depth * 16}px`,
@@ -600,9 +684,6 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           opacity: drag.isDragging ? 0.4 : 1,
           boxShadow: (t) => (before.isOver ? `inset 0 2px 0 ${(t.vars ?? t).palette.primary.main}` : "none"),
           ...(into.isOver && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
-          // 行の操作は、いつも出しておく（マウスを乗せたときだけ出すと、タッチ端末では押せない）。ふだんは薄く、行に乗せたら濃くする
-          "& .row-actions": { display: "flex", opacity: 0.55 },
-          "&:hover .row-actions, &:focus-within .row-actions": { opacity: 1 },
         }}
       >
         <Box ref={before.setNodeRef} sx={{ ...dropZone, top: 0, height: "35%" }} />
@@ -621,8 +702,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           </Box>
           <VisibilityMark visibility={visibility} />
         </RouterLink>
-        <Box className="row-actions" sx={{ flexShrink: 0 }}>
-          <StarButton pageId={node.pageId} title={title} iconSize={18} sx={rowButtonSx} />
+        <Box className="row-actions" data-open={menuOpen}>
+          {page && <PageRowMenuButton title={title} open={menuOpen} onOpen={(anchor) => ctx.onOpenMenu({ key: menuKey, page, anchor })} sx={rowButtonSx} />}
           <Tooltip title="この下に新しいページ">
             <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={rowButtonSx}>
               <Plus size={18} />

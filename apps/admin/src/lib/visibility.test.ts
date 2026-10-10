@@ -19,10 +19,10 @@ const data = {
     },
   ],
   pages: {
-    a: { id: "a", title: "親", visibility: "public", publishedVersionId: "v" },
-    b: { id: "b", title: "子", visibility: "public", publishedVersionId: "v" },
-    c: { id: "c", title: "孫", visibility: "unlisted", publishedVersionId: "v" },
-    d: { id: "d", title: "下書き", visibility: "private", publishedVersionId: null },
+    a: { id: "a", title: "親", visibility: "public", publishedVersionId: "v", unlistedKey: null, updatedAt: "2026-10-01T00:00:00.000Z" },
+    b: { id: "b", title: "子", visibility: "public", publishedVersionId: "v", unlistedKey: null, updatedAt: "2026-10-01T00:00:00.000Z" },
+    c: { id: "c", title: "孫", visibility: "unlisted", publishedVersionId: "v", unlistedKey: null, updatedAt: "2026-10-01T00:00:00.000Z" },
+    d: { id: "d", title: "下書き", visibility: "private", publishedVersionId: null, unlistedKey: null, updatedAt: "2026-10-01T00:00:00.000Z" },
   },
 } satisfies StructureResponse;
 
