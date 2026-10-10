@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { PageSummary, PageViewCounts } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { StarButton } from "../components/StarButton";
-import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Muted, RouterLink, Row, Section, SkeletonTableRows, StatusChip } from "../components/ui";
 import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
@@ -22,6 +22,8 @@ import { formatDateTime } from "../lib/format";
 import { isCounted, measuredSinceLabel, viewCountLabel, viewSortValue, VIEWS_NOTE } from "../lib/views";
 
 const STAR_WIDTH = 36;
+/** 行の高さ（読み込み中の行も、この高さで出す）。 */
+const PAGE_ROW_HEIGHT = 37;
 
 /** 横に送っても残す列（スターとタイトル）。どの行かを見失わないようにする。 */
 const stickyCell = {
@@ -76,14 +78,14 @@ export function PagesPage() {
             閲覧数は公開サイトでの数で、{measuredSinceLabel(views.data.since)}。{VIEWS_NOTE}。
           </Muted>
         )}
-        {pages.isPending && <Muted>読み込み中…</Muted>}
         {pages.error && <Alert severity="error">{errorMessage(pages.error)}</Alert>}
         {pages.data && pages.data.pages.length === 0 && (
           <Muted>
             {q ? `「${q}」をタイトルに含むページはありません。` : "ページはまだありません。サイドバーの「最上位に新しいページ」（＋）から作れます。"}
           </Muted>
         )}
-        {pages.data && pages.data.pages.length > 0 && (
+        {(pages.isPending || (pages.data && pages.data.pages.length > 0)) && (
+          // 表の見出しは読み込み中から出し、行だけを Skeleton にする
           // 幅が足りないときは、表だけを横に送る（画面ごと横に動かさない）
           <Box sx={{ overflowX: "auto" }}>
             {/* 列を固定すると、既定の border-collapse では罫線が付いてこない */}
@@ -108,6 +110,7 @@ export function PagesPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
+                {pages.isPending && <SkeletonTableRows columns={6} height={PAGE_ROW_HEIGHT} />}
                 {rows.map((p) => (
                   <TableRow key={p.id} hover>
                     <TableCell padding="none" sx={[stickyCell, starCell, { pl: 0.5 }]}>

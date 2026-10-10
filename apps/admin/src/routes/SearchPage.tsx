@@ -2,13 +2,14 @@ import { Search } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import InputAdornment from "@mui/material/InputAdornment";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { parseSearchQuery, searchTerms, splitByTerms } from "@wiki/shared";
 import { useEffect, useState } from "react";
-import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
@@ -64,7 +65,20 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
       </Muted>
 
       {search.error && <Alert severity="error">{errorMessage(search.error)}</Alert>}
-      {q !== "" && search.isPending && <Muted>検索中…</Muted>}
+      {q !== "" && search.isPending && (
+        // 件数の行と、結果の行（タイトル + 前後の文）の形
+        <LoadingRegion label="検索中">
+          <Skeleton variant="text" width={48} sx={{ fontSize: "0.875rem", mb: 1.5 }} />
+          <Section sx={{ p: 0 }}>
+            {["38%", "52%", "30%"].map((width) => (
+              <Box key={width} sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: "divider", "&:last-of-type": { borderBottom: 0 } }}>
+                <Skeleton variant="text" width={width} />
+                <Skeleton variant="text" width="90%" sx={{ fontSize: "0.875rem", mt: 0.5 }} />
+              </Box>
+            ))}
+          </Section>
+        </LoadingRegion>
+      )}
       {results && (
         <Muted role="status">{results.length === 0 ? `「${q}」に一致するページはありません。語を減らすか、別の言い方を試してください。` : `${results.length}件${results.length >= 50 ? "（最初の50件）" : ""}`}</Muted>
       )}

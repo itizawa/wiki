@@ -10,7 +10,7 @@ import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { TEMPLATE_VARIABLES, type PageTemplate } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
-import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
+import { Mono, Muted, RouterLink, Row, Section, SkeletonEditor, SkeletonSection } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -92,7 +92,8 @@ export function TemplatesPage() {
       </Section>
 
       {error && <Alert severity="error">{errorMessage(error)}</Alert>}
-      {templates.isPending && <Muted>読み込み中…</Muted>}
+      {/* テンプレートのカード（名前 + 最終更新）の形 */}
+      {templates.isPending && [0, 1].map((i) => <SkeletonSection key={i} lines={1} />)}
       {templates.data?.templates.length === 0 && (
         <Section>
           <Muted>テンプレートはまだありません。</Muted>
@@ -197,7 +198,7 @@ export function TemplateEditorPage({ templateId }: { templateId: string }) {
       </Alert>
     );
   }
-  if (!draft) return <Muted sx={{ p: 3 }}>読み込み中…</Muted>;
+  if (!draft) return <SkeletonEditor />;
 
   return (
     <Box sx={{ minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column" }}>
