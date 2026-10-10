@@ -1,6 +1,6 @@
 import { StructureOpError, StructureValidationError } from "@wiki/shared";
 import { Hono } from "hono";
-import { authRoutes, requireAdmin } from "./auth/routes";
+import { authRoutes, requireAccess, requireUser } from "./auth/routes";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
 import { exportRoutes, internalRoutes } from "./routes/internal";
@@ -8,7 +8,8 @@ import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
 import { structureRoutes, treeRoutes } from "./routes/structure";
-import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
+import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
+import { resolveWiki, wikiRoutes } from "./routes/wikis";
 
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
@@ -32,11 +33,18 @@ export function createApp(deps: Deps) {
   app.route("/auth", authRoutes);
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
+  // 招待リンクを開いた人向け。メンバーでなくても使える
+  app.route("/invites", inviteRoutes);
 
+  // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
-  admin.use("*", requireAdmin);
-  admin.get("/me", (c) => c.json({ email: c.get("adminEmail"), isOwner: isOwner(deps.config, c.get("adminEmail")) }));
+  admin.use("*", requireUser, requireAccess);
+  admin.get("/me", (c) => {
+    const user = c.get("user");
+    return c.json({ id: user.id, email: user.email, name: user.name, isOwner: user.isOwner });
+  });
   admin.route("/wikis", wikiRoutes);
+  admin.route("/users", userRoutes);
 
   // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
   const wiki = new Hono<AppEnv>();
@@ -47,6 +55,8 @@ export function createApp(deps: Deps) {
   wiki.route("/rules", ruleRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
+  wiki.route("/members", memberRoutes);
+  wiki.route("/invites", inviteAdminRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

@@ -14,3 +14,4 @@ export * from "./structure/diff";
 export * from "./callout";
 export * from "./toggle";
 export * from "./wiki";
+export * from "./users";

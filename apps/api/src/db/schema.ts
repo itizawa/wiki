@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -348,3 +349,72 @@ export const siteBuilds = pgTable("site_builds", {
   contentHash: text("content_hash").notNull(),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// ユーザー・wiki のメンバー・招待（管理画面に入れる人）
+// ---------------------------------------------------------------------------
+
+/**
+ * 管理画面に入れる人。Google のアカウント ID（sub）で見分ける。
+ * 行を消さない（外した人が書いた版や履歴を残すため）。
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Google のアカウント ID。ADMIN_EMAILS からの移行と締め出し用のスクリプトで作った行は、最初のログインまで空 */
+    googleSub: text("google_sub").unique(),
+    /** 表示用。ログインのたびに Google から受け取ったもので更新する（小文字） */
+    email: text("email").notNull(),
+    name: text("name"),
+    /** すべての wiki に管理者として入れ、wiki の作成・アーカイブとオーナーの追加・解除ができる */
+    isOwner: boolean("is_owner").notNull().default(false),
+    createdAt: createdAt(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  },
+  (t) => [index("users_email_idx").on(t.email)],
+);
+
+/** wiki ごとのメンバー。オーナーは行が無くても、すべての wiki に管理者として入れる。 */
+export const wikiMembers = pgTable(
+  "wiki_members",
+  {
+    wikiId: wikiId(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role", { enum: ["admin", "editor"] }).notNull(),
+    createdAt: createdAt(),
+    /** 参加に使った招待。招待を通さずに入った人（wiki を作ったオーナー・移行）は null */
+    inviteId: uuid("invite_id").references((): AnyPgColumn => invites.id),
+  },
+  (t) => [
+    primaryKey({ columns: [t.wikiId, t.userId] }),
+    check("wiki_members_role_check", sql`${t.role} in ('admin', 'editor')`),
+    index("wiki_members_user_idx").on(t.userId),
+  ],
+);
+
+/** 招待リンク。1リンクで1人、期限つき。値そのものは持たず、ハッシュだけを持つ。 */
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    role: text("role", { enum: ["admin", "editor"] }).notNull(),
+    /** リンクの値（128bit の乱数）の SHA-256（16進） */
+    tokenHash: text("token_hash").notNull().unique(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedBy: uuid("used_by").references(() => users.id),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("invites_role_check", sql`${t.role} in ('admin', 'editor')`),
+    index("invites_wiki_idx").on(t.wikiId),
+  ],
+);

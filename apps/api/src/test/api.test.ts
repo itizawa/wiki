@@ -23,11 +23,22 @@ describe("auth", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a valid session whose email left the allowlist", async () => {
+  it("rejects a session from before users were kept in the DB (it carried the email)", async () => {
     ctx = await setup();
-    const token = await signSession(ctx.config.sessionSecret, "someone@example.com");
+    const { SignJWT } = await import("jose");
+    const old = await new SignJWT({ email: "admin@example.com", typ: "session" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(ctx.config.sessionSecret));
+    const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${old}` } });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a valid session whose user does not exist", async () => {
+    ctx = await setup();
+    const token = await signSession(ctx.config.sessionSecret, "00000000-0000-4000-8000-000000000000");
     const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 
   it("rejects cross-origin mutations", async () => {
@@ -36,32 +47,76 @@ describe("auth", () => {
     expect(res.status).toBe(403);
   });
 
-  it("logs in through Google only for allowlisted, verified emails", async () => {
-    let email = "admin@example.com";
+  it("logs in through Google only for registered users with a verified email", async () => {
+    let identity = { sub: "g-1", email: "admin@example.com", emailVerified: true, name: "Admin" };
     ctx = await setup({
       google: {
         authorizationUrl: ({ state }) => `https://accounts.example/auth?state=${state}`,
-        exchangeCode: async () => ({ email, emailVerified: true }),
+        exchangeCode: async () => identity,
       },
     });
+    // ADMIN_EMAILS からの移行と同じ形：メールアドレスだけの行は、最初のログインで結びつく
+    const { db } = ctx;
+    const { users } = await import("../db/schema");
+    const { eq } = await import("drizzle-orm");
+    await db.update(users).set({ googleSub: null }).where(eq(users.id, ctx.owner.id));
+
     const login = await ctx.app.request("/auth/google/login");
     expect(login.status).toBe(302);
     const state = new URL(login.headers.get("location")!).searchParams.get("state");
     const oauthCookie = login.headers.get("set-cookie")!.split(";")[0]!;
+    const callback = () => ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
 
-    const ok = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
+    const ok = await callback();
     expect(ok.headers.get("location")).toBe("http://admin.test/");
     const session = ok.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
     const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
-    expect(await me.json()).toEqual({ email: "admin@example.com", isOwner: true });
+    expect(await me.json()).toEqual({ id: ctx.owner.id, email: "admin@example.com", name: "Admin", isOwner: true });
+    const [linked] = await db.select().from(users).where(eq(users.id, ctx.owner.id));
+    expect(linked!.googleSub).toBe("g-1");
+    expect(linked!.lastLoginAt).not.toBeNull();
 
-    email = "intruder@example.com";
-    const denied = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
-    expect(denied.headers.get("location")).toBe("http://admin.test/login?error=forbidden");
+    // メールアドレスが変わっても、同じアカウント ID なら同じ人
+    identity = { ...identity, email: "renamed@example.com", name: "Renamed" };
+    const renamed = await callback();
+    expect(renamed.headers.get("location")).toBe("http://admin.test/");
+    const [after] = await db.select().from(users).where(eq(users.id, ctx.owner.id));
+    expect(after).toMatchObject({ email: "renamed@example.com", name: "Renamed" });
+
+    // どの wiki のメンバーでもない人は入れず、行も作らない
+    const before = (await db.select().from(users)).length;
+    identity = { sub: "g-2", email: "intruder@example.com", emailVerified: true, name: null as unknown as string };
+    const denied = await callback();
+    expect(denied.headers.get("location")).toBe("http://admin.test/login?error=invite_only&email=intruder%40example.com");
     expect(denied.headers.getSetCookie().some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
+    expect((await db.select().from(users)).length).toBe(before);
+
+    // メールアドレスが未確認なら、登録済みのアドレスでも結びつけない
+    await db.insert(users).values({ email: "pending@example.com", isOwner: true });
+    identity = { sub: "g-3", email: "pending@example.com", emailVerified: false, name: "x" };
+    const unverified = await callback();
+    expect(unverified.headers.get("location")).toBe("http://admin.test/login?error=unverified");
+    expect(unverified.headers.getSetCookie().some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
 
     const badState = await ctx.app.request(`/auth/google/callback?code=c&state=wrong`, { headers: { cookie: oauthCookie } });
     expect(badState.status).toBe(400);
+  });
+
+  it("tells a logged-in user who is in no wiki that the admin is invite-only", async () => {
+    ctx = await setup();
+    const { call } = await ctx.addUser("lonely@example.com");
+    const me = await call("GET", "/admin/me");
+    expect(me.status).toBe(403);
+    expect(me.body.error).toMatchObject({ code: "invite_only", details: { email: "lonely@example.com" } });
+  });
+
+  it("dev login creates the DEV_LOGIN_EMAIL user as an owner", async () => {
+    ctx = await setup({ config: { devLoginEmail: "dev@example.com" } });
+    const res = await ctx.app.request("/auth/dev-login", { method: "POST", headers: { origin: ctx.config.adminOrigin } });
+    expect(res.status).toBe(200);
+    const session = res.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
+    const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
+    expect(await me.json()).toMatchObject({ email: "dev@example.com", isOwner: true });
   });
 });
 

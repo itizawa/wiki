@@ -10,12 +10,14 @@ import type { Db } from "../db/client";
 import * as schema from "../db/schema";
 import { buildManifest } from "../publishing/manifest";
 import { bootstrapStructure } from "../structure/repo";
+import { users, wikiMembers, wikis } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
 
+/** setup が作るオーナー（すべての wiki に管理者として入れる）。call はこの人として呼ぶ */
 export const ADMIN = "admin@example.com";
 
 export const testConfig: AppConfig = {
-  adminEmails: [ADMIN],
   sessionSecret: "test-secret-test-secret-test-secret!!",
   adminOrigin: "http://admin.test",
   googleRedirectUri: "http://admin.test/api/auth/google/callback",
@@ -42,24 +44,42 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const app = createApp({ db, config, google: opts.google ?? null });
-  const cookie = `${SESSION_COOKIE}=${await signSession(config.sessionSecret, ADMIN)}`;
+  const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 
-  async function call<T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
-    const res = await app.request(path, {
-      method,
-      headers: {
-        cookie,
-        origin: config.adminOrigin,
-        ...(body !== undefined && { "content-type": "application/json" }),
-        ...headers,
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await res.text();
-    return { status: res.status, body: (text ? JSON.parse(text) : null) as T, headers: res.headers };
+  /** userId の人として API を呼ぶ関数を返す（null ならログインしていない）。 */
+  async function callAs(userId: string | null) {
+    const cookie = userId ? `${SESSION_COOKIE}=${await signSession(config.sessionSecret, userId)}` : "";
+    return async function <T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
+      const res = await app.request(path, {
+        method,
+        headers: {
+          ...(cookie && { cookie }),
+          origin: config.adminOrigin,
+          ...(body !== undefined && { "content-type": "application/json" }),
+          ...headers,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const text = await res.text();
+      return { status: res.status, body: (text ? JSON.parse(text) : null) as T, headers: res.headers };
+    };
+  }
+  const call = await callAs(owner!.id);
+
+  /**
+   * ユーザーを作り、wiki のメンバーにして、その人として呼ぶ関数を返す。
+   * roles は wiki の key → ロール。
+   */
+  async function addUser(email: string, roles: Record<string, "admin" | "editor"> = {}, opts: { isOwner?: boolean } = {}) {
+    const [user] = await db.insert(users).values({ googleSub: `test:${email}`, email, name: email.split("@")[0], isOwner: opts.isOwner ?? false }).returning();
+    for (const [key, role] of Object.entries(roles)) {
+      const [wiki] = await db.select().from(wikis).where(eq(wikis.key, key));
+      await db.insert(wikiMembers).values({ wikiId: wiki!.id, userId: user!.id, role });
+    }
+    return { user: user!, call: await callAs(user!.id) };
   }
 
-  return { app, db, client, config, call, close: () => client.close() };
+  return { app, db, client, config, call, callAs, addUser, owner: owner!, close: () => client.close() };
 }
 
 /** 複数ツリー時代のデータを再現する：primary以外のツリーを現在のheadコミットに直接足す。 */

@@ -61,10 +61,23 @@ describe("seedDatabase", () => {
     ctx = await setup();
     await ctx.call("POST", `${W}/pages`, { title: "既存" });
     await resetDatabase(ctx.db);
-    expect((await ctx.call("GET", `${W}/structure`)).body.trees[0].nodes).toEqual([]);
+    // ユーザーも消えるので、ログインし直す
+    expect((await ctx.call("GET", "/admin/me")).status).toBe(401);
+    const { call } = await ctx.addUser("again@example.com", {}, { isOwner: true });
+    expect((await call("GET", `${W}/structure`)).body.trees[0].nodes).toEqual([]);
     await seedDatabase(ctx.db);
-    const pages: any[] = (await ctx.call("GET", `${W}/pages`)).body.pages;
+    const pages: any[] = (await call("GET", `${W}/pages`)).body.pages;
     expect(pages.some((p) => p.title === "既存")).toBe(false);
     expect(pages.length).toBeGreaterThan(5);
+  });
+
+  it("adds an admin and an editor to the first wiki", async () => {
+    ctx = await setup();
+    await seedDatabase(ctx.db);
+    const members: any[] = (await ctx.call("GET", `${W}/members`)).body.members;
+    expect(members.map((m) => [m.email, m.role])).toEqual([
+      ["sakura@example.com", "admin"],
+      ["minato@example.com", "editor"],
+    ]);
   });
 });

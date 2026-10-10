@@ -30,13 +30,12 @@ async function worker(env: Partial<WorkerEnv> = {}) {
     HYPERDRIVE: { connectionString: "postgres://unused" },
     NODE_ENV: "production",
     SESSION_SECRET: ctx.config.sessionSecret,
-    ADMIN_EMAILS: ADMIN,
     ADMIN_ORIGIN: ORIGIN,
     SITE_BASE_DOMAIN: "example.com",
     INTERNAL_TOKEN: "internal-token",
     ...env,
   } as WorkerEnv;
-  const cookie = `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, ADMIN)}`;
+  const cookie = `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, ctx.owner.id)}`;
   const fetch = (path: string, init: RequestInit = {}) =>
     handler.fetch(new Request(new URL(path, ORIGIN), init), fullEnv, { waitUntil: (p) => void closed.push(p) });
   return { fetch, cookie, stats: () => ({ connections, closes }), settled: () => Promise.all(closed) };
@@ -51,7 +50,7 @@ describe("worker entry", () => {
 
     const me = await w.fetch("/api/admin/me", { headers: { cookie: w.cookie } });
     expect(me.status).toBe(200);
-    expect(await me.json()).toEqual({ email: ADMIN, isOwner: true });
+    expect(await me.json()).toMatchObject({ email: ADMIN, isOwner: true });
   });
 
   it("keeps the query string and the body when stripping /api", async () => {

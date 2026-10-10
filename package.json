@@ -12,7 +12,8 @@
     "test": "pnpm -r test",
     "db:generate": "pnpm --filter @wiki/api db:generate",
     "db:migrate": "pnpm --filter @wiki/api db:migrate",
-    "db:seed": "pnpm --filter @wiki/api db:seed"
+    "db:seed": "pnpm --filter @wiki/api db:seed",
+    "db:grant-owner": "pnpm --filter @wiki/api db:grant-owner"
   },
   "devDependencies": {
     "typescript": "5.9.3"

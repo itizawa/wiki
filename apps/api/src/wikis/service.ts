@@ -1,8 +1,8 @@
-import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type Wiki, type WikiSummary } from "@wiki/shared";
+import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type Wiki, type WikiRole, type WikiSummary } from "@wiki/shared";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { scheduledActions, wikis } from "../db/schema";
+import { scheduledActions, wikiMembers, wikis } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { recordPublishEvent } from "../publishing/service";
 import { createStructure } from "../structure/repo";
@@ -24,8 +24,15 @@ export function toWiki(row: WikiRow, config: Pick<AppConfig, "siteBaseDomain">):
   };
 }
 
-/** 作成順に返す（最初の wiki が先頭）。 */
-export async function listWikis(db: Db, config: Pick<AppConfig, "siteBaseDomain">, opts: { includeArchived: boolean }): Promise<WikiSummary[]> {
+/**
+ * 作成順に返す（最初の wiki が先頭）。
+ * roles を渡すと、そこにある wiki だけを、そのロールつきで返す（メンバー）。null ならすべてを管理者として返す（オーナー）。
+ */
+export async function listWikis(
+  db: Db,
+  config: Pick<AppConfig, "siteBaseDomain">,
+  opts: { includeArchived: boolean; roles: ReadonlyMap<string, WikiRole> | null },
+): Promise<WikiSummary[]> {
   const rows = await db
     .select({
       wiki: wikis,
@@ -41,7 +48,10 @@ export async function listWikis(db: Db, config: Pick<AppConfig, "siteBaseDomain"
     .from(wikis)
     .where(opts.includeArchived ? undefined : isNull(wikis.archivedAt))
     .orderBy(asc(wikis.createdAt), asc(wikis.key));
-  return rows.map((r) => ({ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages) }));
+  return rows.flatMap((r) => {
+    const role = opts.roles ? opts.roles.get(r.wiki.id) : "admin";
+    return role ? [{ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages), role }] : [];
+  });
 }
 
 export async function findWiki(db: Db, key: string, forUpdate = false): Promise<WikiRow> {
@@ -53,16 +63,18 @@ export async function findWiki(db: Db, key: string, forUpdate = false): Promise<
 
 /**
  * wiki を作り、空のツリーを1本用意する。ルールは行を作らないので、どれも無効で始まる。
+ * 作った人（オーナー）は、その wiki の管理者としてメンバーに入る。
  * key はアーカイブ中のものも含めて重ねられない。
  */
-export async function createWiki(db: Db, input: CreateWikiInput, createdBy: string | null): Promise<WikiRow> {
+export async function createWiki(db: Db, input: CreateWikiInput, creator: { id: string; email: string } | null): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(wikis)
-      .values({ id: newWikiId(), key: input.key, name: input.name, iconUrl: input.iconUrl ?? null, createdBy })
+      .values({ id: newWikiId(), key: input.key, name: input.name, iconUrl: input.iconUrl ?? null, createdBy: creator?.email ?? null })
       .onConflictDoNothing({ target: wikis.key })
       .returning();
     if (!row) throw new HttpError(409, "wiki_key_taken", `the key ${input.key} is already used`);
+    if (creator) await tx.insert(wikiMembers).values({ wikiId: row.id, userId: creator.id, role: "admin" });
     await createStructure(tx, row.id);
     // 新しいサブドメインを公開サイトに出す
     await recordPublishEvent(tx, row.id, "wiki_create");
