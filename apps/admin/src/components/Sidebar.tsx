@@ -18,6 +18,7 @@ import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
+import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import SearchIcon from "@mui/icons-material/Search";
@@ -39,6 +40,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
+import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted, RouterLink } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
@@ -223,6 +225,11 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
         <Muted sx={ellipsis} title={props.email}>
           {props.email}
         </Muted>
+        <Tooltip title="キーボードショートカットと記法 (?)">
+          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide}>
+            <KeyboardOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="ログアウト">
           <IconButton size="small" aria-label="ログアウト" onClick={props.onLogout}>
             <LogoutIcon fontSize="small" />

@@ -12,6 +12,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
+import { ShortcutGuide } from "../components/ShortcutGuide";
 import { Sidebar } from "../components/Sidebar";
 import { Muted, Section } from "../components/ui";
 import { api, ApiError } from "../lib/api";
@@ -67,6 +68,7 @@ export function Layout() {
       <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
         <Sidebar email={me.data.email} onNavigate={() => setDrawer(false)} onLogout={logout} />
       </Drawer>
+      <ShortcutGuide />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
