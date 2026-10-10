@@ -1,27 +1,29 @@
 ---
-import layout from "../../styles/page.module.css";
+import layout from "../../../styles/page.module.css";
 import type { ManifestPage } from "@wiki/shared";
-import Article from "../../components/Article.astro";
-import TreeNav from "../../components/TreeNav";
-import Base from "../../layouts/Base.astro";
-import { siteData } from "../../lib/manifest";
-import { excerpt } from "../../lib/markdown";
-import { ancestors, navItems } from "../../lib/tree";
+import Article from "../../../components/Article.astro";
+import TreeNav from "../../../components/TreeNav";
+import Base from "../../../layouts/Base.astro";
+import { allWikis, siteData } from "../../../lib/manifest";
+import { excerpt } from "../../../lib/markdown";
+import { ancestors, navItems } from "../../../lib/tree";
+import Backlinks from "../../../components/Backlinks.astro";
+import { siteBacklinks } from "../../../lib/backlinks";
 
 export async function getStaticPaths() {
-  const { manifest } = await siteData();
-  return manifest.pages.map((page) => ({ params: { page: page.id }, props: { page } }));
+  return (await allWikis()).flatMap((w) => w.pages.map((page) => ({ params: { wiki: w.key, page: page.id }, props: { page } })));
 }
 
 const { page } = Astro.props as { page: ManifestPage };
-const { pagesById, primaryTree } = await siteData();
-const publicPaths = new Map([...pagesById].map(([id, p]) => [id, p.path]));
+const { wiki } = Astro.params;
+const { pagesById, publicPaths, primaryTree, origin } = await siteData(wiki);
 const titleOf = (id: string) => pagesById.get(id)?.title;
+const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
 const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
 ---
 
-<Base title={page.title} description={excerpt(page.bodyMd)} canonical={page.path}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path}>
   <div class={layout.withNav}>
     <main data-pagefind-body>
       {
@@ -43,7 +45,9 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
         revisedAt={page.revisedAt}
         monetization={page.monetization}
         publicPaths={publicPaths}
+        origin={origin}
       />
+      <Backlinks pages={backlinks} />
     </main>
     {
       primaryTree && (

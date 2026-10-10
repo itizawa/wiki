@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { pageLink } from "../lib/wiki";
 import { visibilityLabel } from "./PagesPage";
 
 /** 打ち終わってから探しにいくまでの待ち時間（1文字ごとに問い合わせない）。 */
@@ -73,7 +74,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
             {results.map((r) => (
               <Box component="li" key={r.id} sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: "divider", "&:last-of-type": { borderBottom: 0 } }}>
                 <Row>
-                  <RouterLink to="/pages/$pageId" params={{ pageId: r.id }} sx={{ fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>
+                  <RouterLink {...pageLink(r.id)} sx={{ fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>
                     <Highlight text={r.title} terms={terms} />
                   </RouterLink>
                   <StatusChip status={r.visibility} label={visibilityLabel[r.visibility]} />

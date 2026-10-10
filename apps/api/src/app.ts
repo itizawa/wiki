@@ -9,6 +9,7 @@ import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
 import { searchRoutes } from "./routes/search";
 import { structureRoutes, treeRoutes } from "./routes/structure";
+import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
 
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
@@ -35,15 +36,20 @@ export function createApp(deps: Deps) {
 
   const admin = new Hono<AppEnv>();
   admin.use("*", requireAdmin);
-  admin.get("/me", (c) => c.json({ email: c.get("adminEmail") }));
-  admin.get("/settings", (c) => c.json({ siteOrigin: deps.config.siteOrigin }));
-  admin.route("/pages", pageRoutes);
-  admin.route("/pages", pagePublishRoutes);
-  admin.route("/schedule", scheduleRoutes);
-  admin.route("/rules", ruleRoutes);
-  admin.route("/search", searchRoutes);
-  admin.route("/structure", structureRoutes);
-  admin.route("/trees", treeRoutes);
+  admin.get("/me", (c) => c.json({ email: c.get("adminEmail"), isOwner: isOwner(deps.config, c.get("adminEmail")) }));
+  admin.route("/wikis", wikiRoutes);
+
+  // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
+  const wiki = new Hono<AppEnv>();
+  wiki.use("*", resolveWiki);
+  wiki.route("/pages", pageRoutes);
+  wiki.route("/pages", pagePublishRoutes);
+  wiki.route("/schedule", scheduleRoutes);
+  wiki.route("/rules", ruleRoutes);
+  wiki.route("/search", searchRoutes);
+  wiki.route("/structure", structureRoutes);
+  wiki.route("/trees", treeRoutes);
+  admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "not found" } }, 404));

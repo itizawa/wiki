@@ -9,12 +9,14 @@ interface Props {
   revisedAt: string;
   monetization?: Record<string, unknown> | null;
   publicPaths: ReadonlyMap<string, string>;
+  /** この wiki のオリジン。絶対URLで書かれた内部リンクを見分ける */
+  origin: string;
 }
 
-const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths } = Astro.props;
+const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
-const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored });
+const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin });
 // 見出しが2つ以上あるときだけ目次を出す。いちばん浅い見出しを左端に揃える
 const showToc = headings.length >= 2;
 const minDepth = Math.min(...headings.map((h) => h.depth));
@@ -32,7 +34,7 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
   </div>
   {
     showToc && (
-      <nav class={s.toc} aria-label="目次" data-pagefind-ignore>
+      <nav class={s.toc} aria-label="目次" data-toc data-pagefind-ignore>
         <details open>
           <summary>目次</summary>
           <ol>
@@ -50,6 +52,38 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 </article>
 
 <script>
+  // 目次の中で、いま読んでいる節を示す（画面の上端を過ぎた、いちばん下の見出し）
+  const tocLinks = [...document.querySelectorAll<HTMLAnchorElement>("nav[data-toc] a")];
+  if (tocLinks.length > 0) {
+    const targets = tocLinks.map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))));
+    let current: HTMLAnchorElement | undefined;
+    let queued = false;
+    const update = () => {
+      queued = false;
+      let index = 0;
+      targets.forEach((el, i) => {
+        if (el && el.getBoundingClientRect().top <= 24) index = i;
+      });
+      // ページの最後まで来たら、上端に届かない最後の節を「いま」にする
+      if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) index = tocLinks.length - 1;
+      const next = tocLinks[index];
+      if (next === current) return;
+      current?.removeAttribute("aria-current");
+      next?.setAttribute("aria-current", "location");
+      current = next;
+      // 目次が長くて中でスクロールするとき、いまの節が見える位置に来るようにする
+      if (next && getComputedStyle(next.closest("nav")!).position === "sticky") next.scrollIntoView({ block: "nearest" });
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    update();
+  }
+
   // コードブロックの右上に「コピー」ボタンを足す（クリップボードが使えない環境では足さない）
   if (navigator.clipboard) {
     for (const pre of document.querySelectorAll<HTMLPreElement>("article pre")) {

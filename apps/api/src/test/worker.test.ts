@@ -32,7 +32,7 @@ async function worker(env: Partial<WorkerEnv> = {}) {
     SESSION_SECRET: ctx.config.sessionSecret,
     ADMIN_EMAILS: ADMIN,
     ADMIN_ORIGIN: ORIGIN,
-    SITE_ORIGIN: "https://wiki.example.com",
+    SITE_BASE_DOMAIN: "example.com",
     INTERNAL_TOKEN: "internal-token",
     ...env,
   } as WorkerEnv;
@@ -51,21 +51,21 @@ describe("worker entry", () => {
 
     const me = await w.fetch("/api/admin/me", { headers: { cookie: w.cookie } });
     expect(me.status).toBe(200);
-    expect(await me.json()).toEqual({ email: ADMIN });
+    expect(await me.json()).toEqual({ email: ADMIN, isOwner: true });
   });
 
   it("keeps the query string and the body when stripping /api", async () => {
     const w = await worker();
-    const created = await w.fetch("/api/admin/pages", {
+    const created = await w.fetch("/api/admin/w/wiki/pages", {
       method: "POST",
       headers: { cookie: w.cookie, origin: ORIGIN, "content-type": "application/json" },
       body: JSON.stringify({ title: "デプロイの確認" }),
     });
     expect(created.status).toBe(201);
 
-    const found = await w.fetch(`/api/admin/pages?q=${encodeURIComponent("デプロイ")}`, { headers: { cookie: w.cookie } });
+    const found = await w.fetch(`/api/admin/w/wiki/pages?q=${encodeURIComponent("デプロイ")}`, { headers: { cookie: w.cookie } });
     expect(((await found.json()) as { pages: unknown[] }).pages).toHaveLength(1);
-    const missed = await w.fetch("/api/admin/pages?q=zzz", { headers: { cookie: w.cookie } });
+    const missed = await w.fetch("/api/admin/w/wiki/pages?q=zzz", { headers: { cookie: w.cookie } });
     expect(((await missed.json()) as { pages: unknown[] }).pages).toHaveLength(0);
   });
 

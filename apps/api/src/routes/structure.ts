@@ -1,5 +1,5 @@
 import { commitStructureInput, diffStructures } from "@wiki/shared";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { pages, trees } from "../db/schema";
@@ -26,9 +26,10 @@ export const structureRoutes = new Hono<AppEnv>()
   /** 現在のツリーと、ノードが参照するページの情報 */
   .get("/", async (c) => {
     const { db } = c.get("deps");
-    const branch = await getBranch(db, MAIN_BRANCH);
+    const wikiId = c.get("wiki").id;
+    const branch = await getBranch(db, wikiId, MAIN_BRANCH);
     const { state } = await loadCommit(db, branch.headCommitId);
-    const tree = await getPrimaryTree(db);
+    const tree = await getPrimaryTree(db, wikiId);
     const nodes = state.trees[tree.id]?.nodes ?? [];
     const pageIds = nodes.map((n) => n.pageId);
     const pageRows =
@@ -42,7 +43,7 @@ export const structureRoutes = new Hono<AppEnv>()
               publishedVersionId: pages.publishedVersionId,
             })
             .from(pages)
-            .where(inArray(pages.id, pageIds));
+            .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, pageIds)));
     return c.json({
       headCommitId: branch.headCommitId,
       // ツリーは1本。レスポンスの形は配列のまま保っている
@@ -53,12 +54,12 @@ export const structureRoutes = new Hono<AppEnv>()
   .post("/commits", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, commitStructureInput);
-    const result = await commitOps(db, input);
+    const result = await commitOps(db, c.get("wiki").id, input);
     return c.json({ commitId: result.commitId }, 201);
   })
   .get("/commits", async (c) => {
     const { db } = c.get("deps");
-    const branch = await getBranch(db, MAIN_BRANCH);
+    const branch = await getBranch(db, c.get("wiki").id, MAIN_BRANCH);
     const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50) || 50, 1), 200);
     return c.json({ commits: await listHistory(db, branch.headCommitId, limit) });
   })
@@ -67,7 +68,8 @@ export const structureRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const id = c.req.param("id");
     if (!/^[0-9a-f-]{36}$/.test(id)) throw notFound("commit");
-    const commit = await getCommit(db, id);
+    // 別の wiki のコミットは、無いものとして扱う
+    const { wikiId: _wikiId, ...commit } = await getCommit(db, c.get("wiki").id, id);
     const parents = await getCommitParents(db, id);
     const after = await loadCommit(db, id);
     const before = parents[0] ? (await loadCommit(db, parents[0])).state : { trees: {} };
@@ -80,15 +82,16 @@ export const structureRoutes = new Hono<AppEnv>()
 export const treeRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
-    return c.json({ trees: [await getPrimaryTree(db)] });
+    return c.json({ trees: [await getPrimaryTree(db, c.get("wiki").id)] });
   })
   /** ツリーの表示名・公開設定の変更（コミット外のメタ情報として扱う） */
   .patch("/:id", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
     const input = await parseJson(c, updateTreeInput);
     await db.transaction(async (tx) => {
-      const [tree] = await tx.select().from(trees).where(eq(trees.id, id)).for("update");
+      const [tree] = await tx.select().from(trees).where(and(eq(trees.wikiId, wikiId), eq(trees.id, id))).for("update");
       if (!tree?.isPrimary) throw notFound(`tree ${id}`);
       await tx
         .update(trees)
@@ -98,6 +101,5 @@ export const treeRoutes = new Hono<AppEnv>()
         })
         .where(eq(trees.id, id));
     });
-    const [tree] = await db.select().from(trees).where(eq(trees.id, id));
-    return c.json(tree);
+    return c.json(await getPrimaryTree(db, wikiId));
   });

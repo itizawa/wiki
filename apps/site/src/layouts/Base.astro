@@ -1,9 +1,11 @@
 ---
-import { SITE_NAME } from "../lib/manifest";
+import { siteData } from "../lib/manifest";
 import "../styles/global.css";
 import s from "./Base.module.css";
 
 interface Props {
+  /** どの wiki のページか（サイト名と canonical のオリジンが決まる） */
+  wiki: string;
   title: string;
   description?: string;
   /** 正規URL（/t/ の再掲ページは /p/ を指す） */
@@ -12,8 +14,10 @@ interface Props {
   noindex?: boolean;
 }
 
-const { title, description, canonical, noindex = false } = Astro.props;
-const canonicalUrl = canonical && Astro.site ? new URL(canonical, Astro.site).href : undefined;
+const { wiki, title, description, canonical, noindex = false } = Astro.props;
+const site = await siteData(wiki);
+const SITE_NAME = site.wiki.name;
+const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
 ---
 

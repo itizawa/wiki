@@ -7,25 +7,37 @@ import {
   type ManifestTreeNode,
   type PublicManifest,
   type TreeNode,
+  type WikiManifest,
 } from "@wiki/shared";
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { pages, pageVersions } from "../db/schema";
+import { pages, pageVersions, wikis } from "../db/schema";
 import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
 
 /**
- * 公開ビルド用マニフェスト。含めるのは
+ * 公開ビルド用マニフェスト。wiki ごとにまとめて返す（アーカイブ中の wiki は含めない）。
+ * contentHash は全 wiki の内容から作るので、どれか1つが変わると全体をビルドし直す。
+ */
+export async function buildManifest(db: Db, now = new Date()): Promise<PublicManifest> {
+  const rows = await db.select().from(wikis).where(isNull(wikis.archivedAt)).orderBy(asc(wikis.key));
+  const content: WikiManifest[] = [];
+  for (const wiki of rows) content.push(await buildWikiManifest(db, wiki));
+  return { generatedAt: now.toISOString(), contentHash: await sha256(JSON.stringify(content)), wikis: content };
+}
+
+/**
+ * 1つの wiki の公開内容。含めるのは
  * - visibility='public' かつ公開版のあるページ
  * - unlisted ページ（隠しパスのみ。idは出さない）
  * - mainのheadコミットの、公開ツリーのスナップショット（公開ページだけに絞る）
  * 下書き・予約中の版・ブランチ上の変更は一切含めない。
  */
-export async function buildManifest(db: Db, now = new Date()): Promise<PublicManifest> {
+async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promise<WikiManifest> {
   const published = await db
     .select({ page: pages, version: pageVersions })
     .from(pages)
     .innerJoin(pageVersions, eq(pageVersions.id, pages.publishedVersionId))
-    .where(and(isNull(pages.deletedAt), inArray(pages.visibility, ["public", "unlisted"])));
+    .where(and(eq(pages.wikiId, wiki.id), isNull(pages.deletedAt), inArray(pages.visibility, ["public", "unlisted"])));
 
   const publicPages: ManifestPage[] = published
     .filter((r) => r.page.visibility === "public")
@@ -53,9 +65,9 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
     }))
     .sort((a, b) => (a.key < b.key ? -1 : 1));
 
-  const main = await getBranch(db, MAIN_BRANCH);
+  const main = await getBranch(db, wiki.id, MAIN_BRANCH);
   const { state } = await loadCommit(db, main.headCommitId);
-  const tree = await getPrimaryTree(db);
+  const tree = await getPrimaryTree(db, wiki.id);
   const trees: ManifestTree[] = tree.isPublic
     ? [
         {
@@ -70,11 +82,10 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
   const goneRows = await db
     .select({ id: pages.id })
     .from(pages)
-    .where(and(isNotNull(pages.deletedAt), isNotNull(pages.firstPublishedAt)));
+    .where(and(eq(pages.wikiId, wiki.id), isNotNull(pages.deletedAt), isNotNull(pages.firstPublishedAt)));
   const gone = goneRows.map((r) => r.id).sort();
 
-  const content = { headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
-  return { generatedAt: now.toISOString(), contentHash: await sha256(JSON.stringify(content)), ...content };
+  return { key: wiki.key, name: wiki.name, headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
 }
 
 /**

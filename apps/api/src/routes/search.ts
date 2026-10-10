@@ -13,7 +13,7 @@ const like = (term: string) => `%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
 const has = (term: string) => or(ilike(pages.title, like(term)), ilike(pageVersions.bodyMd, like(term)))!;
 
 /**
- * 管理画面の検索。タイトルといまの本文（head 版）を探す。書き方は shared の parseSearchQuery。
+ * 管理画面の検索。開いている wiki の、タイトルといまの本文（head 版）を探す。書き方は shared の parseSearchQuery。
  * 語が無ければ、最近更新したページを返す（候補の一覧の初期表示に使う）。
  */
 export const searchRoutes = new Hono<AppEnv>().get("/", async (c) => {
@@ -24,7 +24,7 @@ export const searchRoutes = new Hono<AppEnv>().get("/", async (c) => {
     return c.json({ results: [] satisfies SearchResult[] });
   }
 
-  const conditions: SQL[] = [isNull(pages.deletedAt)];
+  const conditions: SQL[] = [eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt)];
   if (groups.length > 0) {
     conditions.push(or(...groups.map((g) => and(...g.all.map(has), ...g.none.map((t) => not(has(t))))!))!);
   }

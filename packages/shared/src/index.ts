@@ -13,3 +13,4 @@ export * from "./structure/validate";
 export * from "./structure/diff";
 export * from "./callout";
 export * from "./search";
+export * from "./wiki";

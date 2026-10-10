@@ -13,6 +13,7 @@ import type {
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
+  WikiSummary,
 } from "@wiki/shared";
 
 export class ApiError extends Error {
@@ -25,6 +26,23 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+/**
+ * いま開いている wiki の key。wiki の内容を扱う API（ページ・ツリー・予約・ルール）は、すべてこの wiki の経路を呼ぶ。
+ * `/w/{key}/...` の画面（WikiLayout）が、子の画面を描く前に設定する。
+ */
+let wikiKey = "";
+
+export function setApiWiki(key: string) {
+  wikiKey = key;
+}
+
+export function currentWikiKey(): string {
+  return wikiKey;
+}
+
+/** 開いている wiki の経路。 */
+const w = (path: string) => `/admin/w/${encodeURIComponent(wikiKey)}${path}`;
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -57,53 +75,58 @@ export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
-  me: () => request<{ email: string }>("GET", "/admin/me"),
-  settings: () => request<{ siteOrigin: string }>("GET", "/admin/settings"),
+  me: () => request<{ email: string; isOwner: boolean }>("GET", "/admin/me"),
+
+  listWikis: () => request<{ wikis: WikiSummary[]; baseDomain: string }>("GET", "/admin/wikis"),
+  createWiki: (input: { key: string; name: string }) => request<WikiSummary>("POST", "/admin/wikis", input),
+  renameWiki: (key: string, name: string) => request<WikiSummary>("PATCH", `/admin/wikis/${key}`, { name }),
+  archiveWiki: (key: string) => request<WikiSummary>("POST", `/admin/wikis/${key}/archive`),
+  unarchiveWiki: (key: string) => request<WikiSummary>("POST", `/admin/wikis/${key}/unarchive`),
 
   listPages: (q?: string) =>
-    request<{ pages: PageSummary[] }>("GET", `/admin/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+    request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
-  search: (q: string) => request<{ results: SearchResult[] }>("GET", `/admin/search?q=${encodeURIComponent(q)}`),
-  createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", "/admin/pages", input),
-  getPage: (id: string) => request<PageDetail>("GET", `/admin/pages/${id}`),
+  search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
+  createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", w("/pages"), input),
+  getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
-    request<PageDetail>("PUT", `/admin/pages/${id}`, input),
-  deletePage: (id: string) => request<{ ok: true }>("DELETE", `/admin/pages/${id}`),
-  listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", `/admin/pages/${id}/versions`),
-  getVersion: (id: string, versionId: string) => request<PageVersion>("GET", `/admin/pages/${id}/versions/${versionId}`),
+    request<PageDetail>("PUT", w(`/pages/${id}`), input),
+  deletePage: (id: string) => request<{ ok: true }>("DELETE", w(`/pages/${id}`)),
+  listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
+  getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
-  setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", `/admin/pages/${id}/workflow`, input),
-  reviewDone: (id: string) => request<PageDetail>("POST", `/admin/pages/${id}/review-done`),
+  setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", w(`/pages/${id}/workflow`), input),
+  reviewDone: (id: string) => request<PageDetail>("POST", w(`/pages/${id}/review-done`)),
 
   publish: (id: string, input: { versionId: string; visibility: PublishVisibility }) =>
-    request<{ ok: true }>("POST", `/admin/pages/${id}/publish`, input),
-  unpublish: (id: string) => request<{ ok: true }>("POST", `/admin/pages/${id}/unpublish`),
-  rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", `/admin/pages/${id}/unlisted-key`),
+    request<{ ok: true }>("POST", w(`/pages/${id}/publish`), input),
+  unpublish: (id: string) => request<{ ok: true }>("POST", w(`/pages/${id}/unpublish`)),
+  rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", w(`/pages/${id}/unlisted-key`)),
 
   listSchedule: (params: { from?: string; to?: string; pageId?: string; status?: string } = {}) => {
     const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
-    return request<{ actions: ScheduledAction[] }>("GET", `/admin/schedule${q.size ? `?${q}` : ""}`);
+    return request<{ actions: ScheduledAction[] }>("GET", w(`/schedule${q.size ? `?${q}` : ""}`));
   },
   createSchedule: (
     input:
       | { actionType: "publish_page"; pageId: string; versionId: string; targetVisibility: PublishVisibility; runAt: string; batchId?: string }
       | { actionType: "unpublish_page"; pageId: string; runAt: string; batchId?: string },
-  ) => request<ScheduledAction>("POST", "/admin/schedule", input),
-  reschedule: (id: string, runAt: string) => request<ScheduledAction>("PATCH", `/admin/schedule/${id}`, { runAt }),
-  cancelSchedule: (id: string) => request<ScheduledAction>("POST", `/admin/schedule/${id}/cancel`),
+  ) => request<ScheduledAction>("POST", w("/schedule"), input),
+  reschedule: (id: string, runAt: string) => request<ScheduledAction>("PATCH", w(`/schedule/${id}`), { runAt }),
+  cancelSchedule: (id: string) => request<ScheduledAction>("POST", w(`/schedule/${id}/cancel`)),
 
-  listRules: () => request<{ rules: Rule[] }>("GET", "/admin/rules"),
-  saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", `/admin/rules/${id}`, input),
-  listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", "/admin/rules/runs"),
+  listRules: () => request<{ rules: Rule[] }>("GET", w("/rules")),
+  saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", w(`/rules/${id}`), input),
+  listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", w("/rules/runs")),
 
-  structure: () => request<StructureResponse>("GET", "/admin/structure"),
+  structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
-    request<{ commitId: string }>("POST", "/admin/structure/commits", input),
-  history: () => request<{ commits: CommitListItem[] }>("GET", "/admin/structure/commits"),
+    request<{ commitId: string }>("POST", w("/structure/commits"), input),
+  history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
   commitDetail: (id: string) =>
-    request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", `/admin/structure/commits/${id}`),
+    request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
   updateTree: (id: string, input: { name?: string; isPublic?: boolean }) =>
-    request<TreeMeta>("PATCH", `/admin/trees/${id}`, input),
+    request<TreeMeta>("PATCH", w(`/trees/${id}`), input),
 };
 
 export function errorMessage(err: unknown): string {
@@ -119,6 +142,12 @@ export function errorMessage(err: unknown): string {
         return "過去の日時は指定できません。";
       case "not_scheduled":
         return "実行中または実行済みのため変更できません。";
+      case "wiki_key_taken":
+        return "この key はすでに使われています（アーカイブ中の wiki を含みます）。別の key を入力してください。";
+      case "wiki_not_found":
+        return "この wiki は見つかりません。アーカイブされたか、URL が違います。";
+      case "owner_only":
+        return "wiki の作成・アーカイブは、オーナーだけが行えます。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
       default:

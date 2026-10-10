@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { setup } from "./harness";
+import { setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -8,13 +8,13 @@ afterEach(async () => {
 });
 
 async function newPage(title: string, bodyMd = ""): Promise<string> {
-  const res = await ctx.call("POST", "/admin/pages", { title, bodyMd });
+  const res = await ctx.call("POST", `${W}/pages`, { title, bodyMd });
   expect(res.status).toBe(201);
   return res.body.id;
 }
 
 const search = async (q: string) => {
-  const res = await ctx.call("GET", `/admin/search?q=${encodeURIComponent(q)}`);
+  const res = await ctx.call("GET", `${W}/search?q=${encodeURIComponent(q)}`);
   expect(res.status).toBe(200);
   return res.body.results as { id: string; title: string; snippet: string | null }[];
 };
@@ -60,12 +60,12 @@ describe("search", () => {
   it("searches the current body only, and skips deleted pages", async () => {
     ctx = await setup();
     const id = await newPage("書き直し", "古い言葉");
-    const page = (await ctx.call("GET", `/admin/pages/${id}`)).body;
-    await ctx.call("PUT", `/admin/pages/${id}`, { baseVersionId: page.headVersionId, title: "書き直し", bodyMd: "新しい言葉" });
+    const page = (await ctx.call("GET", `${W}/pages/${id}`)).body;
+    await ctx.call("PUT", `${W}/pages/${id}`, { baseVersionId: page.headVersionId, title: "書き直し", bodyMd: "新しい言葉" });
     expect(await titles("古い言葉")).toEqual([]);
     expect(await titles("新しい言葉")).toEqual(["書き直し"]);
 
-    await ctx.call("DELETE", `/admin/pages/${id}`);
+    await ctx.call("DELETE", `${W}/pages/${id}`);
     expect(await titles("新しい言葉")).toEqual([]);
   });
 
@@ -78,8 +78,20 @@ describe("search", () => {
     expect(results.every((r) => r.snippet === null)).toBe(true);
   });
 
+  it("searches the open wiki only", async () => {
+    ctx = await setup();
+    await newPage("こちらの手順", "共通の言葉");
+    expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" })).status).toBe(201);
+    expect((await ctx.call("POST", "/admin/w/notes/pages", { title: "ノートの手順", bodyMd: "共通の言葉" })).status).toBe(201);
+
+    expect(await titles("共通の言葉")).toEqual(["こちらの手順"]);
+    expect((await search("")).map((r) => r.title)).toEqual(["こちらの手順"]);
+    const notes = await ctx.call("GET", `/admin/w/notes/search?q=${encodeURIComponent("共通の言葉")}`);
+    expect(notes.body.results.map((r: { title: string }) => r.title)).toEqual(["ノートの手順"]);
+  });
+
   it("requires a session", async () => {
     ctx = await setup();
-    expect((await ctx.app.request("/admin/search?q=x")).status).toBe(401);
+    expect((await ctx.app.request(`${W}/search?q=x`)).status).toBe(401);
   });
 });

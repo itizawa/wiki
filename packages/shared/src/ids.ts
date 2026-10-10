@@ -9,6 +9,9 @@ export const newPageId = customAlphabet(alnum, 10);
 const treeSuffix = customAlphabet(alnum, 10);
 export const newTreeId = () => `t_${treeSuffix()}`;
 
+/** wiki の ID。 */
+export const newWikiId = () => `w_${treeSuffix()}`;
+
 /** 限定公開URL用キー。128bit以上の推測不能な値（base64url、22文字=132bit）。 */
 export function newUnlistedKey(): string {
   const bytes = new Uint8Array(17);

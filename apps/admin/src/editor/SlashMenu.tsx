@@ -1,3 +1,4 @@
+import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import DataObjectIcon from "@mui/icons-material/DataObject";
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
@@ -10,7 +11,8 @@ import TitleIcon from "@mui/icons-material/Title";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ImageDialog, insertImage } from "./LinkForm";
 import { createTrigger, TriggerMenu, useTriggerMatch, type FindTrigger } from "./trigger";
 
 /** 行頭か空白の直後の「/」から、カーソルまで（空白を含まない）。 */
@@ -27,7 +29,7 @@ type Block = {
   /** ラベル以外に、絞り込みで当たる語（英語名やMarkdownの記法） */
   keywords: string[];
   icon: ReactNode;
-  run: (editor: Editor) => void;
+  run: (editor: Editor, ui: { openImageDialog: () => void }) => void;
 };
 
 const chain = (editor: Editor) => editor.chain().focus();
@@ -48,16 +50,13 @@ const blocks: Block[] = [
   { id: "quote", label: "引用", keywords: ["quote", "blockquote", ">"], icon: <FormatQuoteIcon fontSize="small" />, run: (e) => chain(e).setBlockquote().run() },
   { id: "code", label: "コードブロック", keywords: ["code", "pre", "```"], icon: <DataObjectIcon fontSize="small" />, run: (e) => chain(e).setCodeBlock().run() },
   { id: "table", label: "表", keywords: ["table", "hyou"], icon: <TableChartOutlinedIcon fontSize="small" />, run: (e) => chain(e).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+  { id: "image", label: "画像…", keywords: ["image", "img", "picture", "gazou"], icon: <ImageOutlinedIcon fontSize="small" />, run: (_e, ui) => ui.openImageDialog() },
   {
-    id: "image",
-    label: "画像",
-    keywords: ["image", "img", "picture", "gazou"],
-    icon: <ImageOutlinedIcon fontSize="small" />,
-    run: (e) => {
-      const src = prompt("画像のURL");
-      if (src?.trim()) chain(e).setImage({ src: src.trim() }).run();
-      else e.commands.focus();
-    },
+    id: "callout",
+    label: "コールアウト（目立たせる注意書き）",
+    keywords: ["callout", "note", "tip", "warning", "memo", "chuui"],
+    icon: <CampaignOutlinedIcon fontSize="small" />,
+    run: (e) => chain(e).setBlockquote().setCalloutType("note").run(),
   },
   { id: "hr", label: "区切り線", keywords: ["hr", "divider", "line", "---"], icon: <HorizontalRuleIcon fontSize="small" />, run: (e) => chain(e).setHorizontalRule().run() },
 ];
@@ -72,26 +71,40 @@ export function filterBlocks(query: string): string[] {
 export function SlashMenu({ editor }: { editor: Editor }) {
   const match = useTriggerMatch(editor, slashTrigger);
   const ids = filterBlocks(match?.query ?? "");
+  const [imageOpen, setImageOpen] = useState(false);
   return (
-    <TriggerMenu
-      editor={editor}
-      trigger={slashTrigger}
-      match={match}
-      items={blocks.filter((b) => ids.includes(b.id))}
-      itemKey={(b) => b.id}
-      label="ブロックを挿入"
-      emptyText={`「${match?.query ?? ""}」に当たるブロックはありません。`}
-      renderItem={(b) => (
-        <>
-          <ListItemIcon>{b.icon}</ListItemIcon>
-          <ListItemText>{b.label}</ListItemText>
-        </>
-      )}
-      onChoose={(b, range) => {
-        // 打ち込んだ「/…」を消してから、その行をブロックに変える
-        editor.chain().focus().deleteRange(range).run();
-        b.run(editor);
-      }}
-    />
+    <>
+      <TriggerMenu
+        editor={editor}
+        trigger={slashTrigger}
+        match={match}
+        items={blocks.filter((b) => ids.includes(b.id))}
+        itemKey={(b) => b.id}
+        label="ブロックを挿入"
+        emptyText={`「${match?.query ?? ""}」に当たるブロックはありません。`}
+        renderItem={(b) => (
+          <>
+            <ListItemIcon>{b.icon}</ListItemIcon>
+            <ListItemText>{b.label}</ListItemText>
+          </>
+        )}
+        onChoose={(b, range) => {
+          // 打ち込んだ「/…」を消してから、その行をブロックに変える
+          editor.chain().focus().deleteRange(range).run();
+          b.run(editor, { openImageDialog: () => setImageOpen(true) });
+        }}
+      />
+      <ImageDialog
+        open={imageOpen}
+        onSubmit={(image) => {
+          setImageOpen(false);
+          insertImage(editor, image);
+        }}
+        onClose={() => {
+          setImageOpen(false);
+          editor.commands.focus();
+        }}
+      />
+    </>
   );
 }

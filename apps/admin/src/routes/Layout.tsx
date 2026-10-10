@@ -1,65 +1,38 @@
-import MenuIcon from "@mui/icons-material/Menu";
+import AddIcon from "@mui/icons-material/Add";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
-import Drawer from "@mui/material/Drawer";
-import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
-import { Tooltip } from "../components/Tooltip";
 import Typography from "@mui/material/Typography";
-import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Outlet } from "@tanstack/react-router";
-import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
-import { CommandMenu } from "../components/CommandMenu";
+import { createLink, Navigate, Outlet } from "@tanstack/react-router";
+import { createContext, useContext, type ReactNode } from "react";
 import { Muted, Section } from "../components/ui";
-import { ShortcutGuide } from "../components/ShortcutGuide";
-import { api, ApiError } from "../lib/api";
-import { usePersistentState } from "../lib/storage";
+import { api, ApiError, errorMessage } from "../lib/api";
+import { lastWikiKey, pickWiki } from "../lib/wiki";
 
-export function Layout() {
+/** ログイン中の人と、ログアウトの操作。ログインの確認が済んだ画面（Root の下）で使える。 */
+export type Session = { email: string; isOwner: boolean; logout: () => void };
+const SessionContext = createContext<Session | null>(null);
+
+export function useSession(): Session {
+  const value = useContext(SessionContext);
+  if (!value) throw new Error("useSession must be used after login");
+  return value;
+}
+
+/** wiki の一覧（切り替え・管理の画面で共有する）。 */
+export function useWikis() {
+  return useQuery({ queryKey: ["wikis"], queryFn: api.listWikis });
+}
+
+/** すべての画面の入口：ログインを確かめ、済んでいれば中の画面を出す。 */
+export function Root() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
-  const [sidebarWidth, setSidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
   const qc = useQueryClient();
-  const wide = useMediaQuery((t) => t.breakpoints.up("md"));
-  const [open, setOpen] = usePersistentState("wiki.sidebar.open", true);
 
-  // ⌘. / Ctrl+. でサイドバーを開閉する（狭い画面では、重ねて出すほうを開閉する）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key !== ".") return;
-      e.preventDefault();
-      if (wide) setOpen(!open);
-      else setDrawer((v) => !v);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [wide, open, setOpen]);
-  const [drawer, setDrawer] = useState(false);
-  const [commandOpen, setCommandOpen] = useState(false);
-
-  // ⌘K / Ctrl+K でコマンドメニューを開閉する
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setCommandOpen((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  if (me.isPending) {
-    return (
-      <Center>
-        <CircularProgress aria-label="読み込み中" />
-      </Center>
-    );
-  }
+  if (me.isPending) return <Loading />;
   if (me.error instanceof ApiError && (me.error.status === 401 || me.error.status === 403)) {
     return <Login forbidden={me.error.status === 403} />;
   }
@@ -78,47 +51,66 @@ export function Layout() {
   };
 
   return (
-    <Box
-      style={{ "--sidebar-width": `${wide ? clampSidebarWidth(sidebarWidth) : SIDEBAR_WIDTH}px` } as CSSProperties}
-      sx={{ position: "relative", display: "flex", height: "100vh", bgcolor: "background.paper" }}
-    >
-      {wide && open && <SidebarResizer value={clampSidebarWidth(sidebarWidth)} defaultValue={SIDEBAR_WIDTH} onChange={setSidebarWidth} />}
-      {wide && open ? (
-        <Box sx={{ flexShrink: 0, borderRight: 1, borderColor: "divider" }}>
-          <Sidebar email={me.data.email} onCollapse={() => setOpen(false)} onOpenCommands={() => setCommandOpen(true)} onLogout={logout} />
-        </Box>
-      ) : (
-        <Box sx={{ flexShrink: 0, width: 44, pt: 1.25, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
-          <Tooltip title="サイドバーを開く (⌘.)" placement="right">
-            <IconButton size="small" aria-label="サイドバーを開く" onClick={() => (wide ? setOpen(true) : setDrawer(true))}>
-              <MenuIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      )}
-      {/* 狭い画面では、サイドバーを本文に重ねて出す */}
-      <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
-        <Sidebar
-          email={me.data.email}
-          onNavigate={() => setDrawer(false)}
-          onOpenCommands={() => {
-            setDrawer(false);
-            setCommandOpen(true);
-          }}
-          onLogout={logout}
-        />
-      </Drawer>
-      <ShortcutGuide />
-      <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
-        <Outlet />
-      </Box>
-      <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} onToggleSidebar={wide ? () => setOpen(!open) : undefined} onLogout={logout} />
-    </Box>
+    <SessionContext.Provider value={{ ...me.data, logout }}>
+      <Outlet />
+    </SessionContext.Provider>
   );
 }
 
-function Center({ children }: { children: ReactNode }) {
-  return <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>{children}</Box>;
+const ButtonLink = createLink(Button);
+
+/** `/`：最後に開いていた wiki へ移す。使用中の wiki が1つも無ければ「wiki を作成する」だけを出す。 */
+export function Home() {
+  const session = useSession();
+  const wikis = useWikis();
+
+  if (wikis.isPending) return <Loading />;
+  if (wikis.error) {
+    return (
+      <Center>
+        <Alert severity="error">{errorMessage(wikis.error)}</Alert>
+      </Center>
+    );
+  }
+  const wiki = pickWiki(wikis.data.wikis, lastWikiKey());
+  if (wiki) return <Navigate to="/w/$wikiKey" params={{ wikiKey: wiki.key }} replace />;
+
+  return (
+    <Center>
+      <Section sx={{ maxWidth: 420, textAlign: "center" }}>
+        <Stack spacing={1.5} sx={{ alignItems: "center" }}>
+          <Typography variant="h5" component="h1">
+            使用中の wiki がありません
+          </Typography>
+          {session.isOwner ? (
+            <>
+              <Muted>wiki を作ると、ページを書いて公開できるようになります。アーカイブした wiki は、作成の画面から元に戻せます。</Muted>
+              <ButtonLink to="/wikis" variant="contained" size="medium" startIcon={<AddIcon />}>
+                wiki を作成する
+              </ButtonLink>
+            </>
+          ) : (
+            <Muted>wiki を作れるのはオーナーだけです。オーナーに、wiki の作成を頼んでください。</Muted>
+          )}
+          <Button variant="text" onClick={session.logout}>
+            ログアウトする
+          </Button>
+        </Stack>
+      </Section>
+    </Center>
+  );
+}
+
+export function Loading() {
+  return (
+    <Center>
+      <CircularProgress aria-label="読み込み中" />
+    </Center>
+  );
+}
+
+export function Center({ children }: { children: ReactNode }) {
+  return <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>{children}</Box>;
 }
 
 function Login({ forbidden }: { forbidden: boolean }) {
