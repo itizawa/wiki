@@ -28,11 +28,12 @@ import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
 import { highlightSx } from "./highlight";
 import { OUTLINE_SCROLL_MARGIN } from "./Outline";
+import { EmojiMenu, emojiTrigger } from "./EmojiMenu";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
 import { TitleBridge } from "./titleBridge";
 
-const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
+const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, emojiTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
 
 /**
  * 本文の見た目（見出し・リスト・引用・コールアウト・コード・トグル・表・画像）。
@@ -160,6 +161,7 @@ export function MarkdownEditor(props: {
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
       <SlashMenu editor={editor} />
+      <EmojiMenu editor={editor} />
       <Box
         sx={{
           // 浮かぶメニューの位置の基準

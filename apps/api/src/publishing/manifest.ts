@@ -45,6 +45,7 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
       id: page.id,
       path: pagePath(page.id),
       title: version.title,
+      icon: page.icon,
       bodyMd: version.bodyMd,
       firstPublishedAt: (page.firstPublishedAt ?? version.createdAt).toISOString(),
       revisedAt: version.createdAt.toISOString(),
@@ -60,6 +61,7 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
       key: page.unlistedKey!,
       path: unlistedPath(page.unlistedKey!),
       title: version.title,
+      icon: page.icon,
       bodyMd: version.bodyMd,
       revisedAt: version.createdAt.toISOString(),
     }))

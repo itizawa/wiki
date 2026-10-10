@@ -2,6 +2,7 @@ import { AllSelection, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { Editor } from "@tiptap/react";
 import { describe, expect, it } from "vitest";
 import { editorExtensions } from "./extensions";
+import { emojiTrigger } from "./EmojiMenu";
 import { mentionTrigger } from "./PageMention";
 import { slashTrigger } from "./SlashMenu";
 import { enterBodyFromTitle, TitleBridge } from "./titleBridge";
@@ -31,6 +32,7 @@ function setup(md: string) {
       ...editorExtensions,
       slashTrigger.extension,
       mentionTrigger.extension,
+      emojiTrigger.extension,
       TitleBridge.configure({
         onLeaveTop: () => {
           state.left += 1;
@@ -212,7 +214,7 @@ describe("本文の先頭からタイトルへ出る", () => {
       }
       return state.left > 0;
     });
-    for (const trigger of [slashTrigger, mentionTrigger]) {
+    for (const trigger of [slashTrigger, mentionTrigger, emojiTrigger]) {
       const menu = plugins.findIndex((plugin) => plugin.spec.key === trigger.key);
       expect(menu).toBeGreaterThanOrEqual(0);
       expect(menu).toBeLessThan(bridge);
