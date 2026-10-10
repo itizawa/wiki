@@ -37,6 +37,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
+import { highlightSx } from "./highlight";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
 
@@ -114,6 +115,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               borderRadius: 1,
               overflow: "auto",
               "& code": { bgcolor: "transparent", p: 0, fontSize: "0.875rem" },
+              ...highlightSx,
             },
             // トグル（@tiptap/extension-details の部品）。左の三角で開閉する
             "& [data-type='details']": { display: "flex", alignItems: "flex-start", gap: 0.5, my: 1 },
