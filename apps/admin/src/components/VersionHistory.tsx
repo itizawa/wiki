@@ -126,6 +126,7 @@ export function VersionHistory(props: {
                 {formatDateTime(v.createdAt)}
                 {v.id === props.headVersionId && <StatusChip label="最新" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
+                {v.via && <StatusChip label={`${v.via} 経由`} size="small" />}
               </ListItemButton>
             ))}
           </List>

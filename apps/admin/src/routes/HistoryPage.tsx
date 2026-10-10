@@ -36,6 +36,7 @@ export function HistoryPage() {
                     <span>{c.message ?? "(no message)"}</span>
                     {i === 0 && <StatusChip label="head" />}
                     {c.authorType === "ai" && <StatusChip label="AI" />}
+                    {c.via && <StatusChip label={`${c.via} 経由`} />}
                     {c.parentIds.length > 1 && <StatusChip label="merge" />}
                   </Row>
                 }

@@ -9,9 +9,15 @@ export async function recordPublishEvent(
   db: Db,
   wikiId: string,
   kind: string,
-  refs: { pageId?: string; scheduledActionId?: string } = {},
+  refs: { pageId?: string; scheduledActionId?: string; oauthGrantId?: string } = {},
 ): Promise<void> {
-  await db.insert(publishEvents).values({ wikiId, kind, pageId: refs.pageId, scheduledActionId: refs.scheduledActionId });
+  await db.insert(publishEvents).values({
+    wikiId,
+    kind,
+    pageId: refs.pageId,
+    scheduledActionId: refs.scheduledActionId,
+    oauthGrantId: refs.oauthGrantId,
+  });
 }
 
 /** 指定の wiki のページだけを返す（別の wiki のページ ID は、無いものとして扱う）。 */
@@ -43,6 +49,8 @@ export async function publishPage(
     applyToDescendants?: boolean;
     publishedAt?: Date;
     scheduledActionId?: string;
+    /** 外部のアプリ（MCP）からの操作なら、その許可 */
+    oauthGrantId?: string;
   },
 ): Promise<void> {
   const page = await lockLivePage(db, input.wikiId, input.pageId);
@@ -68,7 +76,11 @@ export async function publishPage(
       updatedAt: new Date(),
     })
     .where(eq(pages.id, input.pageId));
-  await recordPublishEvent(db, input.wikiId, "publish", { pageId: input.pageId, scheduledActionId: input.scheduledActionId });
+  await recordPublishEvent(db, input.wikiId, "publish", {
+    pageId: input.pageId,
+    scheduledActionId: input.scheduledActionId,
+    oauthGrantId: input.oauthGrantId,
+  });
   if (input.applyToDescendants) {
     for (const d of descendants.values()) {
       if (d.publishedVersionId === null || d.visibility === "private" || d.visibility === input.visibility) continue;
@@ -81,7 +93,11 @@ export async function publishPage(
           updatedAt: new Date(),
         })
         .where(eq(pages.id, d.id));
-      await recordPublishEvent(db, input.wikiId, "publish", { pageId: d.id, scheduledActionId: input.scheduledActionId });
+      await recordPublishEvent(db, input.wikiId, "publish", {
+        pageId: d.id,
+        scheduledActionId: input.scheduledActionId,
+        oauthGrantId: input.oauthGrantId,
+      });
     }
   }
 }
@@ -94,7 +110,7 @@ export async function unpublishPage(
   db: Db,
   wikiId: string,
   pageId: string,
-  options: { scheduledActionId?: string; applyToDescendants?: boolean } = {},
+  options: { scheduledActionId?: string; applyToDescendants?: boolean; oauthGrantId?: string } = {},
 ): Promise<void> {
   const page = await lockLivePage(db, wikiId, pageId);
   const index = await loadTreeIndex(db, wikiId);
@@ -106,7 +122,11 @@ export async function unpublishPage(
       .update(pages)
       .set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() })
       .where(eq(pages.id, id));
-    await recordPublishEvent(db, wikiId, "unpublish", { pageId: id, scheduledActionId: options.scheduledActionId });
+    await recordPublishEvent(db, wikiId, "unpublish", {
+      pageId: id,
+      scheduledActionId: options.scheduledActionId,
+      oauthGrantId: options.oauthGrantId,
+    });
   }
 }
 

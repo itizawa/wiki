@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Search, Settings, Star, Workflow } from "lucide-react";
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, Star, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -300,7 +300,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
           </MenuItemLink>
         ))}
-        {isOwner && <Divider />}
+        <Divider />
         {isOwner && (
           <MenuItemLink to="/wikis" onClick={close}>
             <ListItemIcon>
@@ -309,6 +309,12 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
           </MenuItemLink>
         )}
+        <MenuItemLink to="/connections" onClick={close}>
+          <ListItemIcon>
+            <Puzzle size={18} />
+          </ListItemIcon>
+          <ListItemText>外部アプリ連携（MCP）</ListItemText>
+        </MenuItemLink>
       </Menu>
     </>
   );

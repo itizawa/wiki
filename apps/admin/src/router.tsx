@@ -3,6 +3,8 @@ import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
 import { CalendarPage } from "./routes/CalendarPage";
+import { ConnectionsPage } from "./routes/ConnectionsPage";
+import { ConsentPage } from "./routes/ConsentPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { PagesPage } from "./routes/PagesPage";
@@ -29,6 +31,9 @@ const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", comp
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: Home });
 // wiki の一覧・作成・アーカイブ（オーナーだけ）。wiki が1つも無くても開けるよう、/w/ の外に置く
 const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
+// 外部のアプリ（MCP）：接続の依頼への同意と、与えた許可の一覧。wiki をまたぐので /w/ の外に置く
+const consentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/consent", component: ConsentPage });
+const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/connections", component: padded(ConnectionsPage) });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -101,6 +106,8 @@ const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
   wikisRoute,
+  consentRoute,
+  connectionsRoute,
   wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
