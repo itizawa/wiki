@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TrashedPage } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
-import { Muted, RouterLink, Row, Section } from "../components/ui";
+import { Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
@@ -84,7 +84,8 @@ export function TrashPage() {
       </Section>
 
       {trash.error && <Alert severity="error">{errorMessage(trash.error)}</Alert>}
-      {trash.isPending && <Muted>読み込み中…</Muted>}
+      {/* ゴミ箱の行のカード（タイトル + 削除した日時）の形 */}
+      {trash.isPending && [0, 1].map((i) => <SkeletonSection key={i} lines={1} />)}
       {trash.data && rows.length === 0 && (
         <Section>
           <Typography component="p" sx={{ fontWeight: 600 }}>
