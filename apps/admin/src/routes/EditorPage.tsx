@@ -36,8 +36,12 @@ import { TemplatePicker } from "./TemplatePicker";
 
 type Draft = { title: string; bodyMd: string };
 
-/** 本文の右に目次を置ける、本文の列の幅。これより狭いときは、ヘッダーのボタンから目次を開く。 */
-const SIDE_OUTLINE = "@container (min-width: 1100px)";
+/**
+ * 本文の右に目次を置ける、本文の列の幅。これより狭いときは、ヘッダーのボタンから目次を開く。
+ * 900px なら、目次（200px）と間と右の余白を除いても本文に約 640px 残り（左右の余白を除いて約 570px）、読みにくくならない。
+ * サイドバーを開いたふつうのノート PC（画面の幅 1280px 前後）でも右に出る
+ */
+const SIDE_OUTLINE = "@container (min-width: 900px)";
 
 /** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
 const UNTITLED = "無題";
