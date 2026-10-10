@@ -34,6 +34,9 @@ check(!intro.includes("zzzzzzzzz9"), "links to non-public pages become plain tex
 const notes = await read("p/aaaaaaaaa2.html");
 check(notes.includes("広告を含みます") && notes.includes('rel="sponsored noopener"'), "monetized pages show the ad notice and sponsored links");
 
+check(notes.includes("このページにリンクしているページ") && !intro.includes("このページにリンクしているページ"), "backlinks are listed only on pages that are linked from another public page");
+check(!unlisted.includes("このページにリンクしているページ"), "unlisted page shows no backlinks");
+
 check(JSON.parse(await read("page-routes.json")).canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check((await read("_headers")).includes("X-Robots-Tag: noindex"), "_headers marks /u/ noindex");
 check(JSON.parse(await read("page-routes.json")).gone.includes("ggggggggg1"), "page-routes.json lists gone pages");

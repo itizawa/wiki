@@ -11,7 +11,7 @@ export type RenderOptions = {
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const INTERNAL = /^(?:https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
+export const INTERNAL = /^(?:https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
 
 export type Heading = { id: string; depth: number; text: string };
 
