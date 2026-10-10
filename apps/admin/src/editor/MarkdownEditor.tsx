@@ -24,7 +24,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { Placeholder } from "@tiptap/extensions";
-import { ImageDialog, LinkForm } from "./LinkForm";
+import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -318,8 +318,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
         open={imageOpen}
         onSubmit={(image) => {
           setImageOpen(false);
-          // 画像の下に空行を足してカーソルを置く（画像が選択されたままだと、次に打った文字で画像が置き換わるため）
-          chain().insertContent([{ type: "image", attrs: image }, { type: "paragraph" }]).run();
+          insertImage(editor, image);
         }}
         onClose={() => {
           setImageOpen(false);
