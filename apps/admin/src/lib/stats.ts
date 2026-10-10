@@ -1,0 +1,22 @@
+/** 日本語の文章を黙読する速さの目安（1分あたりの文字数）。 */
+const CHARS_PER_MINUTE = 500;
+
+export type TextStats = { chars: number; minutes: number };
+
+/**
+ * 本文（Markdown）の文字数と、読むのにかかる時間の目安。
+ * 記法の記号・リンク先のURL・空白は数えない。
+ */
+export function textStats(md: string): TextStats {
+  const text = md
+    .replace(/^```.*$/gm, "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s*(?:#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/^\s*\[[ xX]\]\s+/gm, "")
+    .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-*:?\s*$/gm, "")
+    .replace(/[*_~`|]/g, "")
+    .replace(/\s+/g, "");
+  const chars = [...text].length;
+  return { chars, minutes: chars === 0 ? 0 : Math.max(1, Math.round(chars / CHARS_PER_MINUTE)) };
+}

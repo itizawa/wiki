@@ -1,0 +1,25 @@
+import { describe, expect, it } from "vitest";
+import { filterBlocks, findSlash } from "./SlashMenu";
+
+describe("「/」メニュー", () => {
+  it("行頭と空白の直後の「/」で始まる", () => {
+    expect(findSlash("/")).toEqual({ index: 0, query: "" });
+    expect(findSlash("/tab")).toEqual({ index: 0, query: "tab" });
+    expect(findSlash("本文 /見出")).toEqual({ index: 3, query: "見出" });
+  });
+
+  it("URLや分数のような、文字に続く「/」では始まらない", () => {
+    expect(findSlash("https://example.com/a")).toBeNull();
+    expect(findSlash("1/2")).toBeNull();
+    expect(findSlash("/表 ")).toBeNull();
+  });
+
+  it("日本語の名前でも、英語名やMarkdownの記法でも絞り込める", () => {
+    expect(filterBlocks("")).toHaveLength(11);
+    expect(filterBlocks("見出し")).toEqual(["h1", "h2", "h3"]);
+    expect(filterBlocks("table")).toEqual(["table"]);
+    expect(filterBlocks("TODO")).toEqual(["task"]);
+    expect(filterBlocks("##")).toEqual(["h2", "h3"]);
+    expect(filterBlocks("zzz")).toEqual([]);
+  });
+});

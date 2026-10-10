@@ -14,6 +14,7 @@ import { Outlet } from "@tanstack/react-router";
 import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
+import { CommandMenu } from "../components/CommandMenu";
 import { Muted, Section } from "../components/ui";
 import { api, ApiError } from "../lib/api";
 import { usePersistentState } from "../lib/storage";
@@ -37,6 +38,19 @@ export function Layout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [wide, open, setOpen]);
   const [drawer, setDrawer] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  // ⌘K / Ctrl+K でコマンドメニューを開閉する
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (me.isPending) {
     return (
@@ -70,7 +84,7 @@ export function Layout() {
       {wide && open && <SidebarResizer value={clampSidebarWidth(sidebarWidth)} defaultValue={SIDEBAR_WIDTH} onChange={setSidebarWidth} />}
       {wide && open ? (
         <Box sx={{ flexShrink: 0, borderRight: 1, borderColor: "divider" }}>
-          <Sidebar email={me.data.email} onCollapse={() => setOpen(false)} onLogout={logout} />
+          <Sidebar email={me.data.email} onCollapse={() => setOpen(false)} onOpenCommands={() => setCommandOpen(true)} onLogout={logout} />
         </Box>
       ) : (
         <Box sx={{ flexShrink: 0, width: 44, pt: 1.25, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
@@ -83,11 +97,20 @@ export function Layout() {
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す */}
       <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
-        <Sidebar email={me.data.email} onNavigate={() => setDrawer(false)} onLogout={logout} />
+        <Sidebar
+          email={me.data.email}
+          onNavigate={() => setDrawer(false)}
+          onOpenCommands={() => {
+            setDrawer(false);
+            setCommandOpen(true);
+          }}
+          onLogout={logout}
+        />
       </Drawer>
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
+      <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} onToggleSidebar={wide ? () => setOpen(!open) : undefined} onLogout={logout} />
     </Box>
   );
 }

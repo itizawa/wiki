@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, renderMarkdown } from "./markdown";
+import { excerpt, headingId, renderArticle, renderMarkdown } from "./markdown";
 
 const publicPaths = new Map([["abcdefghij", "/p/abcdefghij"]]);
 
@@ -20,6 +20,26 @@ describe("renderMarkdown", () => {
   it("marks external links as sponsored on monetized pages", () => {
     expect(renderMarkdown("[shop](https://example.com)", { publicPaths, sponsored: true })).toContain('rel="sponsored noopener"');
     expect(renderMarkdown("[shop](https://example.com)", { publicPaths })).toContain('rel="noopener"');
+  });
+});
+
+describe("renderArticle", () => {
+  it("gives headings ids and lists them in order, up to depth 4", () => {
+    const { html, headings } = renderArticle("# はじめに\n\n## 使い *方*\n\n##### 深い\n\n## 使い方", { publicPaths });
+    expect(headings).toEqual([
+      { id: "はじめに", depth: 1, text: "はじめに" },
+      { id: "使い-方", depth: 2, text: "使い 方" },
+      { id: "使い方", depth: 2, text: "使い方" },
+    ]);
+    expect(html).toContain('<h2 id="使い-方">使い <em>方</em></h2>');
+    expect(html).toContain('<h5 id="深い">');
+  });
+
+  it("keeps ids unique and never empty", () => {
+    const used = new Set<string>();
+    expect(headingId("Q&A（よくある質問）", used)).toBe("qaよくある質問");
+    expect(headingId("Q&A（よくある質問）", used)).toBe("qaよくある質問-2");
+    expect(headingId("！？", used)).toBe("section");
   });
 });
 

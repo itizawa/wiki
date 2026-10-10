@@ -28,9 +28,12 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
+import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
+import { mentionTrigger, PageMention } from "./PageMention";
+import { SlashMenu, slashTrigger } from "./SlashMenu";
 
-const extensions = [...editorExtensions, Placeholder.configure({ placeholder: "本文を書く…" })];
+const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
 
 /**
  * 本文のWYSIWYGエディタ。値はMarkdownでやり取りする。
@@ -63,6 +66,8 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
     <Box>
       <SelectionMenu editor={editor} />
       <InsertMenu editor={editor} />
+      <PageMention editor={editor} />
+      <SlashMenu editor={editor} />
       <Box
         sx={{
           // 浮かぶメニューの位置の基準
@@ -119,6 +124,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
         }}
       >
         <EditorContent editor={editor} />
+        <TableMenu editor={editor} />
       </Box>
     </Box>
   );
