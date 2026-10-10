@@ -182,7 +182,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
 `ADMIN_EMAILS` の許可リストから、DB のユーザーに移した（マイグレーション `0010_users_and_invites`）。
 
 1. `main` に入れる。マイグレーション（`pnpm db:migrate`）が、ユーザーが1人もいなければ `ADMIN_EMAILS` のメールアドレスを**オーナーとして登録**し、最初の wiki の管理者にする。この時点では Google のアカウント ID が分からないので、メールアドレスだけの行を作り、最初のログイン（確認済みのメールアドレスが一致）で結びつける
-2. いまのセッションはすべて無効になる。Google でログインし直す
+2. いまのセッションはすべて無効になる。Google でログインし直す。スターと本文の下書きは、メールアドレスで持っていたものをユーザーに結びつけ直すので、そのまま残る
 3. 移行が本番に入ったのを確かめたら、次のデプロイで `.github/workflows/deploy.yml` の Migrate database の `ADMIN_EMAILS` と、GitHub のシークレット `ADMIN_EMAILS` を消す（2回目からは読まないので、残っていても害は無い）。Worker に残ったシークレットは `wrangler secret delete ADMIN_EMAILS` で消せる
 
 手元から出す場合は `wrangler login` のうえで `pnpm --filter @wiki/admin build && pnpm --filter @wiki/api deploy`、`pnpm --filter @wiki/worker deploy`。

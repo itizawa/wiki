@@ -123,13 +123,16 @@ export const pageDrafts = pgTable(
     pageId: text("page_id")
       .notNull()
       .references(() => pages.id),
-    authorEmail: text("author_email").notNull(),
+    /** 書いている人。下書きは人ごとに持つ */
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
     baseVersionId: uuid("base_version_id").notNull(),
     title: text("title").notNull(),
     bodyMd: text("body_md").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.pageId, t.authorEmail] })],
+  (t) => [primaryKey({ columns: [t.pageId, t.userId] })],
 );
 
 export const pageLinks = pgTable(
@@ -143,11 +146,13 @@ export const pageLinks = pgTable(
   (t) => [primaryKey({ columns: [t.fromPageId, t.toPageId] }), index("page_links_to_idx").on(t.toPageId)],
 );
 
-/** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
+/** スター（よく開くページの目印）。ユーザーごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
 export const pageStars = pgTable(
   "page_stars",
   {
-    adminEmail: text("admin_email").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
     pageId: text("page_id")
       .notNull()
       .references(() => pages.id),
@@ -155,7 +160,7 @@ export const pageStars = pgTable(
     position: integer("position").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [primaryKey({ columns: [t.adminEmail, t.pageId] })],
+  (t) => [primaryKey({ columns: [t.userId, t.pageId] })],
 );
 
 // ---------------------------------------------------------------------------

@@ -120,8 +120,9 @@ export async function rolesByWiki(db: Db, userId: string): Promise<Map<string, W
 
 /**
  * ADMIN_EMAILS のメールアドレスを、オーナーとして登録し、最初の wiki の管理者にする。
- * ユーザーが1人もいないときだけ行う（デプロイのたびに呼ばれても、一度しか効かない）。
+ * オーナーが1人もいないときだけ行う（デプロイのたびに呼ばれても、一度しか効かない）。
  * この時点では Google のアカウント ID が分からないので、メールアドレスだけの行を作り、最初のログインで結びつける。
+ * マイグレーションがスター・下書きのために作ったメールアドレスだけの行があれば、それをオーナーにする。
  */
 export async function bootstrapOwners(db: Db, emails: string[]): Promise<number> {
   const list = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
@@ -129,17 +130,19 @@ export async function bootstrapOwners(db: Db, emails: string[]): Promise<number>
   return db.transaction(async (tx) => {
     // 同時に2つ走っても、片方だけが入れる
     await tx.execute(sql`lock table "users" in exclusive mode`);
-    const [{ n }] = (await tx.select({ n: count() }).from(users)) as [{ n: number }];
+    const [{ n }] = (await tx.select({ n: count() }).from(users).where(eq(users.isOwner, true))) as [{ n: number }];
     if (Number(n) > 0) return 0;
-    const created = await tx
-      .insert(users)
-      .values(list.map((email) => ({ email, isOwner: true })))
-      .returning({ id: users.id });
     const [first] = await tx.select({ id: wikis.id }).from(wikis).where(eq(wikis.key, DEFAULT_WIKI_KEY));
-    if (first) {
-      await tx.insert(wikiMembers).values(created.map((u) => ({ wikiId: first.id, userId: u.id, role: "admin" as const })));
+    for (const email of list) {
+      const [pending] = await tx
+        .update(users)
+        .set({ isOwner: true })
+        .where(and(eq(users.email, email), isNull(users.googleSub)))
+        .returning({ id: users.id });
+      const user = pending ?? (await tx.insert(users).values({ email, isOwner: true }).returning({ id: users.id }))[0]!;
+      if (first) await tx.insert(wikiMembers).values({ wikiId: first.id, userId: user.id, role: "admin" }).onConflictDoNothing();
     }
-    return created.length;
+    return list.length;
   });
 }
 

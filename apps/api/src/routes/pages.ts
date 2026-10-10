@@ -56,7 +56,7 @@ const toDraft = (d: DraftRow): PageDraft => ({
   updatedAt: d.updatedAt.toISOString(),
 });
 
-const ownDraft = (pageId: string, email: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.authorEmail, email));
+const ownDraft = (pageId: string, userId: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.userId, userId));
 
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
 async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
@@ -151,7 +151,7 @@ export const pageRoutes = new Hono<AppEnv>()
         });
       }
       // 版として残したら、自分の下書きは要らない（変更が無く版を作らないときも、下書きは head と同じなので消す）
-      await tx.delete(pageDrafts).where(ownDraft(id, c.get("user").email));
+      await tx.delete(pageDrafts).where(ownDraft(id, c.get("user").id));
       const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
       if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
 
@@ -177,13 +177,13 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const id = c.req.param("id");
     await findLivePage(db, c.get("wiki").id, id);
-    const [draft] = await db.select().from(pageDrafts).where(ownDraft(id, c.get("user").email));
+    const [draft] = await db.select().from(pageDrafts).where(ownDraft(id, c.get("user").id));
     return c.json({ draft: draft ? toDraft(draft) : null });
   })
   .put("/:id/draft", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
-    const email = c.get("user").email;
+    const userId = c.get("user").id;
     const input = await parseJson(c, savePageDraftInput);
     const draft = await db.transaction(async (tx) => {
       const page = await findLivePage(tx, c.get("wiki").id, id, true);
@@ -196,14 +196,14 @@ export const pageRoutes = new Hono<AppEnv>()
       // head と同じ内容に戻したら、下書きは無いのと同じ
       const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
       if (head!.title === input.title && head!.bodyMd === input.bodyMd) {
-        await tx.delete(pageDrafts).where(ownDraft(id, email));
+        await tx.delete(pageDrafts).where(ownDraft(id, userId));
         return null;
       }
       const values = { baseVersionId: input.baseVersionId, title: input.title, bodyMd: input.bodyMd, updatedAt: new Date() };
       const [row] = await tx
         .insert(pageDrafts)
-        .values({ pageId: id, authorEmail: email, ...values })
-        .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.authorEmail], set: values })
+        .values({ pageId: id, userId, ...values })
+        .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.userId], set: values })
         .returning();
       return toDraft(row!);
     });
@@ -213,7 +213,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const id = c.req.param("id");
     await findLivePage(db, c.get("wiki").id, id);
-    await db.delete(pageDrafts).where(ownDraft(id, c.get("user").email));
+    await db.delete(pageDrafts).where(ownDraft(id, c.get("user").id));
     return c.json({ draft: null });
   })
   .delete("/:id", async (c) => {

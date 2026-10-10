@@ -1,5 +1,5 @@
 {
-  "id": "46255b5a-bba4-49bc-970c-90baf30c3d51",
+  "id": "985f00f7-3cab-4257-ab8c-60c9ef75b2cd",
   "prevId": "75d33e67-c2f3-4658-aaa8-ba7af58f046c",
   "version": "7",
   "dialect": "postgresql",
@@ -237,9 +237,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "author_email": {
-          "name": "author_email",
-          "type": "text",
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -283,14 +283,27 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "page_drafts_user_id_users_id_fk": {
+          "name": "page_drafts_user_id_users_id_fk",
+          "tableFrom": "page_drafts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "page_drafts_page_id_author_email_pk": {
-          "name": "page_drafts_page_id_author_email_pk",
+        "page_drafts_page_id_user_id_pk": {
+          "name": "page_drafts_page_id_user_id_pk",
           "columns": [
             "page_id",
-            "author_email"
+            "user_id"
           ]
         }
       },
@@ -366,9 +379,9 @@
       "name": "page_stars",
       "schema": "",
       "columns": {
-        "admin_email": {
-          "name": "admin_email",
-          "type": "text",
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -394,6 +407,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "page_stars_user_id_users_id_fk": {
+          "name": "page_stars_user_id_users_id_fk",
+          "tableFrom": "page_stars",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "page_stars_page_id_pages_id_fk": {
           "name": "page_stars_page_id_pages_id_fk",
           "tableFrom": "page_stars",
@@ -409,10 +435,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "page_stars_admin_email_page_id_pk": {
-          "name": "page_stars_admin_email_page_id_pk",
+        "page_stars_user_id_page_id_pk": {
+          "name": "page_stars_user_id_page_id_pk",
           "columns": [
-            "admin_email",
+            "user_id",
             "page_id"
           ]
         }
