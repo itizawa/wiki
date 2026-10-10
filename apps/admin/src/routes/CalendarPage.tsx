@@ -5,6 +5,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -12,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { actionLabel } from "../components/PublishPanel";
-import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime, formatDay } from "../lib/format";
@@ -75,19 +76,29 @@ export function CalendarPage() {
   const thisYear = Number(today.slice(0, 4));
   const [rescheduling, setRescheduling] = useState<ScheduledAction | null>(null);
 
-  if (schedule.isPending || pages.isPending) return <Muted>読み込み中…</Muted>;
+  // カレンダーに並べるのは予約とページの両方。どちらかを読み込んでいる間は、日付ごとの行の形を出す
+  const loading = schedule.isPending || pages.isPending;
+  // 予約を読み込む前は件数が分からないので、少ないとは言わない
+  const lowStock = !schedule.isPending && stock < STOCK_MIN;
   if (schedule.error) return <Alert severity="error">{errorMessage(schedule.error)}</Alert>;
 
   return (
     <Stack spacing={1.5}>
-      <Section sx={stock < STOCK_MIN ? { borderColor: "warning.main" } : undefined}>
+      <Section sx={lowStock ? { borderColor: "warning.main" } : undefined}>
         <Typography variant="h6" component="h2" gutterBottom>
           予約ストック
         </Typography>
         <Typography>
-          今後{STOCK_DAYS}日の公開予約：<strong>{stock}件</strong>
+          今後{STOCK_DAYS}日の公開予約：
+          {schedule.isPending ? (
+            <LoadingRegion component="span" sx={{ display: "inline-block", verticalAlign: "bottom" }}>
+              <Skeleton variant="text" width={32} />
+            </LoadingRegion>
+          ) : (
+            <strong>{stock}件</strong>
+          )}
         </Typography>
-        {stock < STOCK_MIN && (
+        {lowStock && (
           <Alert severity="warning" sx={{ mt: 1 }}>
             予約が少なくなっています。継続配信が途切れないよう記事を予約してください。
           </Alert>
@@ -124,9 +135,24 @@ export function CalendarPage() {
         </Typography>
         <Muted gutterBottom>過去14日〜60日先。時刻はJST。</Muted>
         {mutate.error && <Alert severity="error">{errorMessage(mutate.error)}</Alert>}
-        {days.length === 0 && <Muted>予定はありません。</Muted>}
+        {!loading && days.length === 0 && <Muted>予定はありません。</Muted>}
+        {loading && (
+          // 日付ごとの行（日付の見出し + 予定の行）の形
+          <LoadingRegion>
+            <Stack spacing={0.5}>
+              {[1, 2, 1].map((entries, i) => (
+                <Box key={i} sx={{ borderTop: 1, borderColor: "divider", py: 1 }}>
+                  <Skeleton variant="text" width={88} sx={{ fontSize: "0.875rem", mb: 0.5 }} />
+                  {Array.from({ length: entries }, (_, j) => (
+                    <Skeleton key={j} variant="text" width={j === 0 ? "55%" : "40%"} sx={{ fontSize: "0.875rem", my: 0.5 }} />
+                  ))}
+                </Box>
+              ))}
+            </Stack>
+          </LoadingRegion>
+        )}
         <Stack spacing={0.5}>
-          {days.map(([day, entries]) => (
+          {(loading ? [] : days).map(([day, entries]) => (
             <Box key={day} sx={{ borderTop: 1, borderColor: "divider", py: 1, opacity: day < today ? 0.7 : 1 }}>
               <Row sx={{ mb: 0.5 }}>
                 <Typography variant="subtitle2" component="h4" color={day === today ? "primary" : undefined}>

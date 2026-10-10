@@ -29,7 +29,7 @@ import { PublishMenu } from "../components/PublishMenu";
 import { StarButton } from "../components/StarButton";
 import { Tooltip } from "../components/Tooltip";
 import { VersionHistory } from "../components/VersionHistory";
-import { Muted } from "../components/ui";
+import { Muted, SkeletonEditor } from "../components/ui";
 import { TemplatePicker } from "./TemplatePicker";
 
 type Draft = { title: string; bodyMd: string };
@@ -223,7 +223,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       </Alert>
     );
   }
-  if (!page.data || !draft) return <Muted sx={{ p: 3 }}>読み込み中…</Muted>;
+  if (!page.data || !draft) return <SkeletonEditor />;
   const p = page.data;
   // 版を作れなかった・下書きを保存できなかった（どちらも、別の画面で先に版ができたときは読み直すしかない）
   const saveError = save.error ?? autosave.error;

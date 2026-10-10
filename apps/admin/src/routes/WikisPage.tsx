@@ -20,7 +20,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
 import { useState } from "react";
-import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
+import { Mono, Muted, RouterLink, Row, Section, SkeletonTableRows } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -33,6 +33,9 @@ export function keyChecks(key: string, taken: readonly string[]): { label: strin
     { label: "ほかの wiki が使っていない（アーカイブ中の wiki を含む）", ok: key !== "" && !taken.includes(key) },
   ];
 }
+
+/** 「使用中の wiki」の行の高さ（読み込み中の行も、この高さで出す）。 */
+const WIKI_ROW_HEIGHT = 54;
 
 /** wiki の一覧・作成・表示名と画像の変更・アーカイブ・戻す。オーナーにだけ出す。 */
 export function WikisPage() {
@@ -73,11 +76,11 @@ export function WikisPage() {
               {done}
             </Alert>
           )}
-          {wikis.isPending && <Muted>読み込み中…</Muted>}
           {wikis.data && active.length === 0 && (
             <Muted>使用中の wiki はありません。上の「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。</Muted>
           )}
-          {active.length > 0 && (
+          {/* 表の見出しは読み込み中から出し、行だけを Skeleton にする */}
+          {(wikis.isPending || active.length > 0) && (
             <Box sx={{ overflowX: "auto" }}>
               <Table size="small">
                 <TableHead>
@@ -89,6 +92,7 @@ export function WikisPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
+                  {wikis.isPending && <SkeletonTableRows columns={4} rows={3} height={WIKI_ROW_HEIGHT} />}
                   {active.map((w) => (
                     <TableRow key={w.key}>
                       <TableCell>
