@@ -78,6 +78,17 @@ describe("worker entry", () => {
     expect(run.status).toBe(200);
   });
 
+  it("serves OAuth and MCP without the prefix, where MCP clients look for them", async () => {
+    const w = await worker();
+    const meta = await w.fetch("/.well-known/oauth-authorization-server");
+    expect(await meta.json()).toMatchObject({ issuer: ORIGIN, token_endpoint: `${ORIGIN}/oauth/token` });
+    expect((await w.fetch("/.well-known/oauth-protected-resource/mcp")).status).toBe(200);
+    expect((await w.fetch("/mcp", { method: "POST", body: "{}" })).status).toBe(401);
+    const token = await w.fetch("/oauth/token", { method: "POST", body: new URLSearchParams({ grant_type: "x" }) });
+    expect(token.status).toBe(401);
+    expect((await w.fetch("/.well-known/other")).status).toBe(404);
+  });
+
   it("uploads images to R2 and serves them at /images, the path written in the body", async () => {
     const objects = new Map<string, { value: Uint8Array; contentType?: string }>();
     const IMAGES = {

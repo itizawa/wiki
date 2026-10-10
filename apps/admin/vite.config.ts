@@ -14,6 +14,10 @@ const proxy = {
   },
   // アップロードした画像。本文には /images/{name} と書くので、そのパスのまま API へ渡す
   "/images": { target: apiTarget },
+  // 外部のアプリ（MCP クライアント）が呼ぶ経路。本番と同じく、プレフィックス無しで同じオリジンに出す
+  "/oauth": { target: apiTarget, changeOrigin: false },
+  "/.well-known/oauth-": { target: apiTarget, changeOrigin: false },
+  "/mcp": { target: apiTarget, changeOrigin: false },
 };
 
 export default defineConfig({
@@ -48,8 +52,17 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: "/index.html",
         // Worker が先に受ける経路（apps/api/wrangler.toml の run_worker_first）は、画面遷移でも index.html を返さない。
-        // 外すと、Google ログイン（/api/auth/google/login とコールバック）が画面に戻されて通らなくなる
-        navigateFallbackDenylist: [/^\/api\//, /^\/export\//, /^\/internal\//, /^\/images\//, /^\/health$/],
+        // 外すと、Google ログイン（/api/auth/google/login とコールバック）や、外部のアプリの認可（/oauth/authorize）が画面に戻されて通らなくなる
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/export\//,
+          /^\/internal\//,
+          /^\/images\//,
+          /^\/health$/,
+          /^\/oauth\//,
+          /^\/\.well-known\//,
+          /^\/mcp$/,
+        ],
       },
     }),
   ],

@@ -113,6 +113,14 @@ export function Center({ children }: { children: ReactNode }) {
   return <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>{children}</Box>;
 }
 
+/** ログインのあと、いまの画面（外部アプリ連携の同意の画面など）に戻る */
+function googleLoginHref(): string {
+  const here = location.pathname + location.search;
+  return location.pathname === "/" || location.pathname === "/login"
+    ? "/api/auth/google/login"
+    : `/api/auth/google/login?${new URLSearchParams({ next: here })}`;
+}
+
 function Login({ forbidden }: { forbidden: boolean }) {
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.providers });
   const qc = useQueryClient();
@@ -126,7 +134,7 @@ function Login({ forbidden }: { forbidden: boolean }) {
           </Typography>
           {denied && <Alert severity="error">このアカウントには管理権限がありません。</Alert>}
           {providers.data?.google !== false && (
-            <Button variant="contained" size="medium" href="/api/auth/google/login">
+            <Button variant="contained" size="medium" href={googleLoginHref()}>
               Googleでログイン
             </Button>
           )}
