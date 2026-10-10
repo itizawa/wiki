@@ -227,16 +227,17 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
               key は作成後に変えられません（公開サイトの URL がすべて変わるため）。
             </Alert>
             <Muted>公開 URL</Muted>
-            <Mono sx={{ display: "block", mb: 1, wordBreak: "break-all" }}>{wikiOrigin(key || "{key}", baseDomain)}</Mono>
+            {/* 決まりを満たすまでは、できあがる URL の形だけを見せる */}
+            <Mono sx={{ display: "block", mb: 1, wordBreak: "break-all" }}>{wikiOrigin(checks.every((c) => c.ok) ? key : "{key}", baseDomain)}</Mono>
             <Muted>key の決まり</Muted>
             <Box component="ul" sx={{ m: 0, p: 0, listStyle: "none" }}>
               {checks.map((c) => (
-                <Box component="li" key={c.label} sx={{ display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.875rem", color: c.ok ? "success.main" : "text.secondary" }}>
+                <Box component="li" key={c.label} sx={{ position: "relative", display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.875rem", color: c.ok ? "success.main" : "text.secondary" }}>
                   {/* 満たしたかどうかは、色だけでなく印の形でも示す */}
                   {c.ok ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} />}
                   <span>
                     {c.label}
-                    <Box component="span" sx={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+                    <Box component="span" sx={{ position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
                       {c.ok ? "（満たしています）" : "（まだ満たしていません）"}
                     </Box>
                   </span>

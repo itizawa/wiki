@@ -32,7 +32,7 @@ async function worker(env: Partial<WorkerEnv> = {}) {
     SESSION_SECRET: ctx.config.sessionSecret,
     ADMIN_EMAILS: ADMIN,
     ADMIN_ORIGIN: ORIGIN,
-    SITE_ORIGIN: "https://wiki.example.com",
+    SITE_BASE_DOMAIN: "example.com",
     INTERNAL_TOKEN: "internal-token",
     ...env,
   } as WorkerEnv;
