@@ -12,6 +12,7 @@ import {
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pages, ruleRuns, rules, scheduledActions, wikis } from "../db/schema";
+import { loadTreeIndex, visibilityAt } from "../publishing/hierarchy";
 
 const DAY = 24 * 3600_000;
 /** 1回の実行で見直しキューに入れる上限 */
@@ -222,13 +223,25 @@ async function runAction(db: Db, wikiId: string, ruleId: string, action: RuleAct
           ),
         )
         .orderBy(asc(pages.approvedAt))
-        .limit(wanted)
         .for("update");
-      if (approved.length === 0) return null;
+      // 親ページがその時刻に公開されていない記事は入れない（配下は親より広い公開範囲にできない）
+      const index = await loadTreeIndex(db, wikiId);
+      const schedule: { pageId: string; versionId: string; runAt: Date }[] = [];
+      for (const p of approved) {
+        if (schedule.length >= wanted) break;
+        const runAt = free[schedule.length]!;
+        const parentId = index.parentOf.get(p.id) ?? null;
+        const parentPublic =
+          parentId === null ||
+          schedule.some((s) => s.pageId === parentId) ||
+          (await visibilityAt(db, wikiId, [parentId], runAt)).get(parentId) === "public";
+        if (parentPublic) schedule.push({ pageId: p.id, versionId: p.versionId!, runAt });
+      }
+      if (schedule.length === 0) return null;
       return {
-        summary: `承認済みの記事 ${approved.length}件を予約枠に入れました`,
-        pageIds: approved.map((p) => p.id),
-        schedule: approved.map((p, i) => ({ pageId: p.id, versionId: p.versionId!, runAt: free[i]! })),
+        summary: `承認済みの記事 ${schedule.length}件を予約枠に入れました`,
+        pageIds: schedule.map((s) => s.pageId),
+        schedule,
       };
     }
     case "request_review": {
