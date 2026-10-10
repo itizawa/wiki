@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Replace, Save, Search, Trash2, Workflow } from "lucide-react";
+import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, Trash2, Workflow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -118,9 +118,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           void navigate({ to: "/w/$wikiKey", params: { wikiKey: w.key } });
         },
       })),
-    // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す
+    // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す・スライドにする
     ...(pageActions
       ? [
+          { id: "present", label: "このページをプレゼンモードで表示", keywords: ["present", "slide", "presentation"], icon: <Presentation size={18} />, run: closing(pageActions.present) },
           { id: "find", label: "本文を検索・置換する", keywords: ["find", "search", "replace", "kensaku"], icon: <Replace size={18} />, run: closing(openFindBar) },
           { id: "keep-version", label: "いまの内容を版として残す", keywords: ["save", "version", "keep", "hozon"], icon: <Save size={18} />, run: closing(pageActions.keepVersion) },
           { id: "copy-md", label: "このページの Markdown をコピー", keywords: ["copy", "markdown", "md", "export"], icon: <Copy size={18} />, run: closing(pageActions.copyMarkdown) },

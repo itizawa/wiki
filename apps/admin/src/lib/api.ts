@@ -76,7 +76,19 @@ export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
   headCommitId: string;
   trees: StructureTree[];
-  pages: Record<string, { id: string; title: string; visibility: string; publishedVersionId: string | null }>;
+  pages: Record<
+    string,
+    {
+      id: string;
+      title: string;
+      visibility: string;
+      publishedVersionId: string | null;
+      /** 限定公開の URL に入るキー。限定公開にしたことが無ければ null */
+      unlistedKey: string | null;
+      /** 最後に版を作った・公開の状態を変えた日時 */
+      updatedAt: string;
+    }
+  >;
 };
 
 export type CommitListItem = {

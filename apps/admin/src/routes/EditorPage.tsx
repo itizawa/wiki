@@ -7,7 +7,7 @@ import InputBase from "@mui/material/InputBase";
 import Snackbar from "@mui/material/Snackbar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
-import { childrenByParent, type PageDetail, type PageDraft } from "@wiki/shared";
+import type { PageDetail, PageDraft } from "@wiki/shared";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openFindBar } from "../editor/FindBar";
@@ -17,7 +17,7 @@ import { caretOnLastLine, enterBodyFromTitle } from "../editor/titleBridge";
 import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
 import { api, errorMessage } from "../lib/api";
 import type { EnsureVersion } from "../components/PublishPanel";
-import { screenLink } from "../lib/wiki";
+import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT } from "./WikiLayout";
 import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
@@ -176,48 +176,9 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     save.reset();
   };
 
-  const removed = useRef(false);
-  const remove = useMutation({
-    mutationFn: () => api.deletePage(pageId),
-    onSuccess: async () => {
-      removed.current = true;
-      await qc.invalidateQueries();
-      await navigate(screenLink("/w/$wikiKey"));
-    },
-  });
-
-  const deletePage = async () => {
-    // 配下のページもいっしょにゴミ箱に入るので、何ページあるかを最新のツリーから数える
-    const structure = await qc.fetchQuery({ queryKey: ["structure"], queryFn: api.structure }).catch(() => null);
-    const childrenOf = childrenByParent(structure?.trees[0]?.nodes ?? []);
-    const descendants: string[] = [];
-    for (const stack = [pageId]; stack.length > 0; ) {
-      for (const child of childrenOf.get(stack.pop()!) ?? []) {
-        descendants.push(child.pageId);
-        stack.push(child.nodeId);
-      }
-    }
-    const published =
-      (page.data?.publishedVersionId ? 1 : 0) + descendants.filter((id) => structure?.pages[id]?.publishedVersionId).length;
-    const ok = await confirmDialog({
-      title: `「${page.data?.title ?? ""}」をゴミ箱に入れますか？`,
-      body: [
-        descendants.length > 0 ? `配下の ${descendants.length} ページもいっしょにゴミ箱に入り、ツリーから外れます。` : "ツリーから外れます。",
-        published > 0 &&
-          (descendants.length > 0
-            ? `公開中の ${published} ページは、公開サイトから見られなくなります。`
-            : "公開中のページなので、公開サイトからも見られなくなります。"),
-        "あとで「ゴミ箱」から元に戻せます（非公開のページとして戻り、公開と予約は戻りません）。",
-      ]
-        .filter(Boolean)
-        .join(""),
-      confirmLabel: "ゴミ箱に入れる",
-      cancelLabel: "ゴミ箱に入れない",
-      // ゴミ箱から戻せるが、公開は戻らないので、公開中のページを含むときだけ赤にする
-      danger: published > 0,
-    });
-    if (ok) remove.mutate();
-  };
+  // ゴミ箱に入れる。サイドバーの行の「…」と同じもの（そちらからこのページを入れたときも、下の移動の確認は出さない）
+  const { confirmAndDelete, error: removeError } = useDeletePage();
+  useEffect(() => forgetRemovedPage(pageId), [pageId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -237,7 +198,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     shouldBlockFn: async ({ current, next }) =>
       current.pathname !== next.pathname &&
       unsynced &&
-      !removed.current &&
+      !wasPageRemoved(pageId) &&
       !(await autosave.flush()) &&
       !(await confirmDialog({
         title: "下書きを保存できていません",
@@ -310,7 +271,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             bodyMd={draft.bodyMd}
             onKeepVersion={() => void keepVersion()}
             onOpenHistory={() => showVersion(p.headVersionId)}
-            onDelete={() => void deletePage()}
+            onDelete={() => void confirmAndDelete({ id: p.id, title: p.title, publishedVersionId: p.publishedVersionId })}
           />
         </Box>
 
@@ -418,9 +379,9 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
         sx={{ mt: 5 }}
       />
-      {remove.error && (
+      {removeError && (
         <Alert severity="error" sx={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 4 }}>
-          {errorMessage(remove.error)}
+          {errorMessage(removeError)}
         </Alert>
       )}
     </Box>

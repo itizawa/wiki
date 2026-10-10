@@ -85,6 +85,16 @@ export function shortcutGroups(mod: string): Group[] {
         { keys: ["`code`"], label: "インラインコード" },
       ],
     },
+    {
+      title: "プレゼンモード（編集画面の「…」メニューから始める）",
+      entries: [
+        { keys: ["Space / → / PageDown"], label: "次のスライド" },
+        { keys: ["← / PageUp"], label: "前のスライド" },
+        { keys: ["Home / End"], label: "最初／最後のスライド" },
+        { keys: ["F"], label: "全画面表示にする／やめる" },
+        { keys: ["Esc"], label: "全画面ならやめる。全画面でなければプレゼンモードを終了" },
+      ],
+    },
   ];
 }
 
