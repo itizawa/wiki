@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import AddIcon from "@mui/icons-material/Add";
+import AutoModeIcon from "@mui/icons-material/AutoMode";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
@@ -167,6 +168,9 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
             <NavItem to="/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
               編集カレンダー
             </NavItem>
+            <NavItem to="/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
+              ルール
+            </NavItem>
             <NavItem to="/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴
             </NavItem>
@@ -229,7 +233,7 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
   );
 }
 
-function NavItem(props: { to: "/" | "/calendar" | "/history"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
+function NavItem(props: { to: "/" | "/calendar" | "/rules" | "/history"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
   return (
     <RouterLink to={props.to} activeOptions={{ exact: props.exact }} onClick={props.onClick} underline="none" sx={rowSx}>
       {props.icon}

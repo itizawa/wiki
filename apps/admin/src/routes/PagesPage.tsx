@@ -11,6 +11,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 
@@ -76,7 +77,9 @@ export function PagesPage() {
                 <TableCell>
                   <Row>
                     <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+                    {p.workflowState !== "draft" && <StatusChip label={workflowLabel[p.workflowState]} />}
                     {p.origin === "ai_draft" && <StatusChip label="AI下書き" />}
+                    {p.reviewRequestedAt && <StatusChip status="unlisted" label="見直し待ち" />}
                   </Row>
                 </TableCell>
                 <TableCell>

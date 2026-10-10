@@ -5,7 +5,7 @@ export default {
     ctx.waitUntil(
       tick(env).then((r) =>
         console.log(
-          JSON.stringify({ done: r.run.done.length, failed: r.run.failed.length, build: r.build, deployed: r.deployed }),
+          JSON.stringify({ done: r.run.done.length, failed: r.run.failed.length, rules: r.rules?.runs ?? null, build: r.build, deployed: r.deployed }),
         ),
       ),
     );
