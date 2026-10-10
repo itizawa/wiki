@@ -43,6 +43,13 @@
       "when": 1791607048580,
       "tag": "0005_page_stars",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791608116990,
+      "tag": "0006_drop_tree_is_public",
+      "breakpoints": true
     }
   ]
 }

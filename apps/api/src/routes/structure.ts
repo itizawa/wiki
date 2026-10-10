@@ -1,8 +1,7 @@
 import { commitStructureInput, diffStructures } from "@wiki/shared";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import { z } from "zod";
-import { pages, trees } from "../db/schema";
+import { pages } from "../db/schema";
 import type { AppEnv } from "../env";
 import { notFound } from "../errors";
 import {
@@ -16,11 +15,6 @@ import {
   MAIN_BRANCH,
 } from "../structure/repo";
 import { parseJson } from "../validation";
-
-const updateTreeInput = z.object({
-  name: z.string().trim().min(1).max(100).optional(),
-  isPublic: z.boolean().optional(),
-});
 
 export const structureRoutes = new Hono<AppEnv>()
   /** 現在のツリーと、ノードが参照するページの情報 */
@@ -81,23 +75,5 @@ export const treeRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
     return c.json({ trees: [await getPrimaryTree(db)] });
-  })
-  /** ツリーの表示名・公開設定の変更（コミット外のメタ情報として扱う） */
-  .patch("/:id", async (c) => {
-    const { db } = c.get("deps");
-    const id = c.req.param("id");
-    const input = await parseJson(c, updateTreeInput);
-    await db.transaction(async (tx) => {
-      const [tree] = await tx.select().from(trees).where(eq(trees.id, id)).for("update");
-      if (!tree?.isPrimary) throw notFound(`tree ${id}`);
-      await tx
-        .update(trees)
-        .set({
-          ...(input.name !== undefined && { name: input.name }),
-          ...(input.isPublic !== undefined && { isPublic: input.isPublic }),
-        })
-        .where(eq(trees.id, id));
-    });
-    const [tree] = await db.select().from(trees).where(eq(trees.id, id));
-    return c.json(tree);
   });
+
