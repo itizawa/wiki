@@ -110,7 +110,7 @@ export function Sidebar(props: {
     <Box
       component="nav"
       aria-label="サイドバー"
-      sx={{ width: SIDEBAR_WIDTH, height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}
+      sx={{ width: `var(--sidebar-width, ${SIDEBAR_WIDTH}px)`, height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, pt: 1.5, pb: 1 }}>
         <Box
@@ -141,7 +141,7 @@ export function Sidebar(props: {
           </span>
         </Tooltip>
         {props.onCollapse && (
-          <Tooltip title="サイドバーを閉じる">
+          <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
               <KeyboardDoubleArrowLeftIcon fontSize="small" />
             </IconButton>
