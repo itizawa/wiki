@@ -113,6 +113,11 @@ export const api = {
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
+  listStars: () => request<{ pageIds: string[] }>("GET", w("/stars")),
+  addStar: (pageId: string) => request<{ pageIds: string[] }>("PUT", w(`/stars/${pageId}`)),
+  removeStar: (pageId: string) => request<{ pageIds: string[] }>("DELETE", w(`/stars/${pageId}`)),
+  reorderStars: (pageIds: string[]) => request<{ pageIds: string[] }>("PUT", w("/stars"), { pageIds }),
+
   setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", w(`/pages/${id}/workflow`), input),
   reviewDone: (id: string) => request<PageDetail>("POST", w(`/pages/${id}/review-done`)),
 
@@ -143,8 +148,6 @@ export const api = {
   history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
   commitDetail: (id: string) =>
     request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
-  updateTree: (id: string, input: { name?: string; isPublic?: boolean }) =>
-    request<TreeMeta>("PATCH", w(`/trees/${id}`), input),
 };
 
 export function errorMessage(err: unknown): string {

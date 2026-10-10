@@ -54,8 +54,22 @@
     {
       "idx": 7,
       "version": "7",
-      "when": 1791630168787,
-      "tag": "0007_page_drafts",
+      "when": 1791632094853,
+      "tag": "0007_page_stars",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791632095927,
+      "tag": "0008_drop_tree_is_public",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791633349108,
+      "tag": "0009_page_drafts",
       "breakpoints": true
     }
   ]

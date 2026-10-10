@@ -1,5 +1,5 @@
 {
-  "id": "9d6edf08-bf78-4323-a5f0-2967abbb69d6",
+  "id": "4c88e9d9-b04c-4a95-afc0-3fc052676156",
   "prevId": "086bb7de-03b4-412f-99a1-a57da4ee4330",
   "version": "7",
   "dialect": "postgresql",
@@ -83,78 +83,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.page_drafts": {
-      "name": "page_drafts",
-      "schema": "",
-      "columns": {
-        "page_id": {
-          "name": "page_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "author_email": {
-          "name": "author_email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_version_id": {
-          "name": "base_version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "body_md": {
-          "name": "body_md",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "page_drafts_page_id_pages_id_fk": {
-          "name": "page_drafts_page_id_pages_id_fk",
-          "tableFrom": "page_drafts",
-          "tableTo": "pages",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "page_drafts_page_id_author_email_pk": {
-          "name": "page_drafts_page_id_author_email_pk",
-          "columns": [
-            "page_id",
-            "author_email"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.page_links": {
       "name": "page_links",
       "schema": "",
@@ -210,6 +138,66 @@
           "columns": [
             "from_page_id",
             "to_page_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.page_stars": {
+      "name": "page_stars",
+      "schema": "",
+      "columns": {
+        "admin_email": {
+          "name": "admin_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_id": {
+          "name": "page_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "page_stars_page_id_pages_id_fk": {
+          "name": "page_stars_page_id_pages_id_fk",
+          "tableFrom": "page_stars",
+          "tableTo": "pages",
+          "columnsFrom": [
+            "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "page_stars_admin_email_page_id_pk": {
+          "name": "page_stars_admin_email_page_id_pk",
+          "columns": [
+            "admin_email",
+            "page_id"
           ]
         }
       },

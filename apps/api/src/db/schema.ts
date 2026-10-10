@@ -142,6 +142,21 @@ export const pageLinks = pgTable(
   (t) => [primaryKey({ columns: [t.fromPageId, t.toPageId] }), index("page_links_to_idx").on(t.toPageId)],
 );
 
+/** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
+export const pageStars = pgTable(
+  "page_stars",
+  {
+    adminEmail: text("admin_email").notNull(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** 並び順（小さいほうが上）。付けたものは末尾に足す */
+    position: integer("position").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.adminEmail, t.pageId] })],
+);
+
 // ---------------------------------------------------------------------------
 // 4.2 ツリーと構造の履歴
 // 運用するのは、wiki ごとに primary ツリー1本と main だけ。複数ツリー・ブランチ前提のテーブル形は変えずに残している。
@@ -153,8 +168,8 @@ export const trees = pgTable("trees", {
   wikiId: wikiId(),
   /** URLに使用（'by-project' 'by-theme'）。wiki の中で重ならない */
   key: text("key").notNull(),
+  /** 以前は画面から変えられた表示名。いまはどこにも出していない（公開サイト・管理画面は固定の文言を使う） */
   name: text("name").notNull(),
-  isPublic: boolean("is_public").notNull().default(true),
   /** パンくず・既定ナビ用（1つだけ） */
   isPrimary: boolean("is_primary").notNull().default(false),
 }, (t) => [

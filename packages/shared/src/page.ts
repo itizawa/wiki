@@ -43,6 +43,11 @@ export type PageDraft = {
   bodyMd: string;
   updatedAt: string;
 };
+/** スターの並び替え。渡した順に並べる（スターが付いていない id は無視し、ここに無いスターは後ろに残す）。 */
+export const reorderStarsInput = z.object({
+  pageIds: z.array(z.string().min(1).max(64)).max(500),
+});
+export type ReorderStarsInput = z.infer<typeof reorderStarsInput>;
 
 export type PageSummary = {
   id: string;
