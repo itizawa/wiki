@@ -23,6 +23,16 @@ describe("renderMarkdown", () => {
   });
 });
 
+describe("excerpt", () => {
+  it("drops callout markers", () => {
+    expect(excerpt("> [!NOTE]\n> 大事な話\n\n続き")).toBe("大事な話 続き");
+  });
+
+  it("strips markdown", () => {
+    expect(excerpt("# 見出し\n\n本文の[リンク](/x)です。")).toBe("見出し 本文のリンクです。");
+  });
+});
+
 describe("callouts", () => {
   it("renders a quote starting with [!TYPE] as a labelled callout", () => {
     const html = renderMarkdown("> [!WARNING]\n> **必ず**バックアップを取ること\n>\n> 2段落目", { publicPaths });
@@ -40,15 +50,5 @@ describe("callouts", () => {
 
   it("still rewrites links inside a callout", () => {
     expect(renderMarkdown("> [!TIP]\n> [非公開](/p/zzzzzzzzzz)", { publicPaths })).not.toContain("zzzzzzzzzz");
-  });
-});
-
-describe("excerpt", () => {
-  it("drops callout markers", () => {
-    expect(excerpt("> [!NOTE]\n> 大事な話\n\n続き")).toBe("大事な話 続き");
-  });
-
-  it("strips markdown", () => {
-    expect(excerpt("# 見出し\n\n本文の[リンク](/x)です。")).toBe("見出し 本文のリンクです。");
   });
 });
