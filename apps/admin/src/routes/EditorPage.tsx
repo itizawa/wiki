@@ -1,7 +1,7 @@
-import StarIcon from "@mui/icons-material/Star";
-import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import StarIcon from "@mui/icons-material/Star";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
@@ -16,8 +16,8 @@ import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
-import { formatDateTime } from "../lib/format";
 import { useStars } from "../lib/stars";
+import { formatDateTime } from "../lib/format";
 import { usePersistentState } from "../lib/storage";
 import { PublishPanel } from "../components/PublishPanel";
 import { Tooltip } from "../components/Tooltip";
@@ -232,20 +232,6 @@ export function EditorPage({ pageId }: { pageId: string }) {
   );
 }
 
-/** スターの付け外し。付いているときは塗りつぶした星にし、ラベルでも状態を伝える。 */
-function StarButton({ pageId }: { pageId: string }) {
-  const { ids, toggle } = useStars();
-  const starred = ids.includes(pageId);
-  const label = starred ? "スターを外す" : "スターを付ける（サイドバーの上に出す）";
-  return (
-    <Tooltip title={label}>
-      <IconButton size="small" aria-label={label} aria-pressed={starred} onClick={() => toggle(pageId)}>
-        {starred ? <StarIcon fontSize="small" sx={{ color: "warning.main" }} /> : <StarBorderIcon fontSize="small" />}
-      </IconButton>
-    </Tooltip>
-  );
-}
-
 /** ツリー上の置き場所（親ページの並び）とタイトル。 */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
@@ -346,5 +332,19 @@ function Diff({ before, after }: { before: string; after: string }) {
         </Box>
       ))}
     </Box>
+  );
+}
+
+/** スターの付け外し。付いているときは塗りつぶした星にし、ラベルでも状態を伝える。 */
+function StarButton({ pageId }: { pageId: string }) {
+  const { ids, toggle } = useStars();
+  const starred = ids.includes(pageId);
+  const label = starred ? "スターを外す" : "スターを付ける（サイドバーの上に出す）";
+  return (
+    <Tooltip title={label}>
+      <IconButton size="small" aria-label={label} aria-pressed={starred} onClick={() => toggle(pageId)}>
+        {starred ? <StarIcon fontSize="small" sx={{ color: "warning.main" }} /> : <StarBorderIcon fontSize="small" />}
+      </IconButton>
+    </Tooltip>
   );
 }
