@@ -20,11 +20,15 @@ import { Muted, RouterLink, Section } from "../components/ui";
 import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
-import { rememberWiki, WikiContext } from "../lib/wiki";
+import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { Center, Loading, useSession, useWikis } from "./Layout";
 
 /** 閉じたサイドバーの幅（開くボタンだけが残る）。 */
 const COLLAPSED_WIDTH = 44;
+/** 狭い画面で上に置く帯（メニューを開くボタンと wiki の名前）の高さ。 */
+export const NARROW_BAR_HEIGHT = 44;
+/** 本文の枠いっぱいの高さ（狭い画面では、上の帯のぶんを引く）。画面いっぱいを使う編集系の画面が使う。 */
+export const FULL_HEIGHT = { xs: `calc(100vh - ${NARROW_BAR_HEIGHT}px)`, md: "100vh" } as const;
 /** 開閉の動きの長さ。短くして、操作を待たせない。 */
 const MOTION_MS = 180;
 /** OS の「視差効果を減らす」が有効なら、動かさずにすぐ切り替える。 */
@@ -75,6 +79,7 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
 }
 
 function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
+  const { wiki } = useWiki();
   const [sidebarWidth, setSidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
   const wide = useMediaQuery((t) => t.breakpoints.up("md"));
   const [open, setOpenState] = usePersistentState("wiki.sidebar.open", true);
@@ -120,7 +125,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
   return (
     <Box
       style={{ "--sidebar-width": `${wide ? clampSidebarWidth(sidebarWidth) : SIDEBAR_WIDTH}px` } as CSSProperties}
-      sx={{ position: "relative", display: "flex", height: "100vh", bgcolor: "background.paper" }}
+      sx={{ position: "relative", display: "flex", flexDirection: wide ? "row" : "column", height: "100vh", bgcolor: "background.paper" }}
     >
       {wide && open && <SidebarResizer value={clampSidebarWidth(sidebarWidth)} defaultValue={SIDEBAR_WIDTH} onChange={setSidebarWidth} />}
       {wide ? (
@@ -165,12 +170,16 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
           </Box>
         </Box>
       ) : (
-        <Box sx={{ flexShrink: 0, width: COLLAPSED_WIDTH, pt: 1.25, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
-          <Tooltip title="サイドバーを開く (⌘.)" placement="right">
+        // 狭い画面では横に列を取らず、上に細い帯を置く（左に空きを作らず、本文に幅を使う）
+        <Box component="header" sx={{ flexShrink: 0, height: NARROW_BAR_HEIGHT, px: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Tooltip title="サイドバーを開く (⌘.)" placement="bottom">
             <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setDrawer(true)}>
               <Menu size={18} />
             </IconButton>
           </Tooltip>
+          <Typography variant="body2" noWrap sx={{ minWidth: 0, fontWeight: 600 }}>
+            {wiki.name}
+          </Typography>
         </Box>
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す */}
@@ -188,7 +197,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
       <ShortcutGuide />
       <ConfirmHost />
       <StarsHost />
-      <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
+      <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} onToggleSidebar={wide ? () => setOpen(!open) : undefined} onLogout={onLogout} />

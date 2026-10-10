@@ -66,7 +66,7 @@ function plainText(tokens: Tokens.Generic[] | undefined): string {
 /**
  * 公開用のMarkdown→HTML。
  * - 内部リンク（/p/{id}...）は公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
- * - 本文中の生HTMLはエスケープする
+ * - 本文中の生HTMLはエスケープする。リンクと画像は http(s)・同じサイトのパスなど、決まった形のものだけを出す
  * - 見出しには id を振る
  * - `+++` のトグルは <details> にする（中身も検索の索引と目次に入る）
  * - 言語の付いたコードブロックは色分けする（ライト・ダーク両方の色を持たせ、CSS で切り替える）
@@ -127,6 +127,12 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         const rel = external ? (opts.sponsored ? "sponsored noopener" : "noopener") : undefined;
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
         return `<a href="${escapeHtml(token.href)}"${title}${rel ? ` rel="${rel}"` : ""}>${text}</a>`;
+      },
+      // 画像も、リンクと同じく http(s) と同じサイトのパスだけを通す（`javascript:` や `data:` は代わりの文字だけにする）
+      image(token: Tokens.Image) {
+        if (!/^(https?:|\/)/i.test(token.href)) return escapeHtml(token.text);
+        const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
+        return `<img src="${escapeHtml(token.href)}" alt="${escapeHtml(token.text)}"${title}>`;
       },
       // 先頭行が [!NOTE] などの引用は、コールアウト（種類の名前つきの囲み）として出す
       blockquote(token: Tokens.Blockquote) {

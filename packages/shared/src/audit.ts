@@ -141,6 +141,8 @@ export type AuditLogEntry = {
       label: string;
       email: string | null;
       ruleRunId: string | null;
+      /** 外部のアプリ（MCP）からの操作なら、そのアプリの名前 */
+      via: string | null;
     };
     action: A;
     category: AuditCategory;

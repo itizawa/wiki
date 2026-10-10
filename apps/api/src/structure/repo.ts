@@ -9,7 +9,7 @@ import {
   type TreeNode,
 } from "@wiki/shared";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { Db } from "../db/client";
+import { rowsOf, type Db } from "../db/client";
 import {
   commitTrees,
   pages,
@@ -104,6 +104,8 @@ export async function commitOps(
     ops: StructureOp[];
     message?: string;
     authorType?: "human" | "ai";
+    /** 外部のアプリ（MCP）からの操作なら、その許可 */
+    oauthGrantId?: string;
     /** 移動で公開範囲の親子の決まりを破らないかを確かめる（ページの削除に伴う繰り上げでは確かめない） */
     checkVisibility?: boolean;
     /** 構造を変えた人。人の操作でなければ省く */
@@ -145,6 +147,7 @@ export async function commitOps(
       message: input.message ?? describeOps(input.ops),
       authorType: input.authorType ?? "human",
       createdBy: input.createdBy ?? null,
+      oauthGrantId: input.oauthGrantId ?? null,
       state: result.state,
       changedTreeIds: new Set(result.changedTreeIds),
       previousSnapshots: head.snapshots,
@@ -194,6 +197,7 @@ async function writeCommit(
     message: string;
     authorType: "human" | "ai";
     createdBy?: string | null;
+    oauthGrantId?: string | null;
     state: StructureState;
     changedTreeIds: Set<string>;
     previousSnapshots: Map<string, string>;
@@ -201,7 +205,13 @@ async function writeCommit(
 ): Promise<string> {
   const [commit] = await db
     .insert(structureCommits)
-    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType, createdBy: input.createdBy ?? null })
+    .values({
+      wikiId: input.wikiId,
+      message: input.message,
+      authorType: input.authorType,
+      createdBy: input.createdBy ?? null,
+      oauthGrantId: input.oauthGrantId ?? null,
+    })
     .returning({ id: structureCommits.id });
   const commitId = commit!.id;
   if (input.parents.length > 0) {
@@ -305,6 +315,7 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     parent_ids: string[] | null;
     created_by: string | null;
     created_by_name: string | null;
+    via: string | null;
   };
   const result = await db.execute(sql`
     with recursive history(id, depth) as (
@@ -318,7 +329,10 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     select c.id, c.message, c.author_type, c.created_at, c.created_by,
       coalesce(u.name, u.email) as created_by_name,
       (select array_agg(p.parent_commit_id::text order by p.ordinal)
-         from structure_commit_parents p where p.commit_id = c.id) as parent_ids
+         from structure_commit_parents p where p.commit_id = c.id) as parent_ids,
+      -- 外部のアプリ（MCP）からの操作なら、そのアプリの名前
+      (select oc.name from oauth_grants g join oauth_clients oc on oc.id = g.client_id
+         where g.id = c.oauth_grant_id) as via
     from history h join structure_commits c on c.id = h.id
     left join users u on u.id = c.created_by
     order by h.depth
@@ -331,13 +345,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     parentIds: r.parent_ids ?? [],
     /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
     createdBy: r.created_by && r.created_by_name ? { id: r.created_by, name: r.created_by_name } : null,
+    via: r.via,
   }));
-}
-
-/** postgres-js は配列、PGlite は { rows } を返すので吸収する。 */
-function rowsOf<T>(result: unknown): T[] {
-  if (Array.isArray(result)) return result as T[];
-  return ((result as { rows?: T[] }).rows ?? []) as T[];
 }
 
 export async function getCommitParents(db: Db, commitId: string): Promise<string[]> {

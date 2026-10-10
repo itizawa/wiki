@@ -16,9 +16,9 @@ import { auditLogs, pages, wikis } from "../db/schema";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 
-/** 誰が。人は、その時点の名前とメールアドレスを写して持つ。 */
+/** 誰が。人は、その時点の名前とメールアドレスを写して持つ。外部のアプリ（MCP）からの操作なら、via にそのアプリの名前。 */
 export type AuditActor =
-  | { type: "user"; userId: string | null; label: string; email: string | null }
+  | { type: "user"; userId: string | null; label: string; email: string | null; via?: string }
   | { type: "rule"; ruleRunId: string; label: string }
   | { type: "system"; label: string };
 
@@ -26,6 +26,17 @@ export const SYSTEM_ACTOR: AuditActor = { type: "system", label: "システム" 
 
 export function userActor(user: { id: string; name: string | null; email: string }): AuditActor {
   return { type: "user", userId: user.id, label: user.name ?? user.email, email: user.email };
+}
+
+/** 外部のアプリ（MCP）からの操作：許可した人が、そのアプリを通して行ったものとして残す。 */
+export function agentActor(agent: { user: { id: string; name: string | null; email: string }; clientName: string }): AuditActor {
+  const { user, clientName } = agent;
+  return { type: "user", userId: user.id, label: user.name ?? user.email, email: user.email, via: clientName };
+}
+
+/** 人の操作なら、その人の ID（版や構造の履歴の「作った人」に入れる）。 */
+export function actorUserId(actor: AuditActor): string | null {
+  return actor.type === "user" ? actor.userId : null;
 }
 
 /** ログイン中の人（/admin/* で使う）。 */
@@ -64,6 +75,7 @@ export async function writeAudit<A extends AuditAction>(db: Db, input: AuditInpu
     actorLabel: actor.label,
     actorEmail: actor.type === "user" ? actor.email : null,
     ruleRunId: actor.type === "rule" ? actor.ruleRunId : null,
+    via: actor.type === "user" ? (actor.via ?? null) : null,
     action: input.action,
     targetType: input.target?.type ?? null,
     targetId: input.target?.id ?? null,
@@ -166,6 +178,7 @@ function toEntry(log: typeof auditLogs.$inferSelect, wiki: { key: string; name: 
       label: log.actorLabel,
       email: log.actorEmail,
       ruleRunId: log.ruleRunId,
+      via: log.via,
     },
     action,
     category: AUDIT_ACTIONS[action] ?? "settings",

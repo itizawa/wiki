@@ -4,7 +4,7 @@ import { actionsIn, AUDIT_ACTIONS, auditSentenceText, describeAudit, formatAudit
 const base = {
   id: "1",
   wiki: { key: "wiki", name: "メイン" },
-  actor: { type: "user" as const, userId: "u", label: "山田 太郎", email: "taro@example.com", ruleRunId: null },
+  actor: { type: "user" as const, userId: "u", label: "山田 太郎", email: "taro@example.com", ruleRunId: null, via: null },
   target: { type: "page" as const, id: "p", label: "はじめに" },
   targetAvailable: true,
   ip: null,

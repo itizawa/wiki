@@ -16,6 +16,8 @@ import type {
   SearchResult,
   ScheduledAction,
   SetWorkflowInput,
+  OAuthConsentRequest,
+  OAuthGrantSummary,
   StructureChange,
   StructureOpInput,
   TreeMeta,
@@ -71,7 +73,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
-export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdBy" | "createdAt">;
+/** via：外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
+export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdBy" | "createdAt"> & { via: string | null };
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
@@ -86,6 +89,8 @@ export type CommitListItem = {
   authorType: string;
   createdAt: string;
   parentIds: string[];
+  /** 外部のアプリ（MCP）からの操作なら、そのアプリの名前 */
+  via?: string | null;
   /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
   createdBy?: { id: string; name: string } | null;
 };
@@ -111,6 +116,13 @@ export const api = {
 
   listUsers: () => request<{ users: UserSummary[] }>("GET", "/admin/users"),
   setOwner: (userId: string, isOwner: boolean) => request<{ users: UserSummary[] }>("PUT", `/admin/users/${userId}/owner`, { isOwner }),
+
+  oauthRequest: (signed: string) =>
+    request<OAuthConsentRequest>("GET", `/admin/oauth/request?${new URLSearchParams({ request: signed })}`),
+  oauthDecide: (input: { request: string; approve: boolean; scopes: string[] }) =>
+    request<{ redirectTo: string }>("POST", "/admin/oauth/request/decision", input),
+  listGrants: () => request<{ grants: OAuthGrantSummary[] }>("GET", "/admin/oauth/grants"),
+  revokeGrant: (id: string) => request<{ ok: true }>("POST", `/admin/oauth/grants/${id}/revoke`),
 
   listWikis: () => request<{ wikis: WikiSummary[]; baseDomain: string }>("GET", "/admin/wikis"),
   createWiki: (input: { key: string; name: string }) => request<WikiSummary>("POST", "/admin/wikis", input),

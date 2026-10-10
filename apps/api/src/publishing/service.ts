@@ -9,9 +9,15 @@ export async function recordPublishEvent(
   db: Db,
   wikiId: string,
   kind: string,
-  refs: { pageId?: string; scheduledActionId?: string } = {},
+  refs: { pageId?: string; scheduledActionId?: string; oauthGrantId?: string } = {},
 ): Promise<void> {
-  await db.insert(publishEvents).values({ wikiId, kind, pageId: refs.pageId, scheduledActionId: refs.scheduledActionId });
+  await db.insert(publishEvents).values({
+    wikiId,
+    kind,
+    pageId: refs.pageId,
+    scheduledActionId: refs.scheduledActionId,
+    oauthGrantId: refs.oauthGrantId,
+  });
 }
 
 /** 指定の wiki のページだけを返す（別の wiki のページ ID は、無いものとして扱う）。 */
@@ -25,6 +31,18 @@ async function lockLivePage(db: Db, wikiId: string, pageId: string) {
   return page;
 }
 
+export type PublishInput = {
+  wikiId: string;
+  pageId: string;
+  versionId: string;
+  visibility: PublishVisibility;
+  applyToDescendants?: boolean;
+  publishedAt?: Date;
+  scheduledActionId?: string;
+  /** 外部のアプリ（MCP）からの操作なら、その許可 */
+  oauthGrantId?: string;
+};
+
 /**
  * 公開 = published_version_id を進める操作。
  * first_published_at は初回だけ設定する（予約公開では予定時刻を入れ、RSSの並びを自然にする）。
@@ -33,18 +51,7 @@ async function lockLivePage(db: Db, wikiId: string, pageId: string) {
  * applyToDescendants は、配下の公開中のページ（公開版のあるページ）だけを同じ公開範囲にする。
  * まだ公開していないページは公開する版が決まっていないので、非公開のまま飛ばす。
  */
-export async function publishPage(
-  db: Db,
-  input: {
-    wikiId: string;
-    pageId: string;
-    versionId: string;
-    visibility: PublishVisibility;
-    applyToDescendants?: boolean;
-    publishedAt?: Date;
-    scheduledActionId?: string;
-  },
-): Promise<PublishResult> {
+export async function publishPage(db: Db, input: PublishInput): Promise<PublishResult> {
   const page = await lockLivePage(db, input.wikiId, input.pageId);
   let changed = 0;
   const [version] = await db
@@ -69,7 +76,11 @@ export async function publishPage(
       updatedAt: new Date(),
     })
     .where(eq(pages.id, input.pageId));
-  await recordPublishEvent(db, input.wikiId, "publish", { pageId: input.pageId, scheduledActionId: input.scheduledActionId });
+  await recordPublishEvent(db, input.wikiId, "publish", {
+    pageId: input.pageId,
+    scheduledActionId: input.scheduledActionId,
+    oauthGrantId: input.oauthGrantId,
+  });
   if (input.applyToDescendants) {
     for (const d of descendants.values()) {
       if (d.publishedVersionId === null || d.visibility === "private" || d.visibility === input.visibility) continue;
@@ -82,7 +93,11 @@ export async function publishPage(
           updatedAt: new Date(),
         })
         .where(eq(pages.id, d.id));
-      await recordPublishEvent(db, input.wikiId, "publish", { pageId: d.id, scheduledActionId: input.scheduledActionId });
+      await recordPublishEvent(db, input.wikiId, "publish", {
+        pageId: d.id,
+        scheduledActionId: input.scheduledActionId,
+        oauthGrantId: input.oauthGrantId,
+      });
       changed++;
     }
   }
@@ -105,7 +120,7 @@ export async function unpublishPage(
   db: Db,
   wikiId: string,
   pageId: string,
-  options: { scheduledActionId?: string; applyToDescendants?: boolean } = {},
+  options: { scheduledActionId?: string; applyToDescendants?: boolean; oauthGrantId?: string } = {},
 ): Promise<PublishResult> {
   const page = await lockLivePage(db, wikiId, pageId);
   const index = await loadTreeIndex(db, wikiId);
@@ -117,7 +132,11 @@ export async function unpublishPage(
       .update(pages)
       .set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() })
       .where(eq(pages.id, id));
-    await recordPublishEvent(db, wikiId, "unpublish", { pageId: id, scheduledActionId: options.scheduledActionId });
+    await recordPublishEvent(db, wikiId, "unpublish", {
+      pageId: id,
+      scheduledActionId: options.scheduledActionId,
+      oauthGrantId: options.oauthGrantId,
+    });
   }
   return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: wider.length };
 }

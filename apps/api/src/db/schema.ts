@@ -107,6 +107,8 @@ export const pageVersions = pgTable(
     sourceProposalId: uuid("source_proposal_id"),
     /** 版を作った人。これより前の版と、ルール・AI による版は null */
     createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
+    /** 外部のアプリ（MCP）から保存した版なら、その連携 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -244,6 +246,8 @@ export const structureCommits = pgTable("structure_commits", {
   sourceProposalId: uuid("source_proposal_id"),
   /** 構造を変えた人。これより前のコミットと、ルール・AI・システムによるものは null */
   createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
+  /** 外部のアプリ（MCP）からの操作なら、その連携 */
+  oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
   createdAt: createdAt(),
 });
 
@@ -369,6 +373,8 @@ export const scheduledActions = pgTable(
     ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
     /** 予約を入れた人。ルールが入れた予約とこれより前の予約は null（ルールのものは rule_run_id で辿る） */
     createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
+    /** 外部のアプリ（MCP）が入れた予約なら、その許可 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
     /** UTC保存。入出力はJST */
     runAt: timestamp("run_at", { withTimezone: true }).notNull(),
     status: text("status", { enum: ["scheduled", "running", "done", "failed", "canceled"] })
@@ -400,6 +406,8 @@ export const publishEvents = pgTable("publish_events", {
   kind: text("kind").notNull(),
   pageId: text("page_id"),
   scheduledActionId: uuid("scheduled_action_id"),
+  /** 外部のアプリ（MCP）からの操作なら、その許可 */
+  oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
   createdAt: createdAt(),
 });
 
@@ -499,6 +507,8 @@ export const auditLogs = pgTable(
     actorEmail: text("actor_email"),
     /** ルールのとき、その実行 */
     ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
+    /** 外部のアプリ（MCP）からの操作なら、その時点のアプリの名前 */
+    via: text("via"),
     /** 操作の種類（shared の AUDIT_ACTIONS） */
     action: text("action").notNull(),
     targetType: text("target_type"),
@@ -518,5 +528,78 @@ export const auditLogs = pgTable(
     index("audit_logs_created_idx").on(t.createdAt, t.id),
     index("audit_logs_actor_idx").on(t.actorUserId, t.createdAt),
     index("audit_logs_target_idx").on(t.targetType, t.targetId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// 外部のアプリ（MCP クライアント）からの操作：OAuth 2.1
+// トークン・認可コードは平文を持たず、SHA-256 のハッシュだけを持つ
+// ---------------------------------------------------------------------------
+
+/** 動的クライアント登録（RFC 7591）で登録したアプリ。公開クライアント（秘密鍵なし、PKCE 必須）だけを扱う */
+export const oauthClients = pgTable("oauth_clients", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** 完全一致で比べる */
+  redirectUris: jsonb("redirect_uris").$type<string[]>().notNull(),
+  createdAt: createdAt(),
+});
+
+/** 人がアプリに与えた許可（同意）。取り消すと、そこから出たトークンは次のリクエストから通らない */
+export const oauthGrants = pgTable(
+  "oauth_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.id),
+    /** 許可した人。どの wiki のメンバーでもなくなると、この許可も使えなくなる */
+    userId: uuid("user_id")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
+    scopes: jsonb("scopes").$type<string[]>().notNull(),
+    createdAt: createdAt(),
+    /** これを過ぎたら、もう一度同意し直す */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    /** レート制限（固定窓）の窓の始まりと、その中の回数 */
+    rateWindowStart: timestamp("rate_window_start", { withTimezone: true }),
+    rateWindowCount: integer("rate_window_count").notNull().default(0),
+  },
+  (t) => [index("oauth_grants_user_idx").on(t.userId, t.createdAt)],
+);
+
+/** 認可コード。1回だけ使える */
+export const oauthCodes = pgTable("oauth_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  grantId: uuid("grant_id")
+    .notNull()
+    .references(() => oauthGrants.id),
+  redirectUri: text("redirect_uri").notNull(),
+  /** PKCE（S256） */
+  codeChallenge: text("code_challenge").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** アクセストークン（短命）とリフレッシュトークン（使うたびに入れ替える） */
+export const oauthTokens = pgTable(
+  "oauth_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    grantId: uuid("grant_id")
+      .notNull()
+      .references(() => oauthGrants.id),
+    kind: text("kind", { enum: ["access", "refresh"] }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** リフレッシュトークンは、使った（入れ替えた）ときにも入る */
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("oauth_tokens_kind_check", sql`${t.kind} in ('access', 'refresh')`),
+    index("oauth_tokens_grant_idx").on(t.grantId),
   ],
 );

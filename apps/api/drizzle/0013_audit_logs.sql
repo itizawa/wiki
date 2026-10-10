@@ -6,6 +6,7 @@ CREATE TABLE "audit_logs" (
 	"actor_label" text NOT NULL,
 	"actor_email" text,
 	"rule_run_id" uuid,
+	"via" text,
 	"action" text NOT NULL,
 	"target_type" text,
 	"target_id" text,

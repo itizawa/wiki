@@ -52,13 +52,16 @@ export const requireOwner: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-/** Google のログインを始める。招待リンクの値があれば OAuth の state の Cookie に入れ、ログインのあとで招待の画面に戻す。 */
-async function startGoogleLogin(c: Context<AppEnv>, invite: string | undefined) {
+/**
+ * Google のログインを始める。招待リンクの値があれば OAuth の state の Cookie に入れ、ログインのあとで招待の画面に戻す。
+ * next があれば、ログインのあとでそこに戻す。
+ */
+async function startGoogleLogin(c: Context<AppEnv>, back: { invite?: string; next?: string }) {
   const { config, google } = c.get("deps");
   if (!google) throw new HttpError(400, "google_not_configured", "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set");
   const state = randomToken();
   const nonce = randomToken();
-  setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, invite }), {
+  setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, ...back }), {
     httpOnly: true,
     secure: config.secureCookies,
     sameSite: "Lax",
@@ -69,12 +72,13 @@ async function startGoogleLogin(c: Context<AppEnv>, invite: string | undefined) 
 }
 
 export const authRoutes = new Hono<AppEnv>()
-  .get("/google/login", (c) => startGoogleLogin(c, undefined))
+  // ログインのあとに戻る管理画面の中の場所（外部アプリ連携の同意の画面など）
+  .get("/google/login", (c) => startGoogleLogin(c, { next: safeNextPath(c.req.query("next")) }))
   // 招待の画面からは、リンクの値を URL に載せないようにフォームの POST で来る（アクセスログに残さない）
   .post("/google/login", async (c) => {
     const form = await c.req.parseBody();
     const invite = typeof form.invite === "string" && form.invite ? form.invite : undefined;
-    return startGoogleLogin(c, invite);
+    return startGoogleLogin(c, { invite });
   })
   .get("/google/callback", async (c) => {
     const { config, google } = c.get("deps");
@@ -116,7 +120,7 @@ export const authRoutes = new Hono<AppEnv>()
       return c.redirect(`${config.adminOrigin}/login?error=invite_only&email=${encodeURIComponent(identity.email)}`);
     }
     await startSession(c, user.id);
-    return c.redirect(`${config.adminOrigin}/`);
+    return c.redirect(`${config.adminOrigin}${safeNextPath(saved.next) ?? "/"}`);
   })
   // ローカル開発専用（production では無効）。DEV_LOGIN_EMAIL のユーザーをオーナーとして作ってログインする
   .post("/dev-login", async (c) => {
@@ -161,6 +165,12 @@ async function recordDenied(db: Db, login: LoginIdentity, reason: "invite_only" 
     detail: { reason },
     request: meta,
   });
+}
+
+/** 同じオリジンの中のパスだけを受け付ける（`//evil.example` のような別オリジンへの移動を防ぐ） */
+export function safeNextPath(next: string | undefined): string | undefined {
+  if (!next || next.length > 4000 || !/^\/[\x21-\x7e]*$/.test(next) || next.startsWith("//") || next.includes("\\")) return undefined;
+  return next;
 }
 
 async function startSession(c: Context<AppEnv>, userId: string) {
