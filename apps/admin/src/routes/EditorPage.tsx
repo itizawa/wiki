@@ -15,6 +15,7 @@ import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { usePersistentState } from "../lib/storage";
+import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
 import { WorkflowPanel } from "../components/WorkflowPanel";
 import { Mono, Muted, Section, StatusChip } from "../components/ui";
@@ -130,6 +131,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
             公開・履歴
           </Button>
+          <PageMenu title={draft.title} bodyMd={draft.bodyMd} />
         </Box>
 
         <Box sx={{ maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
