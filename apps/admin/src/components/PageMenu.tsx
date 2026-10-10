@@ -1,9 +1,6 @@
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import PostAddIcon from "@mui/icons-material/PostAdd";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import { Copy, Download, Ellipsis, LayoutTemplate } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -73,19 +70,19 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
     <>
       <Tooltip title="書き出す・テンプレートにする">
         <IconButton size="small" aria-label="書き出す・テンプレートにする" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
-          <MoreHorizIcon fontSize="small" />
+          <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
         <MenuItem onClick={copy}>
           <ListItemIcon>
-            <ContentCopyIcon fontSize="small" />
+            <Copy size={18} />
           </ListItemIcon>
           <ListItemText>Markdown をコピー</ListItemText>
         </MenuItem>
         <MenuItem onClick={download}>
           <ListItemIcon>
-            <FileDownloadOutlinedIcon fontSize="small" />
+            <Download size={18} />
           </ListItemIcon>
           <ListItemText>Markdown ファイル（.md）をダウンロード</ListItemText>
         </MenuItem>
@@ -99,7 +96,7 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
           }}
         >
           <ListItemIcon>
-            <PostAddIcon fontSize="small" />
+            <LayoutTemplate size={18} />
           </ListItemIcon>
           <ListItemText>テンプレートとして保存</ListItemText>
         </MenuItem>

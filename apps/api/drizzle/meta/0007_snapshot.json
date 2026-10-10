@@ -1,5 +1,5 @@
 {
-  "id": "e94cd147-7137-4e74-8492-9c710fe295a0",
+  "id": "4c88e9d9-b04c-4a95-afc0-3fc052676156",
   "prevId": "086bb7de-03b4-412f-99a1-a57da4ee4330",
   "version": "7",
   "dialect": "postgresql",
@@ -146,32 +146,25 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.page_templates": {
-      "name": "page_templates",
+    "public.page_stars": {
+      "name": "page_stars",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "wiki_id": {
-          "name": "wiki_id",
+        "admin_email": {
+          "name": "admin_email",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "title": {
-          "name": "title",
+        "page_id": {
+          "name": "page_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "body_md": {
-          "name": "body_md",
-          "type": "text",
+        "position": {
+          "name": "position",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
@@ -181,51 +174,16 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         }
       },
-      "indexes": {
-        "page_templates_wiki_idx": {
-          "name": "page_templates_wiki_idx",
-          "columns": [
-            {
-              "expression": "wiki_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "page_templates_wiki_id_wikis_id_fk": {
-          "name": "page_templates_wiki_id_wikis_id_fk",
-          "tableFrom": "page_templates",
-          "tableTo": "wikis",
+        "page_stars_page_id_pages_id_fk": {
+          "name": "page_stars_page_id_pages_id_fk",
+          "tableFrom": "page_stars",
+          "tableTo": "pages",
           "columnsFrom": [
-            "wiki_id"
+            "page_id"
           ],
           "columnsTo": [
             "id"
@@ -234,7 +192,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "page_stars_admin_email_page_id_pk": {
+          "name": "page_stars_admin_email_page_id_pk",
+          "columns": [
+            "admin_email",
+            "page_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

@@ -1,6 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import PostAddIcon from "@mui/icons-material/PostAdd";
+import { FileText, LayoutTemplate, Plus } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -82,14 +80,14 @@ export function PageMention({ editor }: { editor: Editor }) {
         i.kind === "page" ? (
           <>
             <ListItemIcon>
-              <DescriptionOutlinedIcon fontSize="small" />
+              <FileText size={18} />
             </ListItemIcon>
             <ListItemText slotProps={{ primary: { noWrap: true } }}>{i.title}</ListItemText>
           </>
         ) : i.template ? (
           <>
             <ListItemIcon>
-              <PostAddIcon fontSize="small" />
+              <LayoutTemplate size={18} />
             </ListItemIcon>
             <ListItemText slotProps={{ primary: { noWrap: true } }}>
               「{i.title}」をテンプレート「{i.template.title}」で作ってリンクする
@@ -98,7 +96,7 @@ export function PageMention({ editor }: { editor: Editor }) {
         ) : (
           <>
             <ListItemIcon>
-              <AddIcon fontSize="small" />
+              <Plus size={18} />
             </ListItemIcon>
             <ListItemText slotProps={{ primary: { noWrap: true } }}>「{i.title}」を新しく作ってリンクする</ListItemText>
           </>

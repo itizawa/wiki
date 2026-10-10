@@ -1,4 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
+import { Plus } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -79,7 +79,7 @@ export function TemplatesPage() {
           <Typography variant="h6" component="h2">
             テンプレート
           </Typography>
-          <Button variant="contained" startIcon={<AddIcon />} disabled={create.isPending} onClick={() => create.mutate()}>
+          <Button variant="contained" startIcon={<Plus size={18} />} disabled={create.isPending} onClick={() => create.mutate()}>
             新しいテンプレート
           </Button>
         </Row>

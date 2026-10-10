@@ -78,7 +78,7 @@ export const templateRoutes = new Hono<AppEnv>()
     await db.delete(pageTemplates).where(eq(pageTemplates.id, id));
     return c.json({ ok: true });
   })
-  // 変数を置き換えた内容。作ったばかりの空のページに、エディタからテンプレートを当てるときに使う（保存は人がする）
+  // 変数を置き換えた内容。作ったばかりの空のページに、エディタからテンプレートを当てるときに使う（版を作るのは人）
   .get("/:id/render", async (c) => {
     const { db } = c.get("deps");
     const row = await findTemplate(db, c.get("wiki").id, c.req.param("id"));

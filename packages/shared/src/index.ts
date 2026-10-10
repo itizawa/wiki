@@ -15,3 +15,4 @@ export * from "./callout";
 export * from "./toggle";
 export * from "./wiki";
 export * from "./template";
+export * from "./images";

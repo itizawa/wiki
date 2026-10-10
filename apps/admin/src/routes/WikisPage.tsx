@@ -1,7 +1,4 @@
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import { ArrowLeft, Circle, CircleCheck, ExternalLink } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -53,7 +50,7 @@ export function WikisPage() {
     <Stack spacing={1.5}>
       <Box>
         <RouterLink to="/" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-          <ArrowBackIcon sx={{ fontSize: 18 }} />
+          <ArrowLeft size={18} />
           {active.length > 0 ? "wiki の画面に戻る" : "最初の画面に戻る"}
         </RouterLink>
         <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
@@ -166,7 +163,7 @@ function SiteLink({ origin }: { origin: string }) {
   return (
     <MuiLink href={origin} target="_blank" rel="noopener" underline="always" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
       <Mono>{origin}</Mono>
-      <OpenInNewIcon aria-label="別のタブで開く" sx={{ fontSize: 14 }} />
+      <ExternalLink aria-label="別のタブで開く" size={14} />
     </MuiLink>
   );
 }
@@ -244,7 +241,7 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
               {checks.map((c) => (
                 <Box component="li" key={c.label} sx={{ position: "relative", display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.875rem", color: c.ok ? "success.main" : "text.secondary" }}>
                   {/* 満たしたかどうかは、色だけでなく印の形でも示す */}
-                  {c.ok ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} />}
+                  {c.ok ? <CircleCheck size={16} /> : <Circle size={16} />}
                   <span>
                     {c.label}
                     <Box component="span" sx={{ position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>

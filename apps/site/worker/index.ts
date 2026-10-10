@@ -1,7 +1,9 @@
-import { isValidWikiKey, resolvePagePath, wikiKeyFromHost, type PublicRoutes } from "@wiki/shared";
+import { imageNameFromPath, isValidWikiKey, resolvePagePath, wikiKeyFromHost, type PublicRoutes } from "@wiki/shared";
 
 export type Env = {
   ASSETS: { fetch(input: Request | URL): Promise<Response> };
+  /** アップロードした画像（R2。管理画面の Worker と同じバケット） */
+  IMAGES?: { get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null> };
   /** 公開サイトのドメインの共通部分。wiki は `{key}.{SITE_BASE_DOMAIN}` で公開する */
   SITE_BASE_DOMAIN?: string;
   /** Host で決まらないとき（プレビューの *.workers.dev、手元の開発）に表示する wiki。既定は最初の wiki */
@@ -30,6 +32,7 @@ export default {
     if (target === "passthrough") return fetch(request);
     if (target instanceof Response) return target;
     if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
+    if (url.pathname.startsWith("/images/")) return image(url.pathname, env);
 
     const prefix = `/${target}`;
     const asset = (pathname: string) => {
@@ -92,6 +95,24 @@ function withoutPrefix(res: Response, url: URL, prefix: string): Response {
   const headers = new Headers(res.headers);
   headers.set("location", to.pathname + to.search + to.hash);
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+/**
+ * アップロードした画像。本文には `/images/{name}` と書くので、どの wiki のサブドメインでも同じバケットから返す。
+ * 名前は変わらないので長くキャッシュさせる。
+ */
+async function image(pathname: string, env: Env): Promise<Response> {
+  const name = imageNameFromPath(pathname);
+  const obj = name && env.IMAGES ? await env.IMAGES.get(name) : null;
+  if (!obj) return notFound();
+  return new Response(obj.body, {
+    headers: {
+      "content-type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+      "cache-control": "public, max-age=31536000, immutable",
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    },
+  });
 }
 
 /** 限定公開ページ：検索エンジンに載せず、リンク先へ URL を渡さない。 */

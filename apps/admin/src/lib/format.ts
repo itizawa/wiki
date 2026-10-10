@@ -12,6 +12,13 @@ export function formatDateTime(iso: string): string {
   return fmt.format(new Date(iso));
 }
 
+const timeFmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" });
+
+/** 時刻だけ（JST）。 */
+export function formatTime(iso: string): string {
+  return timeFmt.format(new Date(iso));
+}
+
 const dayFmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "UTC", month: "long", day: "numeric", weekday: "short" });
 const dayWithYearFmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "UTC", year: "numeric", month: "long", day: "numeric", weekday: "short" });
 
