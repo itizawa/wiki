@@ -1,8 +1,8 @@
-import { createWikiInput, renameWikiInput, type WikiSummary } from "@wiki/shared";
+import { createWikiInput, updateWikiInput, type WikiSummary } from "@wiki/shared";
 import { Hono, type MiddlewareHandler } from "hono";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
-import { archiveWiki, createWiki, findOpenWiki, listWikis, renameWiki, unarchiveWiki } from "../wikis/service";
+import { archiveWiki, createWiki, findOpenWiki, listWikis, unarchiveWiki, updateWiki } from "../wikis/service";
 import { parseJson } from "../validation";
 
 /**
@@ -29,7 +29,7 @@ export const resolveWiki: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-/** /admin/wikis：wiki の一覧と、作成・名前の変更・アーカイブ・戻す（オーナーだけ） */
+/** /admin/wikis：wiki の一覧と、作成・表示名と画像の変更・アーカイブ・戻す（オーナーだけ） */
 export const wikiRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db, config } = c.get("deps");
@@ -46,8 +46,8 @@ export const wikiRoutes = new Hono<AppEnv>()
   })
   .patch("/:key", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
-    const input = await parseJson(c, renameWikiInput);
-    const row = await renameWiki(db, c.req.param("key"), input.name);
+    const input = await parseJson(c, updateWikiInput);
+    const row = await updateWiki(db, c.req.param("key"), input);
     return c.json(await summary(db, config, row.key));
   })
   .post("/:key/archive", requireOwner, async (c) => {

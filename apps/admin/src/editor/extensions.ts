@@ -1,9 +1,11 @@
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
 import { TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { CalloutBlockquote } from "./callout";
+import { lowlight } from "./highlight";
 import { MarkdownListItem, MarkdownTaskItem } from "./listItems";
 
 /**
@@ -17,10 +19,14 @@ export const editorExtensions = [
     blockquote: false,
     // リストの項目は、区切り線と画像を正しく書き出せる MarkdownListItem に置き換える
     listItem: false,
+    // コードブロックは、編集中も色分けする CodeBlockLowlight に置き換える
+    codeBlock: false,
     link: { openOnClick: false, autolink: true, defaultProtocol: "https" },
   }),
   CalloutBlockquote,
   MarkdownListItem,
+  // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）
+  CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),
   Image,
   TaskList,
   MarkdownTaskItem.configure({ nested: true }),
