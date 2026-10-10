@@ -13,7 +13,6 @@ import AddIcon from "@mui/icons-material/Add";
 import AutoModeIcon from "@mui/icons-material/AutoMode";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
@@ -304,7 +303,6 @@ function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }
     <>
       {pages.data.pages.map((p) => (
         <RouterLink key={p.id} to="/pages/$pageId" params={{ pageId: p.id }} onClick={onNavigate} underline="none" sx={rowSx}>
-          <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
           <Box component="span" sx={ellipsis}>
             {p.title}
           </Box>
@@ -445,7 +443,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
   const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
   const title = ctx.label(node);
 
-  const labelSx = { ...ellipsis, display: "flex", alignItems: "center", gap: 0.75, color: "inherit", textDecoration: "none" };
+  // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
+  const labelSx = { ...ellipsis, display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
 
   return (
     <Box role="treeitem" aria-expanded={kids.length > 0 ? isOpen : undefined} aria-selected={isActive}>
@@ -480,7 +479,6 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           <ChevronRightIcon sx={{ fontSize: 18, transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
         <RouterLink to="/pages/$pageId" params={{ pageId: node.pageId }} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
-          <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
           <Box component="span" sx={ellipsis}>
             {title}
           </Box>
