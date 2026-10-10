@@ -167,6 +167,17 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
   - 本文の「@」「[[」の「「…」をテンプレート「…」で作ってリンクする」（タイトルは打った名前）
 - 変数：ページを作るとき（API の `POST /pages` に `templateId` を渡したとき）に、タイトルと本文の `{date}`（今日の日付、JST）`{datetime}`（今の日時、JST）`{author}`（作った人のメールアドレス）を置き換える（`packages/shared/src/template.ts`）
 
+## スマホから使う（PWA）
+
+管理画面はホーム画面に置ける（Web App Manifest と Service Worker。`apps/admin/vite.config.ts` の `vite-plugin-pwa`）。置いたものから開くと、ブラウザの枠なしで出る。
+
+- Service Worker が覚えるのは、ビルドした画面のファイル（JS・HTML・アイコン）だけ。API の応答（`/api/*`）とアップロードした画像（`/images/*`）は覚えない。オフラインでは画面の枠までは出るが、内容の読み込みと編集はできない
+- `/api/*` `/export/*` `/internal/*` `/images/*` `/health` への画面遷移には、Service Worker が手を出さない（Google ログインのリダイレクトがここを通る）。`apps/api/wrangler.toml` の `run_worker_first` に経路を足したら、`vite.config.ts` の `navigateFallbackDenylist` にも足す
+- 新しい版をデプロイしても、開いている画面は勝手に切り替わらない。「新しい版があります」と出し、「更新する」を押したときに読み込み直す（`apps/admin/src/components/UpdatePrompt.tsx`）。新しい版が出ていないかは、画面を開いたとき、裏から戻ったとき、開いたままなら1時間ごとに確かめる。「あとで」を選んだときは、管理画面をすべて閉じて開き直すと新しい版になる
+- Service Worker は `pnpm dev` では動かない。手元で確かめるときは `pnpm --filter @wiki/admin build` のあと `pnpm --filter @wiki/admin preview --port 5173`（API の `ADMIN_ORIGIN` と同じオリジンで開く）
+- サイドバーの並び替え（ツリー、スター）は、タッチでは長押ししてからドラッグする（すぐ動かすとスクロールになる）
+- アイコンは `apps/admin/public/` の PNG（`favicon.svg` と同じ絵柄。`icon-maskable-512.png` は OS が形を切り抜くので、端まで塗って絵柄を中央に寄せてある）
+
 ## デプロイ
 
 `main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
