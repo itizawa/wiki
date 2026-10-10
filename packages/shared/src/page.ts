@@ -93,3 +93,13 @@ export type PageVersion = {
 };
 
 export type PageDetail = PageSummary & { head: PageVersion };
+
+/** ゴミ箱の1行。いっしょにゴミ箱に入れたページのまとまりを、削除で選んだページ（先頭）で表す。 */
+export type TrashedPage = {
+  id: string;
+  title: string;
+  /** ゴミ箱に入れた日時 */
+  deletedAt: string;
+  /** いっしょにゴミ箱に入れた配下のページ数（先頭のページは数えない） */
+  descendantCount: number;
+};

@@ -7,7 +7,7 @@ import InputBase from "@mui/material/InputBase";
 import Snackbar from "@mui/material/Snackbar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
-import type { PageDetail, PageDraft } from "@wiki/shared";
+import { childrenByParent, type PageDetail, type PageDraft } from "@wiki/shared";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openFindBar } from "../editor/FindBar";
@@ -187,12 +187,34 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   });
 
   const deletePage = async () => {
+    // 配下のページもいっしょにゴミ箱に入るので、何ページあるかを最新のツリーから数える
+    const structure = await qc.fetchQuery({ queryKey: ["structure"], queryFn: api.structure }).catch(() => null);
+    const childrenOf = childrenByParent(structure?.trees[0]?.nodes ?? []);
+    const descendants: string[] = [];
+    for (const stack = [pageId]; stack.length > 0; ) {
+      for (const child of childrenOf.get(stack.pop()!) ?? []) {
+        descendants.push(child.pageId);
+        stack.push(child.nodeId);
+      }
+    }
+    const published =
+      (page.data?.publishedVersionId ? 1 : 0) + descendants.filter((id) => structure?.pages[id]?.publishedVersionId).length;
     const ok = await confirmDialog({
-      title: `「${page.data?.title ?? ""}」を削除しますか？`,
-      body: `ツリーからも外れます。${page.data?.publishedVersionId ? "公開中のページなので、公開サイトからも見られなくなります。" : ""}この画面からは元に戻せません。`,
-      confirmLabel: "削除する",
-      cancelLabel: "削除しない",
-      danger: true,
+      title: `「${page.data?.title ?? ""}」をゴミ箱に入れますか？`,
+      body: [
+        descendants.length > 0 ? `配下の ${descendants.length} ページもいっしょにゴミ箱に入り、ツリーから外れます。` : "ツリーから外れます。",
+        published > 0 &&
+          (descendants.length > 0
+            ? `公開中の ${published} ページは、公開サイトから見られなくなります。`
+            : "公開中のページなので、公開サイトからも見られなくなります。"),
+        "あとで「ゴミ箱」から元に戻せます（非公開のページとして戻り、公開と予約は戻りません）。",
+      ]
+        .filter(Boolean)
+        .join(""),
+      confirmLabel: "ゴミ箱に入れる",
+      cancelLabel: "ゴミ箱に入れない",
+      // ゴミ箱から戻せるが、公開は戻らないので、公開中のページを含むときだけ赤にする
+      danger: published > 0,
     });
     if (ok) remove.mutate();
   };

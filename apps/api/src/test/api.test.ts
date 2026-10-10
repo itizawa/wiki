@@ -391,19 +391,18 @@ describe("pages", () => {
     expect(await keepOf(autoD)).toBe(true);
   });
 
-  it("deletes a page and lifts its children to the parent of the deleted page", async () => {
+  it("deletes a page together with the pages under it", async () => {
     ctx = await setup();
     const top = (await ctx.call("POST", `${W}/pages`, { title: "top" })).body;
     const parent = (await ctx.call("POST", `${W}/pages`, { title: "parent", parentPageId: top.id })).body;
     const child = (await ctx.call("POST", `${W}/pages`, { title: "child", parentPageId: parent.id })).body;
     expect((await ctx.call("DELETE", `${W}/pages/${parent.id}`)).status).toBe(200);
-    const nodes = (await structure()).trees[0].nodes;
-    expect(nodes.find((n: any) => n.nodeId === parent.id)).toBeUndefined();
-    expect(nodes.find((n: any) => n.nodeId === child.id).parentNodeId).toBe(top.id);
+    expect((await structure()).trees[0].nodes).toEqual([expect.objectContaining({ nodeId: top.id, parentNodeId: null })]);
     expect((await ctx.call("GET", `${W}/pages/${parent.id}`)).status).toBe(404);
+    expect((await ctx.call("GET", `${W}/pages/${child.id}`)).status).toBe(404);
 
     expect((await ctx.call("DELETE", `${W}/pages/${top.id}`)).status).toBe(200);
-    expect((await structure()).trees[0].nodes).toEqual([expect.objectContaining({ nodeId: child.id, parentNodeId: null })]);
+    expect((await structure()).trees[0].nodes).toEqual([]);
   });
 });
 
