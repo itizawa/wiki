@@ -31,6 +31,12 @@ function Node({ item, current, depth }: { item: NavItem; current?: string; depth
           <span className={s.twisty} />
         )}
         <a href={item.href} aria-current={item.nodeId === current ? "page" : undefined}>
+          {/* 飾りなので読み上げない（タイトルだけを読む） */}
+          {item.icon && (
+            <span className={s.icon} aria-hidden="true">
+              {item.icon}
+            </span>
+          )}
           {item.title}
         </a>
       </div>

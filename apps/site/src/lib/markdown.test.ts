@@ -26,6 +26,19 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("javascript:");
   });
 
+  it("does not let images, inline HTML or link titles carry script", () => {
+    const md = [
+      '![x](javascript:alert(1))',
+      '<img src=x onerror=alert(1)> and <a href="javascript:alert(1)">a</a>',
+      '[t](https://example.com "x\" onmouseover=\"alert(1)")',
+      '![y](https://example.com/a.png "q\" onerror=\"alert(1)")',
+    ].join("\n\n");
+    const html = renderMarkdown(md, { publicPaths });
+    expect(html).not.toMatch(/<img[^>]*\sonerror=/i);
+    expect(html).not.toMatch(/<a[^>]*\sonmouseover=/i);
+    expect(html).not.toMatch(/(href|src)="javascript:/i);
+  });
+
   it("marks external links as sponsored on monetized pages", () => {
     expect(renderMarkdown("[shop](https://example.com)", { publicPaths, sponsored: true })).toContain('rel="sponsored noopener"');
     expect(renderMarkdown("[shop](https://example.com)", { publicPaths })).toContain('rel="noopener"');

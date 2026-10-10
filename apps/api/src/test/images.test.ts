@@ -23,6 +23,8 @@ describe("images", () => {
     expect(served.headers.get("content-type")).toBe("image/png");
     expect(served.headers.get("x-content-type-options")).toBe("nosniff");
     expect(served.headers.get("cache-control")).toContain("immutable");
+    // API 全体のセキュリティヘッダーで、画像の CSP（sandbox）を上書きしない
+    expect(served.headers.get("content-security-policy")).toContain("sandbox");
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(PNG);
   });
 
@@ -48,6 +50,16 @@ describe("images", () => {
     ctx = await setup();
     expect((await ctx.call("POST", `${W}/images`, PNG, { cookie: "" })).status).toBe(401);
     expect((await ctx.call("POST", `${W}/images`, PNG, { origin: "https://evil.example" })).status).toBe(403);
+  });
+
+  it("refuses uploads through a wiki that does not exist or is archived", async () => {
+    ctx = await setup();
+    expect((await ctx.call("POST", "/admin/w/nope/images", PNG)).status).toBe(404);
+    await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" });
+    expect((await ctx.call("POST", "/admin/w/notes/images", PNG)).status).toBe(201);
+    await ctx.call("POST", "/admin/wikis/notes/archive");
+    expect((await ctx.call("POST", "/admin/w/notes/images", PNG)).status).toBe(404);
+    expect((ctx.images as ReturnType<typeof memoryImageStore>).files.size).toBe(1);
   });
 
   it("returns 404 for unknown or malformed names", async () => {

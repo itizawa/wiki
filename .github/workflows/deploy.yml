@@ -23,9 +23,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -47,10 +47,12 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          # 任意。「アクセス解析」用のサービスアカウントの鍵（JSON）。未登録なら渡さず、その機能だけが「未設定」になる
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           pnpm --filter @wiki/admin build
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN
+            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker

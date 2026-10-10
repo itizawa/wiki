@@ -5,16 +5,30 @@ import { appearanceRoutes } from "./routes/appearance";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
+import { mcpRoutes } from "./mcp/server";
+import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
+import { analyticsRoutes } from "./routes/analytics";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
-import { ruleRoutes } from "./routes/rules";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
-import { resolveWiki, wikiRoutes } from "./routes/wikis";
+import { viewRoutes } from "./routes/views";
+import { resolveWiki, wikiRoutes, wikiSettingsRoutes } from "./routes/wikis";
+
+/**
+ * API の応答はどれも JSON かリダイレクトなので、何も読み込ませず、枠にも入れさせない。
+ * 管理画面の HTML（静的アセット）のヘッダーは apps/admin/public/_headers で付ける。
+ */
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "same-origin",
+  "x-frame-options": "DENY",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+};
 
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
@@ -23,11 +37,25 @@ export function createApp(deps: Deps) {
     c.set("deps", deps);
     await next();
   });
-  // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
-  // /internal はCookieを使わずトークンで認証するので対象外
+  // 応答に付けるセキュリティヘッダー。経路が自分で付けたもの（画像の CSP など）は上書きしない
   app.use("*", async (c, next) => {
+    await next();
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+      if (!c.res.headers.has(name)) c.res.headers.set(name, value);
+    }
+  });
+  // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
+  // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外
+  app.use("*", async (c, next) => {
+    const path = c.req.path;
     const safe =
-      c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS" || c.req.path.startsWith("/internal/");
+      c.req.method === "GET" ||
+      c.req.method === "HEAD" ||
+      c.req.method === "OPTIONS" ||
+      path.startsWith("/internal/") ||
+      path.startsWith("/oauth/") ||
+      path === "/mcp" ||
+      path.startsWith("/mcp/");
     if (!safe && c.req.header("origin") !== deps.config.adminOrigin) {
       throw new HttpError(403, "bad_origin", "cross-origin request rejected");
     }
@@ -41,6 +69,10 @@ export function createApp(deps: Deps) {
   app.route("/images", imageServeRoutes);
   // 招待リンクを開いた人向け。メンバーでなくても使える
   app.route("/invites", inviteRoutes);
+  // 外部のアプリ（MCP クライアント）：OAuth 2.1 の認可サーバーと、MCP サーバー
+  app.route("/.well-known", wellKnownRoutes);
+  app.route("/oauth", oauthRoutes);
+  app.route("/mcp", mcpRoutes);
 
   // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
@@ -51,6 +83,7 @@ export function createApp(deps: Deps) {
   });
   admin.route("/wikis", wikiRoutes);
   admin.route("/users", userRoutes);
+  admin.route("/oauth", oauthAdminRoutes);
 
   // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
   const wiki = new Hono<AppEnv>();
@@ -58,7 +91,6 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pageRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
-  wiki.route("/rules", ruleRoutes);
   wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);
   wiki.route("/stars", starRoutes);
@@ -68,6 +100,9 @@ export function createApp(deps: Deps) {
   wiki.route("/members", memberRoutes);
   wiki.route("/invites", inviteAdminRoutes);
   wiki.route("/appearance", appearanceRoutes);
+  wiki.route("/views", viewRoutes);
+  wiki.route("/settings", wikiSettingsRoutes);
+  wiki.route("/analytics", analyticsRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

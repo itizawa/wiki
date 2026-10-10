@@ -1,6 +1,7 @@
 // サンプルマニフェストでのビルド結果を検査する（CI用）。
 // - 限定公開ページが検索・サイトマップ・RSS・ナビに漏れていないこと
 // - ある wiki の内容（非公開・限定公開を含む）が、別の wiki の出力に混ざっていないこと
+// - Google のタグ（Analytics・サーチコンソール）が、設定した wiki の公開ページにだけ入り、限定公開のページに入っていないこと
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -35,6 +36,13 @@ const top = (await readdir(dist)).sort();
 check(top.join() === ["_astro", "_headers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
 
 const tPage = await read("wiki/t/by-theme/aaaaaaaaa2.html");
+// ページのアイコン（絵文字）：タイトルとツリーのナビには出し、<title> には入れない
+const iconPage = await read("wiki/p/aaaaaaaaa1.html");
+check(/<h1[^>]*>\s*<span[^>]*aria-hidden="true"[^>]*>👋<\/span>\s*はじめに\s*<\/h1>/.test(iconPage), "a page's icon is shown before its title");
+const noIconPage = await read("wiki/p/aaaaaaaaa2.html");
+check(/<a href="\/t\/main\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
+check(!/<h1[^>]*>\s*<span/.test(noIconPage), "a page without an icon has nothing before its title");
+check(!/<title>[^<]*👋/.test(iconPage), "the icon is not part of <title>");
 check(tPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "/t/ page has canonical to /p/ on the wiki's origin");
 
 check(
@@ -62,7 +70,40 @@ check(notesPage.includes("広告を含みます") && notesPage.includes('rel="sp
 
 check(notesPage.includes("このページにリンクしているページ") && !intro.includes("このページにリンクしているページ"), "backlinks are listed only on pages that are linked from another public page");
 check(!unlisted.includes("このページにリンクしているページ"), "unlisted page shows no backlinks");
+
+// 閲覧数：公開の記事（/p/ と /t/）だけが数え、限定公開のページからは何も送らない
+const counterScript = async (html) => {
+  // スクリプトは小さければページに埋め込まれ、大きければ _astro/ のファイルになる。どちらでも送り先（/_v）を探す
+  const srcs = [...html.matchAll(/<script[^>]*src="(\/_astro\/[^"]+)"/g)].map((m) => m[1]);
+  const external = await Promise.all(srcs.map((src) => read(src.slice(1))));
+  return [html, ...external].some((t) => t.includes('"/_v"'));
+};
+check(intro.includes('data-count-view="aaaaaaaaa1"') && (await counterScript(intro)), "a public page counts its views with its own id");
+check(tPage.includes('data-count-view="aaaaaaaaa2"') && (await counterScript(tPage)), "a page viewed through the tree counts as the same page");
+check(!unlisted.includes("data-count-view") && !(await counterScript(unlisted)), "an unlisted page does not count views or send anything");
+check(!(await counterScript(await read("wiki/index.html"))), "list pages (the top) do not count views");
 check(!(await read("notes/p/bbbbbbbbb1.html")).includes("このページにリンクしているページ"), "a link from another wiki is not a backlink");
+
+// Google のタグ：設定のある wiki（サンプルでは wiki）の公開ページ・一覧・検索・404 に入れる。限定公開のページからは何も送らない
+const gaId = "G-SAMPLE1234";
+const verification = "sampleVerification_0123-abc";
+const gaSrc = `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>`;
+const verificationMeta = `<meta name="google-site-verification" content="${verification}">`;
+const withTags = { "wiki/index.html": await read("wiki/index.html"), "wiki/p/aaaaaaaaa1.html": intro, "wiki/t/by-theme/aaaaaaaaa2.html": tPage, "wiki/search.html": await read("wiki/search.html") };
+for (const [path, html] of Object.entries(withTags)) {
+  check(html.includes(gaSrc) && html.includes(`const gaMeasurementId = "${gaId}";`) && html.includes('window.gtag("config", gaMeasurementId)'), `${path} loads the Google tag with the wiki's measurement id`);
+  check(html.includes(verificationMeta), `${path} has the Search Console verification meta`);
+}
+const googleWords = ["googletagmanager", "google-site-verification", "gtag", "dataLayer", gaId, verification];
+const inUnlisted = googleWords.filter((w) => unlisted.includes(w));
+check(inUnlisted.length === 0, `an unlisted page has no Google tag and no verification meta${inUnlisted.length ? ` (${inUnlisted.join(", ")})` : ""}`);
+const notFoundPage = await read("wiki/404.html");
+check(notFoundPage.includes(`const gaMeasurementId = "${gaId}";`) && notFoundPage.includes("googletagmanager.com/gtag/js?id="), "the 404 page has the Google tag");
+// 404 は無くなった限定公開の URL（/u/...）でも返るので、その URL では読み込まない形にしている
+check(
+  !notFoundPage.includes(gaSrc) && notFoundPage.includes("const skipUnlistedPaths = true;") && notFoundPage.includes('location.pathname.startsWith("/u/")'),
+  "the 404 page does not load the Google tag when the URL is under /u/",
+);
 
 const routes = JSON.parse(await read("wiki/page-routes.json"));
 check(routes.canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
@@ -83,12 +124,15 @@ check((await read("notes/robots.txt")).includes("Sitemap: http://notes.localhost
 check((await read("notes/p/bbbbbbbbb1.html")).includes('rel="canonical" href="http://notes.localhost:4321/p/bbbbbbbbb1"'), "canonical uses the wiki's origin");
 
 // ---- wiki どうしの漏れ：id・限定公開の key・本文・タイトル・削除済みの id が、別の wiki の出力に無いこと
-const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "by-theme"];
+const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "by-theme", gaId, verification];
 const ofNotes = ["hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート"];
 const inWiki = leaks(await readAll("wiki"), ofNotes);
 const inNotes = leaks(await readAll("notes"), ofWiki);
 check(inWiki.length === 0, `nothing of the notes wiki appears in the first wiki's output${inWiki.length ? ` (${inWiki.join(", ")})` : ""}`);
 check(inNotes.length === 0, `nothing of the first wiki appears in the notes wiki's output${inNotes.length ? ` (${inNotes.join(", ")})` : ""}`);
+// 未設定の wiki（サンプルでは notes）には、どのページにも Google のタグが無い
+const googleInNotes = leaks(await readAll("notes"), ["googletagmanager", "google-site-verification", "gtag", "dataLayer"]);
+check(googleInNotes.length === 0, `a wiki without the settings has no Google tag and no verification meta${googleInNotes.length ? ` (${googleInNotes.join(", ")})` : ""}`);
 check((await exists("notes/p/bbbbbbbbb1.html")) && !(await exists("wiki/p/bbbbbbbbb1.html")), "a page is generated only in its own wiki");
 check(JSON.parse(await read("notes/page-routes.json")).gone.join() === "hhhhhhhhh1", "each wiki has its own page-routes.json");
 const notesFragments = await readdir(join(dist, "notes/pagefind/fragment")).catch(() => []);

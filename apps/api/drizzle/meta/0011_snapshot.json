@@ -1,5 +1,5 @@
 {
-  "id": "d0a393d0-6668-4b2a-945e-05bf9a3f71a6",
+  "id": "092787d2-8788-4a14-9272-dec94d752c17",
   "prevId": "c63c1e94-3a7a-4824-9c3f-0bcb3a2366aa",
   "version": "7",
   "dialect": "postgresql",
@@ -83,8 +83,116 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.invites": {
-      "name": "invites",
+    "public.oauth_clients": {
+      "name": "oauth_clients",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uris": {
+          "name": "redirect_uris",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.oauth_codes": {
+      "name": "oauth_codes",
+      "schema": "",
+      "columns": {
+        "code_hash": {
+          "name": "code_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uri": {
+          "name": "redirect_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_challenge": {
+          "name": "code_challenge",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "oauth_codes_grant_id_oauth_grants_id_fk": {
+          "name": "oauth_codes_grant_id_oauth_grants_id_fk",
+          "tableFrom": "oauth_codes",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "grant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.oauth_grants": {
+      "name": "oauth_grants",
       "schema": "",
       "columns": {
         "id": {
@@ -94,27 +202,21 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "wiki_id": {
-          "name": "wiki_id",
+        "client_id": {
+          "name": "client_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "role": {
-          "name": "role",
+        "user_email": {
+          "name": "user_email",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
+        "scopes": {
+          "name": "scopes",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -131,31 +233,44 @@
           "primaryKey": false,
           "notNull": true
         },
-        "used_by": {
-          "name": "used_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "used_at": {
-          "name": "used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rate_window_start": {
+          "name": "rate_window_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rate_window_count": {
+          "name": "rate_window_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {
-        "invites_wiki_idx": {
-          "name": "invites_wiki_idx",
+        "oauth_grants_user_idx": {
+          "name": "oauth_grants_user_idx",
           "columns": [
             {
-              "expression": "wiki_id",
+              "expression": "user_email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -168,38 +283,12 @@
         }
       },
       "foreignKeys": {
-        "invites_wiki_id_wikis_id_fk": {
-          "name": "invites_wiki_id_wikis_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "wikis",
+        "oauth_grants_client_id_oauth_clients_id_fk": {
+          "name": "oauth_grants_client_id_oauth_clients_id_fk",
+          "tableFrom": "oauth_grants",
+          "tableTo": "oauth_clients",
           "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "invites_created_by_users_id_fk": {
-          "name": "invites_created_by_users_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "invites_used_by_users_id_fk": {
-          "name": "invites_used_by_users_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "used_by"
+            "client_id"
           ],
           "columnsTo": [
             "id"
@@ -209,20 +298,92 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "invites_token_hash_unique": {
-          "name": "invites_token_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.oauth_tokens": {
+      "name": "oauth_tokens",
+      "schema": "",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
+      "indexes": {
+        "oauth_tokens_grant_idx": {
+          "name": "oauth_tokens_grant_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "oauth_tokens_grant_id_oauth_grants_id_fk": {
+          "name": "oauth_tokens_grant_id_oauth_grants_id_fk",
+          "tableFrom": "oauth_tokens",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "grant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "invites_role_check": {
-          "name": "invites_role_check",
-          "value": "\"invites\".\"role\" in ('admin', 'editor')"
+        "oauth_tokens_kind_check": {
+          "name": "oauth_tokens_kind_check",
+          "value": "\"oauth_tokens\".\"kind\" in ('access', 'refresh')"
         }
       },
       "isRLSEnabled": false
@@ -237,9 +398,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
+        "author_email": {
+          "name": "author_email",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -283,27 +444,14 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "page_drafts_user_id_users_id_fk": {
-          "name": "page_drafts_user_id_users_id_fk",
-          "tableFrom": "page_drafts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "page_drafts_page_id_user_id_pk": {
-          "name": "page_drafts_page_id_user_id_pk",
+        "page_drafts_page_id_author_email_pk": {
+          "name": "page_drafts_page_id_author_email_pk",
           "columns": [
             "page_id",
-            "user_id"
+            "author_email"
           ]
         }
       },
@@ -379,9 +527,9 @@
       "name": "page_stars",
       "schema": "",
       "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
+        "admin_email": {
+          "name": "admin_email",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -407,19 +555,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "page_stars_user_id_users_id_fk": {
-          "name": "page_stars_user_id_users_id_fk",
-          "tableFrom": "page_stars",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "page_stars_page_id_pages_id_fk": {
           "name": "page_stars_page_id_pages_id_fk",
           "tableFrom": "page_stars",
@@ -435,10 +570,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "page_stars_user_id_page_id_pk": {
-          "name": "page_stars_user_id_page_id_pk",
+        "page_stars_admin_email_page_id_pk": {
+          "name": "page_stars_admin_email_page_id_pk",
           "columns": [
-            "user_id",
+            "admin_email",
             "page_id"
           ]
         }
@@ -595,6 +730,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "oauth_grant_id": {
+          "name": "oauth_grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -633,6 +774,19 @@
           "tableTo": "pages",
           "columnsFrom": [
             "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "page_versions_oauth_grant_id_oauth_grants_id_fk": {
+          "name": "page_versions_oauth_grant_id_oauth_grants_id_fk",
+          "tableFrom": "page_versions",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "oauth_grant_id"
           ],
           "columnsTo": [
             "id"
@@ -880,6 +1034,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "oauth_grant_id": {
+          "name": "oauth_grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -896,6 +1056,19 @@
           "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "publish_events_oauth_grant_id_oauth_grants_id_fk": {
+          "name": "publish_events_oauth_grant_id_oauth_grants_id_fk",
+          "tableFrom": "publish_events",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "oauth_grant_id"
           ],
           "columnsTo": [
             "id"
@@ -1169,6 +1342,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "oauth_grant_id": {
+          "name": "oauth_grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "run_at": {
           "name": "run_at",
           "type": "timestamp with time zone",
@@ -1288,6 +1467,19 @@
           "tableTo": "rule_runs",
           "columnsFrom": [
             "rule_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "scheduled_actions_oauth_grant_id_oauth_grants_id_fk": {
+          "name": "scheduled_actions_oauth_grant_id_oauth_grants_id_fk",
+          "tableFrom": "scheduled_actions",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "oauth_grant_id"
           ],
           "columnsTo": [
             "id"
@@ -1543,6 +1735,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "oauth_grant_id": {
+          "name": "oauth_grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1559,6 +1757,19 @@
           "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "structure_commits_oauth_grant_id_oauth_grants_id_fk": {
+          "name": "structure_commits_oauth_grant_id_oauth_grants_id_fk",
+          "tableFrom": "structure_commits",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "oauth_grant_id"
           ],
           "columnsTo": [
             "id"
@@ -1810,201 +2021,6 @@
       },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.users": {
-      "name": "users",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "google_sub": {
-          "name": "google_sub",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_owner": {
-          "name": "is_owner",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_login_at": {
-          "name": "last_login_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "users_email_idx": {
-          "name": "users_email_idx",
-          "columns": [
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "users_google_sub_unique": {
-          "name": "users_google_sub_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "google_sub"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.wiki_members": {
-      "name": "wiki_members",
-      "schema": "",
-      "columns": {
-        "wiki_id": {
-          "name": "wiki_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "invite_id": {
-          "name": "invite_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "wiki_members_user_idx": {
-          "name": "wiki_members_user_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "wiki_members_wiki_id_wikis_id_fk": {
-          "name": "wiki_members_wiki_id_wikis_id_fk",
-          "tableFrom": "wiki_members",
-          "tableTo": "wikis",
-          "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "wiki_members_user_id_users_id_fk": {
-          "name": "wiki_members_user_id_users_id_fk",
-          "tableFrom": "wiki_members",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "wiki_members_invite_id_invites_id_fk": {
-          "name": "wiki_members_invite_id_invites_id_fk",
-          "tableFrom": "wiki_members",
-          "tableTo": "invites",
-          "columnsFrom": [
-            "invite_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "wiki_members_wiki_id_user_id_pk": {
-          "name": "wiki_members_wiki_id_user_id_pk",
-          "columns": [
-            "wiki_id",
-            "user_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "wiki_members_role_check": {
-          "name": "wiki_members_role_check",
-          "value": "\"wiki_members\".\"role\" in ('admin', 'editor')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.wikis": {

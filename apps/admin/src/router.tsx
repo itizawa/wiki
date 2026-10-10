@@ -1,9 +1,13 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
+import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
 import { Home, Root } from "./routes/Layout";
+import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { CalendarPage } from "./routes/CalendarPage";
+import { ConnectionsPage } from "./routes/ConnectionsPage";
+import { ConsentPage } from "./routes/ConsentPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { InvitePage } from "./routes/InvitePage";
@@ -11,9 +15,10 @@ import { MembersPage } from "./routes/MembersPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
-import { RulesPage } from "./routes/RulesPage";
 import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
+import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
+import { SettingsPage } from "./routes/SettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikisPage } from "./routes/WikisPage";
 
@@ -35,15 +40,19 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
 const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
 // オーナーの追加・解除（オーナーだけ）
 const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
-// 招待リンク。ログインしていなくても開ける（Root がログインの確認を飛ばす）
+// 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
+// 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/invite/$token",
+  path: "/invite",
   component: function Invite() {
-    const { token } = inviteRoute.useParams();
-    return <InvitePage token={token} />;
+    const hash = useRouterState({ select: (s) => s.location.hash });
+    return <InvitePage token={decodeURIComponent(hash.replace(/^#/, ""))} />;
   },
 });
+// 外部のアプリ（MCP）：接続の依頼への同意と、与えた許可の一覧。wiki をまたぐので /w/ の外に置く
+const consentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/consent", component: ConsentPage });
+const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/connections", component: padded(ConnectionsPage) });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -83,7 +92,24 @@ const searchRoute = createRoute({
   },
 });
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
-const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
+// アクセス解析（Google Analytics とサーチコンソールの数字）。?days=7|90：期間（既定の28日は付けない）。再読み込みや URL の共有で同じ期間が開く
+const analyticsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "analytics",
+  validateSearch: (search: Record<string, unknown>): { days?: AnalyticsDays } => {
+    const days = Number(search.days);
+    return isAnalyticsDays(days) && days !== DEFAULT_ANALYTICS_DAYS ? { days } : {};
+  },
+  component: function Analytics() {
+    const { days = DEFAULT_ANALYTICS_DAYS } = analyticsRoute.useSearch();
+    const navigate = analyticsRoute.useNavigate();
+    return (
+      <PageBody>
+        <AnalyticsPage days={days} onDaysChange={(next) => void navigate({ search: next === DEFAULT_ANALYTICS_DAYS ? {} : { days: next }, replace: true })} />
+      </PageBody>
+    );
+  },
+});
 const templatesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "templates", component: padded(TemplatesPage) });
 const templateEditorRoute = createRoute({
   getParentRoute: () => wikiRoute,
@@ -97,6 +123,9 @@ const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "histo
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
 // 公開サイトの外観（管理者だけ）
 const appearanceRoute = createRoute({ getParentRoute: () => wikiRoute, path: "appearance", component: padded(AppearancePage) });
+const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
+// wiki ごとの設定（公開サイトの連携）。読むのはだれでも、変えるのはオーナーだけ
+const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(SettingsPage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -106,7 +135,7 @@ const legacyEditorRoute = createRoute({
     throw redirect({ to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: FIRST_WIKI, pageId: params.pageId }, replace: true });
   },
 });
-const legacyScreen = (path: "/calendar" | "/rules" | "/history", to: `/w/$wikiKey${typeof path}`) =>
+const legacyScreen = (path: "/calendar" | "/history", to: `/w/$wikiKey${typeof path}`) =>
   createRoute({
     getParentRoute: () => rootRoute,
     path,
@@ -121,10 +150,24 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   ownersRoute,
   inviteRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute, appearanceRoute]),
+  consentRoute,
+  connectionsRoute,
+  wikiRoute.addChildren([
+    pagesRoute,
+    editorRoute,
+    searchRoute,
+    calendarRoute,
+    analyticsRoute,
+    templatesRoute,
+    templateEditorRoute,
+    historyRoute,
+    membersRoute,
+    appearanceRoute,
+    trashRoute,
+    settingsRoute,
+  ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
-  legacyScreen("/rules", "/w/$wikiKey/rules"),
   legacyScreen("/history", "/w/$wikiKey/history"),
 ]);
 

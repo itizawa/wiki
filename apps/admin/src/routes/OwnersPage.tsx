@@ -108,7 +108,12 @@ export function OwnersPage() {
                           </Box>
                           {u.name && <Muted>{u.email}</Muted>}
                         </TableCell>
-                        <TableCell>{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <Muted component="span">まだログインしていません</Muted>}</TableCell>
+                        <TableCell>
+                          {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <Muted component="span">まだログインしていません</Muted>}
+                          {!u.linked && (
+                            <Muted sx={{ fontSize: 12 }}>このメールアドレスで最初にログインした Google アカウントに結びつきます</Muted>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {u.isOwner && <Chip size="small" color="primary" label="オーナー" sx={{ mr: 1.5 }} />}
                           <Tooltip title={lastOwner ? "最後のオーナーは解除できません。先にほかの人をオーナーにしてください" : ""}>

@@ -1,6 +1,5 @@
 import {
   applyOps,
-  childrenByParent,
   isWithinParent,
   newTreeId,
   type StructureOp,
@@ -9,7 +8,7 @@ import {
   type TreeNode,
 } from "@wiki/shared";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { Db } from "../db/client";
+import { rowsOf, type Db } from "../db/client";
 import {
   commitTrees,
   pages,
@@ -104,7 +103,9 @@ export async function commitOps(
     ops: StructureOp[];
     message?: string;
     authorType?: "human" | "ai";
-    /** 移動で公開範囲の親子の決まりを破らないかを確かめる（ページの削除に伴う繰り上げでは確かめない） */
+    /** 外部のアプリ（MCP）からの操作なら、その許可 */
+    oauthGrantId?: string;
+    /** 移動で公開範囲の親子の決まりを破らないかを確かめる（ページをゴミ箱に入れる・元に戻すときは確かめない） */
     checkVisibility?: boolean;
   },
 ): Promise<CommitResult> {
@@ -142,6 +143,7 @@ export async function commitOps(
       parents: [branch.headCommitId],
       message: input.message ?? describeOps(input.ops),
       authorType: input.authorType ?? "human",
+      oauthGrantId: input.oauthGrantId ?? null,
       state: result.state,
       changedTreeIds: new Set(result.changedTreeIds),
       previousSnapshots: head.snapshots,
@@ -190,6 +192,7 @@ async function writeCommit(
     parents: string[];
     message: string;
     authorType: "human" | "ai";
+    oauthGrantId?: string | null;
     state: StructureState;
     changedTreeIds: Set<string>;
     previousSnapshots: Map<string, string>;
@@ -197,7 +200,7 @@ async function writeCommit(
 ): Promise<string> {
   const [commit] = await db
     .insert(structureCommits)
-    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType })
+    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType, oauthGrantId: input.oauthGrantId ?? null })
     .returning({ id: structureCommits.id });
   const commitId = commit!.id;
   if (input.parents.length > 0) {
@@ -293,7 +296,14 @@ export async function adoptUnplacedPages(db: Db): Promise<void> {
 
 /** 第1親を辿って履歴を返す（新しい順）。 */
 export async function listHistory(db: Db, headCommitId: string, limit: number) {
-  type Row = { id: string; message: string | null; author_type: string; created_at: string | Date; parent_ids: string[] | null };
+  type Row = {
+    id: string;
+    message: string | null;
+    author_type: string;
+    created_at: string | Date;
+    parent_ids: string[] | null;
+    via: string | null;
+  };
   const result = await db.execute(sql`
     with recursive history(id, depth) as (
       select ${headCommitId}::uuid, 0
@@ -305,7 +315,10 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     )
     select c.id, c.message, c.author_type, c.created_at,
       (select array_agg(p.parent_commit_id::text order by p.ordinal)
-         from structure_commit_parents p where p.commit_id = c.id) as parent_ids
+         from structure_commit_parents p where p.commit_id = c.id) as parent_ids,
+      -- 外部のアプリ（MCP）からの操作なら、そのアプリの名前
+      (select oc.name from oauth_grants g join oauth_clients oc on oc.id = g.client_id
+         where g.id = c.oauth_grant_id) as via
     from history h join structure_commits c on c.id = h.id
     order by h.depth
   `);
@@ -315,13 +328,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     authorType: r.author_type,
     createdAt: new Date(r.created_at).toISOString(),
     parentIds: r.parent_ids ?? [],
+    via: r.via,
   }));
-}
-
-/** postgres-js は配列、PGlite は { rows } を返すので吸収する。 */
-function rowsOf<T>(result: unknown): T[] {
-  if (Array.isArray(result)) return result as T[];
-  return ((result as { rows?: T[] }).rows ?? []) as T[];
 }
 
 export async function getCommitParents(db: Db, commitId: string): Promise<string[]> {
@@ -343,19 +351,34 @@ export async function getCommit(db: Db, wikiId: string, commitId: string) {
 }
 
 /**
- * ページをツリーから外す操作列を作る（子ノードはそのページの親へ繰り上げる）。
- * ページ削除時に使う。
+ * ページ（配下ごと選んだもの）をツリーから外す操作列を作る。ゴミ箱に入れるときに使う。
+ * 外すページの下に外さないページがあるツリー（複数ツリー時代の行）では、残る最も近い祖先の下へ繰り上げる。
  */
-export function opsToRemovePage(state: StructureState, pageId: string): StructureOp[] {
+export function opsToRemovePages(state: StructureState, pageIds: ReadonlySet<string>): StructureOp[] {
   const ops: StructureOp[] = [];
   for (const tree of Object.values(state.trees)) {
-    const node = tree.nodes.find((n) => n.nodeId === pageId);
-    if (!node) continue;
-    const children = childrenByParent(tree.nodes).get(pageId) ?? [];
-    for (const child of children) {
-      ops.push({ type: "move", treeId: tree.treeId, nodeId: child.nodeId, newParentNodeId: node.parentNodeId });
+    const removed = tree.nodes.filter((n) => pageIds.has(n.nodeId));
+    if (removed.length === 0) continue;
+    const parentOf = new Map(tree.nodes.map((n) => [n.nodeId, n.parentNodeId]));
+    const keptAncestor = (nodeId: string) => {
+      let cur = parentOf.get(nodeId) ?? null;
+      while (cur !== null && pageIds.has(cur)) cur = parentOf.get(cur) ?? null;
+      return cur;
+    };
+    for (const n of tree.nodes) {
+      if (!pageIds.has(n.nodeId) && n.parentNodeId !== null && pageIds.has(n.parentNodeId)) {
+        ops.push({ type: "move", treeId: tree.treeId, nodeId: n.nodeId, newParentNodeId: keptAncestor(n.nodeId) });
+      }
     }
-    ops.push({ type: "remove_node", treeId: tree.treeId, nodeId: pageId });
+    // 子のあるノードは外せないので、深いものから外す
+    const depth = (nodeId: string) => {
+      let d = 0;
+      for (let cur = parentOf.get(nodeId) ?? null; cur !== null; cur = parentOf.get(cur) ?? null) d++;
+      return d;
+    };
+    for (const n of [...removed].sort((a, b) => depth(b.nodeId) - depth(a.nodeId))) {
+      ops.push({ type: "remove_node", treeId: tree.treeId, nodeId: n.nodeId });
+    }
   }
   return ops;
 }

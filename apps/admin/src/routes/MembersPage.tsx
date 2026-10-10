@@ -42,7 +42,7 @@ export function MembersPage() {
           メンバー
         </Typography>
         <Muted>
-          「{wiki.name}」に入れる人です。編集者はページの作成・編集・公開まで、管理者はそれに加えて招待・メンバーの管理・ルールの設定ができます。
+          「{wiki.name}」に入れる人です。編集者はページの作成・編集・公開まで、管理者はそれに加えて招待・メンバーの管理ができます。
           オーナーは一覧に出なくても、すべての wiki に管理者として入れます。
         </Muted>
       </Section>
@@ -197,7 +197,7 @@ function Invites() {
   const create = useMutation({
     mutationFn: () => api.createInvite(role),
     onSuccess: async (res) => {
-      setIssued({ url: `${location.origin}/invite/${res.token}`, role: res.invite.role });
+      setIssued({ url: `${location.origin}/invite#${res.token}`, role: res.invite.role });
       setCopied(false);
       await qc.invalidateQueries({ queryKey: ["invites"] });
     },

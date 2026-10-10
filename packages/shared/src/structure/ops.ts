@@ -6,7 +6,7 @@ const id = z.string().min(1).max(64);
 const position = z.string().max(64).refine(isValidPosition, "invalid position").optional();
 
 /**
- * 構造操作。管理画面の手動操作と、ルールからの配置提案で共通。
+ * 構造操作。
  * ツリーは1本だけなので、ツリー自体を作る・消す操作は無い。ノードはすべてページなので、フォルダの操作も無い。
  */
 export const structureOpSchema = z.discriminatedUnion("type", [

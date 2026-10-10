@@ -11,11 +11,18 @@ const AUTOSAVE_DELAY_MS = 1500;
 const RETRY_DELAY_MS = 5000;
 
 /**
- * 編集中の内容を、下書きとしてサーバーに自動保存する（版は作らない）。
+ * 編集中の内容を、下書きとしてサーバーに自動保存する（版は作らない。編集が一段落すると、ワーカーが下書きを版にする）。
  * 打つのが止まったら保存し、保存中に打った分は保存が終わってから続けて保存する。
- * 版が先に進んでいた（409）ときは、読み直すまで保存しない。
+ * 別の画面で版が先に進んでいた（409）ときは、読み直すまで保存しない。
+ * 自分の下書きからワーカーが版を作っていたときは、保存の返事でいまの head が分かるので `onHeadMoved` で知らせる。
  */
-export function useDraftAutosave(pageId: string, content: DraftContent | null, baseVersionId: string | null, paused: boolean) {
+export function useDraftAutosave(
+  pageId: string,
+  content: DraftContent | null,
+  baseVersionId: string | null,
+  paused: boolean,
+  onHeadMoved: (headVersionId: string) => void,
+) {
   // サーバーに置いてある内容（下書き、無ければ head）。これと違えば、まだ保存していない
   const synced = useRef<DraftContent | null>(null);
   const [syncedState, setSyncedState] = useState<DraftContent | null>(null);
@@ -25,6 +32,8 @@ export function useDraftAutosave(pageId: string, content: DraftContent | null, b
   const inflight = useRef<Promise<boolean> | null>(null);
   const latest = useRef({ content, baseVersionId });
   latest.current = { content, baseVersionId };
+  const headMoved = useRef(onHeadMoved);
+  headMoved.current = onHeadMoved;
 
   const markSynced = useCallback((c: DraftContent, at: string | null = null) => {
     synced.current = c;
@@ -43,6 +52,7 @@ export function useDraftAutosave(pageId: string, content: DraftContent | null, b
       try {
         const res = await api.saveDraft(pageId, { baseVersionId, ...content });
         markSynced(content, res.draft?.updatedAt ?? null);
+        if (res.headVersionId !== baseVersionId) headMoved.current(res.headVersionId);
         return true;
       } catch (e) {
         setError(e);
@@ -56,7 +66,7 @@ export function useDraftAutosave(pageId: string, content: DraftContent | null, b
     return run;
   }, [pageId, markSynced]);
 
-  /** 保存中の下書きがあれば、終わるのを待つ（版として残す前に、古い下書きが後から届かないように）。 */
+  /** 保存中の下書きがあれば、終わるのを待つ（版を作る前に、古い下書きが後から届かないように）。 */
   const settle = useCallback(async () => {
     await inflight.current;
   }, []);
@@ -70,5 +80,5 @@ export function useDraftAutosave(pageId: string, content: DraftContent | null, b
     return () => clearTimeout(timer);
   }, [content, pending, paused, saving, conflict, error, flush]);
 
-  return { pending, saving, savedAt, error, markSynced, flush, settle };
+  return { pending, saving, savedAt, error, conflict, markSynced, flush, settle };
 }

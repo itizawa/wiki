@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE, signSession } from "../auth/session";
+import { DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS } from "../pages/versions";
 import { adoptUnplacedPages } from "../structure/repo";
 import { ADMIN, addLegacyTree, setup, W } from "./harness";
 
@@ -9,6 +10,9 @@ afterEach(async () => {
   await ctx?.close();
   ctx = undefined as unknown as typeof ctx;
 });
+
+const internal = (method: string, path: string, body?: unknown) =>
+  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
 
 async function structure() {
   const res = await ctx.call("GET", `${W}/structure`);
@@ -39,6 +43,17 @@ describe("auth", () => {
     const token = await signSession(ctx.config.sessionSecret, "00000000-0000-4000-8000-000000000000");
     const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
     expect(res.status).toBe(401);
+  });
+
+  it("sends security headers on API responses", async () => {
+    ctx = await setup();
+    const res = await ctx.call("GET", "/health");
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("same-origin");
+    // エラーの応答にも付く
+    expect((await ctx.call("POST", `${W}/pages`, { title: "x" }, { origin: "https://evil.example" })).headers.get("x-frame-options")).toBe("DENY");
   });
 
   it("rejects cross-origin mutations", async () => {
@@ -156,6 +171,27 @@ describe("pages", () => {
     expect(old.body.bodyMd).toBe("# hi");
   });
 
+  it("structure carries each page's last update time and unlisted key", async () => {
+    ctx = await setup();
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "a", bodyMd: "x" })).body;
+    const before = (await structure()).pages[page.id];
+    expect(before.unlistedKey).toBeNull();
+    expect(new Date(before.updatedAt).toISOString()).toBe(before.updatedAt);
+
+    // 版を残すと、最終更新の日時が進む
+    await new Promise((r) => setTimeout(r, 5));
+    await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "a", bodyMd: "y" });
+    const saved = (await structure()).pages[page.id];
+    expect(Date.parse(saved.updatedAt)).toBeGreaterThan(Date.parse(before.updatedAt));
+
+    // 限定公開にすると、URL に入るキーが付く
+    const head = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId;
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: head, visibility: "unlisted" });
+    const detail = (await ctx.call("GET", `${W}/pages/${page.id}`)).body;
+    expect(detail.unlistedKey).toEqual(expect.any(String));
+    expect((await structure()).pages[page.id].unlistedKey).toBe(detail.unlistedKey);
+  });
+
   it("creates a page under another page, after its existing children", async () => {
     ctx = await setup();
     const parent = (await ctx.call("POST", `${W}/pages`, { title: "parent" })).body;
@@ -237,19 +273,209 @@ describe("pages", () => {
     expect((await ctx.call("GET", url)).body).toEqual({ draft: null });
   });
 
-  it("deletes a page and lifts its children to the parent of the deleted page", async () => {
+  it("turns settled drafts into versions: 5 minutes after the last autosave, or 30 minutes after the draft was started", async () => {
+    ctx = await setup();
+    const a = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
+    const b = (await ctx.call("POST", `${W}/pages`, { title: "B", bodyMd: "x" })).body;
+    const c = (await ctx.call("POST", `${W}/pages`, { title: "C", bodyMd: "x" })).body;
+    const saved = await ctx.call("PUT", `${W}/pages/${a.id}/draft`, { baseVersionId: a.headVersionId, title: " A2 ", bodyMd: "see /p/" + b.id });
+    // 下書きの保存は、いまの head も返す
+    expect(saved.body.headVersionId).toBe(a.headVersionId);
+    await ctx.call("PUT", `${W}/pages/${b.id}/draft`, { baseVersionId: b.headVersionId, title: "B", bodyMd: "typing" });
+    await ctx.call("PUT", `${W}/pages/${c.id}/draft`, { baseVersionId: c.headVersionId, title: "C", bodyMd: "typing" });
+
+    // 保存したばかりの下書きは版にしない
+    expect((await ctx.app.request("/internal/drafts/promote", { method: "POST" })).status).toBe(401);
+    expect((await internal("POST", "/internal/drafts/promote")).body).toEqual({ promoted: [], skipped: 0, failed: [] });
+
+    // 境目：最後の自動保存から5分、始めてから30分
+    const age = (pageId: string, updated: number, created: number) =>
+      ctx.client.query(
+        `update page_drafts set updated_at = now() - ($2 || ' seconds')::interval, created_at = now() - ($3 || ' seconds')::interval where page_id = $1`,
+        [pageId, String(updated), String(created)],
+      );
+    await age(a.id, DRAFT_IDLE_MS / 1000 + 5, DRAFT_IDLE_MS / 1000 + 5); // 一段落した
+    await age(b.id, 10, DRAFT_MAX_AGE_MS / 1000 + 5); // 打ち続けているが、始めてから30分たった
+    await age(c.id, DRAFT_IDLE_MS / 1000 - 30, DRAFT_MAX_AGE_MS / 1000 - 30); // どちらもまだ
+    const run = (await internal("POST", "/internal/drafts/promote")).body;
+    expect(run.promoted.sort()).toEqual([a.id, b.id].sort());
+    expect(run.failed).toEqual([]);
+
+    // 版は、間引ける版（keep = false）。タイトルの前後の空白は落とし、ページと内部リンクも進める
+    const detail = (await ctx.call("GET", `${W}/pages/${a.id}`)).body;
+    expect(detail).toEqual(expect.objectContaining({ title: "A2" }));
+    expect(detail.head).toEqual(expect.objectContaining({ title: "A2", bodyMd: "see /p/" + b.id, keep: false, authorType: "human", baseVersionId: a.headVersionId }));
+    expect(detail.head).not.toHaveProperty("authorEmail");
+    const versions = (await ctx.call("GET", `${W}/pages/${a.id}/versions`)).body.versions;
+    expect(versions.map((v: any) => v.keep)).toEqual([false, true]);
+    expect(versions[0]).not.toHaveProperty("authorEmail");
+    const rows = await ctx.client.query<{ created_by: string }>(`select created_by from page_versions where id = $1`, [detail.headVersionId]);
+    expect(rows.rows[0]!.created_by).toBe(ctx.owner.id);
+    const links = await ctx.client.query(`select to_page_id from page_links where from_page_id = $1`, [a.id]);
+    expect(links.rows).toEqual([{ to_page_id: b.id }]);
+    // 版になった下書きは消える。まだの下書きは残る
+    expect((await ctx.call("GET", `${W}/pages/${a.id}/draft`)).body).toEqual({ draft: null });
+    expect((await ctx.call("GET", `${W}/pages/${c.id}/draft`)).body.draft.bodyMd).toBe("typing");
+    expect((await ctx.call("GET", `${W}/pages/${c.id}/versions`)).body.versions).toHaveLength(1);
+    // もう一度呼んでも増えない
+    expect((await internal("POST", "/internal/drafts/promote")).body.promoted).toEqual([]);
+  });
+
+  it("leaves drafts that must not become versions: stale base, empty title, deleted page, archived wiki", async () => {
+    const other = "other@example.com";
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const draftCount = async () => Number((await ctx.client.query<{ n: number }>(`select count(*)::int as n from page_drafts`)).rows[0]!.n);
+
+    // 2人が同じページの下書きを持つ。先に版になった方が head になり、もう一方は古い版をもとにした下書きとして残る
+    const shared = (await ctx.call("POST", `${W}/pages`, { title: "S", bodyMd: "x" })).body;
+    await ctx.call("PUT", `${W}/pages/${shared.id}/draft`, { baseVersionId: shared.headVersionId, title: "S", bodyMd: "mine" });
+    await ctx.call("PUT", `${W}/pages/${shared.id}/draft`, { baseVersionId: shared.headVersionId, title: "S", bodyMd: "theirs" }, otherCookie);
+    // タイトルが空の下書き
+    const untitled = (await ctx.call("POST", `${W}/pages`, { title: "U", bodyMd: "x" })).body;
+    await ctx.call("PUT", `${W}/pages/${untitled.id}/draft`, { baseVersionId: untitled.headVersionId, title: "  ", bodyMd: "no title" });
+    // 削除したページの下書き
+    const gone = (await ctx.call("POST", `${W}/pages`, { title: "G", bodyMd: "x" })).body;
+    await ctx.call("PUT", `${W}/pages/${gone.id}/draft`, { baseVersionId: gone.headVersionId, title: "G", bodyMd: "deleted" });
+    await ctx.call("DELETE", `${W}/pages/${gone.id}`);
+    // アーカイブ中の wiki の下書き
+    expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "ノート" })).status).toBe(201);
+    const archived = (await ctx.call("POST", "/admin/w/notes/pages", { title: "N", bodyMd: "x" })).body;
+    await ctx.call("PUT", `/admin/w/notes/pages/${archived.id}/draft`, { baseVersionId: archived.headVersionId, title: "N", bodyMd: "archived" });
+    expect((await ctx.call("POST", "/admin/wikis/notes/archive")).status).toBe(200);
+    // どれも一段落している。同じページの2つは、自分の方が先
+    await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes'`);
+    await ctx.client.query(`update page_drafts set updated_at = now() - interval '7 minutes' where user_id = $1 and page_id = $2`, [ctx.owner.id, shared.id]);
+    expect(await draftCount()).toBe(5);
+
+    const run = (await internal("POST", "/internal/drafts/promote")).body;
+    expect(run).toEqual({ promoted: [shared.id], skipped: 1, failed: [] });
+    expect((await ctx.call("GET", `${W}/pages/${shared.id}`)).body.head.bodyMd).toBe("mine");
+    // ほかの人の下書きは消えず、次の回でも版にならない（あいだにできた版を黙って上書きしない）
+    expect((await internal("POST", "/internal/drafts/promote")).body).toEqual({ promoted: [], skipped: 0, failed: [] });
+    expect((await ctx.call("GET", `${W}/pages/${shared.id}/draft`, undefined, otherCookie)).body.draft).toEqual(
+      expect.objectContaining({ baseVersionId: shared.headVersionId, bodyMd: "theirs" }),
+    );
+    expect(await draftCount()).toBe(4);
+    for (const id of [untitled.id, gone.id, archived.id]) {
+      expect((await ctx.client.query(`select 1 from page_versions where page_id = $1`, [id])).rows).toHaveLength(1);
+    }
+
+    // タイトルを入れると、次の回で版になる
+    await ctx.call("PUT", `${W}/pages/${untitled.id}/draft`, { baseVersionId: untitled.headVersionId, title: "U2", bodyMd: "no title" });
+    await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes' where page_id = $1`, [untitled.id]);
+    expect((await internal("POST", "/internal/drafts/promote")).body.promoted).toEqual([untitled.id]);
+  });
+
+  it("keeps typing in an open tab after the worker made a version from the own draft, but not after someone else's version", async () => {
+    const other = "other@example.com";
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
+    const base = page.headVersionId;
+    const url = `${W}/pages/${page.id}/draft`;
+    const promote = async () => {
+      await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes'`);
+      return (await internal("POST", "/internal/drafts/promote")).body;
+    };
+
+    await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "x1" });
+    const started = (await ctx.client.query<{ created_at: Date }>(`select created_at from page_drafts`)).rows[0]!.created_at;
+    // 上書きでは、始めた時刻は変わらない
+    await new Promise((r) => setTimeout(r, 5));
+    await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "x12" });
+    const after = (await ctx.client.query<{ created_at: Date; updated_at: Date }>(`select created_at, updated_at from page_drafts`)).rows[0]!;
+    expect(after.created_at).toEqual(started);
+    expect(after.updated_at.getTime()).toBeGreaterThan(started.getTime());
+    expect((await promote()).promoted).toEqual([page.id]);
+    const auto = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId;
+    expect(auto).not.toBe(base);
+
+    // 開いたままの画面は古い baseVersionId を送ってくる。自分の下書きからできた版なら、head をもとにした下書きとして受け取る
+    const next = await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "x123" });
+    expect(next.status).toBe(200);
+    expect(next.body).toEqual({ draft: expect.objectContaining({ baseVersionId: auto, bodyMd: "x123" }), headVersionId: auto });
+    // 版と同じ内容なら、下書きは作らない（head は返す）
+    expect((await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "x12" })).body).toEqual({ draft: null, headVersionId: auto });
+
+    // ほかの人は、その版を知らないまま書いているので 409
+    const conflict = await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "theirs" }, otherCookie);
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error.details.headVersionId).toBe(auto);
+    expect((await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: base, title: "A", bodyMd: "theirs" }, otherCookie)).status).toBe(409);
+
+    // もう1つ古い版をもとにした下書きは受け取らない（head のもとが、送ってきた版ではない）
+    await ctx.call("PUT", url, { baseVersionId: auto, title: "A", bodyMd: "x1234" });
+    expect((await promote()).promoted).toEqual([page.id]);
+    expect((await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "old tab" })).status).toBe(409);
+
+    // 手で作った版（keep = true）のあとは、自分でも 409
+    const auto2 = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId;
+    const manual = await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: auto2, title: "A", bodyMd: "by hand" });
+    expect(manual.body.head.keep).toBe(true);
+    expect((await ctx.call("PUT", url, { baseVersionId: auto2, title: "A", bodyMd: "old tab" })).status).toBe(409);
+  });
+
+  it("marks versions to keep: made by hand, kept by hand on top of an automatic one, published, scheduled", async () => {
+    ctx = await setup();
+    const keepOf = async (versionId: string) =>
+      (await ctx.client.query<{ keep: boolean }>(`select keep from page_versions where id = $1`, [versionId])).rows[0]!.keep;
+    /** 下書きから自動で版を作り、その版の ID を返す */
+    const autoVersion = async (page: { id: string; headVersionId: string }, bodyMd: string) => {
+      await ctx.call("PUT", `${W}/pages/${page.id}/draft`, { baseVersionId: page.headVersionId, title: "T", bodyMd });
+      await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes'`);
+      expect((await internal("POST", "/internal/drafts/promote")).body.promoted).toEqual([page.id]);
+      const head = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId as string;
+      expect(await keepOf(head)).toBe(false);
+      return head;
+    };
+    const newPage = async () => (await ctx.call("POST", `${W}/pages`, { title: "T", bodyMd: "x" })).body;
+
+    // 手で作った版は残す版
+    const a = await newPage();
+    expect(a.head.keep).toBe(true);
+    const autoA = await autoVersion(a, "auto");
+    // 自動でできた版の上で、内容を変えずに「版として残す」と、版は増えず、その版が残す版になる。
+    // 画面がまだ古い baseVersionId を持っていても通る
+    const kept = await ctx.call("PUT", `${W}/pages/${a.id}`, { baseVersionId: a.headVersionId, title: "T", bodyMd: "auto" });
+    expect(kept.status).toBe(200);
+    expect(kept.body.headVersionId).toBe(autoA);
+    expect(kept.body.head.keep).toBe(true);
+    expect((await ctx.call("GET", `${W}/pages/${a.id}/versions`)).body.versions).toHaveLength(2);
+    // 内容を変えて残すと、新しい残す版ができる。あいだの自動の版は、間引ける版のまま
+    const autoA2 = await autoVersion({ id: a.id, headVersionId: autoA }, "auto 2");
+    const edited = await ctx.call("PUT", `${W}/pages/${a.id}`, { baseVersionId: autoA, title: "T", bodyMd: "by hand" });
+    expect(edited.body.head).toEqual(expect.objectContaining({ keep: true, baseVersionId: autoA2 }));
+    expect(await keepOf(autoA2)).toBe(false);
+
+    // 公開に使った版
+    const b = await newPage();
+    const autoB = await autoVersion(b, "auto");
+    expect((await ctx.call("POST", `${W}/pages/${b.id}/publish`, { versionId: autoB, visibility: "public" })).status).toBe(200);
+    expect(await keepOf(autoB)).toBe(true);
+
+    // 予約に使った版
+    const c = await newPage();
+    const autoC = await autoVersion(c, "auto");
+    const runAt = new Date(Date.now() + 60_000).toISOString();
+    expect((await ctx.call("POST", `${W}/schedule`, { actionType: "publish_page", pageId: c.id, versionId: autoC, runAt })).status).toBe(201);
+    expect(await keepOf(autoC)).toBe(true);
+  });
+
+  it("deletes a page together with the pages under it", async () => {
     ctx = await setup();
     const top = (await ctx.call("POST", `${W}/pages`, { title: "top" })).body;
     const parent = (await ctx.call("POST", `${W}/pages`, { title: "parent", parentPageId: top.id })).body;
     const child = (await ctx.call("POST", `${W}/pages`, { title: "child", parentPageId: parent.id })).body;
     expect((await ctx.call("DELETE", `${W}/pages/${parent.id}`)).status).toBe(200);
-    const nodes = (await structure()).trees[0].nodes;
-    expect(nodes.find((n: any) => n.nodeId === parent.id)).toBeUndefined();
-    expect(nodes.find((n: any) => n.nodeId === child.id).parentNodeId).toBe(top.id);
+    expect((await structure()).trees[0].nodes).toEqual([expect.objectContaining({ nodeId: top.id, parentNodeId: null })]);
     expect((await ctx.call("GET", `${W}/pages/${parent.id}`)).status).toBe(404);
+    expect((await ctx.call("GET", `${W}/pages/${child.id}`)).status).toBe(404);
 
     expect((await ctx.call("DELETE", `${W}/pages/${top.id}`)).status).toBe(200);
-    expect((await structure()).trees[0].nodes).toEqual([expect.objectContaining({ nodeId: child.id, parentNodeId: null })]);
+    expect((await structure()).trees[0].nodes).toEqual([]);
   });
 });
 

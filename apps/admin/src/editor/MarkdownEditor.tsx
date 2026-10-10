@@ -23,28 +23,112 @@ import { ImageMenu } from "./ImageMenu";
 import { ImageUpload } from "./imageUpload";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { monoFont } from "../theme";
+import { MENU_MAX_WIDTH, monoFont, TOUCH } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
 import { highlightSx } from "./highlight";
+import { OUTLINE_SCROLL_MARGIN } from "./Outline";
+import { EmojiMenu, emojiTrigger } from "./EmojiMenu";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
+import { TitleBridge } from "./titleBridge";
 
-const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
+const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, emojiTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
+
+/**
+ * 本文の見た目（見出し・リスト・引用・コールアウト・コード・トグル・表・画像）。
+ * 編集画面の本文と、プレゼンモードのスライド（components/Presentation.tsx）で同じものを使う。編集中にだけ要るものは入れない
+ */
+export const editorContentSx = {
+  fontSize: "1rem",
+  lineHeight: 1.75,
+  "& > :first-of-type": { mt: 0 },
+  "& p": { my: 1 },
+  "& h1, & h2, & h3, & h4": { fontWeight: 600, lineHeight: 1.35, mt: 3, mb: 1 },
+  "& h1": { fontSize: "1.6rem" },
+  "& h2": { fontSize: "1.35rem" },
+  "& h3": { fontSize: "1.15rem" },
+  "& a": { color: "primary.main" },
+  "& ul, & ol": { pl: 3, my: 1 },
+  "& li > p": { my: 0.25 },
+  "& ul[data-type='taskList']": {
+    listStyle: "none",
+    pl: 0.5,
+    "& li": { display: "flex", gap: 1, alignItems: "flex-start" },
+    "& li > label": { mt: "0.35em", flexShrink: 0 },
+    "& li > div": { flex: 1, minWidth: 0 },
+  },
+  "& blockquote": { m: 0, my: 1.5, pl: 2, borderLeft: "3px solid", borderColor: "divider", color: "text.secondary" },
+  ...calloutSx,
+  "& code": { fontFamily: monoFont, fontSize: "0.875em", bgcolor: "action.hover", px: 0.5, py: 0.25, borderRadius: 0.5 },
+  "& pre": {
+    fontFamily: monoFont,
+    bgcolor: "action.hover",
+    p: 1.5,
+    my: 1.5,
+    borderRadius: 1,
+    overflow: "auto",
+    "& code": { bgcolor: "transparent", p: 0, fontSize: "0.875rem" },
+    ...highlightSx,
+  },
+  // トグル（@tiptap/extension-details の部品）。左の三角で開閉する
+  "& [data-type='details']": { display: "flex", alignItems: "flex-start", gap: 0.5, my: 1 },
+  "& [data-type='details'] > button": {
+    flexShrink: 0,
+    width: 24,
+    height: 24,
+    mt: "3px",
+    p: 0,
+    border: 0,
+    borderRadius: 0.5,
+    bgcolor: "transparent",
+    color: "text.secondary",
+    cursor: "pointer",
+    "&::before": { content: '"▶"', display: "inline-block", fontSize: "0.7rem", transition: "transform 120ms" },
+    "&:hover": { bgcolor: "action.hover" },
+  },
+  "& [data-type='details'].is-open > button::before": { transform: "rotate(90deg)" },
+  "& [data-type='details'] > div": { flex: 1, minWidth: 0 },
+  "& [data-type='details'] summary": { display: "block", fontWeight: 600, listStyle: "none" },
+  "& [data-type='detailsContent'] > :first-of-type": { mt: 0.5 },
+  "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
+  "& img": { maxWidth: "100%", borderRadius: 1 },
+  "& table": { borderCollapse: "collapse", my: 1.5, width: "100%", tableLayout: "fixed" },
+  "& th, & td": { border: "1px solid", borderColor: "divider", px: 1, py: 0.5, verticalAlign: "top", textAlign: "left" },
+  "& th": { bgcolor: "action.hover", fontWeight: 600 },
+  "& th p, & td p": { my: 0 },
+} as const;
 
 /**
  * 本文のWYSIWYGエディタ。値はMarkdownでやり取りする。
  * 読み込んだだけでは onChange を呼ばない（記法の正規化だけで「未保存」にならないように）。
  */
-export function MarkdownEditor(props: { value: string; onChange: (md: string) => void }) {
+export function MarkdownEditor(props: {
+  value: string;
+  onChange: (md: string) => void;
+  onEditor?: (editor: Editor) => void;
+  /** 本文の先頭から上へ出ようとした（先頭の行の ↑、いちばん先頭の Backspace）。上にタイトルがある画面が、そこへフォーカスを移す */
+  onLeaveTop?: () => void;
+}) {
   // エディタが最後に出した（または受け取った）Markdown。外からの差し替えと自分の編集を区別する
   const current = useRef(props.value);
   const onChange = useRef(props.onChange);
   onChange.current = props.onChange;
+  const onLeaveTop = useRef(props.onLeaveTop);
+  onLeaveTop.current = props.onLeaveTop;
 
   // 画像のアップロードに失敗したときの知らせ（貼り付け・ドロップは本文の外に結果を出す場所が無いので、ここに出す）
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [allExtensions] = useState(() => [...extensions, ImageUpload.configure({ onError: setUploadError })]);
+  const [allExtensions] = useState(() => [
+    ...extensions,
+    ImageUpload.configure({ onError: setUploadError }),
+    TitleBridge.configure({
+      onLeaveTop: () => {
+        onLeaveTop.current?.();
+        return !!onLeaveTop.current;
+      },
+    }),
+  ]);
 
   const editor = useEditor({
     extensions: allExtensions,
@@ -55,6 +139,11 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
       onChange.current(current.current);
     },
   });
+
+  const onEditor = props.onEditor;
+  useEffect(() => {
+    onEditor?.(editor);
+  }, [editor, onEditor]);
 
   // 版の復元や最新版の読み直しで、外から本文が差し替えられたとき
   useEffect(() => {
@@ -72,68 +161,22 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
       <SlashMenu editor={editor} />
+      <EmojiMenu editor={editor} />
       <Box
-        sx={{
+        sx={(t) => ({
           // 浮かぶメニューの位置の基準
           position: "relative",
+          // 「挿入」のボタンは行の左の余白に出す。狭い画面では余白が 16px しか無く、画面の外にはみ出すので、行の右端に出す
+          [t.breakpoints.down("md")]: { "& .insert-menu": { left: "auto !important", right: 0 } },
           "& .tiptap": {
             outline: "none",
             minHeight: "50vh",
             pb: 12,
-            fontSize: "1rem",
-            lineHeight: 1.75,
-            "& > :first-of-type": { mt: 0 },
-            "& p": { my: 1 },
-            "& h1, & h2, & h3, & h4": { fontWeight: 600, lineHeight: 1.35, mt: 3, mb: 1 },
-            "& h1": { fontSize: "1.6rem" },
-            "& h2": { fontSize: "1.35rem" },
-            "& h3": { fontSize: "1.15rem" },
+            ...editorContentSx,
+            // 目次から飛んだとき、見出しが固定したヘッダーの下に隠れないようにする
+            "& :is(h1, h2, h3, h4), & [data-type='details']": { scrollMarginTop: `${OUTLINE_SCROLL_MARGIN}px` },
             "& a": { color: "primary.main", cursor: "text" },
-            "& ul, & ol": { pl: 3, my: 1 },
-            "& li > p": { my: 0.25 },
-            "& ul[data-type='taskList']": {
-              listStyle: "none",
-              pl: 0.5,
-              "& li": { display: "flex", gap: 1, alignItems: "flex-start" },
-              "& li > label": { mt: "0.35em", flexShrink: 0 },
-              "& li > div": { flex: 1, minWidth: 0 },
-            },
-            "& blockquote": { m: 0, my: 1.5, pl: 2, borderLeft: "3px solid", borderColor: "divider", color: "text.secondary" },
-            ...calloutSx,
-            "& code": { fontFamily: monoFont, fontSize: "0.875em", bgcolor: "action.hover", px: 0.5, py: 0.25, borderRadius: 0.5 },
-            "& pre": {
-              fontFamily: monoFont,
-              bgcolor: "action.hover",
-              p: 1.5,
-              my: 1.5,
-              borderRadius: 1,
-              overflow: "auto",
-              "& code": { bgcolor: "transparent", p: 0, fontSize: "0.875rem" },
-              ...highlightSx,
-            },
-            // トグル（@tiptap/extension-details の部品）。左の三角で開閉する
-            "& [data-type='details']": { display: "flex", alignItems: "flex-start", gap: 0.5, my: 1 },
-            "& [data-type='details'] > button": {
-              flexShrink: 0,
-              width: 24,
-              height: 24,
-              mt: "3px",
-              p: 0,
-              border: 0,
-              borderRadius: 0.5,
-              bgcolor: "transparent",
-              color: "text.secondary",
-              cursor: "pointer",
-              "&::before": { content: '"▶"', display: "inline-block", fontSize: "0.7rem", transition: "transform 120ms" },
-              "&:hover": { bgcolor: "action.hover" },
-            },
-            "& [data-type='details'].is-open > button::before": { transform: "rotate(90deg)" },
-            "& [data-type='details'] > div": { flex: 1, minWidth: 0 },
-            "& [data-type='details'] summary": { display: "block", fontWeight: 600, listStyle: "none" },
             "& [data-type='details'] summary:empty::before": { content: '"トグルの見出し"', color: "text.disabled" },
-            "& [data-type='detailsContent'] > :first-of-type": { mt: 0.5 },
-            "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
-            "& img": { maxWidth: "100%", borderRadius: 1 },
             "& img.ProseMirror-selectednode": { outline: "2px solid", outlineColor: "primary.main" },
             "& .image-uploading": {
               display: "inline-block",
@@ -145,10 +188,6 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               color: "text.secondary",
               fontSize: "0.85rem",
             },
-            "& table": { borderCollapse: "collapse", my: 1.5, width: "100%", tableLayout: "fixed" },
-            "& th, & td": { border: "1px solid", borderColor: "divider", px: 1, py: 0.5, verticalAlign: "top", textAlign: "left" },
-            "& th": { bgcolor: "action.hover", fontWeight: 600 },
-            "& th p, & td p": { my: 0 },
             "& .selectedCell": { bgcolor: "action.selected" },
             // 検索で一致した箇所。いま見ている1つは、色に加えて枠でも区別する
             "& .find-match": { bgcolor: "find.match", borderRadius: "2px" },
@@ -161,7 +200,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               pointerEvents: "none",
             },
           },
-        }}
+        })}
       >
         <EditorContent editor={editor} />
         <TableMenu editor={editor} />
@@ -225,7 +264,8 @@ function SelectionMenu({ editor }: { editor: Editor }) {
 
   return (
     <BubbleMenu editor={editor} shouldShow={showSelectionMenu} options={selectionMenuOptions} style={{ zIndex: 1 }}>
-      <Paper elevation={4}>
+      {/* スマホの幅では1行に収まらないので、画面の幅で折り返す（折り返さないと、右のボタンが画面の外に出て押せない） */}
+      <Paper elevation={4} sx={{ maxWidth: MENU_MAX_WIDTH }}>
         {linkEditing && (
           <LinkForm
             initial={(editor.getAttributes("link").href as string | undefined) ?? ""}
@@ -234,7 +274,7 @@ function SelectionMenu({ editor }: { editor: Editor }) {
             onClose={() => closeLink(() => editor.commands.focus())}
           />
         )}
-        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", gap: 0.25, p: 0.5 }}>
+        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", flexWrap: "wrap", gap: 0.25, p: 0.5 }}>
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
             <Bold size={18} />
           </Tool>
@@ -292,7 +332,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
   const [imageOpen, setImageOpen] = useState(false);
 
   return (
-    <FloatingMenu editor={editor} options={insertMenuOptions} style={{ zIndex: 1 }}>
+    <FloatingMenu editor={editor} options={insertMenuOptions} className="insert-menu" style={{ zIndex: 1 }}>
       <Tooltip title="挿入">
         <IconButton
           size="small"
@@ -301,7 +341,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
           aria-expanded={!!anchor}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => setAnchor(e.currentTarget)}
-          sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary" }}
+          sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary", [TOUCH]: { width: 32, height: 32 } }}
         >
           <Plus size={18} />
         </IconButton>
@@ -386,7 +426,8 @@ function Tool(props: { label: string; active?: boolean; disabled?: boolean; onCl
           // 押してもエディタの選択範囲を失わないようにする
           onMouseDown={(e) => e.preventDefault()}
           onClick={props.onClick}
-          sx={[{ borderRadius: 1, width: 30, height: 30 }, !!props.active && { bgcolor: "action.selected", color: "primary.main" }]}
+          // 指で操作する端末では大きくする。ボタンの間が狭いので、押せる範囲は見た目どおりにする
+          sx={[{ borderRadius: 1, width: 30, height: 30, [TOUCH]: { width: 36, height: 36, "&::after": { display: "none" } } }, !!props.active && { bgcolor: "action.selected", color: "primary.main" }]}
         >
           {props.children}
         </IconButton>

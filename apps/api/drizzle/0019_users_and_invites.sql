@@ -43,24 +43,37 @@ ALTER TABLE "wiki_members" ADD CONSTRAINT "wiki_members_invite_id_invites_id_fk"
 CREATE INDEX "invites_wiki_idx" ON "invites" USING btree ("wiki_id");--> statement-breakpoint
 CREATE INDEX "users_email_idx" ON "users" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "wiki_members_user_idx" ON "wiki_members" USING btree ("user_id");--> statement-breakpoint
--- スターと下書きを、メールアドレスではなくユーザーで持つ。いまあるメールアドレスには、メールアドレスだけのユーザーの行を作って結びつける
+-- スター・下書き・外部アプリへの許可・版を作った人を、メールアドレスではなくユーザーで持つ。いまあるメールアドレスには、メールアドレスだけのユーザーの行を作って結びつける
 -- （オーナーにするかどうかは、このあと pnpm db:migrate が ADMIN_EMAILS から決める。最初の Google ログインでアカウント ID と結びつく）
 INSERT INTO "users" ("email")
 SELECT DISTINCT lower("email") FROM (
 	SELECT "admin_email" AS "email" FROM "page_stars"
 	UNION SELECT "author_email" FROM "page_drafts"
+	UNION SELECT "user_email" FROM "oauth_grants"
+	UNION SELECT "author_email" FROM "page_versions" WHERE "author_email" IS NOT NULL
 ) AS "e";--> statement-breakpoint
 ALTER TABLE "page_stars" ADD COLUMN "user_id" uuid;--> statement-breakpoint
 ALTER TABLE "page_drafts" ADD COLUMN "user_id" uuid;--> statement-breakpoint
+ALTER TABLE "oauth_grants" ADD COLUMN "user_id" uuid;--> statement-breakpoint
+ALTER TABLE "page_versions" ADD COLUMN "created_by" uuid;--> statement-breakpoint
 UPDATE "page_stars" SET "user_id" = "users"."id" FROM "users" WHERE "users"."email" = lower("page_stars"."admin_email");--> statement-breakpoint
 UPDATE "page_drafts" SET "user_id" = "users"."id" FROM "users" WHERE "users"."email" = lower("page_drafts"."author_email");--> statement-breakpoint
+UPDATE "oauth_grants" SET "user_id" = "users"."id" FROM "users" WHERE "users"."email" = lower("oauth_grants"."user_email");--> statement-breakpoint
+UPDATE "page_versions" SET "created_by" = "users"."id" FROM "users" WHERE "users"."email" = lower("page_versions"."author_email");--> statement-breakpoint
+DROP INDEX "oauth_grants_user_idx";--> statement-breakpoint
 ALTER TABLE "page_stars" DROP CONSTRAINT "page_stars_admin_email_page_id_pk";--> statement-breakpoint
 ALTER TABLE "page_drafts" DROP CONSTRAINT "page_drafts_page_id_author_email_pk";--> statement-breakpoint
 ALTER TABLE "page_stars" DROP COLUMN "admin_email";--> statement-breakpoint
 ALTER TABLE "page_drafts" DROP COLUMN "author_email";--> statement-breakpoint
+ALTER TABLE "oauth_grants" DROP COLUMN "user_email";--> statement-breakpoint
+ALTER TABLE "page_versions" DROP COLUMN "author_email";--> statement-breakpoint
 ALTER TABLE "page_stars" ALTER COLUMN "user_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "page_drafts" ALTER COLUMN "user_id" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "oauth_grants" ALTER COLUMN "user_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "page_stars" ADD CONSTRAINT "page_stars_user_id_page_id_pk" PRIMARY KEY("user_id","page_id");--> statement-breakpoint
 ALTER TABLE "page_drafts" ADD CONSTRAINT "page_drafts_page_id_user_id_pk" PRIMARY KEY("page_id","user_id");--> statement-breakpoint
 ALTER TABLE "page_stars" ADD CONSTRAINT "page_stars_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "page_drafts" ADD CONSTRAINT "page_drafts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "page_drafts" ADD CONSTRAINT "page_drafts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "oauth_grants" ADD CONSTRAINT "oauth_grants_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "page_versions" ADD CONSTRAINT "page_versions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "oauth_grants_user_idx" ON "oauth_grants" USING btree ("user_id","created_at");

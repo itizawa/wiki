@@ -114,7 +114,7 @@ describe("visibility hierarchy", () => {
     expect(ok.status).toBe(201);
   });
 
-  it("keeps existing pages that break the rule, and still lets them be deleted around", async () => {
+  it("keeps existing pages that break the rule, and still lets them be deleted and restored", async () => {
     ctx = await setup();
     const folder = await newPage("まとめ");
     const middle = await newPage("中", folder.id);
@@ -126,10 +126,13 @@ describe("visibility hierarchy", () => {
     await ctx.client.query(`update pages set visibility = 'private', published_version_id = null where id = $1`, [folder.id]);
 
     expect((await wikiManifest(ctx.db)).pages).toHaveLength(2);
-    // 親を消すと子は繰り上がる（決まりに合わなくても止めない）
-    expect((await ctx.call("DELETE", `${W}/pages/${middle.id}`)).status).toBe(200);
     // そのページを次に変えるときは、決まりを効かせる
-    expect((await publish(leaf, "public")).status).toBe(409);
+    expect((await publish(middle, "public")).status).toBe(409);
+    // ゴミ箱に入れる・元に戻すのは止めない。戻したページは非公開なので、親より広くはならない
+    expect((await ctx.call("DELETE", `${W}/pages/${middle.id}`)).status).toBe(200);
+    expect((await wikiManifest(ctx.db)).pages).toHaveLength(0);
+    expect((await ctx.call("POST", `${W}/pages/${middle.id}/restore`)).status).toBe(200);
+    expect((await ctx.call("GET", `${W}/pages/${leaf.id}`)).body.visibility).toBe("private");
   });
 
   it("checks scheduled publishes against the parent at that time", async () => {

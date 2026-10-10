@@ -3,13 +3,14 @@ import { filterCommands } from "./CommandMenu";
 
 const commands = [
   { label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"] },
-  { label: "「ルール」を開く", keywords: ["rules", "workflow"] },
+  { label: "「構造の履歴」を開く", keywords: ["history", "commits"] },
   { label: "ログアウトする", keywords: ["logout"] },
+  { label: "いまの内容を版として残す", keywords: ["save", "version", "keep", "hozon"] },
 ];
 
 describe("コマンドメニューの絞り込み", () => {
   it("何も打たなければ全部出す", () => {
-    expect(filterCommands(commands, " ")).toHaveLength(3);
+    expect(filterCommands(commands, " ")).toHaveLength(4);
   });
 
   it("名前の一部でも、英語の別名の先頭でも当たる", () => {
@@ -17,5 +18,8 @@ describe("コマンドメニューの絞り込み", () => {
     expect(filterCommands(commands, "CAL").map((c) => c.label)).toEqual(["「編集カレンダー」を開く"]);
     expect(filterCommands(commands, "開く")).toHaveLength(2);
     expect(filterCommands(commands, "zzz")).toEqual([]);
+    // ⌘S と同じ操作は「版」でも save でも探せる
+    expect(filterCommands(commands, "版").map((c) => c.label)).toEqual(["いまの内容を版として残す"]);
+    expect(filterCommands(commands, "save").map((c) => c.label)).toEqual(["いまの内容を版として残す"]);
   });
 });

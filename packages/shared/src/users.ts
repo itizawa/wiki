@@ -2,8 +2,8 @@ import { z } from "zod";
 
 /**
  * wiki のメンバーのロール。
- * - editor（編集者）：ページの作成・編集・移動・削除、承認・公開・予約・見直し済み
- * - admin（管理者）：編集者のできることに加えて、招待・メンバーの管理・ルールの設定
+ * - editor（編集者）：ページの作成・編集・移動・削除、公開・予約
+ * - admin（管理者）：編集者のできることに加えて、招待・メンバーの管理
  * オーナーは wiki のロールとは別の、全体の権限で、すべての wiki に管理者として入れる。
  */
 export const WIKI_ROLES = ["admin", "editor"] as const;
@@ -69,11 +69,16 @@ export type UserSummary = {
   isOwner: boolean;
   /** 一度もログインしていない（ADMIN_EMAILS からの移行・締め出し用のスクリプトで作った）なら null */
   lastLoginAt: string | null;
+  /** Google のアカウントと結びついているか。false ならメールアドレスだけの行で、そのアドレスで最初にログインしたアカウントに結びつく */
+  linked: boolean;
   createdAt: string;
 };
 
 export const createInviteInput = z.object({ role: wikiRoleSchema });
 export type CreateInviteInput = z.infer<typeof createInviteInput>;
+
+/** 招待リンクの値（URL ではなく本文で送る）。 */
+export const inviteTokenInput = z.object({ token: z.string().min(1).max(200) });
 
 export const updateMemberInput = z.object({ role: wikiRoleSchema });
 export type UpdateMemberInput = z.infer<typeof updateMemberInput>;

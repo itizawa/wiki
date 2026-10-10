@@ -46,6 +46,7 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
       id: page.id,
       path: pagePath(page.id),
       title: version.title,
+      icon: page.icon,
       bodyMd: version.bodyMd,
       firstPublishedAt: (page.firstPublishedAt ?? version.createdAt).toISOString(),
       revisedAt: version.createdAt.toISOString(),
@@ -61,6 +62,7 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
       key: page.unlistedKey!,
       path: unlistedPath(page.unlistedKey!),
       title: version.title,
+      icon: page.icon,
       bodyMd: version.bodyMd,
       revisedAt: version.createdAt.toISOString(),
     }))
@@ -78,7 +80,18 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
     .where(and(eq(pages.wikiId, wiki.id), isNotNull(pages.deletedAt), isNotNull(pages.firstPublishedAt)));
   const gone = goneRows.map((r) => r.id).sort();
 
-  return { key: wiki.key, name: wiki.name, theme: resolveTheme(wiki.theme), headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
+  return {
+    key: wiki.key,
+    name: wiki.name,
+    theme: resolveTheme(wiki.theme),
+    gaMeasurementId: wiki.gaMeasurementId,
+    searchConsoleVerification: wiki.searchConsoleVerification,
+    headCommitId: main.headCommitId,
+    pages: publicPages,
+    unlisted,
+    trees,
+    gone,
+  };
 }
 
 /**

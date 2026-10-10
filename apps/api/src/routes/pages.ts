@@ -3,20 +3,26 @@ import {
   newPageId,
   savePageDraftInput,
   savePageInput,
-  setWorkflowInput,
+  setPageIconInput,
   type PageDetail,
   type PageDraft,
   type PageSummary,
+  type SavePageDraftResult,
   type PageVersion,
+  type SavePageInput,
+  type StructureOp,
+  type TrashedPage,
 } from "@wiki/shared";
-import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageDrafts, pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
+import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions } from "../db/schema";
+import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks } from "../pages/versions";
+import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
-import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePage } from "../structure/repo";
+import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePages } from "../structure/repo";
 import { parseJson } from "../validation";
 import { findTemplate, renderTemplate } from "./templates";
 
@@ -27,15 +33,13 @@ type DraftRow = typeof pageDrafts.$inferSelect;
 const toSummary = (p: PageRow): PageSummary => ({
   id: p.id,
   title: p.title,
+  icon: p.icon,
   headVersionId: p.headVersionId,
   publishedVersionId: p.publishedVersionId,
   visibility: p.visibility,
   origin: p.origin,
   unlistedKey: p.unlistedKey,
   firstPublishedAt: p.firstPublishedAt?.toISOString() ?? null,
-  workflowState: p.workflowState,
-  approvedVersionId: p.approvedVersionId,
-  reviewRequestedAt: p.reviewRequestedAt?.toISOString() ?? null,
   updatedAt: p.updatedAt.toISOString(),
 });
 
@@ -46,6 +50,7 @@ const toVersion = (v: VersionRow): PageVersion => ({
   title: v.title,
   bodyMd: v.bodyMd,
   authorType: v.authorType,
+  keep: v.keep,
   createdAt: v.createdAt.toISOString(),
 });
 
@@ -56,10 +61,41 @@ const toDraft = (d: DraftRow): PageDraft => ({
   updatedAt: d.updatedAt.toISOString(),
 });
 
-const ownDraft = (pageId: string, userId: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.userId, userId));
+/** 一覧を続きから取るときの、1回の件数。 */
+const PAGE_LIMIT_DEFAULT = 50;
+const PAGE_LIMIT_MAX = 100;
+
+/** `limit` を 1〜100 に丸める。数でなければ既定の件数にする。 */
+function clampPageLimit(value: string | undefined): number {
+  const n = Number.parseInt(value ?? "", 10);
+  if (Number.isNaN(n)) return PAGE_LIMIT_DEFAULT;
+  return Math.min(Math.max(n, 1), PAGE_LIMIT_MAX);
+}
+
+/** 一覧の続きの位置。最後に返した行の更新日時（DB の文字のまま）と id。 */
+type PageCursor = { updatedAt: string; id: string };
+
+const encodePageCursor = (cursor: PageCursor): string =>
+  btoa(JSON.stringify([cursor.updatedAt, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+/** 壊れたカーソルは 400 にする（DB に渡してから失敗させない）。 */
+function decodePageCursor(value: string): PageCursor {
+  try {
+    const parsed: unknown = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/")));
+    if (Array.isArray(parsed) && parsed.length === 2) {
+      const [updatedAt, id] = parsed as unknown[];
+      if (typeof updatedAt === "string" && typeof id === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/.test(updatedAt)) {
+        return { updatedAt, id };
+      }
+    }
+  } catch {
+    // 下で 400 にする
+  }
+  throw new HttpError(400, "invalid_cursor", "the cursor is not valid; load the list from the start");
+}
 
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
-async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
+export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
   const q = db
     .select()
     .from(pages)
@@ -69,56 +105,276 @@ async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = fals
   return page;
 }
 
-async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
+export async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
   const page = await findLivePage(db, wikiId, id);
   const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
   return { ...toSummary(page), head: toVersion(head!) };
-}
-
-/** 本文中の `/p/{id}` 形式の内部リンクを抽出する。 */
-export function extractPageLinks(bodyMd: string): string[] {
-  const ids = new Set<string>();
-  for (const m of bodyMd.matchAll(/\/p\/([0-9a-z]{10})(?![0-9a-z])/g)) ids.add(m[1]!);
-  return [...ids];
-}
-
-/** 別の wiki のページへのリンクは外部リンクと同じ扱いにし、ここには残さない。 */
-async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyMd: string) {
-  await db.delete(pageLinks).where(eq(pageLinks.fromPageId, pageId));
-  const linked = extractPageLinks(bodyMd).filter((id) => id !== pageId);
-  const foreign = new Set(
-    linked.length === 0
-      ? []
-      : (await db.select({ id: pages.id }).from(pages).where(and(inArray(pages.id, linked), ne(pages.wikiId, wikiId)))).map((p) => p.id),
-  );
-  const targets = linked.filter((id) => !foreign.has(id));
-  if (targets.length > 0) {
-    await db.insert(pageLinks).values(targets.map((toPageId) => ({ fromPageId: pageId, toPageId })));
-  }
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
 export async function createPage(
   tx: Db,
   wikiId: string,
-  input: { title: string; bodyMd: string; parentPageId?: string | null },
+  input: { title: string; bodyMd: string; parentPageId?: string | null; icon?: string | null },
+  opts: { oauthGrantId?: string } = {},
 ): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
-  await tx.insert(pages).values({ id, wikiId, title: input.title, headVersionId: versionId });
+  await tx.insert(pages).values({ id, wikiId, title: input.title, icon: input.icon ?? null, headVersionId: versionId });
   await tx.insert(pageVersions).values({
     id: versionId,
     pageId: id,
     title: input.title,
     bodyMd: input.bodyMd,
     authorType: "human",
+    oauthGrantId: opts.oauthGrantId ?? null,
   });
   await replaceLinks(tx, wikiId, id, input.bodyMd);
   await commitOps(tx, wikiId, {
     message: `「${input.title}」を追加`,
     ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx, wikiId)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
+    oauthGrantId: opts.oauthGrantId,
   });
   return id;
+}
+
+/**
+ * 本文の保存（楽観ロック：baseVersionId が head と一致する場合のみ）。人（か外部のアプリ）が操作して作る、残す版になる。
+ * トランザクション内で呼ぶ。
+ */
+export async function savePage(
+  tx: Db,
+  wikiId: string,
+  id: string,
+  input: SavePageInput,
+  opts: {
+    oauthGrantId?: string;
+    /** 管理画面から保存した人（ユーザーの ID）。版を作った人になり、版になったらこの人の下書きを消す */
+    authorId?: string;
+  } = {},
+): Promise<void> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  // 楽観ロック：別タブ等で先に保存されていたら保存しない。自分の下書きからワーカーが作った版は、先に保存されたうちに入れない
+  if (page.headVersionId !== input.baseVersionId) {
+    const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+    if (!opts.authorId || !isOwnAutoVersion(head!, opts.authorId, input.baseVersionId)) {
+      throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
+        headVersionId: page.headVersionId,
+      });
+    }
+  }
+  await createVersion(tx, page, input, {
+    keep: true,
+    createdBy: opts.authorId ?? null,
+    oauthGrantId: opts.oauthGrantId,
+    draftOwner: opts.authorId,
+  });
+}
+
+/**
+ * アイコン（絵文字1つ）を付ける・変える・外す（null）。版は作らず、すぐに反映する。
+ * 公開中・限定公開中のページなら、公開サイトにも出るので、ビルドし直すきっかけを残す。
+ * 一覧の並び（updated_at）は変えない。トランザクション内で呼ぶ。
+ */
+export async function setPageIcon(tx: Db, wikiId: string, id: string, icon: string | null): Promise<void> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  if (page.icon === icon) return;
+  await tx.update(pages).set({ icon }).where(eq(pages.id, id));
+  if (page.publishedVersionId !== null && page.visibility !== "private") await recordPublishEvent(tx, wikiId, "icon", { pageId: id });
+}
+
+/**
+ * ページの削除 = ゴミ箱に入れる。選んだページと配下のページをまとめてツリーから外し、公開をやめ、予約を取り消す。
+ * いっしょに入れたページは1つのまとまり（trash_root_id）になり、元に戻す・完全に削除するのはまとまりごと。
+ * 先にゴミ箱に入れてあった配下のページは、別のまとまりのまま残る。トランザクション内で呼ぶ。
+ */
+export async function deletePage(
+  tx: Db,
+  wikiId: string,
+  id: string,
+  opts: { oauthGrantId?: string } = {},
+): Promise<{ trashedPageIds: string[] }> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  const main = await getBranch(tx, wikiId, MAIN_BRANCH);
+  const { state } = await loadCommit(tx, main.headCommitId);
+  const nodes = state.trees[(await getPrimaryTree(tx, wikiId)).id]?.nodes ?? [];
+  const nodeOf = new Map(nodes.map((n) => [n.pageId, n]));
+  const ids = [id, ...descendantIds(indexNodes(nodes), id)];
+  const members = await tx
+    .select({ id: pages.id, firstPublishedAt: pages.firstPublishedAt })
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, ids), isNull(pages.deletedAt)))
+    .for("update");
+
+  const ops = opsToRemovePages(state, new Set(ids));
+  if (ops.length > 0) {
+    await commitOps(tx, wikiId, {
+      // 配下を読んだあとにツリーが変わっていたら、やり直してもらう（配下に足されたページを取りこぼさない）
+      expectedHeadCommitId: main.headCommitId,
+      message: ids.length > 1 ? `「${page.title}」と配下の ${ids.length - 1} ページをゴミ箱に入れる` : `「${page.title}」をゴミ箱に入れる`,
+      ops,
+      checkVisibility: false,
+      oauthGrantId: opts.oauthGrantId,
+    });
+  }
+  const now = new Date();
+  for (const m of members) {
+    const node = nodeOf.get(m.id);
+    await tx
+      .update(pages)
+      .set({
+        deletedAt: now,
+        updatedAt: now,
+        publishedVersionId: null,
+        visibility: "private",
+        trashRootId: id,
+        trashedParentId: node?.parentNodeId ?? null,
+        trashedPosition: node?.position ?? null,
+      })
+      .where(eq(pages.id, m.id));
+  }
+  // 予約は無効にする。公開済みだった記事は再ビルドで410になる
+  await tx
+    .update(scheduledActions)
+    .set({ status: "canceled", lastError: "page deleted" })
+    .where(and(inArray(scheduledActions.pageId, ids), eq(scheduledActions.status, "scheduled")));
+  for (const m of members) {
+    if (m.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: m.id, oauthGrantId: opts.oauthGrantId });
+  }
+  return { trashedPageIds: members.map((m) => m.id) };
+}
+
+/** ゴミ箱にある（完全には削除していない）ページ */
+const inTrash = and(isNotNull(pages.deletedAt), isNull(pages.purgedAt));
+
+/**
+ * ゴミ箱の一覧。削除で選んだページ（まとまりの先頭）ごとに1行、ゴミ箱に入れた日時の新しい順。
+ * `visible` は、読めるページだけに絞る条件（MCP から使う）。
+ */
+export async function listTrash(db: Db, wikiId: string, visible?: SQL): Promise<TrashedPage[]> {
+  const rows = await db
+    .select({
+      id: pages.id,
+      title: pages.title,
+      deletedAt: pages.deletedAt,
+      // テーブルが1つの問い合わせでは列名にテーブル名が付かないので、相関する列は名前で書く
+      descendantCount: sql<number>`(
+        select count(*)::int from "pages" m
+        where m."trash_root_id" = "pages"."id" and m."id" <> "pages"."id" and m."deleted_at" is not null and m."purged_at" is null
+      )`,
+    })
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), inTrash, eq(pages.trashRootId, pages.id), visible))
+    .orderBy(desc(pages.deletedAt), pages.id)
+    .limit(500);
+  return rows.map((r) => ({ id: r.id, title: r.title, deletedAt: r.deletedAt!.toISOString(), descendantCount: Number(r.descendantCount) }));
+}
+
+/**
+ * ゴミ箱のまとまりを、先頭のページの ID で引いて行ロックする。
+ * ゴミ箱に入っていないページ、ほかの wiki のページ、まとまりの先頭でないページ（配下としていっしょに入ったページ）は、無いものとして扱う。
+ */
+export async function lockTrashGroup(tx: Db, wikiId: string, id: string): Promise<{ root: PageRow; members: PageRow[] }> {
+  const members = await tx
+    .select()
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), inTrash, eq(pages.trashRootId, id)))
+    .for("update");
+  const root = members.find((m) => m.id === id);
+  if (!root) throw notFound(`page ${id} in the trash`);
+  return { root, members };
+}
+
+/**
+ * ゴミ箱のページを、いっしょに入れた配下ごと元に戻す。親子関係と並びは削除前のまま。
+ * 置き場所は、元の親がツリーに残っていればその下の末尾、無ければ最上位の末尾。
+ * 公開と予約は戻さない（非公開のまま）。
+ * トランザクション内で呼ぶ。
+ */
+export async function restorePage(
+  tx: Db,
+  wikiId: string,
+  id: string,
+  opts: { oauthGrantId?: string } = {},
+): Promise<{
+  restoredPageIds: string[];
+  /** 戻した先の親ページ（nullなら最上位） */
+  parentPageId: string | null;
+  /** 元の親ページが無くなっていたので、最上位に戻した */
+  parentMissing: boolean;
+}> {
+  const { root, members } = await lockTrashGroup(tx, wikiId, id);
+  const ids = members.map((m) => m.id);
+  // ツリーに足す操作は、ページが削除されていないことを確かめるので、先にゴミ箱から出す
+  await tx
+    .update(pages)
+    .set({ deletedAt: null, trashRootId: null, trashedParentId: null, trashedPosition: null, updatedAt: new Date() })
+    .where(inArray(pages.id, ids));
+
+  const tree = await getPrimaryTree(tx, wikiId);
+  const main = await getBranch(tx, wikiId, MAIN_BRANCH);
+  const placed = new Set(((await loadCommit(tx, main.headCommitId)).state.trees[tree.id]?.nodes ?? []).map((n) => n.pageId));
+  const parentPageId = root.trashedParentId !== null && placed.has(root.trashedParentId) ? root.trashedParentId : null;
+
+  // 親から先に、兄弟は削除前の並び順に足す
+  const childrenOf = new Map<string, PageRow[]>();
+  for (const m of members) {
+    if (m.id === id) continue;
+    // 親がまとまりの中に無い行は、先頭のページの下に置く（通常は起きない）
+    const parent = m.trashedParentId !== null && ids.includes(m.trashedParentId) ? m.trashedParentId : id;
+    childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), m]);
+  }
+  const byPosition = (a: PageRow, b: PageRow) => {
+    const [x, y] = [a.trashedPosition ?? "", b.trashedPosition ?? ""];
+    return x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : 1;
+  };
+  const ops: StructureOp[] = [{ type: "add_to_tree", treeId: tree.id, pageId: id, parentNodeId: parentPageId }];
+  const queue = [id];
+  while (queue.length > 0) {
+    const parent = queue.shift()!;
+    for (const child of (childrenOf.get(parent) ?? []).sort(byPosition)) {
+      ops.push({ type: "add_to_tree", treeId: tree.id, pageId: child.id, parentNodeId: parent });
+      queue.push(child.id);
+    }
+  }
+  await commitOps(tx, wikiId, {
+    message: ids.length > 1 ? `「${root.title}」と配下の ${ids.length - 1} ページをゴミ箱から元に戻す` : `「${root.title}」をゴミ箱から元に戻す`,
+    ops,
+    checkVisibility: false,
+    oauthGrantId: opts.oauthGrantId,
+  });
+  // 公開したことがあるページは、公開サイトで 410 を返すのをやめる（非公開なので 404 になる）
+  for (const m of members) {
+    if (m.firstPublishedAt) await recordPublishEvent(tx, wikiId, "restore", { pageId: m.id, oauthGrantId: opts.oauthGrantId });
+  }
+  return { restoredPageIds: ids, parentPageId, parentMissing: root.trashedParentId !== null && parentPageId === null };
+}
+
+/**
+ * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
+ * 版・下書き・リンク・スター・予約を消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
+ * 構造の履歴（過去のツリー）がこの行を指しているため。閲覧数の行も残す（画面には出ない）。トランザクション内で呼ぶ。
+ */
+export async function purgePage(tx: Db, wikiId: string, id: string): Promise<{ purgedPageIds: string[] }> {
+  const { members } = await lockTrashGroup(tx, wikiId, id);
+  const ids = members.map((m) => m.id);
+  // 予約は版を指しているので、版より先に消す
+  await tx.delete(scheduledActions).where(inArray(scheduledActions.pageId, ids));
+  await tx.delete(pageDrafts).where(inArray(pageDrafts.pageId, ids));
+  await tx.delete(pageLinks).where(or(inArray(pageLinks.fromPageId, ids), inArray(pageLinks.toPageId, ids)));
+  await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
+  await tx.delete(pageVersions).where(inArray(pageVersions.pageId, ids));
+  await tx
+    .update(pages)
+    .set({
+      purgedAt: new Date(),
+      trashRootId: null,
+      trashedParentId: null,
+      trashedPosition: null,
+      unlistedKey: null,
+    })
+    .where(inArray(pages.id, ids));
+  return { purgedPageIds: ids };
 }
 
 export const pageRoutes = new Hono<AppEnv>()
@@ -127,8 +383,32 @@ export const pageRoutes = new Hono<AppEnv>()
     const q = c.req.query("q")?.trim();
     const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
     const where = q ? and(live, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : live;
-    const rows = await db.select().from(pages).where(where).orderBy(desc(pages.updatedAt)).limit(500);
-    return c.json({ pages: rows.map(toSummary) });
+    const order = [desc(pages.updatedAt), desc(pages.id)];
+    const limitParam = c.req.query("limit");
+    const cursorParam = c.req.query("cursor");
+    // どちらも無ければ、続きを取らない呼び出し（検索・コマンドメニュー・編集カレンダーなど）。最大500件を一度に返す
+    if (limitParam === undefined && cursorParam === undefined) {
+      const rows = await db.select().from(pages).where(where).orderBy(...order).limit(500);
+      return c.json({ pages: rows.map(toSummary) });
+    }
+    const limit = clampPageLimit(limitParam);
+    const after = cursorParam === undefined ? null : decodePageCursor(cursorParam);
+    // 続きは「最後の行より後ろ」。更新日時が同じ行は id で順を決めるので、抜けも重なりも出ない
+    const rest = after ? sql`(${pages.updatedAt}, ${pages.id}) < (${after.updatedAt}::timestamptz, ${after.id})` : undefined;
+    const rows = await db
+      // 日時はマイクロ秒まで持っている。Date にするとミリ秒に丸まり、同じミリ秒の行を取りこぼすので、カーソルには文字のまま使う
+      .select({ page: pages, updatedAtText: sql<string>`${pages.updatedAt}::text` })
+      .from(pages)
+      .where(and(where, rest))
+      .orderBy(...order)
+      // 1件多く取って、続きがあるかを見る
+      .limit(limit + 1);
+    const shown = rows.slice(0, limit);
+    const last = shown[shown.length - 1];
+    return c.json({
+      pages: shown.map((r) => toSummary(r.page)),
+      nextCursor: rows.length > limit && last ? encodePageCursor({ updatedAt: last.updatedAtText, id: last.page.id }) : null,
+    });
   })
   .post("/", async (c) => {
     const { db } = c.get("deps");
@@ -138,9 +418,14 @@ export const pageRoutes = new Hono<AppEnv>()
       if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! });
       // テンプレートから作る：変数を置き換えた本文で始める。タイトルの指定が無ければテンプレートのタイトルにする
       const filled = renderTemplate(await findTemplate(tx, wikiId, input.templateId), c.get("user").email);
-      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId });
+      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId, icon: input.icon });
     });
     return c.json(await getDetail(db, wikiId, id), 201);
+  })
+  // ゴミ箱の一覧。`/:id` より先に置く
+  .get("/trash", async (c) => {
+    const { db } = c.get("deps");
+    return c.json({ pages: await listTrash(db, c.get("wiki").id) });
   })
   .get("/:id", async (c) => {
     const { db } = c.get("deps");
@@ -151,35 +436,16 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, savePageInput);
-    await db.transaction(async (tx) => {
-      const page = await findLivePage(tx, wikiId, id, true);
-      // 楽観ロック：別タブ等で先に保存されていたら保存しない
-      if (page.headVersionId !== input.baseVersionId) {
-        throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
-          headVersionId: page.headVersionId,
-        });
-      }
-      // 版として残したら、自分の下書きは要らない（変更が無く版を作らないときも、下書きは head と同じなので消す）
-      await tx.delete(pageDrafts).where(ownDraft(id, c.get("user").id));
-      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-      if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
-
-      const [version] = await tx
-        .insert(pageVersions)
-        .values({
-          pageId: id,
-          baseVersionId: input.baseVersionId,
-          title: input.title,
-          bodyMd: input.bodyMd,
-          authorType: "human",
-        })
-        .returning();
-      await tx
-        .update(pages)
-        .set({ title: input.title, headVersionId: version!.id, updatedAt: new Date() })
-        .where(eq(pages.id, id));
-      await replaceLinks(tx, wikiId, id, input.bodyMd);
-    });
+    await db.transaction((tx) => savePage(tx, wikiId, id, input, { authorId: c.get("user").id }));
+    return c.json(await getDetail(db, wikiId, id));
+  })
+  // アイコン（絵文字1つ）。本文の保存とは別に、選んだらすぐに反映する
+  .put("/:id/icon", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
+    const { icon } = await parseJson(c, setPageIconInput);
+    await db.transaction((tx) => setPageIcon(tx, wikiId, id, icon));
     return c.json(await getDetail(db, wikiId, id));
   })
   .get("/:id/draft", async (c) => {
@@ -194,29 +460,33 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const userId = c.get("user").id;
     const input = await parseJson(c, savePageDraftInput);
-    const draft = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const page = await findLivePage(tx, c.get("wiki").id, id, true);
-      // 別のタブや人が先に版を作っていたら、その版を知らないまま書いた下書きでは上書きしない
-      if (page.headVersionId !== input.baseVersionId) {
+      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+      // 別のタブや人が先に版を作っていたら、その版を知らないまま書いた下書きでは上書きしない。
+      // 自分の下書きからワーカーが作った版は別で、開いたままの画面で続きを打てるよう、head をもとにした下書きとして受け取る
+      if (page.headVersionId !== input.baseVersionId && !isOwnAutoVersion(head!, userId, input.baseVersionId)) {
         throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
           headVersionId: page.headVersionId,
         });
       }
       // head と同じ内容に戻したら、下書きは無いのと同じ
-      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
       if (head!.title === input.title && head!.bodyMd === input.bodyMd) {
         await tx.delete(pageDrafts).where(ownDraft(id, userId));
-        return null;
+        return { draft: null, headVersionId: page.headVersionId };
       }
-      const values = { baseVersionId: input.baseVersionId, title: input.title, bodyMd: input.bodyMd, updatedAt: new Date() };
+      const now = new Date();
+      const values = { baseVersionId: page.headVersionId, title: input.title, bodyMd: input.bodyMd, updatedAt: now };
+      // 始めた時刻（created_at）は、行を新しく作るときだけ入れる。上書きでは変えない
       const [row] = await tx
         .insert(pageDrafts)
-        .values({ pageId: id, userId, ...values })
+        .values({ pageId: id, userId, createdAt: now, ...values })
         .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.userId], set: values })
         .returning();
-      return toDraft(row!);
+      return { draft: toDraft(row!), headVersionId: page.headVersionId };
     });
-    return c.json({ draft });
+    // いまの head も返す。ワーカーが版を作っていたら、画面はここで気づいて追いかける
+    return c.json(result satisfies SavePageDraftResult);
   })
   .delete("/:id/draft", async (c) => {
     const { db } = c.get("deps");
@@ -227,61 +497,24 @@ export const pageRoutes = new Hono<AppEnv>()
   })
   .delete("/:id", async (c) => {
     const { db } = c.get("deps");
-    const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
-    await db.transaction(async (tx) => {
-      const page = await findLivePage(tx, wikiId, id, true);
-      const main = await getBranch(tx, wikiId, MAIN_BRANCH);
-      const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
-      if (ops.length > 0) {
-        await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops, checkVisibility: false });
-      }
-      await tx
-        .update(pages)
-        .set({ deletedAt: new Date(), updatedAt: new Date(), publishedVersionId: null, visibility: "private" })
-        .where(eq(pages.id, id));
-      // 予約は無効にする。公開済みだった記事は再ビルドで410になる
-      await tx
-        .update(scheduledActions)
-        .set({ status: "canceled", lastError: "page deleted" })
-        .where(and(eq(scheduledActions.pageId, id), eq(scheduledActions.status, "scheduled")));
-      if (page.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: id });
-    });
-    return c.json({ ok: true });
+    const { trashedPageIds } = await db.transaction((tx) => deletePage(tx, wikiId, c.req.param("id")));
+    return c.json({ ok: true, trashedPages: trashedPageIds.length });
   })
-  .post("/:id/workflow", async (c) => {
+  // ゴミ箱から元に戻す（配下ごと）
+  .post("/:id/restore", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
-    const input = await parseJson(c, setWorkflowInput);
-    await db.transaction(async (tx) => {
-      await findLivePage(tx, wikiId, id, true);
-      if (input.state === "approved") {
-        const [v] = await tx
-          .select({ id: pageVersions.id })
-          .from(pageVersions)
-          .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, id)));
-        if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
-      }
-      // 一覧の並び（updated_at）は変えない。approved_at は予約の created_at と比べるので、同じDBの時計で入れる
-      await tx
-        .update(pages)
-        .set(
-          input.state === "approved"
-            ? { workflowState: "approved", approvedVersionId: input.versionId, approvedAt: sql`clock_timestamp()` }
-            : { workflowState: input.state, approvedVersionId: null, approvedAt: null },
-        )
-        .where(eq(pages.id, id));
-    });
-    return c.json(await getDetail(db, wikiId, id));
+    const { restoredPageIds, ...placed } = await db.transaction((tx) => restorePage(tx, wikiId, id));
+    return c.json({ id, restoredPages: restoredPageIds.length, ...placed });
   })
-  .post("/:id/review-done", async (c) => {
+  // ゴミ箱から完全に削除する（配下ごと。元に戻せない）
+  .delete("/:id/trash", async (c) => {
     const { db } = c.get("deps");
-    const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
-    await findLivePage(db, wikiId, id);
-    await db.update(pages).set({ reviewRequestedAt: null, reviewedAt: new Date() }).where(eq(pages.id, id));
-    return c.json(await getDetail(db, wikiId, id));
+    const { purgedPageIds } = await db.transaction((tx) => purgePage(tx, wikiId, c.req.param("id")));
+    return c.json({ ok: true, purgedPages: purgedPageIds.length });
   })
   .get("/:id/versions", async (c) => {
     const { db } = c.get("deps");
@@ -294,9 +527,14 @@ export const pageRoutes = new Hono<AppEnv>()
         baseVersionId: pageVersions.baseVersionId,
         title: pageVersions.title,
         authorType: pageVersions.authorType,
+        keep: pageVersions.keep,
         createdAt: pageVersions.createdAt,
+        // 外部のアプリ（MCP）から保存した版なら、そのアプリの名前
+        via: oauthClients.name,
       })
       .from(pageVersions)
+      .leftJoin(oauthGrants, eq(oauthGrants.id, pageVersions.oauthGrantId))
+      .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
       .where(eq(pageVersions.pageId, id))
       .orderBy(desc(pageVersions.createdAt));
     return c.json({ versions: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
