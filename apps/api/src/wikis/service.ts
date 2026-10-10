@@ -1,10 +1,13 @@
 import {
   newWikiId,
+  resolveTheme,
   wikiOrigin,
   type CreateWikiInput,
+  type UpdateAppearanceInput,
   type UpdateWikiInput,
   type UpdateWikiSettingsInput,
   type Wiki,
+  type WikiAppearance,
   type WikiRole,
   type WikiSettings,
   type WikiSummary,
@@ -112,6 +115,27 @@ export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): P
     // 公開サイトの名前が変わる
     if (renamed && !wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_rename");
     return row!;
+  });
+}
+
+export function toAppearance(row: WikiRow): WikiAppearance {
+  return { name: row.name, theme: resolveTheme(row.theme) };
+}
+
+/**
+ * 「外観」（サイト名とテーマ）の保存。input は検証済み（色のコントラスト比を含む）のもの。
+ * 変わったときだけ公開イベントを記録し、いつものデバウンスを通して公開サイトをビルドし直す。
+ */
+export async function updateAppearance(db: Db, wikiId: string, input: UpdateAppearanceInput): Promise<WikiAppearance> {
+  return db.transaction(async (tx) => {
+    const [wiki] = await tx.select().from(wikis).where(eq(wikis.id, wikiId)).for("update");
+    if (!wiki) throw notFound(`wiki ${wikiId}`);
+    const before = toAppearance(wiki);
+    const theme = resolveTheme(input.theme);
+    if (before.name === input.name && JSON.stringify(before.theme) === JSON.stringify(theme)) return before;
+    const [row] = await tx.update(wikis).set({ name: input.name, theme }).where(eq(wikis.id, wiki.id)).returning();
+    if (!wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_theme");
+    return toAppearance(row!);
   });
 }
 

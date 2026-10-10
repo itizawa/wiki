@@ -141,6 +141,13 @@
       "when": 1791666149372,
       "tag": "0019_users_and_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791666579116,
+      "tag": "0020_wiki_theme",
+      "breakpoints": true
     }
   ]
 }

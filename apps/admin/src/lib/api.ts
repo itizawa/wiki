@@ -24,7 +24,9 @@ import type {
   TreeMeta,
   TreeNode,
   UserSummary,
+  UpdateAppearanceInput,
   WikiAnalytics,
+  WikiAppearance,
   WikiRole,
   WikiSettings,
   WikiSummary,
@@ -74,6 +76,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
   }
   return data as T;
+}
+
+/** 画像をアップロードする。本文はファイルの中身そのまま（multipart にしない） */
+async function upload(path: string, file: Blob): Promise<{ url: string }> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = data?.error ?? {};
+    throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
+  }
+  return data as { url: string };
 }
 
 /** via：外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
@@ -162,20 +180,7 @@ export const api = {
    * 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る。
    * wiki の外の画面（wiki の管理）から使うときは、どの wiki の経路で送るかを key で渡す
    */
-  uploadImage: async (file: Blob, key: string = wikiKey): Promise<{ url: string }> => {
-    const res = await fetch(`/api/admin/w/${encodeURIComponent(key)}/images`, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      const err = data?.error ?? {};
-      throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
-    }
-    return data as { url: string };
-  },
+  uploadImage: (file: Blob, key: string = wikiKey) => upload(`/admin/w/${encodeURIComponent(key)}/images`, file),
   /** ゴミ箱に入れる（配下のページもいっしょに入る） */
   deletePage: (id: string) => request<{ ok: true; trashedPages: number }>("DELETE", w(`/pages/${id}`)),
   /** ゴミ箱の一覧。削除で選んだページごとに1行、新しい順 */
@@ -244,6 +249,12 @@ export const api = {
   createInvite: (role: WikiRole) => request<{ token: string; invite: Invite }>("POST", w("/invites"), { role }),
   revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
 
+  /** 公開サイトの「外観」（管理者だけ） */
+  getAppearance: () => request<WikiAppearance>("GET", w("/appearance")),
+  saveAppearance: (input: UpdateAppearanceInput) => request<WikiAppearance>("PUT", w("/appearance"), input),
+  /** ロゴ・ファビコンをアップロードし、パス（`/images/{name}`）を返す。PNG・WebP の 512KB まで */
+  uploadThemeImage: (file: Blob) => upload(w("/appearance/images"), file),
+
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
     request<{ commitId: string }>("POST", w("/structure/commits"), input),
@@ -254,15 +265,21 @@ export const api = {
 
 const VISIBILITY_LABEL = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;
 
+/** 画像の条件。ロゴ・ファビコンは本文の画像より狭いので、API が返した条件があればそれを出す */
+function imageLimit(err: ApiError): string {
+  const limit = (err.details as { limit?: unknown } | undefined)?.limit;
+  return typeof limit === "string" ? limit : IMAGE_LIMIT_LABEL;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "version_conflict":
         return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
       case "image_too_large":
-        return `画像が大きすぎます。${IMAGE_LIMIT_LABEL}です。`;
+        return `画像が大きすぎます。${imageLimit(err)}です。`;
       case "unsupported_image_type":
-        return `この形式の画像はアップロードできません。${IMAGE_LIMIT_LABEL}です。`;
+        return `この形式の画像はアップロードできません。${imageLimit(err)}です。`;
       case "images_not_configured":
         return "画像の置き場所が設定されていないため、アップロードできません。";
       case "head_moved":

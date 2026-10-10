@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Palette, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -125,7 +125,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { isOwner } = useWiki();
+  const { isOwner, role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -216,6 +216,11 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/members" icon={<Users size={18} />} onClick={props.onNavigate}>
           メンバー
         </NavItem>
+        {role === "admin" && (
+          <NavItem to="/w/$wikiKey/appearance" icon={<Palette size={18} />} onClick={props.onNavigate}>
+            外観
+          </NavItem>
+        )}
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
           ゴミ箱
         </NavItem>

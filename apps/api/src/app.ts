@@ -1,6 +1,7 @@
 import { StructureOpError, StructureValidationError } from "@wiki/shared";
 import { Hono } from "hono";
 import { authRoutes, requireAccess, requireUser } from "./auth/routes";
+import { appearanceRoutes } from "./routes/appearance";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
@@ -98,6 +99,7 @@ export function createApp(deps: Deps) {
   wiki.route("/images", imageUploadRoutes);
   wiki.route("/members", memberRoutes);
   wiki.route("/invites", inviteAdminRoutes);
+  wiki.route("/appearance", appearanceRoutes);
   wiki.route("/views", viewRoutes);
   wiki.route("/settings", wikiSettingsRoutes);
   wiki.route("/analytics", analyticsRoutes);
