@@ -15,7 +15,14 @@ if (!process.env.MANIFEST_PATH) {
     console.error(`failed to fetch manifest: ${res.status}`);
     process.exit(1);
   }
-  const manifest = await res.json();
+  let manifest = await res.json();
+  // wiki が1つだった頃の API（`wikis` が無い形）からも、最初の wiki 1つ分としてビルドできるようにする。
+  // API より先に公開サイトがビルドされたとき（デプロイの順番、古い API を見るプレビュー）に失敗させないため
+  if (!Array.isArray(manifest.wikis)) {
+    const { generatedAt, contentHash, ...content } = manifest;
+    manifest = { generatedAt, contentHash, wikis: [{ key: "wiki", name: process.env.SITE_NAME ?? "wiki", ...content }] };
+    console.log("manifest: the API returned the single-wiki format; building it as the first wiki");
+  }
   await writeFile(".manifest.json", JSON.stringify(manifest));
   for (const wiki of manifest.wikis) {
     console.log(`manifest: ${wiki.key}: ${wiki.pages.length} pages, ${wiki.unlisted.length} unlisted`);

@@ -145,7 +145,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
 4. **管理画面の「wiki の管理」で、最初の wiki の表示名を、これまでの `SITE_NAME` と同じ名前に直す**。移行の直後の表示名はツリーの名前（`trees.name`。変えていなければ「メイン」）になっている。`SITE_NAME` は公開サイトのビルドの環境変数で、マイグレーションからは読めないため。表示名を直すと公開サイトがビルドし直される
 5. 公開サイト（`wiki-site`）のデプロイが済んだら、`wiki.hatchery-works.com` が今までどおり見られることを確かめる。カスタムドメイン `wiki.hatchery-works.com` の設定が Cloudflare に残っていれば外す（ルートに置き換わった）
 
-公開サイトは `main` に入るとすぐビルドされるので、3 と 4 の間は、サイト名がツリーの名前で出ることがある。気になる場合は、3 の前に Workers Builds を一時停止し、4 のあとで再開する。
+公開サイトは `main` に入るとすぐビルドされ、API のデプロイより先になることがある。そのときは wiki が1つだった頃の形のデータを、最初の wiki 1つ分としてビルドする（サイト名は `SITE_NAME`。`apps/site/scripts/fetch-manifest.mjs`）ので、ビルドは失敗しない。逆に、API のデプロイのあと 4 より前にビルドされると、サイト名がツリーの名前で出る。気になる場合は、3 の前に Workers Builds を一時停止し、4 のあとで再開する。
 
 手元から出す場合は `wrangler login` のうえで `pnpm --filter @wiki/admin build && pnpm --filter @wiki/api deploy`、`pnpm --filter @wiki/worker deploy`。
 
