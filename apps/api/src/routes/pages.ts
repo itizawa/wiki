@@ -64,6 +64,39 @@ const toDraft = (d: DraftRow): PageDraft => ({
   updatedAt: d.updatedAt.toISOString(),
 });
 
+/** 一覧を続きから取るときの、1回の件数。 */
+const PAGE_LIMIT_DEFAULT = 50;
+const PAGE_LIMIT_MAX = 100;
+
+/** `limit` を 1〜100 に丸める。数でなければ既定の件数にする。 */
+function clampPageLimit(value: string | undefined): number {
+  const n = Number.parseInt(value ?? "", 10);
+  if (Number.isNaN(n)) return PAGE_LIMIT_DEFAULT;
+  return Math.min(Math.max(n, 1), PAGE_LIMIT_MAX);
+}
+
+/** 一覧の続きの位置。最後に返した行の更新日時（DB の文字のまま）と id。 */
+type PageCursor = { updatedAt: string; id: string };
+
+const encodePageCursor = (cursor: PageCursor): string =>
+  btoa(JSON.stringify([cursor.updatedAt, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+/** 壊れたカーソルは 400 にする（DB に渡してから失敗させない）。 */
+function decodePageCursor(value: string): PageCursor {
+  try {
+    const parsed: unknown = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/")));
+    if (Array.isArray(parsed) && parsed.length === 2) {
+      const [updatedAt, id] = parsed as unknown[];
+      if (typeof updatedAt === "string" && typeof id === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/.test(updatedAt)) {
+        return { updatedAt, id };
+      }
+    }
+  } catch {
+    // 下で 400 にする
+  }
+  throw new HttpError(400, "invalid_cursor", "the cursor is not valid; load the list from the start");
+}
+
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
 export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
   const q = db
@@ -371,8 +404,32 @@ export const pageRoutes = new Hono<AppEnv>()
     const q = c.req.query("q")?.trim();
     const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
     const where = q ? and(live, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : live;
-    const rows = await db.select().from(pages).where(where).orderBy(desc(pages.updatedAt)).limit(500);
-    return c.json({ pages: rows.map(toSummary) });
+    const order = [desc(pages.updatedAt), desc(pages.id)];
+    const limitParam = c.req.query("limit");
+    const cursorParam = c.req.query("cursor");
+    // どちらも無ければ、続きを取らない呼び出し（検索・コマンドメニュー・編集カレンダーなど）。最大500件を一度に返す
+    if (limitParam === undefined && cursorParam === undefined) {
+      const rows = await db.select().from(pages).where(where).orderBy(...order).limit(500);
+      return c.json({ pages: rows.map(toSummary) });
+    }
+    const limit = clampPageLimit(limitParam);
+    const after = cursorParam === undefined ? null : decodePageCursor(cursorParam);
+    // 続きは「最後の行より後ろ」。更新日時が同じ行は id で順を決めるので、抜けも重なりも出ない
+    const rest = after ? sql`(${pages.updatedAt}, ${pages.id}) < (${after.updatedAt}::timestamptz, ${after.id})` : undefined;
+    const rows = await db
+      // 日時はマイクロ秒まで持っている。Date にするとミリ秒に丸まり、同じミリ秒の行を取りこぼすので、カーソルには文字のまま使う
+      .select({ page: pages, updatedAtText: sql<string>`${pages.updatedAt}::text` })
+      .from(pages)
+      .where(and(where, rest))
+      .orderBy(...order)
+      // 1件多く取って、続きがあるかを見る
+      .limit(limit + 1);
+    const shown = rows.slice(0, limit);
+    const last = shown[shown.length - 1];
+    return c.json({
+      pages: shown.map((r) => toSummary(r.page)),
+      nextCursor: rows.length > limit && last ? encodePageCursor({ updatedAt: last.updatedAtText, id: last.page.id }) : null,
+    });
   })
   .post("/", async (c) => {
     const { db } = c.get("deps");
