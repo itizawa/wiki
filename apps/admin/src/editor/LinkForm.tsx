@@ -1,4 +1,4 @@
-import { Unlink } from "lucide-react";
+import { FileUp, Unlink } from "lucide-react";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -8,7 +8,6 @@ import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
 import Alert from "@mui/material/Alert";
 import type { Editor } from "@tiptap/react";
 import { IMAGE_LIMIT_LABEL, IMAGE_TYPES } from "@wiki/shared";
@@ -129,7 +128,7 @@ export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: str
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 0.5 }}>
             <Stack spacing={0.75} sx={{ alignItems: "flex-start" }}>
-              <Button variant="outlined" startIcon={<UploadFileIcon />} disabled={uploading} onClick={() => fileInput.current?.click()}>
+              <Button variant="outlined" startIcon={<FileUp size={18} />} disabled={uploading} onClick={() => fileInput.current?.click()}>
                 {uploading ? "アップロード中…" : "ファイルを選んでアップロード…"}
               </Button>
               <input
