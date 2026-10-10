@@ -7,8 +7,9 @@ import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Snackbar from "@mui/material/Snackbar";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
+import { setPageActions } from "../lib/pageActions";
 import { Tooltip } from "./Tooltip";
 
 /** 編集画面の「…」メニュー。いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す。 */
@@ -35,6 +36,14 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // コマンドメニュー（⌘K）からも同じ操作を呼べるようにする。結果の知らせは、ここの Snackbar に出す
+  const actions = useRef({ copy, download });
+  actions.current = { copy, download };
+  useEffect(() => {
+    setPageActions({ copyMarkdown: () => void actions.current.copy(), downloadMarkdown: () => actions.current.download() });
+    return () => setPageActions(null);
+  }, []);
 
   return (
     <>

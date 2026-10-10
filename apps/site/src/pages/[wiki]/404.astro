@@ -1,0 +1,15 @@
+---
+import Base from "../../layouts/Base.astro";
+import { allWikis } from "../../lib/manifest";
+
+export async function getStaticPaths() {
+  return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
+}
+
+const { wiki } = Astro.params;
+---
+
+<Base wiki={wiki} title="ページが見つかりません" noindex>
+  <h1>ページが見つかりません</h1>
+  <p><a href="/">トップへ</a> ・ <a href="/search">検索</a></p>
+</Base>

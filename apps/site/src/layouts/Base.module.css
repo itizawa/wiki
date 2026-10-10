@@ -1,8 +1,8 @@
 .header {
   display: flex; align-items: center; gap: 16px; padding: 12px 16px;
-  border-bottom: 1px solid var(--border); max-width: 1100px; margin: 0 auto;
+  border-bottom: 1px solid var(--border); max-width: 1200px; margin: 0 auto;
 }
 .brand { font-weight: 700; color: var(--text); text-decoration: none; }
 .nav { display: flex; gap: 14px; margin-left: auto; font-size: 0.9rem; }
-.body { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
-.footer { max-width: 1100px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }
+.body { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+.footer { max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }

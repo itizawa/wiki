@@ -8,7 +8,7 @@ import {
   type PageSummary,
   type PageVersion,
 } from "@wiki/shared";
-import { and, desc, eq, ilike, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
 import { pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
@@ -46,18 +46,19 @@ const toVersion = (v: VersionRow): PageVersion => ({
   createdAt: v.createdAt.toISOString(),
 });
 
-async function findLivePage(db: Db, id: string, forUpdate = false): Promise<PageRow> {
+/** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
+async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
   const q = db
     .select()
     .from(pages)
-    .where(and(eq(pages.id, id), isNull(pages.deletedAt)));
+    .where(and(eq(pages.wikiId, wikiId), eq(pages.id, id), isNull(pages.deletedAt)));
   const [page] = forUpdate ? await q.for("update") : await q;
   if (!page) throw notFound(`page ${id}`);
   return page;
 }
 
-async function getDetail(db: Db, id: string): Promise<PageDetail> {
-  const page = await findLivePage(db, id);
+async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
+  const page = await findLivePage(db, wikiId, id);
   const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
   return { ...toSummary(page), head: toVersion(head!) };
 }
@@ -69,19 +70,26 @@ export function extractPageLinks(bodyMd: string): string[] {
   return [...ids];
 }
 
-async function replaceLinks(db: Db, pageId: string, bodyMd: string) {
+/** 別の wiki のページへのリンクは外部リンクと同じ扱いにし、ここには残さない。 */
+async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyMd: string) {
   await db.delete(pageLinks).where(eq(pageLinks.fromPageId, pageId));
-  const targets = extractPageLinks(bodyMd).filter((id) => id !== pageId);
+  const linked = extractPageLinks(bodyMd).filter((id) => id !== pageId);
+  const foreign = new Set(
+    linked.length === 0
+      ? []
+      : (await db.select({ id: pages.id }).from(pages).where(and(inArray(pages.id, linked), ne(pages.wikiId, wikiId)))).map((p) => p.id),
+  );
+  const targets = linked.filter((id) => !foreign.has(id));
   if (targets.length > 0) {
     await db.insert(pageLinks).values(targets.map((toPageId) => ({ fromPageId: pageId, toPageId })));
   }
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
-export async function createPage(tx: Db, input: CreatePageInput): Promise<string> {
+export async function createPage(tx: Db, wikiId: string, input: CreatePageInput): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
-  await tx.insert(pages).values({ id, title: input.title, headVersionId: versionId });
+  await tx.insert(pages).values({ id, wikiId, title: input.title, headVersionId: versionId });
   await tx.insert(pageVersions).values({
     id: versionId,
     pageId: id,
@@ -89,10 +97,10 @@ export async function createPage(tx: Db, input: CreatePageInput): Promise<string
     bodyMd: input.bodyMd,
     authorType: "human",
   });
-  await replaceLinks(tx, id, input.bodyMd);
-  await commitOps(tx, {
+  await replaceLinks(tx, wikiId, id, input.bodyMd);
+  await commitOps(tx, wikiId, {
     message: `「${input.title}」を追加`,
-    ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
+    ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx, wikiId)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
   });
   return id;
 }
@@ -101,28 +109,29 @@ export const pageRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
     const q = c.req.query("q")?.trim();
-    const where = q
-      ? and(isNull(pages.deletedAt), ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`))
-      : isNull(pages.deletedAt);
+    const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
+    const where = q ? and(live, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : live;
     const rows = await db.select().from(pages).where(where).orderBy(desc(pages.updatedAt)).limit(500);
     return c.json({ pages: rows.map(toSummary) });
   })
   .post("/", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, createPageInput);
-    const id = await db.transaction((tx) => createPage(tx, input));
-    return c.json(await getDetail(db, id), 201);
+    const wikiId = c.get("wiki").id;
+    const id = await db.transaction((tx) => createPage(tx, wikiId, input));
+    return c.json(await getDetail(db, wikiId, id), 201);
   })
   .get("/:id", async (c) => {
     const { db } = c.get("deps");
-    return c.json(await getDetail(db, c.req.param("id")));
+    return c.json(await getDetail(db, c.get("wiki").id, c.req.param("id")));
   })
   .put("/:id", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
     const input = await parseJson(c, savePageInput);
     await db.transaction(async (tx) => {
-      const page = await findLivePage(tx, id, true);
+      const page = await findLivePage(tx, wikiId, id, true);
       // 楽観ロック：別タブ等で先に保存されていたら保存しない
       if (page.headVersionId !== input.baseVersionId) {
         throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
@@ -146,19 +155,20 @@ export const pageRoutes = new Hono<AppEnv>()
         .update(pages)
         .set({ title: input.title, headVersionId: version!.id, updatedAt: new Date() })
         .where(eq(pages.id, id));
-      await replaceLinks(tx, id, input.bodyMd);
+      await replaceLinks(tx, wikiId, id, input.bodyMd);
     });
-    return c.json(await getDetail(db, id));
+    return c.json(await getDetail(db, wikiId, id));
   })
   .delete("/:id", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
     await db.transaction(async (tx) => {
-      const page = await findLivePage(tx, id, true);
-      const main = await getBranch(tx, MAIN_BRANCH);
+      const page = await findLivePage(tx, wikiId, id, true);
+      const main = await getBranch(tx, wikiId, MAIN_BRANCH);
       const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
       if (ops.length > 0) {
-        await commitOps(tx, { message: `「${page.title}」の削除に伴いツリーから外す`, ops });
+        await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops });
       }
       await tx
         .update(pages)
@@ -169,16 +179,17 @@ export const pageRoutes = new Hono<AppEnv>()
         .update(scheduledActions)
         .set({ status: "canceled", lastError: "page deleted" })
         .where(and(eq(scheduledActions.pageId, id), eq(scheduledActions.status, "scheduled")));
-      if (page.firstPublishedAt) await recordPublishEvent(tx, "delete", { pageId: id });
+      if (page.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: id });
     });
     return c.json({ ok: true });
   })
   .post("/:id/workflow", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
     const input = await parseJson(c, setWorkflowInput);
     await db.transaction(async (tx) => {
-      await findLivePage(tx, id, true);
+      await findLivePage(tx, wikiId, id, true);
       if (input.state === "approved") {
         const [v] = await tx
           .select({ id: pageVersions.id })
@@ -196,19 +207,21 @@ export const pageRoutes = new Hono<AppEnv>()
         )
         .where(eq(pages.id, id));
     });
-    return c.json(await getDetail(db, id));
+    return c.json(await getDetail(db, wikiId, id));
   })
   .post("/:id/review-done", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
-    await findLivePage(db, id);
+    const wikiId = c.get("wiki").id;
+    await findLivePage(db, wikiId, id);
     await db.update(pages).set({ reviewRequestedAt: null, reviewedAt: new Date() }).where(eq(pages.id, id));
-    return c.json(await getDetail(db, id));
+    return c.json(await getDetail(db, wikiId, id));
   })
   .get("/:id/versions", async (c) => {
     const { db } = c.get("deps");
     const id = c.req.param("id");
-    await findLivePage(db, id);
+    const wikiId = c.get("wiki").id;
+    await findLivePage(db, wikiId, id);
     const rows = await db
       .select({
         id: pageVersions.id,
@@ -226,6 +239,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const versionId = c.req.param("versionId");
     if (!/^[0-9a-f-]{36}$/.test(versionId)) throw notFound("version");
+    await findLivePage(db, c.get("wiki").id, c.req.param("id"));
     const [v] = await db
       .select()
       .from(pageVersions)

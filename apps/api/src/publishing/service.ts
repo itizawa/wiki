@@ -6,17 +6,19 @@ import { HttpError, notFound } from "../errors";
 
 export async function recordPublishEvent(
   db: Db,
+  wikiId: string,
   kind: string,
   refs: { pageId?: string; scheduledActionId?: string } = {},
 ): Promise<void> {
-  await db.insert(publishEvents).values({ kind, pageId: refs.pageId, scheduledActionId: refs.scheduledActionId });
+  await db.insert(publishEvents).values({ wikiId, kind, pageId: refs.pageId, scheduledActionId: refs.scheduledActionId });
 }
 
-async function lockLivePage(db: Db, pageId: string) {
+/** 指定の wiki のページだけを返す（別の wiki のページ ID は、無いものとして扱う）。 */
+async function lockLivePage(db: Db, wikiId: string, pageId: string) {
   const [page] = await db
     .select()
     .from(pages)
-    .where(and(eq(pages.id, pageId), isNull(pages.deletedAt)))
+    .where(and(eq(pages.wikiId, wikiId), eq(pages.id, pageId), isNull(pages.deletedAt)))
     .for("update");
   if (!page) throw notFound(`page ${pageId}`);
   return page;
@@ -29,6 +31,7 @@ async function lockLivePage(db: Db, pageId: string) {
 export async function publishPage(
   db: Db,
   input: {
+    wikiId: string;
     pageId: string;
     versionId: string;
     visibility: PublishVisibility;
@@ -36,7 +39,7 @@ export async function publishPage(
     scheduledActionId?: string;
   },
 ): Promise<void> {
-  const page = await lockLivePage(db, input.pageId);
+  const page = await lockLivePage(db, input.wikiId, input.pageId);
   const [version] = await db
     .select({ id: pageVersions.id })
     .from(pageVersions)
@@ -52,27 +55,27 @@ export async function publishPage(
       updatedAt: new Date(),
     })
     .where(eq(pages.id, input.pageId));
-  await recordPublishEvent(db, "publish", { pageId: input.pageId, scheduledActionId: input.scheduledActionId });
+  await recordPublishEvent(db, input.wikiId, "publish", { pageId: input.pageId, scheduledActionId: input.scheduledActionId });
 }
 
 /** 非公開化。再ビルドで静的ファイルが消える。 */
-export async function unpublishPage(db: Db, pageId: string, scheduledActionId?: string): Promise<void> {
-  await lockLivePage(db, pageId);
+export async function unpublishPage(db: Db, wikiId: string, pageId: string, scheduledActionId?: string): Promise<void> {
+  await lockLivePage(db, wikiId, pageId);
   await db
     .update(pages)
     .set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() })
     .where(eq(pages.id, pageId));
-  await recordPublishEvent(db, "unpublish", { pageId, scheduledActionId });
+  await recordPublishEvent(db, wikiId, "unpublish", { pageId, scheduledActionId });
 }
 
 /** 限定公開URLの失効：キーを再発行してリビルドすると旧URLは404になる。 */
-export async function rotateUnlistedKey(db: Db, pageId: string): Promise<string> {
-  const page = await lockLivePage(db, pageId);
+export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string): Promise<string> {
+  const page = await lockLivePage(db, wikiId, pageId);
   if (page.visibility !== "unlisted") {
     throw new HttpError(400, "not_unlisted", "only unlisted pages have a key to rotate");
   }
   const key = newUnlistedKey();
   await db.update(pages).set({ unlistedKey: key, updatedAt: new Date() }).where(eq(pages.id, pageId));
-  await recordPublishEvent(db, "rotate_unlisted_key", { pageId });
+  await recordPublishEvent(db, wikiId, "rotate_unlisted_key", { pageId });
   return key;
 }

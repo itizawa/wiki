@@ -1,5 +1,5 @@
 export type AppConfig = {
-  /** 管理者として許可するメールアドレス（小文字） */
+  /** 管理者として許可するメールアドレス（小文字）。全員を、wiki を作成・アーカイブできるオーナーとして扱う */
   adminEmails: string[];
   /** セッションCookieの署名鍵（32文字以上） */
   sessionSecret: string;
@@ -11,8 +11,8 @@ export type AppConfig = {
   /** ローカル開発専用。Googleを経由せずこのメールでログインできる（production では無視） */
   devLoginEmail?: string;
   secureCookies: boolean;
-  /** 公開サイトのオリジン（管理画面に公開URLを表示する） */
-  siteOrigin: string;
+  /** 公開サイトのドメインの共通部分。wiki は `{key}.{siteBaseDomain}` で公開する */
+  siteBaseDomain: string;
   /** /export/public と /internal/* 用のトークン（ワーカー・サイトのビルドが使う）。未設定なら無効 */
   internalToken?: string;
 };
@@ -41,7 +41,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
         : null,
     devLoginEmail: isProduction ? undefined : env.DEV_LOGIN_EMAIL?.toLowerCase(),
     secureCookies: isProduction || adminOrigin.startsWith("https://"),
-    siteOrigin: env.SITE_ORIGIN ?? "http://localhost:4321",
+    siteBaseDomain: env.SITE_BASE_DOMAIN ?? "localhost:4321",
     internalToken: env.INTERNAL_TOKEN || undefined,
   };
 }

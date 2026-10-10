@@ -18,6 +18,7 @@ import {
   treeNodes,
   trees,
   treeSnapshots,
+  wikis,
 } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 
@@ -30,8 +31,11 @@ export type LoadedCommit = {
   snapshots: Map<string, string>;
 };
 
-export async function getBranch(db: Db, name: string) {
-  const [branch] = await db.select().from(structureBranches).where(eq(structureBranches.name, name));
+export async function getBranch(db: Db, wikiId: string, name: string) {
+  const [branch] = await db
+    .select()
+    .from(structureBranches)
+    .where(and(eq(structureBranches.wikiId, wikiId), eq(structureBranches.name, name)));
   if (!branch) throw notFound(`branch ${name}`);
   return branch;
 }
@@ -64,9 +68,12 @@ function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
   };
 }
 
-/** ツリーは1本（primary）だけを扱う。複数ツリー時代の行が残っていても参照しない。 */
-export async function getPrimaryTree(db: Db): Promise<TreeMeta> {
-  const [tree] = await db.select().from(trees).where(eq(trees.isPrimary, true));
+/** 1つの wiki にツリーは1本（primary）だけを扱う。複数ツリー時代の行が残っていても参照しない。 */
+export async function getPrimaryTree(db: Db, wikiId: string): Promise<TreeMeta> {
+  const [tree] = await db
+    .select({ id: trees.id, key: trees.key, name: trees.name, isPublic: trees.isPublic, isPrimary: trees.isPrimary })
+    .from(trees)
+    .where(and(eq(trees.wikiId, wikiId), eq(trees.isPrimary, true)));
   if (!tree) throw new Error("primary tree is missing; run bootstrapStructure first");
   return tree;
 }
@@ -89,6 +96,7 @@ export type CommitResult = { commitId: string; state: StructureState };
  */
 export async function commitOps(
   db: Db,
+  wikiId: string,
   input: {
     /** 省略時は現在のheadに積む（サーバー内部の操作用） */
     expectedHeadCommitId?: string;
@@ -101,7 +109,7 @@ export async function commitOps(
     const [branch] = await tx
       .select()
       .from(structureBranches)
-      .where(eq(structureBranches.name, MAIN_BRANCH))
+      .where(and(eq(structureBranches.wikiId, wikiId), eq(structureBranches.name, MAIN_BRANCH)))
       .for("update");
     if (!branch) throw notFound(`branch ${MAIN_BRANCH}`);
     if (input.expectedHeadCommitId !== undefined && branch.headCommitId !== input.expectedHeadCommitId) {
@@ -119,13 +127,14 @@ export async function commitOps(
             await tx
               .select({ id: pages.id })
               .from(pages)
-              .where(and(inArray(pages.id, referenced), isNull(pages.deletedAt)))
+              .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, referenced), isNull(pages.deletedAt)))
           ).map((p) => p.id),
     );
 
     const result = applyOps(head.state, input.ops, { pageExists: (id) => livePages.has(id) });
 
     const commitId = await writeCommit(tx, {
+      wikiId,
       parents: [branch.headCommitId],
       message: input.message ?? describeOps(input.ops),
       authorType: input.authorType ?? "human",
@@ -133,7 +142,10 @@ export async function commitOps(
       changedTreeIds: new Set(result.changedTreeIds),
       previousSnapshots: head.snapshots,
     });
-    await tx.update(structureBranches).set({ headCommitId: commitId }).where(eq(structureBranches.name, MAIN_BRANCH));
+    await tx
+      .update(structureBranches)
+      .set({ headCommitId: commitId })
+      .where(and(eq(structureBranches.wikiId, wikiId), eq(structureBranches.name, MAIN_BRANCH)));
     return { commitId, state: result.state };
   });
 }
@@ -141,6 +153,7 @@ export async function commitOps(
 async function writeCommit(
   db: Db,
   input: {
+    wikiId: string;
     parents: string[];
     message: string;
     authorType: "human" | "ai";
@@ -151,7 +164,7 @@ async function writeCommit(
 ): Promise<string> {
   const [commit] = await db
     .insert(structureCommits)
-    .values({ message: input.message, authorType: input.authorType })
+    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType })
     .returning({ id: structureCommits.id });
   const commitId = commit!.id;
   if (input.parents.length > 0) {
@@ -186,26 +199,36 @@ function describeOps(ops: StructureOp[]): string {
   return ops.length === 1 ? labels[0]! : `${labels.join("・")}（${ops.length}件）`;
 }
 
+/** wiki に primary ツリー（空）と main ブランチを作る。トランザクション内で、まだ無い wiki に対して呼ぶ。 */
+export async function createStructure(tx: Db, wikiId: string): Promise<void> {
+  const treeId = newTreeId();
+  await tx.insert(trees).values({ id: treeId, wikiId, key: "main", name: "メイン", isPublic: true, isPrimary: true });
+  const state: StructureState = { trees: { [treeId]: { treeId, nodes: [] } } };
+  const commitId = await writeCommit(tx, {
+    wikiId,
+    parents: [],
+    message: "初期コミット",
+    authorType: "human",
+    state,
+    changedTreeIds: new Set([treeId]),
+    previousSnapshots: new Map(),
+  });
+  await tx.insert(structureBranches).values({ wikiId, name: MAIN_BRANCH, headCommitId: commitId, kind: "main" });
+}
+
 /**
- * 初回起動時に primary ツリー（空）と main ブランチを作る。何度呼んでもよい。
+ * 起動時に、ツリーの無い wiki へ primary ツリー（空）と main ブランチを作る。何度呼んでもよい。
+ * マイグレーションが作る最初の wiki は、ここでツリーを持つ。
  */
 export async function bootstrapStructure(db: Db): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('wiki:bootstrap'))`);
-    const [existing] = await tx.select().from(structureBranches).where(eq(structureBranches.name, MAIN_BRANCH));
-    if (existing) return;
-    const treeId = newTreeId();
-    await tx.insert(trees).values({ id: treeId, key: "main", name: "メイン", isPublic: true, isPrimary: true });
-    const state: StructureState = { trees: { [treeId]: { treeId, nodes: [] } } };
-    const commitId = await writeCommit(tx, {
-      parents: [],
-      message: "初期コミット",
-      authorType: "human",
-      state,
-      changedTreeIds: new Set([treeId]),
-      previousSnapshots: new Map(),
-    });
-    await tx.insert(structureBranches).values({ name: MAIN_BRANCH, headCommitId: commitId, kind: "main" });
+    const missing = await tx
+      .select({ id: wikis.id })
+      .from(wikis)
+      .leftJoin(structureBranches, and(eq(structureBranches.wikiId, wikis.id), eq(structureBranches.name, MAIN_BRANCH)))
+      .where(isNull(structureBranches.name));
+    for (const wiki of missing) await createStructure(tx, wiki.id);
   });
 }
 
@@ -215,17 +238,23 @@ export async function bootstrapStructure(db: Db): Promise<void> {
  */
 export async function adoptUnplacedPages(db: Db): Promise<void> {
   await db.transaction(async (tx) => {
-    const branch = await getBranch(tx, MAIN_BRANCH);
-    const tree = await getPrimaryTree(tx);
-    const { state } = await loadCommit(tx, branch.headCommitId);
-    const placed = new Set((state.trees[tree.id]?.nodes ?? []).map((n) => n.pageId));
-    const live = await tx.select({ id: pages.id }).from(pages).where(isNull(pages.deletedAt)).orderBy(pages.createdAt, pages.id);
-    const unplaced = live.filter((p) => !placed.has(p.id));
-    if (unplaced.length === 0) return;
-    await commitOps(tx, {
-      message: `ツリーに無いページを最上位に追加（${unplaced.length}件）`,
-      ops: unplaced.map((p) => ({ type: "add_to_tree", treeId: tree.id, pageId: p.id, parentNodeId: null })),
-    });
+    for (const wiki of await tx.select({ id: wikis.id }).from(wikis)) {
+      const branch = await getBranch(tx, wiki.id, MAIN_BRANCH);
+      const tree = await getPrimaryTree(tx, wiki.id);
+      const { state } = await loadCommit(tx, branch.headCommitId);
+      const placed = new Set((state.trees[tree.id]?.nodes ?? []).map((n) => n.pageId));
+      const live = await tx
+        .select({ id: pages.id })
+        .from(pages)
+        .where(and(eq(pages.wikiId, wiki.id), isNull(pages.deletedAt)))
+        .orderBy(pages.createdAt, pages.id);
+      const unplaced = live.filter((p) => !placed.has(p.id));
+      if (unplaced.length === 0) continue;
+      await commitOps(tx, wiki.id, {
+        message: `ツリーに無いページを最上位に追加（${unplaced.length}件）`,
+        ops: unplaced.map((p) => ({ type: "add_to_tree", treeId: tree.id, pageId: p.id, parentNodeId: null })),
+      });
+    }
   });
 }
 
@@ -271,8 +300,11 @@ export async function getCommitParents(db: Db, commitId: string): Promise<string
   return rows.map((r) => r.parentCommitId);
 }
 
-export async function getCommit(db: Db, commitId: string) {
-  const [c] = await db.select().from(structureCommits).where(eq(structureCommits.id, commitId));
+export async function getCommit(db: Db, wikiId: string, commitId: string) {
+  const [c] = await db
+    .select()
+    .from(structureCommits)
+    .where(and(eq(structureCommits.wikiId, wikiId), eq(structureCommits.id, commitId)));
   if (!c) throw notFound(`commit ${commitId}`);
   return c;
 }

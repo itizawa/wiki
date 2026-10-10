@@ -12,6 +12,7 @@ import type { Rule, RuleAction, RuleTrigger } from "@wiki/shared";
 import { useState } from "react";
 import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
+import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -60,7 +61,7 @@ export function RulesPage() {
           {queue.map((p) => (
             <Row component="li" key={p.id}>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <RouterLink to="/pages/$pageId" params={{ pageId: p.id }}>
+                <RouterLink {...pageLink(p.id)}>
                   {p.title}
                 </RouterLink>
                 <Muted component="span">　最終更新 {formatDateTime(p.updatedAt)}</Muted>
@@ -92,7 +93,7 @@ export function RulesPage() {
               {run.pageIds.length > 0 && (
                 <Row sx={{ pl: 2 }}>
                   {run.pageIds.map((id) => (
-                    <RouterLink key={id} to="/pages/$pageId" params={{ pageId: id }}>
+                    <RouterLink key={id} {...pageLink(id)}>
                       {titles.get(id) ?? id}
                     </RouterLink>
                   ))}

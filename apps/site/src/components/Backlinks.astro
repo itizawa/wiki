@@ -1,0 +1,25 @@
+---
+import s from "./Backlinks.module.css";
+
+interface Props {
+  /** このページにリンクしている公開ページ */
+  pages: { path: string; title: string }[];
+}
+
+const { pages } = Astro.props;
+---
+
+{
+  pages.length > 0 && (
+    <nav class={s.backlinks} aria-labelledby="backlinks-heading" data-pagefind-ignore>
+      <h2 id="backlinks-heading">このページにリンクしているページ</h2>
+      <ul>
+        {pages.map((p) => (
+          <li>
+            <a href={p.path}>{p.title}</a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}

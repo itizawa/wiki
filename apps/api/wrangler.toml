@@ -26,8 +26,8 @@ id = "24df08d8191143e5aae33847792525cc"
 NODE_ENV = "production"
 # この Worker 自身のオリジン（CSRF検査と OAuth のコールバックURLに使う。末尾のスラッシュなし）
 ADMIN_ORIGIN = "https://wiki-admin.hatchery-works.com"
-# 公開サイト（wiki-site）のオリジン
-SITE_ORIGIN = "https://wiki.hatchery-works.com"
+# 公開サイト（wiki-site）のドメインの共通部分。wiki は {key}.hatchery-works.com で公開する
+SITE_BASE_DOMAIN = "hatchery-works.com"
 
 [observability]
 enabled = true

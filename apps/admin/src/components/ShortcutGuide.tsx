@@ -39,7 +39,16 @@ export function shortcutGroups(mod: string): Group[] {
       title: "画面",
       entries: [
         { keys: ["?"], label: "このガイドを開く" },
+        { keys: [mod, "K"], label: "コマンドメニューを開く（ページを探す・画面を移る）" },
+        { keys: [mod, "."], label: "サイドバーを開く／閉じる" },
         { keys: [mod, "S"], label: "編集中のページを保存する" },
+      ],
+    },
+    {
+      title: "本文で打つと出るメニュー",
+      entries: [
+        { keys: ["/"], label: "ブロックを挿入する（見出し・表・画像など）" },
+        { keys: ["@"], label: "ほかのページへのリンクを入れる（[[ でも同じ）" },
       ],
     },
     {
