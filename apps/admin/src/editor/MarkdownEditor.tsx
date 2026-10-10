@@ -24,6 +24,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { Placeholder } from "@tiptap/extensions";
+import { ImageDialog, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -168,18 +169,31 @@ function SelectionMenu({ editor }: { editor: Editor }) {
   });
   const chain = () => editor.chain().focus();
 
-  const setLink = () => {
-    const prev = (editor.getAttributes("link").href as string | undefined) ?? "";
-    const href = prompt("リンク先のURL（空にするとリンクを外す）", prev);
-    if (href === null) return;
-    if (href.trim() === "") chain().extendMarkRange("link").unsetLink().run();
-    else chain().extendMarkRange("link").setLink({ href: href.trim() }).run();
+  // リンク先を入れている間は、書式ボタンの代わりに入力欄を出す
+  const [linkEditing, setLinkEditing] = useState(false);
+  const closeLink = (run: () => void) => {
+    setLinkEditing(false);
+    run();
   };
+  // 選択範囲を変えたら（別の場所をクリックしたら）、入力欄は閉じる
+  useEffect(() => {
+    const reset = () => setLinkEditing(false);
+    editor.on("selectionUpdate", reset);
+    return () => void editor.off("selectionUpdate", reset);
+  }, [editor]);
 
   return (
     <BubbleMenu editor={editor} shouldShow={showSelectionMenu} options={selectionMenuOptions} style={{ zIndex: 1 }}>
       <Paper elevation={4}>
-        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ alignItems: "center", gap: 0.25, p: 0.5 }}>
+        {linkEditing && (
+          <LinkForm
+            initial={(editor.getAttributes("link").href as string | undefined) ?? ""}
+            onSubmit={(href) => closeLink(() => chain().extendMarkRange("link").setLink({ href }).run())}
+            onRemove={state.link ? () => closeLink(() => chain().extendMarkRange("link").unsetLink().run()) : undefined}
+            onClose={() => closeLink(() => editor.commands.focus())}
+          />
+        )}
+        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", gap: 0.25, p: 0.5 }}>
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
             <FormatBoldIcon fontSize="small" />
           </Tool>
@@ -192,7 +206,7 @@ function SelectionMenu({ editor }: { editor: Editor }) {
           <Tool label="インラインコード" active={state.code} onClick={() => chain().toggleCode().run()}>
             <CodeIcon fontSize="small" />
           </Tool>
-          <Tool label="リンク" active={state.link} onClick={setLink}>
+          <Tool label={state.link ? "リンクを編集" : "リンク"} active={state.link} onClick={() => setLinkEditing(true)}>
             <LinkIcon fontSize="small" />
           </Tool>
           <Sep />
@@ -234,11 +248,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
     setAnchor(null);
   };
   const insert = (run: () => void) => () => close(run);
-  const addImage = () => {
-    const src = prompt("画像のURL");
-    if (src?.trim()) chain().setImage({ src: src.trim() }).run();
-    else editor.commands.focus();
-  };
+  const [imageOpen, setImageOpen] = useState(false);
 
   return (
     <FloatingMenu editor={editor} options={insertMenuOptions} style={{ zIndex: 1 }}>
@@ -277,11 +287,11 @@ function InsertMenu({ editor }: { editor: Editor }) {
           </ListItemIcon>
           <ListItemText>表</ListItemText>
         </MenuItem>
-        <MenuItem onClick={insert(addImage)}>
+        <MenuItem onClick={insert(() => setImageOpen(true))}>
           <ListItemIcon>
             <ImageOutlinedIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>画像</ListItemText>
+          <ListItemText>画像…</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
@@ -302,6 +312,18 @@ function InsertMenu({ editor }: { editor: Editor }) {
           <ListItemText>区切り線</ListItemText>
         </MenuItem>
       </Menu>
+      <ImageDialog
+        open={imageOpen}
+        onSubmit={(image) => {
+          setImageOpen(false);
+          // 画像の下に空行を足してカーソルを置く（画像が選択されたままだと、次に打った文字で画像が置き換わるため）
+          chain().insertContent([{ type: "image", attrs: image }, { type: "paragraph" }]).run();
+        }}
+        onClose={() => {
+          setImageOpen(false);
+          editor.commands.focus();
+        }}
+      />
     </FloatingMenu>
   );
 }
