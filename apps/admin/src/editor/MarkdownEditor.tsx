@@ -1,3 +1,4 @@
+import AddIcon from "@mui/icons-material/Add";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import CodeIcon from "@mui/icons-material/Code";
 import DataObjectIcon from "@mui/icons-material/DataObject";
@@ -9,18 +10,23 @@ import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import LinkIcon from "@mui/icons-material/Link";
-import RedoIcon from "@mui/icons-material/Redo";
 import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
-import UndoIcon from "@mui/icons-material/Undo";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { Placeholder } from "@tiptap/extensions";
+import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
 import { editorExtensions } from "./extensions";
 
@@ -55,9 +61,12 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
 
   return (
     <Box>
-      <Toolbar editor={editor} />
+      <SelectionMenu editor={editor} />
+      <InsertMenu editor={editor} />
       <Box
         sx={{
+          // 浮かぶメニューの位置の基準
+          position: "relative",
           "& .tiptap": {
             outline: "none",
             minHeight: "50vh",
@@ -115,7 +124,21 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
   );
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+// メニューに渡す設定は毎回同じ参照にする（変わるたびにエディタへ再設定が走るため）
+// ページ上部に固定されたヘッダー（48px）の下に隠れないよう、上に余白がなければ選択範囲の下に出す
+const selectionMenuOptions: BubbleMenuProps["options"] = { placement: "top", offset: 8, flip: { padding: { top: 56 } }, shift: { padding: 8 } };
+const insertMenuOptions: FloatingMenuProps["options"] = { placement: "left", offset: 4, flip: false, shift: { padding: 4 } };
+
+const showSelectionMenu: NonNullable<BubbleMenuProps["shouldShow"]> = ({ editor, element, view, state, from, to }) => {
+  const { selection } = state;
+  // 文字を選んでいるときだけ出す。画像の選択や、書式をつけられないコードブロックの中では出さない
+  if (selection.empty || selection instanceof NodeSelection || editor.isActive("codeBlock")) return false;
+  if (state.doc.textBetween(from, to).length === 0) return false;
+  return view.hasFocus() || element.contains(document.activeElement);
+};
+
+/** 文字を選択したときに、その近くに浮かぶ書式メニュー。 */
+function SelectionMenu({ editor }: { editor: Editor }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -130,10 +153,7 @@ function Toolbar({ editor }: { editor: Editor }) {
       orderedList: e.isActive("orderedList"),
       taskList: e.isActive("taskList"),
       blockquote: e.isActive("blockquote"),
-      codeBlock: e.isActive("codeBlock"),
       link: e.isActive("link"),
-      canUndo: e.can().undo(),
-      canRedo: e.can().redo(),
     }),
   });
   const chain = () => editor.chain().focus();
@@ -145,87 +165,128 @@ function Toolbar({ editor }: { editor: Editor }) {
     if (href.trim() === "") chain().extendMarkRange("link").unsetLink().run();
     else chain().extendMarkRange("link").setLink({ href: href.trim() }).run();
   };
+
+  return (
+    <BubbleMenu editor={editor} shouldShow={showSelectionMenu} options={selectionMenuOptions} style={{ zIndex: 1 }}>
+      <Paper elevation={4}>
+        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ alignItems: "center", gap: 0.25, p: 0.5 }}>
+          <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
+            <FormatBoldIcon fontSize="small" />
+          </Tool>
+          <Tool label="斜体 (⌘I)" active={state.italic} onClick={() => chain().toggleItalic().run()}>
+            <FormatItalicIcon fontSize="small" />
+          </Tool>
+          <Tool label="取り消し線" active={state.strike} onClick={() => chain().toggleStrike().run()}>
+            <StrikethroughSIcon fontSize="small" />
+          </Tool>
+          <Tool label="インラインコード" active={state.code} onClick={() => chain().toggleCode().run()}>
+            <CodeIcon fontSize="small" />
+          </Tool>
+          <Tool label="リンク" active={state.link} onClick={setLink}>
+            <LinkIcon fontSize="small" />
+          </Tool>
+          <Sep />
+          {([1, 2, 3] as const).map((level) => (
+            <Tool key={level} label={`見出し${level}`} active={state[`h${level}`]} onClick={() => chain().toggleHeading({ level }).run()}>
+              <Box component="span" sx={{ fontSize: "0.8rem", fontWeight: 700, width: 20 }}>
+                H{level}
+              </Box>
+            </Tool>
+          ))}
+          <Tool label="引用" active={state.blockquote} onClick={() => chain().toggleBlockquote().run()}>
+            <FormatQuoteIcon fontSize="small" />
+          </Tool>
+          <Sep />
+          <Tool label="箇条書き" active={state.bulletList} onClick={() => chain().toggleBulletList().run()}>
+            <FormatListBulletedIcon fontSize="small" />
+          </Tool>
+          <Tool label="番号つきリスト" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
+            <FormatListNumberedIcon fontSize="small" />
+          </Tool>
+          <Tool label="チェックリスト" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
+            <ChecklistIcon fontSize="small" />
+          </Tool>
+        </Stack>
+      </Paper>
+    </BubbleMenu>
+  );
+}
+
+/** 空行にカーソルがあるとき、行の左に出る「挿入」ボタン。選択範囲がいらないブロックをここから入れる。 */
+function InsertMenu({ editor }: { editor: Editor }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const chain = () => editor.chain().focus();
+  // メニューが閉じきってから実行する。開いている間はメニューがフォーカスを握っていて、エディタに戻せないため
+  const afterClose = useRef<(() => void) | null>(null);
+  // 何も選ばずに閉じたときも、エディタにフォーカスを戻してそのまま書き続けられるようにする
+  const close = (run: () => void = () => editor.commands.focus()) => {
+    afterClose.current = run;
+    setAnchor(null);
+  };
+  const insert = (run: () => void) => () => close(run);
   const addImage = () => {
     const src = prompt("画像のURL");
     if (src?.trim()) chain().setImage({ src: src.trim() }).run();
+    else editor.commands.focus();
   };
 
   return (
-    <Stack
-      direction="row"
-      role="toolbar"
-      aria-label="書式"
-      sx={{
-        position: "sticky",
-        top: 48,
-        zIndex: 1,
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: 0.25,
-        py: 0.5,
-        mb: 2,
-        bgcolor: "background.paper",
-        borderBottom: 1,
-        borderColor: "divider",
-      }}
-    >
-      {([1, 2, 3] as const).map((level) => (
-        <Tool key={level} label={`見出し${level}`} active={state[`h${level}`]} onClick={() => chain().toggleHeading({ level }).run()}>
-          <Box component="span" sx={{ fontSize: "0.8rem", fontWeight: 700, width: 20 }}>
-            H{level}
-          </Box>
-        </Tool>
-      ))}
-      <Sep />
-      <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
-        <FormatBoldIcon fontSize="small" />
-      </Tool>
-      <Tool label="斜体 (⌘I)" active={state.italic} onClick={() => chain().toggleItalic().run()}>
-        <FormatItalicIcon fontSize="small" />
-      </Tool>
-      <Tool label="取り消し線" active={state.strike} onClick={() => chain().toggleStrike().run()}>
-        <StrikethroughSIcon fontSize="small" />
-      </Tool>
-      <Tool label="インラインコード" active={state.code} onClick={() => chain().toggleCode().run()}>
-        <CodeIcon fontSize="small" />
-      </Tool>
-      <Tool label="リンク" active={state.link} onClick={setLink}>
-        <LinkIcon fontSize="small" />
-      </Tool>
-      <Sep />
-      <Tool label="箇条書き" active={state.bulletList} onClick={() => chain().toggleBulletList().run()}>
-        <FormatListBulletedIcon fontSize="small" />
-      </Tool>
-      <Tool label="番号つきリスト" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
-        <FormatListNumberedIcon fontSize="small" />
-      </Tool>
-      <Tool label="チェックリスト" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
-        <ChecklistIcon fontSize="small" />
-      </Tool>
-      <Sep />
-      <Tool label="引用" active={state.blockquote} onClick={() => chain().toggleBlockquote().run()}>
-        <FormatQuoteIcon fontSize="small" />
-      </Tool>
-      <Tool label="コードブロック" active={state.codeBlock} onClick={() => chain().toggleCodeBlock().run()}>
-        <DataObjectIcon fontSize="small" />
-      </Tool>
-      <Tool label="表" onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
-        <TableChartOutlinedIcon fontSize="small" />
-      </Tool>
-      <Tool label="画像" onClick={addImage}>
-        <ImageOutlinedIcon fontSize="small" />
-      </Tool>
-      <Tool label="区切り線" onClick={() => chain().setHorizontalRule().run()}>
-        <HorizontalRuleIcon fontSize="small" />
-      </Tool>
-      <Sep />
-      <Tool label="元に戻す (⌘Z)" disabled={!state.canUndo} onClick={() => chain().undo().run()}>
-        <UndoIcon fontSize="small" />
-      </Tool>
-      <Tool label="やり直す (⇧⌘Z)" disabled={!state.canRedo} onClick={() => chain().redo().run()}>
-        <RedoIcon fontSize="small" />
-      </Tool>
-    </Stack>
+    <FloatingMenu editor={editor} options={insertMenuOptions} style={{ zIndex: 1 }}>
+      <Tooltip title="挿入">
+        <IconButton
+          size="small"
+          aria-label="挿入"
+          aria-haspopup="menu"
+          aria-expanded={!!anchor}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => setAnchor(e.currentTarget)}
+          sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary" }}
+        >
+          <AddIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Menu
+        anchorEl={anchor}
+        open={!!anchor}
+        onClose={() => close()}
+        disableRestoreFocus
+        // 閉じるときは待たせない（閉じる途中に打った文字がメニューに吸われるため）
+        transitionDuration={{ enter: 150, exit: 0 }}
+        slotProps={{
+          transition: {
+            onExited: () => {
+              afterClose.current?.();
+              afterClose.current = null;
+            },
+          },
+        }}
+      >
+        <MenuItem onClick={insert(() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
+          <ListItemIcon>
+            <TableChartOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>表</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={insert(addImage)}>
+          <ListItemIcon>
+            <ImageOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>画像</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={insert(() => chain().toggleCodeBlock().run())}>
+          <ListItemIcon>
+            <DataObjectIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>コードブロック</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={insert(() => chain().setHorizontalRule().run())}>
+          <ListItemIcon>
+            <HorizontalRuleIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>区切り線</ListItemText>
+        </MenuItem>
+      </Menu>
+    </FloatingMenu>
   );
 }
 
