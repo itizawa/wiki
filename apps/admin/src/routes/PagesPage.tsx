@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { PageSummary, PageViewCounts } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { StarButton } from "../components/StarButton";
-import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
@@ -92,7 +92,6 @@ export function PagesPage() {
                 <TableRow>
                   <TableCell padding="none" sx={[stickyCell, starCell]} />
                   <TableCell sx={[stickyCell, titleCell]}>タイトル</TableCell>
-                  <TableCell>ID</TableCell>
                   <TableCell>状態</TableCell>
                   {VIEW_COLUMNS.map((c) => (
                     <TableCell key={c.key} align="right" sortDirection={sort?.key === c.key ? sort.dir : false}>
@@ -118,11 +117,6 @@ export function PagesPage() {
                       <RouterLink {...pageLink(p.id)}>
                         {p.title}
                       </RouterLink>
-                    </TableCell>
-                    <TableCell>
-                      <Muted component="span">
-                        <Mono>{p.id}</Mono>
-                      </Muted>
                     </TableCell>
                     <TableCell>
                       <Row sx={{ flexWrap: "nowrap" }}>
