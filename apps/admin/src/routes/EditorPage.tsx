@@ -244,6 +244,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             height: 48,
             display: "flex",
             alignItems: "center",
+            // 狭い画面ではパンくずを出さないので、ボタンを右に寄せる（広い画面ではパンくずが残りの幅を取る）
+            justifyContent: "flex-end",
             gap: 1,
             px: 2,
             bgcolor: "background.paper",
@@ -435,7 +437,10 @@ function EditingStats({ bodyMd }: { bodyMd: string }) {
   );
 }
 
-/** ツリー上の置き場所（親ページの並び）とタイトル。 */
+/**
+ * ツリー上の置き場所（親ページの並び）とタイトル。
+ * 狭い画面（md 未満）では、幅をボタンに回すために出さない。タイトルは本文の上のタイトル欄で見える。
+ */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const ancestors = useMemo(() => {
@@ -454,7 +459,7 @@ function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   return (
     <Muted
       component="div"
-      sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+      sx={{ display: { xs: "none", md: "block" }, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
     >
       {ancestors.map((name, i) => (
         <span key={i}>{name} / </span>
