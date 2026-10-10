@@ -110,8 +110,9 @@ export type RuleRun = {
 
 /** /internal/rules/run の結果。通知の送信はワーカーが行う。 */
 export type RulesRunResult = {
-  runs: { ruleId: string; status: "done" | "failed"; summary: string }[];
-  notifications: { ruleId: string; text: string }[];
+  runs: { wikiKey: string; ruleId: string; status: "done" | "failed"; summary: string }[];
+  /** text には wiki の名前を含める（通知先は全体で1つのため） */
+  notifications: { wikiKey: string; ruleId: string; text: string }[];
 };
 
 // ---------------------------------------------------------------------------

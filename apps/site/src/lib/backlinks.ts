@@ -1,17 +1,20 @@
 import type { ManifestPage } from "@wiki/shared";
 import { Marked } from "marked";
-import { loadManifest } from "./manifest";
-import { INTERNAL } from "./markdown";
+import { siteData } from "./manifest";
+import { internalPageId } from "./markdown";
 
-/** 本文（Markdown）からリンクしている公開ページの id を取り出す。コードの中に書かれたURLは数えない。 */
-export function linkedPageIds(md: string): Set<string> {
+/**
+ * 本文（Markdown）からリンクしている公開ページの id を取り出す。コードの中に書かれたURLは数えない。
+ * origin を渡すと、別の wiki のページへの絶対URLは数えない。
+ */
+export function linkedPageIds(md: string, origin?: string): Set<string> {
   const ids = new Set<string>();
   new Marked({
     gfm: true,
     walkTokens(token) {
       if (token.type !== "link") return;
-      const m = INTERNAL.exec((token as { href: string }).href);
-      if (m) ids.add(m[1]!);
+      const id = internalPageId((token as { href: string }).href, origin);
+      if (id) ids.add(id);
     },
   }).parse(md, { async: false });
   return ids;
@@ -19,13 +22,13 @@ export function linkedPageIds(md: string): Set<string> {
 
 /**
  * ページ id → そのページにリンクしている公開ページの一覧。
- * 渡すのは公開ページだけにする（限定公開・非公開のページは、リンク元としても先としても出さない）。
+ * 渡すのは、1つの wiki の公開ページだけにする（限定公開・非公開のページ、別の wiki のページは、リンク元としても先としても出さない）。
  */
-export function backlinksByPage(pages: readonly ManifestPage[]): Map<string, ManifestPage[]> {
+export function backlinksByPage(pages: readonly ManifestPage[], origin?: string): Map<string, ManifestPage[]> {
   const known = new Set(pages.map((p) => p.id));
   const map = new Map<string, ManifestPage[]>();
   for (const from of pages) {
-    for (const id of linkedPageIds(from.bodyMd)) {
+    for (const id of linkedPageIds(from.bodyMd, origin)) {
       // 自分自身へのリンクと、公開されていないページへのリンクは数えない
       if (id === from.id || !known.has(id)) continue;
       map.set(id, [...(map.get(id) ?? []), from]);
@@ -34,10 +37,14 @@ export function backlinksByPage(pages: readonly ManifestPage[]): Map<string, Man
   return map;
 }
 
-let cached: Promise<Map<string, ManifestPage[]>> | undefined;
+const cached = new Map<string, Promise<Map<string, ManifestPage[]>>>();
 
-/** サイト全体の被リンク。ビルド中に何度呼んでも、本文を調べるのは1回だけ。 */
-export function siteBacklinks(): Promise<Map<string, ManifestPage[]>> {
-  cached ??= loadManifest().then((manifest) => backlinksByPage(manifest.pages));
-  return cached;
+/** 1つの wiki の被リンク。ビルド中に何度呼んでも、本文を調べるのは wiki ごとに1回だけ。 */
+export function siteBacklinks(wikiKey: string): Promise<Map<string, ManifestPage[]>> {
+  let result = cached.get(wikiKey);
+  if (!result) {
+    result = siteData(wikiKey).then(({ wiki, origin }) => backlinksByPage(wiki.pages, origin));
+    cached.set(wikiKey, result);
+  }
+  return result;
 }

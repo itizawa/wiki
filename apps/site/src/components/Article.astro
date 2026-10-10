@@ -9,12 +9,14 @@ interface Props {
   revisedAt: string;
   monetization?: Record<string, unknown> | null;
   publicPaths: ReadonlyMap<string, string>;
+  /** この wiki のオリジン。絶対URLで書かれた内部リンクを見分ける */
+  origin: string;
 }
 
-const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths } = Astro.props;
+const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
-const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored });
+const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin });
 // 見出しが2つ以上あるときだけ目次を出す。いちばん浅い見出しを左端に揃える
 const showToc = headings.length >= 2;
 const minDepth = Math.min(...headings.map((h) => h.depth));

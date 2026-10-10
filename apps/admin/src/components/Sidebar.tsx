@@ -11,6 +11,9 @@ import {
 } from "@dnd-kit/core";
 import AddIcon from "@mui/icons-material/Add";
 import AutoModeIcon from "@mui/icons-material/AutoMode";
+import CheckIcon from "@mui/icons-material/Check";
+import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import EditNoteIcon from "@mui/icons-material/EditNote";
@@ -26,6 +29,10 @@ import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
+import Divider from "@mui/material/Divider";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import InputBase from "@mui/material/InputBase";
@@ -35,10 +42,11 @@ import Paper from "@mui/material/Paper";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { createLink, useNavigate, useParams } from "@tanstack/react-router";
 import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
 import { useMemo, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
+import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
@@ -102,7 +110,7 @@ export function Sidebar(props: {
       void qc.invalidateQueries({ queryKey: ["pages"] });
     },
     onSuccess: async (page) => {
-      await navigate({ to: "/pages/$pageId", params: { pageId: page.id } });
+      await navigate(pageLink(page.id));
       props.onNavigate?.();
     },
   });
@@ -115,27 +123,8 @@ export function Sidebar(props: {
       aria-label="サイドバー"
       sx={{ width: `var(--sidebar-width, ${SIDEBAR_WIDTH}px)`, height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, pt: 1.5, pb: 1 }}>
-        <Box
-          aria-hidden
-          sx={{
-            width: 28,
-            height: 28,
-            flexShrink: 0,
-            display: "grid",
-            placeItems: "center",
-            borderRadius: 1,
-            bgcolor: "primary.main",
-            color: "primary.contrastText",
-            fontWeight: 700,
-            fontSize: "0.9rem",
-          }}
-        >
-          {(tree?.name ?? "wiki").slice(0, 1).toUpperCase()}
-        </Box>
-        <Typography component="strong" sx={{ ...ellipsis, fontWeight: 600 }}>
-          {tree?.name ?? "wiki"}
-        </Typography>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 1, pr: 1.5, pt: 1.5, pb: 1 }}>
+        <WikiSwitcher onNavigate={props.onNavigate} />
         <Tooltip title="新しいページ">
           <span>
             <IconButton size="small" aria-label="新しいページ" disabled={create.isPending} onClick={() => create.mutate(null)}>
@@ -182,16 +171,16 @@ export function Sidebar(props: {
                 ⌘K
               </Box>
             </Box>
-            <NavItem to="/" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+            <NavItem to="/w/$wikiKey" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
               すべてのページ
             </NavItem>
-            <NavItem to="/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+            <NavItem to="/w/$wikiKey/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
               編集カレンダー
             </NavItem>
-            <NavItem to="/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
+            <NavItem to="/w/$wikiKey/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
               ルール
             </NavItem>
-            <NavItem to="/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
+            <NavItem to="/w/$wikiKey/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴
             </NavItem>
 
@@ -260,9 +249,102 @@ export function Sidebar(props: {
   );
 }
 
-function NavItem(props: { to: "/" | "/calendar" | "/rules" | "/history"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
+const MenuItemLink = createLink(MenuItem);
+
+/**
+ * wiki の切り替え。いまどの wiki にいるかを、サイドバーの上に常に出す（表示名と、公開サイトのサブドメインになる key）。
+ * 押すと、選べる wiki の一覧と、wiki の管理（オーナーだけ）への入口を出す。
+ */
+function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
+  const { wiki, wikis, isOwner } = useWiki();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const close = () => {
+    setAnchor(null);
+    onNavigate?.();
+  };
   return (
-    <RouterLink to={props.to} activeOptions={{ exact: props.exact }} onClick={props.onClick} underline="none" sx={rowSx}>
+    <>
+      <Tooltip title="wiki を切り替える">
+        <Box
+          component="button"
+          type="button"
+          aria-label={`wiki を切り替える（いまは「${wiki.name}」）`}
+          aria-haspopup="menu"
+          aria-expanded={anchor !== null}
+          onClick={(e) => setAnchor(e.currentTarget)}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            p: 0.5,
+            border: 0,
+            borderRadius: 1,
+            bgcolor: "transparent",
+            color: "text.primary",
+            font: "inherit",
+            textAlign: "left",
+            cursor: "pointer",
+            "&:hover": { bgcolor: "action.hover" },
+          }}
+        >
+          <Box
+            aria-hidden
+            sx={{
+              width: 28,
+              height: 28,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: 1,
+              bgcolor: "primary.main",
+              color: "primary.contrastText",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+            }}
+          >
+            {wiki.name.slice(0, 1).toUpperCase()}
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
+            <Box component="strong" sx={{ ...ellipsis, display: "block", fontWeight: 600 }}>
+              {wiki.name}
+            </Box>
+            <Box component="span" sx={{ ...ellipsis, display: "block", color: "text.secondary", fontSize: "0.75rem" }}>
+              {wiki.key}
+            </Box>
+          </Box>
+          <UnfoldMoreIcon sx={{ fontSize: 18, flexShrink: 0, color: "text.secondary" }} />
+        </Box>
+      </Tooltip>
+      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true, sx: { minWidth: 240 } } }}>
+        <ListSubheader disableSticky sx={{ lineHeight: "28px", fontSize: "0.75rem", fontWeight: 600 }}>
+          wiki を切り替える
+        </ListSubheader>
+        {wikis.map((w) => (
+          <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
+            {/* いまの wiki は、色だけでなくチェックの印でも示す */}
+            <ListItemIcon>{w.key === wiki.key && <CheckIcon fontSize="small" />}</ListItemIcon>
+            <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
+          </MenuItemLink>
+        ))}
+        {isOwner && <Divider />}
+        {isOwner && (
+          <MenuItemLink to="/wikis" onClick={close}>
+            <ListItemIcon>
+              <SettingsOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
+          </MenuItemLink>
+        )}
+      </Menu>
+    </>
+  );
+}
+
+function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
+  return (
+    <RouterLink {...screenLink(props.to)} activeOptions={{ exact: props.exact }} onClick={props.onClick} underline="none" sx={rowSx}>
       {props.icon}
       <Box component="span" sx={ellipsis}>
         {props.children}
@@ -283,7 +365,7 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
         スター
       </Typography>
       {starred.map((p) => (
-        <RouterLink key={p.id} to="/pages/$pageId" params={{ pageId: p.id }} onClick={onNavigate} underline="none" sx={rowSx}>
+        <RouterLink key={p.id} {...pageLink(p.id)} onClick={onNavigate} underline="none" sx={rowSx}>
           <StarIcon sx={{ fontSize: 18, color: "warning.main" }} />
           <Box component="span" sx={ellipsis}>
             {p.title}
@@ -302,7 +384,7 @@ function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }
   return (
     <>
       {pages.data.pages.map((p) => (
-        <RouterLink key={p.id} to="/pages/$pageId" params={{ pageId: p.id }} onClick={onNavigate} underline="none" sx={rowSx}>
+        <RouterLink key={p.id} {...pageLink(p.id)} onClick={onNavigate} underline="none" sx={rowSx}>
           <Box component="span" sx={ellipsis}>
             {p.title}
           </Box>
@@ -479,7 +561,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
         >
           <ChevronRightIcon sx={{ fontSize: 18, transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
-        <RouterLink to="/pages/$pageId" params={{ pageId: node.pageId }} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
+        <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
           <Box component="span" sx={ellipsis}>
             {title}
           </Box>

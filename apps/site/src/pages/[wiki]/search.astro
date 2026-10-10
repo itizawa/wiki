@@ -1,0 +1,16 @@
+---
+import Search from "../../components/Search";
+import Base from "../../layouts/Base.astro";
+import { allWikis } from "../../lib/manifest";
+
+export async function getStaticPaths() {
+  return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
+}
+
+const { wiki } = Astro.params;
+---
+
+<Base wiki={wiki} title="検索" canonical="/search">
+  <h1>検索</h1>
+  <Search client:load />
+</Base>

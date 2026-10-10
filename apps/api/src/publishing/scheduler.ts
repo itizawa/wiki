@@ -1,6 +1,6 @@
-import { and, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { scheduledActions } from "../db/schema";
+import { scheduledActions, wikis } from "../db/schema";
 import { publishPage, unpublishPage } from "./service";
 
 export const MAX_ATTEMPTS = 3;
@@ -11,8 +11,8 @@ export type RunSummary = {
   done: string[];
   /** 再試行待ちに戻したもの */
   retrying: string[];
-  /** 最終失敗（通知対象） */
-  failed: { id: string; error: string }[];
+  /** 最終失敗（通知対象）。wikiName は通知の文面に入れる */
+  failed: { id: string; error: string; wikiName: string }[];
 };
 
 /**
@@ -20,6 +20,7 @@ export type RunSummary = {
  * 1) FOR UPDATE SKIP LOCKED で取得して running にしてから実行（二重実行防止）
  * 2) 同じ batch_id は1トランザクションで実行（シリーズ公開で中途半端な状態を見せない）
  * 3) 失敗は MAX_ATTEMPTS 回まで次回のCronで再試行し、最後は failed にする
+ * アーカイブ中の wiki の予約は実行しない（戻したときに、時刻を過ぎていたものは失敗にする）。
  */
 export async function runDueActions(db: Db, now: Date = new Date(), limit = 50): Promise<RunSummary> {
   const summary: RunSummary = { done: [], retrying: [], failed: [] };
@@ -46,7 +47,10 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
           .update(scheduledActions)
           .set({ status: final ? "failed" : "scheduled", lastError: message })
           .where(eq(scheduledActions.id, action.id));
-        if (final) summary.failed.push({ id: action.id, error: message });
+        if (final) {
+          const [wiki] = await db.select({ name: wikis.name }).from(wikis).where(eq(wikis.id, action.wikiId));
+          summary.failed.push({ id: action.id, error: message, wikiName: wiki?.name ?? action.wikiId });
+        }
         else summary.retrying.push(action.id);
       }
     }
@@ -60,6 +64,7 @@ async function claimNext(db: Db, now: Date, skip: string[]): Promise<ActionRow[]
     const due = and(
       eq(scheduledActions.status, "scheduled"),
       lte(scheduledActions.runAt, now),
+      inArray(scheduledActions.wikiId, tx.select({ id: wikis.id }).from(wikis).where(isNull(wikis.archivedAt))),
       skip.length > 0 ? notInArray(scheduledActions.id, skip) : undefined,
     );
     const [first] = await tx
@@ -90,6 +95,7 @@ async function execute(db: Db, action: ActionRow): Promise<void> {
   switch (action.actionType) {
     case "publish_page":
       await publishPage(db, {
+        wikiId: action.wikiId,
         pageId: action.pageId!,
         versionId: action.versionId!,
         visibility: action.targetVisibility ?? "public",
@@ -98,7 +104,7 @@ async function execute(db: Db, action: ActionRow): Promise<void> {
       });
       return;
     case "unpublish_page":
-      await unpublishPage(db, action.pageId!, action.id);
+      await unpublishPage(db, action.wikiId, action.pageId!, action.id);
       return;
     case "merge_branch":
       // フェーズ3で実装（実行時に3-wayマージと検証を再実施し、失敗ならmainを変えない）

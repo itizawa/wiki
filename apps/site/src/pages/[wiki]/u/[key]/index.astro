@@ -1,0 +1,21 @@
+---
+import type { ManifestUnlistedPage } from "@wiki/shared";
+import Article from "../../../../components/Article.astro";
+import Base from "../../../../layouts/Base.astro";
+import { allWikis, siteData } from "../../../../lib/manifest";
+
+// 限定公開：URLを知る人だけが到達できる。サイトマップ・RSS・ナビ・検索・リンクには一切出さない。
+export async function getStaticPaths() {
+  return (await allWikis()).flatMap((w) => w.unlisted.map((page) => ({ params: { wiki: w.key, key: page.key }, props: { page } })));
+}
+
+const { page } = Astro.props as { page: ManifestUnlistedPage };
+const { wiki } = Astro.params;
+const { publicPaths, origin } = await siteData(wiki);
+---
+
+<Base wiki={wiki} title={page.title} noindex>
+  <main data-pagefind-ignore="all">
+    <Article title={page.title} bodyMd={page.bodyMd} revisedAt={page.revisedAt} publicPaths={publicPaths} origin={origin} />
+  </main>
+</Base>

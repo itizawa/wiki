@@ -6,12 +6,28 @@ export type RenderOptions = {
   publicPaths: ReadonlyMap<string, string>;
   /** 収益化（アフィリエイト等）の記事。外部リンクに rel="sponsored" を付ける */
   sponsored?: boolean;
+  /**
+   * この wiki のオリジン。指定すると、絶対URLの `/p/{id}` は同じオリジンのものだけを内部リンクとして扱う
+   * （別の wiki のページへのリンクは、外部リンクと同じ扱いにする）。
+   */
+  origin?: string;
 };
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export const INTERNAL = /^(?:https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
+const INTERNAL = /^(https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
+
+/**
+ * リンク先が、この wiki のページ（`/p/{id}...`）ならその id を返す。
+ * origin を渡すと、絶対URLは同じオリジンのものだけを内部リンクとして扱う（別の wiki のページへのリンクは外部リンクと同じ扱い）。
+ */
+export function internalPageId(href: string, origin?: string): string | null {
+  const m = INTERNAL.exec(href);
+  if (!m) return null;
+  if (m[1] && origin && m[1].toLowerCase() !== origin.toLowerCase()) return null;
+  return m[2]!;
+}
 
 export type Heading = { id: string; depth: number; text: string };
 
@@ -64,9 +80,9 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
       },
       link(token: Tokens.Link) {
         const text = this.parser.parseInline(token.tokens);
-        const m = INTERNAL.exec(token.href);
-        if (m) {
-          const path = opts.publicPaths.get(m[1]!);
+        const pageId = internalPageId(token.href, opts.origin);
+        if (pageId) {
+          const path = opts.publicPaths.get(pageId);
           return path ? `<a href="${escapeHtml(path)}">${text}</a>` : text;
         }
         if (!/^(https?:|mailto:|#|\/)/i.test(token.href)) return text;

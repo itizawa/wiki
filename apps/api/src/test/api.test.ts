@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE, signSession } from "../auth/session";
 import { adoptUnplacedPages } from "../structure/repo";
-import { addLegacyTree, setup } from "./harness";
+import { addLegacyTree, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 async function structure() {
-  const res = await ctx.call("GET", "/admin/structure");
+  const res = await ctx.call("GET", `${W}/structure`);
   expect(res.status).toBe(200);
   return res.body;
 }
@@ -32,7 +32,7 @@ describe("auth", () => {
 
   it("rejects cross-origin mutations", async () => {
     ctx = await setup();
-    const res = await ctx.call("POST", "/admin/pages", { title: "x" }, { origin: "https://evil.example" });
+    const res = await ctx.call("POST", `${W}/pages`, { title: "x" }, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
   });
 
@@ -53,7 +53,7 @@ describe("auth", () => {
     expect(ok.headers.get("location")).toBe("http://admin.test/");
     const session = ok.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
     const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
-    expect(await me.json()).toEqual({ email: "admin@example.com" });
+    expect(await me.json()).toEqual({ email: "admin@example.com", isOwner: true });
 
     email = "intruder@example.com";
     const denied = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthCookie } });
@@ -75,7 +75,7 @@ describe("pages", () => {
 
   it("creates a page at the top level and keeps version history", async () => {
     ctx = await setup();
-    const created = await ctx.call("POST", "/admin/pages", { title: "はじめに", bodyMd: "# hi" });
+    const created = await ctx.call("POST", `${W}/pages`, { title: "はじめに", bodyMd: "# hi" });
     expect(created.status).toBe(201);
     expect(created.body).not.toHaveProperty("slug");
     expect(created.body.visibility).toBe("private");
@@ -86,7 +86,7 @@ describe("pages", () => {
     expect(s.trees[0].nodes[0]).not.toHaveProperty("kind");
     expect(s.pages[id].title).toBe("はじめに");
 
-    const saved = await ctx.call("PUT", `/admin/pages/${id}`, {
+    const saved = await ctx.call("PUT", `${W}/pages/${id}`, {
       baseVersionId: created.body.headVersionId,
       title: "はじめに 改",
       bodyMd: "# hi\n\nmore",
@@ -95,17 +95,17 @@ describe("pages", () => {
     expect(saved.body.head.baseVersionId).toBe(created.body.headVersionId);
     expect(saved.body.title).toBe("はじめに 改");
 
-    const versions = await ctx.call("GET", `/admin/pages/${id}/versions`);
+    const versions = await ctx.call("GET", `${W}/pages/${id}/versions`);
     expect(versions.body.versions).toHaveLength(2);
-    const old = await ctx.call("GET", `/admin/pages/${id}/versions/${created.body.headVersionId}`);
+    const old = await ctx.call("GET", `${W}/pages/${id}/versions/${created.body.headVersionId}`);
     expect(old.body.bodyMd).toBe("# hi");
   });
 
   it("creates a page under another page, after its existing children", async () => {
     ctx = await setup();
-    const parent = (await ctx.call("POST", "/admin/pages", { title: "parent" })).body;
-    const first = (await ctx.call("POST", "/admin/pages", { title: "first", parentPageId: parent.id })).body;
-    const second = await ctx.call("POST", "/admin/pages", { title: "second", parentPageId: parent.id });
+    const parent = (await ctx.call("POST", `${W}/pages`, { title: "parent" })).body;
+    const first = (await ctx.call("POST", `${W}/pages`, { title: "first", parentPageId: parent.id })).body;
+    const second = await ctx.call("POST", `${W}/pages`, { title: "second", parentPageId: parent.id });
     expect(second.status).toBe(201);
 
     const nodes: any[] = (await structure()).trees[0].nodes;
@@ -115,42 +115,42 @@ describe("pages", () => {
 
   it("does not create a page under a parent that is not in the tree", async () => {
     ctx = await setup();
-    const res = await ctx.call("POST", "/admin/pages", { title: "x", parentPageId: "nopenopeno" });
+    const res = await ctx.call("POST", `${W}/pages`, { title: "x", parentPageId: "nopenopeno" });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe("node_not_found");
-    expect((await ctx.call("GET", "/admin/pages")).body.pages).toEqual([]);
+    expect((await ctx.call("GET", `${W}/pages`)).body.pages).toEqual([]);
   });
 
   it("refuses a save based on a stale version (optimistic lock)", async () => {
     ctx = await setup();
-    const created = await ctx.call("POST", "/admin/pages", { title: "A" });
+    const created = await ctx.call("POST", `${W}/pages`, { title: "A" });
     const base = created.body.headVersionId;
-    const first = await ctx.call("PUT", `/admin/pages/${created.body.id}`, { baseVersionId: base, title: "A", bodyMd: "tab 1" });
+    const first = await ctx.call("PUT", `${W}/pages/${created.body.id}`, { baseVersionId: base, title: "A", bodyMd: "tab 1" });
     expect(first.status).toBe(200);
-    const second = await ctx.call("PUT", `/admin/pages/${created.body.id}`, { baseVersionId: base, title: "A", bodyMd: "tab 2" });
+    const second = await ctx.call("PUT", `${W}/pages/${created.body.id}`, { baseVersionId: base, title: "A", bodyMd: "tab 2" });
     expect(second.status).toBe(409);
     expect(second.body.error.details.headVersionId).toBe(first.body.headVersionId);
   });
 
   it("does not create a version when nothing changed", async () => {
     ctx = await setup();
-    const created = await ctx.call("POST", "/admin/pages", { title: "A", bodyMd: "x" });
-    const saved = await ctx.call("PUT", `/admin/pages/${created.body.id}`, { baseVersionId: created.body.headVersionId, title: "A", bodyMd: "x" });
+    const created = await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" });
+    const saved = await ctx.call("PUT", `${W}/pages/${created.body.id}`, { baseVersionId: created.body.headVersionId, title: "A", bodyMd: "x" });
     expect(saved.body.headVersionId).toBe(created.body.headVersionId);
   });
 
   it("deletes a page and lifts its children to the parent of the deleted page", async () => {
     ctx = await setup();
-    const top = (await ctx.call("POST", "/admin/pages", { title: "top" })).body;
-    const parent = (await ctx.call("POST", "/admin/pages", { title: "parent", parentPageId: top.id })).body;
-    const child = (await ctx.call("POST", "/admin/pages", { title: "child", parentPageId: parent.id })).body;
-    expect((await ctx.call("DELETE", `/admin/pages/${parent.id}`)).status).toBe(200);
+    const top = (await ctx.call("POST", `${W}/pages`, { title: "top" })).body;
+    const parent = (await ctx.call("POST", `${W}/pages`, { title: "parent", parentPageId: top.id })).body;
+    const child = (await ctx.call("POST", `${W}/pages`, { title: "child", parentPageId: parent.id })).body;
+    expect((await ctx.call("DELETE", `${W}/pages/${parent.id}`)).status).toBe(200);
     const nodes = (await structure()).trees[0].nodes;
     expect(nodes.find((n: any) => n.nodeId === parent.id)).toBeUndefined();
     expect(nodes.find((n: any) => n.nodeId === child.id).parentNodeId).toBe(top.id);
-    expect((await ctx.call("GET", `/admin/pages/${parent.id}`)).status).toBe(404);
+    expect((await ctx.call("GET", `${W}/pages/${parent.id}`)).status).toBe(404);
 
-    expect((await ctx.call("DELETE", `/admin/pages/${top.id}`)).status).toBe(200);
+    expect((await ctx.call("DELETE", `${W}/pages/${top.id}`)).status).toBe(200);
     expect((await structure()).trees[0].nodes).toEqual([expect.objectContaining({ nodeId: child.id, parentNodeId: null })]);
   });
 });
@@ -158,22 +158,22 @@ describe("pages", () => {
 describe("structure commits", () => {
   it("commits ops and records history", async () => {
     ctx = await setup();
-    const page = (await ctx.call("POST", "/admin/pages", { title: "p" })).body;
-    const docs = (await ctx.call("POST", "/admin/pages", { title: "Docs" })).body;
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "p" })).body;
+    const docs = (await ctx.call("POST", `${W}/pages`, { title: "Docs" })).body;
     const s = await structure();
     expect(s).not.toHaveProperty("branch");
     const treeId = s.trees[0].id;
 
-    const move = await ctx.call("POST", "/admin/structure/commits", {
+    const move = await ctx.call("POST", `${W}/structure/commits`, {
       expectedHeadCommitId: s.headCommitId,
       ops: [{ type: "move", treeId, nodeId: page.id, newParentNodeId: docs.id }],
     });
     expect(move.status).toBe(201);
 
-    const history = await ctx.call("GET", "/admin/structure/commits");
+    const history = await ctx.call("GET", `${W}/structure/commits`);
     expect(history.body.commits.map((c: any) => c.message)).toEqual(["移動", "「Docs」を追加", "「p」を追加", "初期コミット"]);
 
-    const detail = await ctx.call("GET", `/admin/structure/commits/${move.body.commitId}`);
+    const detail = await ctx.call("GET", `${W}/structure/commits/${move.body.commitId}`);
     expect(detail.body.changes).toEqual([
       expect.objectContaining({ kind: "node_moved", treeId, nodeId: page.id, from: null, to: docs.id }),
     ]);
@@ -181,10 +181,10 @@ describe("structure commits", () => {
 
   it("rejects commits based on a stale head", async () => {
     ctx = await setup();
-    const page = (await ctx.call("POST", "/admin/pages", { title: "p" })).body;
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "p" })).body;
     const s = await structure();
-    const other = (await ctx.call("POST", "/admin/pages", { title: "q" })).body;
-    const res = await ctx.call("POST", "/admin/structure/commits", {
+    const other = (await ctx.call("POST", `${W}/pages`, { title: "q" })).body;
+    const res = await ctx.call("POST", `${W}/structure/commits`, {
       expectedHeadCommitId: s.headCommitId,
       ops: [{ type: "move", treeId: s.trees[0].id, nodeId: page.id, newParentNodeId: other.id }],
     });
@@ -194,7 +194,7 @@ describe("structure commits", () => {
 
   it("rejects folder operations", async () => {
     ctx = await setup();
-    const page = (await ctx.call("POST", "/admin/pages", { title: "p" })).body;
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "p" })).body;
     const s = await structure();
     const treeId = s.trees[0].id;
     for (const op of [
@@ -202,7 +202,7 @@ describe("structure commits", () => {
       { type: "rename_folder", treeId, nodeId: page.id, title: "F" },
       { type: "split_folder", treeId, nodeId: page.id, groups: [{ title: "G", nodeIds: [page.id] }] },
     ]) {
-      const res = await ctx.call("POST", "/admin/structure/commits", { expectedHeadCommitId: s.headCommitId, ops: [op] });
+      const res = await ctx.call("POST", `${W}/structure/commits`, { expectedHeadCommitId: s.headCommitId, ops: [op] });
       expect(res.status).toBe(400);
     }
     expect((await structure()).headCommitId).toBe(s.headCommitId);
@@ -211,7 +211,7 @@ describe("structure commits", () => {
   it("returns 422 for invalid operations and leaves main untouched", async () => {
     ctx = await setup();
     const s = await structure();
-    const res = await ctx.call("POST", "/admin/structure/commits", {
+    const res = await ctx.call("POST", `${W}/structure/commits`, {
       expectedHeadCommitId: s.headCommitId,
       ops: [{ type: "add_to_tree", treeId: s.trees[0].id, pageId: "nopenopeno", parentNodeId: null }],
     });
@@ -227,7 +227,7 @@ describe("structure commits", () => {
       { type: "create_tree", treeKey: "second", name: "2nd" },
       { type: "delete_tree", treeId: s.trees[0].id },
     ]) {
-      const res = await ctx.call("POST", "/admin/structure/commits", { expectedHeadCommitId: s.headCommitId, ops: [op] });
+      const res = await ctx.call("POST", `${W}/structure/commits`, { expectedHeadCommitId: s.headCommitId, ops: [op] });
       expect(res.status).toBe(400);
     }
     expect((await structure()).headCommitId).toBe(s.headCommitId);
@@ -238,13 +238,13 @@ describe("structure commits", () => {
     await addLegacyTree(ctx.client);
     const s = await structure();
     expect(s.trees.map((t: any) => t.key)).toEqual(["main"]);
-    expect((await ctx.call("GET", "/admin/trees")).body.trees.map((t: any) => t.key)).toEqual(["main"]);
+    expect((await ctx.call("GET", `${W}/trees`)).body.trees.map((t: any) => t.key)).toEqual(["main"]);
   });
 
   it("cannot switch the primary tree", async () => {
     ctx = await setup();
     const legacyId = await addLegacyTree(ctx.client);
-    const res = await ctx.call("PATCH", `/admin/trees/${legacyId}`, { isPrimary: true });
+    const res = await ctx.call("PATCH", `${W}/trees/${legacyId}`, { isPrimary: true });
     expect(res.status).toBe(404);
     const rows = await ctx.client.query<{ key: string }>(`select key from trees where is_primary`);
     expect(rows.rows.map((r) => r.key)).toEqual(["main"]);
@@ -253,17 +253,17 @@ describe("structure commits", () => {
   it("renames the tree", async () => {
     ctx = await setup();
     const s = await structure();
-    const res = await ctx.call("PATCH", `/admin/trees/${s.trees[0].id}`, { name: "ブログ" });
+    const res = await ctx.call("PATCH", `${W}/trees/${s.trees[0].id}`, { name: "ブログ" });
     expect(res.status).toBe(200);
     expect((await structure()).trees[0].name).toBe("ブログ");
   });
 
   it("adopts live pages that are not in the tree to the top level", async () => {
     ctx = await setup();
-    const kept = (await ctx.call("POST", "/admin/pages", { title: "kept" })).body;
-    const stray = (await ctx.call("POST", "/admin/pages", { title: "stray" })).body;
+    const kept = (await ctx.call("POST", `${W}/pages`, { title: "kept" })).body;
+    const stray = (await ctx.call("POST", `${W}/pages`, { title: "stray" })).body;
     const s = await structure();
-    await ctx.call("POST", "/admin/structure/commits", {
+    await ctx.call("POST", `${W}/structure/commits`, {
       expectedHeadCommitId: s.headCommitId,
       ops: [{ type: "remove_node", treeId: s.trees[0].id, nodeId: stray.id }],
     });

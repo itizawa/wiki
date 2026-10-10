@@ -1,9 +1,14 @@
-# 公開サイト。ビルド結果（dist）を静的アセットとして出し、無いパスだけ worker/index.ts が受ける。
+# 公開サイト。1回のビルドで全 wiki のぶんを wiki ごとのディレクトリ（dist/{key}/）に出力し、
+# worker/index.ts が Host のサブドメインを見て、その wiki のディレクトリから返す。
 # デプロイは Cloudflare の Workers Builds（Git 連携）が行う。name はダッシュボードの Worker 名と一致させる
 name = "wiki-site"
 main = "worker/index.ts"
 compatibility_date = "2026-10-01"
-routes = [{ pattern = "wiki.hatchery-works.com", custom_domain = true }]
+# wiki は {key}.hatchery-works.com で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルートで受ける。
+# - DNS に、プロキシを有効にしたワイルドカードのレコード（*.hatchery-works.com）が要る（README「デプロイ」）
+# - このルートは管理画面（wiki-admin）など、ほかの Worker のサブドメインにも当たる。
+#   wiki の key として使えないホスト名は worker/index.ts がそのまま本来の Worker へ渡す
+routes = [{ pattern = "*.hatchery-works.com/*", zone_name = "hatchery-works.com" }]
 workers_dev = false
 # main 以外のブランチは Workers Builds が `wrangler preview` でプレビューを作る（本番には出ない）。その確認用の URL（*.workers.dev）を出す
 preview_urls = true
@@ -11,9 +16,19 @@ preview_urls = true
 [assets]
 directory = "dist"
 binding = "ASSETS"
-# /p/{id} は p/{id}.html、/u/{key}/ は u/{key}/index.html を返す
+# アセットより先に Worker を通す。パスを直接指定して、ほかの wiki のディレクトリを開けないようにする
+run_worker_first = true
+# /p/{id} は {wiki}/p/{id}.html、/u/{key}/ は {wiki}/u/{key}/index.html を返す
 html_handling = "auto-trailing-slash"
+# 無いパスは、その wiki の 404.html（{wiki}/404.html）を返す
 not_found_handling = "404-page"
+
+[vars]
+# 公開サイトのドメインの共通部分。ビルドの環境変数 SITE_BASE_DOMAIN と同じ値
+SITE_BASE_DOMAIN = "hatchery-works.com"
+# Host で wiki が決まらないとき（プレビューの *.workers.dev、手元の `pnpm preview`）に表示する wiki。
+# `?wiki={key}` を付けて開くと、その wiki に切り替わる
+DEFAULT_WIKI = "wiki"
 
 [observability]
 enabled = true

@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { actionLabel } from "../components/PublishPanel";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
+import { pageLink } from "../lib/wiki";
 import { formatDateTime, formatDay } from "../lib/format";
 
 const DAY = 24 * 3600_000;
@@ -176,7 +177,7 @@ export function CalendarPage() {
                     {e.kind === "published" && (
                       <>
                         <StatusChip status={e.unlisted ? "unlisted" : "public"} label={e.unlisted ? "限定公開済み" : "公開済み"} />
-                        <RouterLink to="/pages/$pageId" params={{ pageId: e.pageId }}>
+                        <RouterLink {...pageLink(e.pageId)}>
                           {e.title}
                         </RouterLink>
                       </>
@@ -184,7 +185,7 @@ export function CalendarPage() {
                     {e.kind === "draft" && (
                       <>
                         <StatusChip label="AI下書き" />
-                        <RouterLink to="/pages/$pageId" params={{ pageId: e.pageId }}>
+                        <RouterLink {...pageLink(e.pageId)}>
                           {e.title}
                         </RouterLink>
                       </>
@@ -261,7 +262,7 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
 function PageLink({ action }: { action: ScheduledAction }) {
   if (!action.pageId) return <span>{action.branchName}</span>;
   return (
-    <RouterLink to="/pages/$pageId" params={{ pageId: action.pageId }}>
+    <RouterLink {...pageLink(action.pageId)}>
       {action.pageTitle ?? action.pageId}
     </RouterLink>
   );
