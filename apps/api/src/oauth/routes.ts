@@ -85,10 +85,16 @@ export const oauthRoutes = new Hono<AppEnv>()
     if (bad) {
       return oauthErrorResponse(c, new OAuthError("invalid_redirect_uri", "redirect_uris must be https or loopback http"));
     }
-    const client = await registerClient(c.get("deps").db, {
-      name: parsed.data.client_name || "名前のないアプリ",
-      redirectUris: parsed.data.redirect_uris,
-    });
+    let client;
+    try {
+      client = await registerClient(c.get("deps").db, {
+        name: parsed.data.client_name || "名前のないアプリ",
+        redirectUris: parsed.data.redirect_uris,
+      });
+    } catch (err) {
+      if (err instanceof OAuthError) return oauthErrorResponse(c, err);
+      throw err;
+    }
     return c.json(
       {
         client_id: client.id,

@@ -126,6 +126,22 @@ describe("authorization", () => {
     expect((await register(["http://127.0.0.1:3333/cb"])).status).toBe(201);
   });
 
+  it("cleans up unused clients and caps how many can pile up", async () => {
+    ctx = await setup();
+    const old = (await register()).body.client_id;
+    await ctx.client.query(`update oauth_clients set created_at = now() - interval '2 days' where id = $1`, [old]);
+    await ctx.client.query(
+      `insert into oauth_clients (id, name, redirect_uris) select 'wc_fill_' || i, 'x', '[]'::jsonb from generate_series(1, 199) i`,
+    );
+    // 古い、許可の無いクライアントは消えるので、まだ登録できる
+    expect((await register()).status).toBe(201);
+    expect((await ctx.client.query(`select 1 from oauth_clients where id = $1`, [old])).rows).toEqual([]);
+    // 許可の無いクライアントが上限に達すると断る
+    const res = await register();
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe("temporarily_unavailable");
+  });
+
   it("does not redirect to an unregistered redirect_uri", async () => {
     ctx = await setup();
     const client = (await register()).body;
@@ -412,6 +428,57 @@ describe("MCP", () => {
 
     const full = (await connect({ scope: "wiki.read wiki.private" })).tokens.access_token;
     expect((await callTool(full, "get_page", { wiki: "wiki", pageId: secret.body.id })).data.bodyMd).toBe("secret");
+  });
+
+  it("reads only the published version of a public page that has unpublished edits", async () => {
+    ctx = await setup();
+    const page = (await ctx.call("POST", `${W}/pages`, { title: "公開した題", bodyMd: "公開した本文" })).body;
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "書きかけの題", bodyMd: "書きかけの秘密" });
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish" });
+    const t = tokens.access_token;
+
+    const got = (await callTool(t, "get_page", { wiki: "wiki", pageId: page.id })).data;
+    expect(got).toMatchObject({ title: "公開した題", bodyMd: "公開した本文", headVersionId: page.headVersionId, hasHiddenEdits: true });
+    expect((await callTool(t, "search_pages", { wiki: "wiki", query: "秘密" })).data.pages).toEqual([]);
+    expect((await callTool(t, "search_pages", { wiki: "wiki", query: "公開した" })).data.pages[0].title).toBe("公開した題");
+    const tree = await callTool(t, "get_tree", { wiki: "wiki" });
+    expect(tree.data.nodes.find((n: { pageId: string }) => n.pageId === page.id).title).toBe("公開した題");
+
+    // 見ていない書きかけを上書きしたり、公開・承認・予約したりはできない
+    const update = await callTool(t, "update_page", { wiki: "wiki", pageId: page.id, baseVersionId: got.headVersionId, bodyMd: "x" });
+    expect(update.data.error.code).toBe("hidden_edits");
+    const head = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId;
+    const publish = await callTool(t, "publish_page", { wiki: "wiki", pageId: page.id, versionId: head });
+    expect(publish.data.error.code).toBe("insufficient_scope");
+    const approve = await callTool(t, "set_workflow_state", { wiki: "wiki", pageId: page.id, state: "approved", versionId: head });
+    expect(approve.data.error.code).toBe("insufficient_scope");
+    // 版を省くと、読める版（公開した版）を使う
+    expect((await callTool(t, "publish_page", { wiki: "wiki", pageId: page.id })).data.publishedVersionId).toBe(page.headVersionId);
+
+    const full = (await connect({ scope: "wiki.read wiki.private" })).tokens.access_token;
+    expect((await callTool(full, "get_page", { wiki: "wiki", pageId: page.id })).data).toMatchObject({ bodyMd: "書きかけの秘密", hasHiddenEdits: false });
+  });
+
+  it("does not move, delete or change the visibility of pages under it that it cannot read", async () => {
+    ctx = await setup();
+    const parent = (await ctx.call("POST", `${W}/pages`, { title: "親", bodyMd: "" })).body;
+    await ctx.call("POST", `${W}/pages/${parent.id}/publish`, { versionId: parent.headVersionId, visibility: "public" });
+    const child = (await ctx.call("POST", `${W}/pages`, { title: "子", bodyMd: "", parentPageId: parent.id })).body;
+    await ctx.call("POST", `${W}/pages/${child.id}/publish`, { versionId: child.headVersionId, visibility: "unlisted" });
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish wiki.delete" });
+    const t = tokens.access_token;
+    const { headCommitId } = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+
+    const tries = [
+      await callTool(t, "move_page", { wiki: "wiki", pageId: parent.id, newParentPageId: null, expectedHeadCommitId: headCommitId }),
+      await callTool(t, "unpublish_page", { wiki: "wiki", pageId: parent.id, applyToDescendants: true }),
+      await callTool(t, "publish_page", { wiki: "wiki", pageId: parent.id, applyToDescendants: true }),
+      await callTool(t, "delete_page", { wiki: "wiki", pageId: parent.id }),
+    ];
+    expect(tries.map((r) => r.data.error?.code)).toEqual(["insufficient_scope", "insufficient_scope", "insufficient_scope", "insufficient_scope"]);
+    expect((await ctx.call("GET", `${W}/pages/${child.id}`)).body.visibility).toBe("unlisted");
+    expect((await ctx.call("GET", `${W}/pages/${parent.id}`)).status).toBe(200);
   });
 
   it("offers publishing and deleting only when the user allowed them", async () => {
