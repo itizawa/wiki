@@ -24,6 +24,7 @@ import { api, errorMessage } from "../lib/api";
 import { useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 import { publicPageUrl } from "../lib/publicUrl";
+import { scheduleChoices, type ScheduleKind } from "../lib/scheduleKind";
 import { descendantImpact, pageHierarchy } from "../lib/visibility";
 import { visibilityLabel } from "../routes/PagesPage";
 import { Mono, Muted, Row, StatusChip } from "./ui";
@@ -62,7 +63,8 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
   const [picked, setVisibility] = useState<PublishVisibility>(page.visibility === "unlisted" ? "unlisted" : "public");
   const [applyToDescendants, setApplyToDescendants] = useState(false);
   const [runAt, setRunAt] = useState(() => isoToJstLocal(new Date(Date.now() + 24 * 3600_000).toISOString()).slice(0, 11) + "07:00");
-  const [scheduleKind, setScheduleKind] = useState<"publish_page" | "unpublish_page">("publish_page");
+  // 予約する操作。選ぶまでは null（選べるものを既定にする）
+  const [pickedKind, setPickedKind] = useState<ScheduleKind | null>(null);
 
   // 配下のページには、親と同じか、より狭い公開範囲しか設定できない
   const { parent, descendants } = useMemo(() => pageHierarchy(structure.data, page.id), [structure.data, page.id]);
@@ -87,6 +89,18 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
   const { origin } = useWiki().wiki;
   const url = publicPageUrl(origin, page);
   const pending = (schedule.data?.actions ?? []).filter((a) => a.status === "scheduled" || a.status === "failed" || a.status === "running");
+  // 何も変わらない予約（いまの版をすでに公開中のページの公開、非公開のページの非公開化）は選べなくする
+  const { kind: scheduleKind, choices: kindChoices } = scheduleChoices(
+    {
+      published,
+      current: page.visibility,
+      target: visibility,
+      hasNewerVersion: page.publishedVersionId !== page.headVersionId,
+      dirty,
+      actions: pending,
+    },
+    pickedKind,
+  );
 
   return (
     <Box component="section" aria-label="公開">
@@ -221,9 +235,12 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
           予約
         </Typography>
         <Stack spacing={1.5} sx={{ alignItems: "flex-start" }}>
-          <TextField select fullWidth value={scheduleKind} onChange={(e) => setScheduleKind(e.target.value as typeof scheduleKind)}>
-            <MenuItem value="publish_page">{visibility === "unlisted" ? "限定公開" : "公開"}を予約</MenuItem>
-            <MenuItem value="unpublish_page">非公開化を予約</MenuItem>
+          <TextField select fullWidth value={scheduleKind} onChange={(e) => setPickedKind(e.target.value as ScheduleKind)}>
+            {kindChoices.map((c) => (
+              <MenuItem key={c.value} value={c.value} disabled={c.disabled}>
+                {c.label}
+              </MenuItem>
+            ))}
           </TextField>
           <TextField type="datetime-local" label="日時（JST）" fullWidth value={runAt} onChange={(e) => setRunAt(e.target.value)} />
           <Button
