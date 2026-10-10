@@ -84,15 +84,31 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
     update();
   }
 
-  // コードブロックの右上に「コピー」ボタンを足す（クリップボードが使えない環境では足さない）
-  if (navigator.clipboard) {
-    for (const pre of document.querySelectorAll<HTMLPreElement>("article pre")) {
-      const wrap = document.createElement("div");
-      wrap.dataset.codeBlock = "";
-      pre.replaceWith(wrap);
+  // コードブロックの右上に「コピー」ボタンを足す（クリップボードが使えない環境では足さない）。
+  // 横にはみ出す行があるブロックには、「折り返す」の切り替えも足す
+  for (const pre of document.querySelectorAll<HTMLPreElement>("article pre")) {
+    const overflows = pre.scrollWidth > pre.clientWidth;
+    if (!navigator.clipboard && !overflows) continue;
+    const wrap = document.createElement("div");
+    wrap.dataset.codeBlock = "";
+    pre.replaceWith(wrap);
+    const tools = document.createElement("div");
+    tools.dataset.codeTools = "";
+    if (overflows) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.textContent = "折り返す";
+      toggle.setAttribute("aria-pressed", "false");
+      toggle.addEventListener("click", () => {
+        const on = wrap.toggleAttribute("data-code-wrap");
+        toggle.setAttribute("aria-pressed", String(on));
+        toggle.textContent = on ? "✓ 折り返す" : "折り返す";
+      });
+      tools.append(toggle);
+    }
+    if (navigator.clipboard) {
       const button = document.createElement("button");
       button.type = "button";
-      button.dataset.codeCopy = "";
       button.textContent = "コピー";
       button.addEventListener("click", async () => {
         try {
@@ -103,8 +119,9 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
         }
         setTimeout(() => (button.textContent = "コピー"), 2000);
       });
-      // 読み上げとキーボード操作で、コードより先にボタンに着くようにする
-      wrap.append(button, pre);
+      tools.append(button);
     }
+    // 読み上げとキーボード操作で、コードより先にボタンに着くようにする
+    wrap.append(tools, pre);
   }
 </script>
