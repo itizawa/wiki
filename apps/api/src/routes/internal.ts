@@ -3,6 +3,7 @@ import { recordViewInput } from "@wiki/shared";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
+import { pruneVersions } from "../pages/prune";
 import { promoteDrafts } from "../pages/versions";
 import { requestBuild } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
@@ -45,6 +46,10 @@ export const internalRoutes = new Hono<AppEnv>()
   // 編集が一段落した下書きを版にする
   .post("/drafts/promote", async (c) => {
     return c.json(await promoteDrafts(c.get("deps").db));
+  })
+  // 自動でできた版を、古いほど粗く間引く（1日1回）
+  .post("/versions/prune", async (c) => {
+    return c.json(await pruneVersions(c.get("deps").db));
   })
   .post("/scheduled/run", async (c) => {
     return c.json(await runDueActions(c.get("deps").db));
