@@ -14,12 +14,30 @@ import { structureRoutes, treeRoutes } from "./routes/structure";
 import { templateRoutes } from "./routes/templates";
 import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
 
+/**
+ * API の応答はどれも JSON かリダイレクトなので、何も読み込ませず、枠にも入れさせない。
+ * 管理画面の HTML（静的アセット）のヘッダーは apps/admin/public/_headers で付ける。
+ */
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "same-origin",
+  "x-frame-options": "DENY",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+};
+
 export function createApp(deps: Deps) {
   const app = new Hono<AppEnv>();
 
   app.use("*", async (c, next) => {
     c.set("deps", deps);
     await next();
+  });
+  // 応答に付けるセキュリティヘッダー。経路が自分で付けたもの（画像の CSP など）は上書きしない
+  app.use("*", async (c, next) => {
+    await next();
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+      if (!c.res.headers.has(name)) c.res.headers.set(name, value);
+    }
   });
   // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
   // /internal はCookieを使わずトークンで認証するので対象外

@@ -30,6 +30,17 @@ describe("auth", () => {
     expect(res.status).toBe(403);
   });
 
+  it("sends security headers on API responses", async () => {
+    ctx = await setup();
+    const res = await ctx.call("GET", "/health");
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'none'");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("same-origin");
+    // エラーの応答にも付く
+    expect((await ctx.call("POST", `${W}/pages`, { title: "x" }, { origin: "https://evil.example" })).headers.get("x-frame-options")).toBe("DENY");
+  });
+
   it("rejects cross-origin mutations", async () => {
     ctx = await setup();
     const res = await ctx.call("POST", `${W}/pages`, { title: "x" }, { origin: "https://evil.example" });

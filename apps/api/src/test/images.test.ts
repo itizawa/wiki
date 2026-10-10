@@ -23,6 +23,8 @@ describe("images", () => {
     expect(served.headers.get("content-type")).toBe("image/png");
     expect(served.headers.get("x-content-type-options")).toBe("nosniff");
     expect(served.headers.get("cache-control")).toContain("immutable");
+    // API 全体のセキュリティヘッダーで、画像の CSP（sandbox）を上書きしない
+    expect(served.headers.get("content-security-policy")).toContain("sandbox");
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(PNG);
   });
 
