@@ -1,3 +1,4 @@
+import HistoryIcon from "@mui/icons-material/History";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -25,6 +26,8 @@ import { visibilityLabel } from "./PagesPage";
 
 type Draft = { title: string; bodyMd: string };
 
+const VERSION_PANEL_ID = "version-history";
+
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
 
 export function EditorPage({ pageId }: { pageId: string }) {
@@ -35,6 +38,14 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+
+  // タイトルの下の「版履歴を見る」から：パネルを開き、版履歴の位置までスクロールする
+  const [showHistory, setShowHistory] = useState(false);
+  useEffect(() => {
+    if (!showHistory || !panelOpen) return;
+    document.getElementById(VERSION_PANEL_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setShowHistory(false);
+  }, [showHistory, panelOpen]);
 
   // 初回読み込み時だけサーバーの内容で下書きを作る（以降はローカルの編集を優先）
   useEffect(() => {
@@ -165,8 +176,25 @@ export function EditorPage({ pageId }: { pageId: string }) {
             onChange={(e) => setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") })}
             placeholder="無題"
             inputProps={{ "aria-label": "タイトル" }}
-            sx={{ mb: 2, p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
+            sx={{ p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
           />
+          <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", columnGap: 1, mt: 0.5, mb: 2 }}>
+            <Muted>
+              最終保存 <time dateTime={p.head.createdAt}>{formatDateTime(p.head.createdAt)}</time>
+              {dirty && "（保存していない変更があります）"}
+            </Muted>
+            <Button
+              color="inherit"
+              startIcon={<HistoryIcon fontSize="small" />}
+              onClick={() => {
+                setPanelOpen(true);
+                setShowHistory(true);
+              }}
+              sx={{ color: "text.secondary" }}
+            >
+              版履歴を見る
+            </Button>
+          </Stack>
           <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
         <EditingStats bodyMd={draft.bodyMd} />
@@ -292,7 +320,7 @@ function VersionPanel(props: {
   });
 
   return (
-    <Section>
+    <Section id={VERSION_PANEL_ID} sx={{ scrollMarginTop: 12 }}>
       <Typography variant="subtitle1" component="h3">
         版履歴
       </Typography>
