@@ -1,6 +1,7 @@
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { api } from "./api";
+import { api, currentWikiKey } from "./api";
+import { FIRST_WIKI } from "./wiki";
 
 const QUERY_KEY = ["stars"] as const;
 const MUTATION_KEY = ["stars", "change"] as const;
@@ -92,10 +93,13 @@ export function useStarsError(): [Error | null, () => void] {
 /**
  * 以前このブラウザに覚えさせていたスターを、サーバーへ移す（1回だけ）。
  * 全部移せたら localStorage から消す。途中で失敗したら残しておき、次に開いたときにやり直す。
+ * その頃のページは最初の wiki にあるので、最初の wiki を開いたときにだけ移す
+ * （ほかの wiki で移すと、どのページも「無い」と返り、スターを捨ててしまう）。
  */
 export function useMigrateLegacyStars() {
   const qc = useQueryClient();
   useEffect(() => {
+    if (currentWikiKey() !== FIRST_WIKI) return;
     let raw: string | null = null;
     try {
       raw = localStorage.getItem(LEGACY_KEY);

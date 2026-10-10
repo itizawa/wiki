@@ -5,13 +5,13 @@ import { HttpError, notFound } from "../errors";
 import { listRuleRuns, listRules, saveRule } from "../rules/engine";
 import { parseJson } from "../validation";
 
-/** /admin/rules：定型ルールの設定と実行ログ */
+/** /admin/w/:wikiKey/rules：定型ルールの設定と実行ログ */
 export const ruleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
-    return c.json({ rules: await listRules(c.get("deps").db) });
+    return c.json({ rules: await listRules(c.get("deps").db, c.get("wiki").id) });
   })
   .get("/runs", async (c) => {
-    return c.json({ runs: await listRuleRuns(c.get("deps").db) });
+    return c.json({ runs: await listRuleRuns(c.get("deps").db, c.get("wiki").id) });
   })
   .put("/:id", async (c) => {
     const { db } = c.get("deps");
@@ -22,6 +22,7 @@ export const ruleRoutes = new Hono<AppEnv>()
     if (!matchesPreset(preset, input)) {
       throw new HttpError(400, "preset_mismatch", "the trigger and action types of a preset rule cannot be changed");
     }
-    await saveRule(db, preset.id, input);
-    return c.json((await listRules(db)).find((r) => r.id === preset.id));
+    const wikiId = c.get("wiki").id;
+    await saveRule(db, wikiId, preset.id, input);
+    return c.json((await listRules(db, wikiId)).find((r) => r.id === preset.id));
   });

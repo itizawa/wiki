@@ -1,0 +1,22 @@
+---
+import layout from "../../../../styles/page.module.css";
+import type { ManifestTree } from "@wiki/shared";
+import TreeNav from "../../../../components/TreeNav";
+import Base from "../../../../layouts/Base.astro";
+import { allWikis, siteData, TREE_LABEL } from "../../../../lib/manifest";
+import { navItems } from "../../../../lib/tree";
+
+export async function getStaticPaths() {
+  return (await allWikis()).flatMap((w) => w.trees.map((tree) => ({ params: { wiki: w.key, treeKey: tree.key }, props: { tree } })));
+}
+
+const { tree } = Astro.props as { tree: ManifestTree };
+const { wiki } = Astro.params;
+const { pagesById } = await siteData(wiki);
+---
+
+<Base wiki={wiki} title={TREE_LABEL}>
+  <h1>{TREE_LABEL}</h1>
+  {tree.nodes.length === 0 && <p class={layout.muted}>まだ記事はありません。</p>}
+  <TreeNav client:idle items={navItems(tree, (id) => pagesById.get(id)?.title)} />
+</Base>

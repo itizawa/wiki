@@ -20,6 +20,28 @@ import {
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 // ---------------------------------------------------------------------------
+// wiki：ページ・ツリー（1本）・ルール・予約のまとまり
+// ---------------------------------------------------------------------------
+
+export const wikis = pgTable("wikis", {
+  id: text("id").primaryKey(),
+  /** 公開サイトのサブドメイン。作成後は変えない。アーカイブ中もほかの wiki では使えない */
+  key: text("key").notNull().unique(),
+  /** 表示名（公開サイトの名前） */
+  name: text("name").notNull(),
+  /** nullなら使用中 */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  /** 作った人のメールアドレス。移行で作った最初の wiki は null */
+  createdBy: text("created_by"),
+});
+
+const wikiId = () =>
+  text("wiki_id")
+    .notNull()
+    .references(() => wikis.id);
+
+// ---------------------------------------------------------------------------
 // 4.1 コンテンツ
 // ---------------------------------------------------------------------------
 
@@ -27,6 +49,7 @@ export const pages = pgTable(
   "pages",
   {
     id: text("id").primaryKey(),
+    wikiId: wikiId(),
     /** head版タイトルのキャッシュ */
     title: text("title").notNull(),
     headVersionId: uuid("head_version_id").notNull(),
@@ -60,7 +83,7 @@ export const pages = pgTable(
     check("pages_origin_check", sql`${t.origin} in ('human', 'ai_draft')`),
     check("pages_workflow_state_check", sql`${t.workflowState} in ('idea', 'draft', 'approved')`),
     check("pages_approved_version_check", sql`(${t.workflowState} = 'approved') = (${t.approvedVersionId} is not null)`),
-    index("pages_updated_at_idx").on(t.updatedAt),
+    index("pages_wiki_updated_at_idx").on(t.wikiId, t.updatedAt),
   ],
 );
 
@@ -98,7 +121,7 @@ export const pageLinks = pgTable(
   (t) => [primaryKey({ columns: [t.fromPageId, t.toPageId] }), index("page_links_to_idx").on(t.toPageId)],
 );
 
-/** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。 */
+/** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
 export const pageStars = pgTable(
   "page_stars",
   {
@@ -115,21 +138,23 @@ export const pageStars = pgTable(
 
 // ---------------------------------------------------------------------------
 // 4.2 ツリーと構造の履歴
-// 運用するのは primary ツリー1本と main だけ。複数ツリー・ブランチ前提のテーブル形は変えずに残している。
+// 運用するのは、wiki ごとに primary ツリー1本と main だけ。複数ツリー・ブランチ前提のテーブル形は変えずに残している。
 // ---------------------------------------------------------------------------
 
 /** 存在宣言のみ。どのコミットにツリーが含まれるかは commit_trees で決まる。 */
 export const trees = pgTable("trees", {
   id: text("id").primaryKey(),
-  /** URLに使用（'by-project' 'by-theme'） */
-  key: text("key").notNull().unique(),
+  wikiId: wikiId(),
+  /** URLに使用（'by-project' 'by-theme'）。wiki の中で重ならない */
+  key: text("key").notNull(),
   /** 以前は画面から変えられた表示名。いまはどこにも出していない（公開サイト・管理画面は固定の文言を使う） */
   name: text("name").notNull(),
   /** パンくず・既定ナビ用（1つだけ） */
   isPrimary: boolean("is_primary").notNull().default(false),
 }, (t) => [
-  // primary は1つだけ
-  uniqueIndex("trees_one_primary_idx").on(t.isPrimary).where(sql`${t.isPrimary}`),
+  unique("trees_wiki_key_unique").on(t.wikiId, t.key),
+  // primary は wiki ごとに1つだけ
+  uniqueIndex("trees_one_primary_idx").on(t.wikiId).where(sql`${t.isPrimary}`),
 ]);
 
 /** 1ツリーの状態（イミュータブル） */
@@ -168,6 +193,7 @@ export const treeNodes = pgTable(
 /** コミット：全ツリーの状態をまとめて記録 */
 export const structureCommits = pgTable("structure_commits", {
   id: uuid("id").primaryKey().defaultRandom(),
+  wikiId: wikiId(),
   message: text("message"),
   authorType: text("author_type", { enum: ["human", "ai"] }).notNull().default("human"),
   sourceProposalId: uuid("source_proposal_id"),
@@ -209,11 +235,12 @@ export const commitTrees = pgTable(
   (t) => [primaryKey({ columns: [t.commitId, t.treeId] })],
 );
 
-/** ブランチ（名前付きポインタ）。フェーズ1は main のみ運用。 */
+/** ブランチ（名前付きポインタ）。wiki ごとに main のみ運用。 */
 export const structureBranches = pgTable(
   "structure_branches",
   {
-    name: text("name").primaryKey(),
+    wikiId: wikiId(),
+    name: text("name").notNull(),
     headCommitId: uuid("head_commit_id")
       .notNull()
       .references(() => structureCommits.id),
@@ -221,7 +248,10 @@ export const structureBranches = pgTable(
     createdAt: createdAt(),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
   },
-  (t) => [check("structure_branches_kind_check", sql`${t.kind} in ('main', 'manual', 'ai_proposal')`)],
+  (t) => [
+    primaryKey({ columns: [t.wikiId, t.name] }),
+    check("structure_branches_kind_check", sql`${t.kind} in ('main', 'manual', 'ai_proposal')`),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -230,27 +260,31 @@ export const structureBranches = pgTable(
 
 /**
  * ルールの設定。定型ルール（shared の RULE_PRESETS）は id が定型ルールの id と同じで、
- * 設定を保存するまでは行が無い（無効として扱う）。
+ * 設定を保存するまでは行が無い（無効として扱う）。wiki ごとに持つ。
  */
-export const rules = pgTable("rules", {
-  id: text("id").primaryKey(),
-  enabled: boolean("enabled").notNull().default(false),
-  /** RuleTrigger */
-  trigger: jsonb("trigger").notNull(),
-  /** RuleAction[] */
-  actions: jsonb("actions").notNull(),
-  createdAt: createdAt(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const rules = pgTable(
+  "rules",
+  {
+    wikiId: wikiId(),
+    id: text("id").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    /** RuleTrigger */
+    trigger: jsonb("trigger").notNull(),
+    /** RuleAction[] */
+    actions: jsonb("actions").notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.wikiId, t.id] })],
+);
 
 /** ルールが何かをした（または失敗した）記録。何も起きなかった回は残さない。 */
 export const ruleRuns = pgTable(
   "rule_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    ruleId: text("rule_id")
-      .notNull()
-      .references(() => rules.id),
+    wikiId: wikiId(),
+    ruleId: text("rule_id").notNull(),
     status: text("status", { enum: ["done", "failed"] }).notNull(),
     summary: text("summary").notNull(),
     /** 対象になったページ */
@@ -259,7 +293,8 @@ export const ruleRuns = pgTable(
   },
   (t) => [
     check("rule_runs_status_check", sql`${t.status} in ('done', 'failed')`),
-    index("rule_runs_rule_idx").on(t.ruleId, t.createdAt),
+    foreignKey({ name: "rule_runs_rule_fk", columns: [t.wikiId, t.ruleId], foreignColumns: [rules.wikiId, rules.id] }),
+    index("rule_runs_rule_idx").on(t.wikiId, t.ruleId, t.createdAt),
   ],
 );
 
@@ -271,6 +306,7 @@ export const scheduledActions = pgTable(
   "scheduled_actions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
     actionType: text("action_type", { enum: ["publish_page", "unpublish_page", "merge_branch"] }).notNull(),
     /** publish / unpublish */
     pageId: text("page_id").references(() => pages.id),
@@ -311,6 +347,7 @@ export const scheduledActions = pgTable(
 /** 公開状態に影響する操作の記録。ワーカーがデバウンスしてビルドを起動する。 */
 export const publishEvents = pgTable("publish_events", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
+  wikiId: wikiId(),
   kind: text("kind").notNull(),
   pageId: text("page_id"),
   scheduledActionId: uuid("scheduled_action_id"),

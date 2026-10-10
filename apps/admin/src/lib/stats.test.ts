@@ -12,6 +12,13 @@ describe("本文の文字数", () => {
     expect(textStats("```ts\nab\n```").chars).toBe(2);
   });
 
+  it("コールアウトの印の行は数えない（中身は数える）", () => {
+    expect(textStats("> [!NOTE]\n> 補足です").chars).toBe("補足です".length);
+    expect(textStats("> [!warning]\n> 注意").chars).toBe("注意".length);
+    // 印として読まれないもの（知らない種類）は、書いたとおり本文として数える
+    expect(textStats("> [!MEMO]\n> 本文").chars).toBe("[!MEMO]本文".length);
+  });
+
   it("読む時間は500字で1分。空なら0分、少しでもあれば1分", () => {
     expect(textStats("").minutes).toBe(0);
     expect(textStats("あ").minutes).toBe(1);

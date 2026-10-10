@@ -1,5 +1,5 @@
 {
-  "id": "5ae1b720-dbf3-486b-9047-745087f5d8a4",
+  "id": "9c3c72d1-0c68-432e-9c17-689475071f24",
   "prevId": "065bbf44-049e-4572-babf-cee2bdaad0cd",
   "version": "7",
   "dialect": "postgresql",
@@ -146,66 +146,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.page_stars": {
-      "name": "page_stars",
-      "schema": "",
-      "columns": {
-        "admin_email": {
-          "name": "admin_email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "page_id": {
-          "name": "page_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "page_stars_page_id_pages_id_fk": {
-          "name": "page_stars_page_id_pages_id_fk",
-          "tableFrom": "page_stars",
-          "tableTo": "pages",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "page_stars_admin_email_page_id_pk": {
-          "name": "page_stars_admin_email_page_id_pk",
-          "columns": [
-            "admin_email",
-            "page_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.page_versions": {
       "name": "page_versions",
       "schema": "",
@@ -326,6 +266,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "title": {
           "name": "title",
           "type": "text",
@@ -436,9 +382,15 @@
         }
       },
       "indexes": {
-        "pages_updated_at_idx": {
-          "name": "pages_updated_at_idx",
+        "pages_wiki_updated_at_idx": {
+          "name": "pages_wiki_updated_at_idx",
           "columns": [
+            {
+              "expression": "wiki_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "updated_at",
               "isExpression": false,
@@ -452,7 +404,21 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "pages_wiki_id_wikis_id_fk": {
+          "name": "pages_wiki_id_wikis_id_fk",
+          "tableFrom": "pages",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "pages_unlisted_key_unique": {
@@ -494,6 +460,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "kind": {
           "name": "kind",
           "type": "text",
@@ -521,7 +493,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "publish_events_wiki_id_wikis_id_fk": {
+          "name": "publish_events_wiki_id_wikis_id_fk",
+          "tableFrom": "publish_events",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -538,6 +524,12 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
+        },
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "rule_id": {
           "name": "rule_id",
@@ -577,6 +569,12 @@
           "name": "rule_runs_rule_idx",
           "columns": [
             {
+              "expression": "wiki_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
               "expression": "rule_id",
               "isExpression": false,
               "asc": true,
@@ -596,14 +594,29 @@
         }
       },
       "foreignKeys": {
-        "rule_runs_rule_id_rules_id_fk": {
-          "name": "rule_runs_rule_id_rules_id_fk",
+        "rule_runs_wiki_id_wikis_id_fk": {
+          "name": "rule_runs_wiki_id_wikis_id_fk",
+          "tableFrom": "rule_runs",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "rule_runs_rule_fk": {
+          "name": "rule_runs_rule_fk",
           "tableFrom": "rule_runs",
           "tableTo": "rules",
           "columnsFrom": [
+            "wiki_id",
             "rule_id"
           ],
           "columnsTo": [
+            "wiki_id",
             "id"
           ],
           "onDelete": "no action",
@@ -625,10 +638,16 @@
       "name": "rules",
       "schema": "",
       "columns": {
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "enabled": {
@@ -666,8 +685,30 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "foreignKeys": {
+        "rules_wiki_id_wikis_id_fk": {
+          "name": "rules_wiki_id_wikis_id_fk",
+          "tableFrom": "rules",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "rules_wiki_id_id_pk": {
+          "name": "rules_wiki_id_id_pk",
+          "columns": [
+            "wiki_id",
+            "id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -683,6 +724,12 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
+        },
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "action_type": {
           "name": "action_type",
@@ -800,6 +847,19 @@
         }
       },
       "foreignKeys": {
+        "scheduled_actions_wiki_id_wikis_id_fk": {
+          "name": "scheduled_actions_wiki_id_wikis_id_fk",
+          "tableFrom": "scheduled_actions",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "scheduled_actions_page_id_pages_id_fk": {
           "name": "scheduled_actions_page_id_pages_id_fk",
           "tableFrom": "scheduled_actions",
@@ -898,10 +958,16 @@
       "name": "structure_branches",
       "schema": "",
       "columns": {
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "name": {
           "name": "name",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "head_commit_id": {
@@ -932,6 +998,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "structure_branches_wiki_id_wikis_id_fk": {
+          "name": "structure_branches_wiki_id_wikis_id_fk",
+          "tableFrom": "structure_branches",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "structure_branches_head_commit_id_structure_commits_id_fk": {
           "name": "structure_branches_head_commit_id_structure_commits_id_fk",
           "tableFrom": "structure_branches",
@@ -946,7 +1025,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "structure_branches_wiki_id_name_pk": {
+          "name": "structure_branches_wiki_id_name_pk",
+          "columns": [
+            "wiki_id",
+            "name"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
@@ -1035,6 +1122,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "message": {
           "name": "message",
           "type": "text",
@@ -1063,7 +1156,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "structure_commits_wiki_id_wikis_id_fk": {
+          "name": "structure_commits_wiki_id_wikis_id_fk",
+          "tableFrom": "structure_commits",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1235,6 +1342,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "key": {
           "name": "key",
           "type": "text",
@@ -1267,7 +1380,7 @@
           "name": "trees_one_primary_idx",
           "columns": [
             {
-              "expression": "is_primary",
+              "expression": "wiki_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1280,11 +1393,84 @@
           "with": {}
         }
       },
+      "foreignKeys": {
+        "trees_wiki_id_wikis_id_fk": {
+          "name": "trees_wiki_id_wikis_id_fk",
+          "tableFrom": "trees",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "trees_wiki_key_unique": {
+          "name": "trees_wiki_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "wiki_id",
+            "key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.wikis": {
+      "name": "wikis",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "trees_key_unique": {
-          "name": "trees_key_unique",
+        "wikis_key_unique": {
+          "name": "wikis_key_unique",
           "nullsNotDistinct": false,
           "columns": [
             "key"

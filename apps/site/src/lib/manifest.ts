@@ -1,4 +1,4 @@
-import type { ManifestPage, ManifestTree, PublicManifest } from "@wiki/shared";
+import { wikiOrigin, type ManifestPage, type ManifestTree, type PublicManifest, type WikiManifest } from "@wiki/shared";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -14,21 +14,38 @@ export function loadManifest(): Promise<PublicManifest> {
   return cached;
 }
 
+/** 公開サイトのドメインの共通部分。wiki は `{key}.{SITE_BASE_DOMAIN}` で公開する。 */
+export const SITE_BASE_DOMAIN = process.env.SITE_BASE_DOMAIN ?? "localhost:4321";
+
+/**
+ * 1つの wiki のビルドに使うもの。ページはすべて `/[wiki]/...` の下にあり、
+ * ほかの wiki の内容には触れない（wiki ごとのディレクトリに出力し、Worker が Host で振り分ける）。
+ */
 export type SiteData = {
-  manifest: PublicManifest;
+  wiki: WikiManifest;
+  /** この wiki の公開サイトのオリジン。canonical・RSS・サイトマップに使う */
+  origin: string;
   pagesById: Map<string, ManifestPage>;
+  /** 公開ページの id → 正規パス（本文中の内部リンクの解決に使う） */
+  publicPaths: Map<string, string>;
   primaryTree: ManifestTree | undefined;
 };
 
-export async function siteData(): Promise<SiteData> {
-  const manifest = await loadManifest();
-  return {
-    manifest,
-    pagesById: new Map(manifest.pages.map((p) => [p.id, p])),
-    primaryTree: manifest.trees.find((t) => t.isPrimary) ?? manifest.trees[0],
-  };
-}
-
-export const SITE_NAME = process.env.SITE_NAME ?? "wiki";
 /** ツリー（ページの階層）の一覧ページの呼び名。ツリーは1本なので、名前は固定にしている。 */
 export const TREE_LABEL = "ページ一覧";
+
+export async function allWikis(): Promise<WikiManifest[]> {
+  return (await loadManifest()).wikis;
+}
+
+export async function siteData(wikiKey: string): Promise<SiteData> {
+  const wiki = (await allWikis()).find((w) => w.key === wikiKey);
+  if (!wiki) throw new Error(`wiki ${wikiKey} is not in the manifest`);
+  return {
+    wiki,
+    origin: wikiOrigin(wiki.key, SITE_BASE_DOMAIN),
+    pagesById: new Map(wiki.pages.map((p) => [p.id, p])),
+    publicPaths: new Map(wiki.pages.map((p) => [p.id, p.path])),
+    primaryTree: wiki.trees.find((t) => t.isPrimary) ?? wiki.trees[0],
+  };
+}
