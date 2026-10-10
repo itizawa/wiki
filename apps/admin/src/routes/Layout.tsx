@@ -12,9 +12,9 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { ShortcutGuide } from "../components/ShortcutGuide";
 import { Sidebar } from "../components/Sidebar";
 import { Muted, Section } from "../components/ui";
+import { ShortcutGuide } from "../components/ShortcutGuide";
 import { api, ApiError } from "../lib/api";
 import { usePersistentState } from "../lib/storage";
 
