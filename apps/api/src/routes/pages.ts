@@ -1,17 +1,19 @@
 import {
   createPageInput,
   newPageId,
+  savePageDraftInput,
   savePageInput,
   setWorkflowInput,
   type CreatePageInput,
   type PageDetail,
+  type PageDraft,
   type PageSummary,
   type PageVersion,
 } from "@wiki/shared";
 import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
+import { pageDrafts, pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
@@ -20,6 +22,7 @@ import { parseJson } from "../validation";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
+type DraftRow = typeof pageDrafts.$inferSelect;
 
 const toSummary = (p: PageRow): PageSummary => ({
   id: p.id,
@@ -45,6 +48,15 @@ const toVersion = (v: VersionRow): PageVersion => ({
   authorType: v.authorType,
   createdAt: v.createdAt.toISOString(),
 });
+
+const toDraft = (d: DraftRow): PageDraft => ({
+  baseVersionId: d.baseVersionId,
+  title: d.title,
+  bodyMd: d.bodyMd,
+  updatedAt: d.updatedAt.toISOString(),
+});
+
+const ownDraft = (pageId: string, email: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.authorEmail, email));
 
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
 async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
@@ -138,6 +150,8 @@ export const pageRoutes = new Hono<AppEnv>()
           headVersionId: page.headVersionId,
         });
       }
+      // 版として残したら、自分の下書きは要らない（変更が無く版を作らないときも、下書きは head と同じなので消す）
+      await tx.delete(pageDrafts).where(ownDraft(id, c.get("adminEmail")));
       const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
       if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
 
@@ -158,6 +172,49 @@ export const pageRoutes = new Hono<AppEnv>()
       await replaceLinks(tx, wikiId, id, input.bodyMd);
     });
     return c.json(await getDetail(db, wikiId, id));
+  })
+  .get("/:id/draft", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    await findLivePage(db, c.get("wiki").id, id);
+    const [draft] = await db.select().from(pageDrafts).where(ownDraft(id, c.get("adminEmail")));
+    return c.json({ draft: draft ? toDraft(draft) : null });
+  })
+  .put("/:id/draft", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    const email = c.get("adminEmail");
+    const input = await parseJson(c, savePageDraftInput);
+    const draft = await db.transaction(async (tx) => {
+      const page = await findLivePage(tx, c.get("wiki").id, id, true);
+      // 別のタブや人が先に版を作っていたら、その版を知らないまま書いた下書きでは上書きしない
+      if (page.headVersionId !== input.baseVersionId) {
+        throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
+          headVersionId: page.headVersionId,
+        });
+      }
+      // head と同じ内容に戻したら、下書きは無いのと同じ
+      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+      if (head!.title === input.title && head!.bodyMd === input.bodyMd) {
+        await tx.delete(pageDrafts).where(ownDraft(id, email));
+        return null;
+      }
+      const values = { baseVersionId: input.baseVersionId, title: input.title, bodyMd: input.bodyMd, updatedAt: new Date() };
+      const [row] = await tx
+        .insert(pageDrafts)
+        .values({ pageId: id, authorEmail: email, ...values })
+        .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.authorEmail], set: values })
+        .returning();
+      return toDraft(row!);
+    });
+    return c.json({ draft });
+  })
+  .delete("/:id/draft", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    await findLivePage(db, c.get("wiki").id, id);
+    await db.delete(pageDrafts).where(ownDraft(id, c.get("adminEmail")));
+    return c.json({ draft: null });
   })
   .delete("/:id", async (c) => {
     const { db } = c.get("deps");

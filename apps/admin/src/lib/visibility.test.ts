@@ -9,7 +9,6 @@ const data = {
       id: "t",
       key: "main",
       name: "main",
-      isPublic: true,
       isPrimary: true,
       nodes: [
         { nodeId: "a", pageId: "a", parentNodeId: null, position: "a0" },

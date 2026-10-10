@@ -72,7 +72,7 @@ function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
 /** 1つの wiki にツリーは1本（primary）だけを扱う。複数ツリー時代の行が残っていても参照しない。 */
 export async function getPrimaryTree(db: Db, wikiId: string): Promise<TreeMeta> {
   const [tree] = await db
-    .select({ id: trees.id, key: trees.key, name: trees.name, isPublic: trees.isPublic, isPrimary: trees.isPrimary })
+    .select({ id: trees.id, key: trees.key, name: trees.name, isPrimary: trees.isPrimary })
     .from(trees)
     .where(and(eq(trees.wikiId, wikiId), eq(trees.isPrimary, true)));
   if (!tree) throw new Error("primary tree is missing; run bootstrapStructure first");
@@ -235,7 +235,7 @@ function describeOps(ops: StructureOp[]): string {
 /** wiki に primary ツリー（空）と main ブランチを作る。トランザクション内で、まだ無い wiki に対して呼ぶ。 */
 export async function createStructure(tx: Db, wikiId: string): Promise<void> {
   const treeId = newTreeId();
-  await tx.insert(trees).values({ id: treeId, wikiId, key: "main", name: "メイン", isPublic: true, isPrimary: true });
+  await tx.insert(trees).values({ id: treeId, wikiId, key: "main", name: "メイン", isPrimary: true });
   const state: StructureState = { trees: { [treeId]: { treeId, nodes: [] } } };
   const commitId = await writeCommit(tx, {
     wikiId,

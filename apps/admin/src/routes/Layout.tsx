@@ -1,4 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
+import { Plus } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -85,7 +85,7 @@ export function Home() {
           {session.isOwner ? (
             <>
               <Muted>wiki を作ると、ページを書いて公開できるようになります。アーカイブした wiki は、作成の画面から元に戻せます。</Muted>
-              <ButtonLink to="/wikis" variant="contained" size="medium" startIcon={<AddIcon />}>
+              <ButtonLink to="/wikis" variant="contained" size="medium" startIcon={<Plus size={18} />}>
                 wiki を作成する
               </ButtonLink>
             </>
