@@ -1,6 +1,6 @@
 ---
 import s from "./Article.module.css";
-import { renderMarkdown } from "../lib/markdown";
+import { renderArticle } from "../lib/markdown";
 
 interface Props {
   title: string;
@@ -14,7 +14,10 @@ interface Props {
 const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
-const html = renderMarkdown(bodyMd, { publicPaths, sponsored });
+const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored });
+// 見出しが2つ以上あるときだけ目次を出す。いちばん浅い見出しを左端に揃える
+const showToc = headings.length >= 2;
+const minDepth = Math.min(...headings.map((h) => h.depth));
 const fmt = (iso: string) =>
   new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "long" }).format(new Date(iso));
 const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
@@ -27,5 +30,47 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
     {sponsored && <span class={s.adNotice}>広告を含みます</span>}
   </div>
+  {
+    showToc && (
+      <nav class={s.toc} aria-label="目次" data-pagefind-ignore>
+        <details open>
+          <summary>目次</summary>
+          <ol>
+            {headings.map((h) => (
+              <li style={`--indent: ${h.depth - minDepth}`}>
+                <a href={`#${h.id}`}>{h.text}</a>
+              </li>
+            ))}
+          </ol>
+        </details>
+      </nav>
+    )
+  }
   <div class={s.body} set:html={html} />
 </article>
+
+<script>
+  // コードブロックの右上に「コピー」ボタンを足す（クリップボードが使えない環境では足さない）
+  if (navigator.clipboard) {
+    for (const pre of document.querySelectorAll<HTMLPreElement>("article pre")) {
+      const wrap = document.createElement("div");
+      wrap.dataset.codeBlock = "";
+      pre.replaceWith(wrap);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.codeCopy = "";
+      button.textContent = "コピー";
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(pre.textContent ?? "");
+          button.textContent = "コピーしました";
+        } catch {
+          button.textContent = "コピーできませんでした";
+        }
+        setTimeout(() => (button.textContent = "コピー"), 2000);
+      });
+      // 読み上げとキーボード操作で、コードより先にボタンに着くようにする
+      wrap.append(button, pre);
+    }
+  }
+</script>

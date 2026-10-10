@@ -17,10 +17,13 @@ import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
+import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import SearchIcon from "@mui/icons-material/Search";
+import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
@@ -37,8 +40,10 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
 import { useMemo, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
+import { useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
+import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted, RouterLink } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
@@ -64,7 +69,14 @@ const rowSx = {
 const ellipsis = { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
 /** 左サイドバー：検索、画面の切り替え、ドキュメントのツリー。 */
-export function Sidebar(props: { email: string; onCollapse?: () => void; onNavigate?: () => void; onLogout: () => void }) {
+export function Sidebar(props: {
+  email: string;
+  onCollapse?: () => void;
+  onNavigate?: () => void;
+  /** コマンドメニュー（⌘K）を開く */
+  onOpenCommands: () => void;
+  onLogout: () => void;
+}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
@@ -102,7 +114,7 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
     <Box
       component="nav"
       aria-label="サイドバー"
-      sx={{ width: SIDEBAR_WIDTH, height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}
+      sx={{ width: `var(--sidebar-width, ${SIDEBAR_WIDTH}px)`, height: "100%", display: "flex", flexDirection: "column", bgcolor: "background.default" }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, pt: 1.5, pb: 1 }}>
         <Box
@@ -133,7 +145,7 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
           </span>
         </Tooltip>
         {props.onCollapse && (
-          <Tooltip title="サイドバーを閉じる">
+          <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
               <KeyboardDoubleArrowLeftIcon fontSize="small" />
             </IconButton>
@@ -162,6 +174,15 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
           <SearchResults q={q.trim()} onNavigate={props.onNavigate} />
         ) : (
           <>
+            <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
+              <KeyboardCommandKeyIcon fontSize="small" />
+              <Box component="span" sx={ellipsis}>
+                コマンドメニュー
+              </Box>
+              <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
+                ⌘K
+              </Box>
+            </Box>
             <NavItem to="/" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
               すべてのページ
             </NavItem>
@@ -174,6 +195,8 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
             <NavItem to="/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴
             </NavItem>
+
+            {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 
             <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
               <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
@@ -223,6 +246,11 @@ export function Sidebar(props: { email: string; onCollapse?: () => void; onNavig
         <Muted sx={ellipsis} title={props.email}>
           {props.email}
         </Muted>
+        <Tooltip title="キーボードショートカットと記法 (?)">
+          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide}>
+            <KeyboardOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="ログアウト">
           <IconButton size="small" aria-label="ログアウト" onClick={props.onLogout}>
             <LogoutIcon fontSize="small" />
@@ -241,6 +269,29 @@ function NavItem(props: { to: "/" | "/calendar" | "/rules" | "/history"; exact?:
         {props.children}
       </Box>
     </RouterLink>
+  );
+}
+
+/** スターを付けたページ。ツリーのどこにあっても、ここからすぐ開ける。1つも無ければ何も出さない。 */
+function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]; onNavigate?: () => void }) {
+  const { ids } = useStars();
+  // 削除されたページのスターは出さない
+  const starred = ids.flatMap((id) => (pages[id] ? [pages[id]] : []));
+  if (starred.length === 0) return null;
+  return (
+    <Box component="section" aria-label="スター">
+      <Typography variant="caption" sx={{ display: "block", mt: 2.5, mb: 0.5, pl: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
+        スター
+      </Typography>
+      {starred.map((p) => (
+        <RouterLink key={p.id} to="/pages/$pageId" params={{ pageId: p.id }} onClick={onNavigate} underline="none" sx={rowSx}>
+          <StarIcon sx={{ fontSize: 18, color: "warning.main" }} />
+          <Box component="span" sx={ellipsis}>
+            {p.title}
+          </Box>
+        </RouterLink>
+      ))}
+    </Box>
   );
 }
 

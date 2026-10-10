@@ -6,6 +6,9 @@
   --border: #e4e6ea;
   --accent: #2257c5;
   --mark: #fff3a8;
+  --ok: #1a7f37;
+  --warn: #8a5a00;
+  --danger: #c0362c;
   font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -18,6 +21,9 @@
     --border: #2c3038;
     --accent: #7aa5ff;
     --mark: #5b4f10;
+    --ok: #57c27a;
+    --warn: #e3b341;
+    --danger: #ff7b72;
   }
 }
 * { box-sizing: border-box; }
