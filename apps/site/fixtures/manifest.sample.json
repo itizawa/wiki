@@ -29,7 +29,6 @@
       "trees": [
         {
           "key": "main",
-          "name": "メイン",
           "isPrimary": true,
           "nodes": [
             {
@@ -83,7 +82,6 @@
       "trees": [
         {
           "key": "main",
-          "name": "メイン",
           "isPrimary": true,
           "nodes": [
             {
@@ -102,7 +100,6 @@
         },
         {
           "key": "by-theme",
-          "name": "テーマ別",
           "isPrimary": false,
           "nodes": [
             {

@@ -250,12 +250,12 @@ describe("structure commits", () => {
     expect(rows.rows.map((r) => r.key)).toEqual(["main"]);
   });
 
-  it("renames the tree", async () => {
+  it("has no way to change the tree settings", async () => {
     ctx = await setup();
     const s = await structure();
     const res = await ctx.call("PATCH", `${W}/trees/${s.trees[0].id}`, { name: "ブログ" });
-    expect(res.status).toBe(200);
-    expect((await structure()).trees[0].name).toBe("ブログ");
+    expect(res.status).toBe(404);
+    expect((await structure()).trees[0]).not.toHaveProperty("isPublic");
   });
 
   it("adopts live pages that are not in the tree to the top level", async () => {
