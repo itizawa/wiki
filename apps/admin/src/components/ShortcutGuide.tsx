@@ -90,6 +90,9 @@ export function shortcutGroups(mod: string): Group[] {
 
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
+/** ショートカットの修飾キーの表示。Mac なら ⌘、それ以外は Ctrl。 */
+export const modKey = () => (isMac() ? "⌘" : "Ctrl");
+
 /** キーボードショートカットと Markdown 記法の一覧。「?」か、サイドバー下のキーボードのボタンで開く。 */
 export function ShortcutGuide() {
   const open = useSyncExternalStore(subscribe, () => isOpen);
@@ -117,7 +120,7 @@ export function ShortcutGuide() {
         </Tooltip>
       </DialogTitle>
       <DialogContent>
-        {shortcutGroups(isMac() ? "⌘" : "Ctrl").map((group) => (
+        {shortcutGroups(modKey()).map((group) => (
           <Box key={group.title} component="section" sx={{ mb: 2.5, "&:last-of-type": { mb: 0 } }}>
             <Typography variant="subtitle2" component="h3" sx={{ mb: 0.5, color: "text.secondary" }}>
               {group.title}

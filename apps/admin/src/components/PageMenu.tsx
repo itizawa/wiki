@@ -1,6 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { Copy, Download, Ellipsis, History, LayoutTemplate, Trash2 } from "lucide-react";
+import { Copy, Download, Ellipsis, History, LayoutTemplate, Save, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -14,14 +14,23 @@ import { api, errorMessage } from "../lib/api";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
+import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
 import { Mono, Muted } from "./ui";
 
 /**
- * 編集画面の「…」メニュー。版履歴を開く・いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す・テンプレートにする・ページを削除する。
- * 下にページのパスを出す。
+ * 編集画面の「…」メニュー。いまの内容を版として残す・版履歴を開く・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * テンプレートにする・ページを削除する。下にページのパスを出す。
  */
-export function PageMenu(props: { title: string; bodyMd: string; path: string; onOpenHistory: () => void; onDelete: () => void }) {
+export function PageMenu(props: {
+  title: string;
+  bodyMd: string;
+  path: string;
+  /** いまの内容を版として残す（⌘S と同じ）。結果の知らせは、呼ばれた側が出す */
+  onKeepVersion: () => void;
+  onOpenHistory: () => void;
+  onDelete: () => void;
+}) {
   const { title, bodyMd } = props;
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -64,10 +73,14 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
   };
 
   // コマンドメニュー（⌘K）からも同じ操作を呼べるようにする。結果の知らせは、ここの Snackbar に出す
-  const actions = useRef({ copy, download });
-  actions.current = { copy, download };
+  const actions = useRef({ copy, download, keepVersion: props.onKeepVersion });
+  actions.current = { copy, download, keepVersion: props.onKeepVersion };
   useEffect(() => {
-    setPageActions({ copyMarkdown: () => void actions.current.copy(), downloadMarkdown: () => actions.current.download() });
+    setPageActions({
+      copyMarkdown: () => void actions.current.copy(),
+      downloadMarkdown: () => actions.current.download(),
+      keepVersion: () => actions.current.keepVersion(),
+    });
     return () => setPageActions(null);
   }, []);
 
@@ -79,6 +92,20 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            props.onKeepVersion();
+          }}
+        >
+          <ListItemIcon>
+            <Save size={18} />
+          </ListItemIcon>
+          <ListItemText>いまの内容を版として残す</ListItemText>
+          <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
+            {modKey()}S
+          </Muted>
+        </MenuItem>
         <MenuItem
           onClick={() => {
             setAnchor(null);

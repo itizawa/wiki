@@ -46,8 +46,17 @@ export const actionLabel = (a: Pick<ScheduledAction, "actionType" | "targetVisib
       ? "非公開化"
       : "マージ";
 
-/** 公開の設定：公開/非公開化、限定公開URL、予約。編集画面の「公開」ポップオーバーの中に出す。 */
-export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean }) {
+/**
+ * まだ版になっていない変更があれば、いまの内容を版にしてから、その版を持つページを返す（無ければ、いまのページをそのまま返す）。
+ * 版を作れなかったら例外を投げる（公開・予約・承認は行わない）。
+ */
+export type EnsureVersion = () => Promise<PageDetail>;
+
+/**
+ * 公開の設定：公開/非公開化、限定公開URL、予約。編集画面の「公開」ポップオーバーの中に出す。
+ * 公開と予約は版に対して行う。まだ版になっていない変更（`dirty`）があれば、押したときにいまの内容を版にし、その版を使う。
+ */
+export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail; dirty: boolean; ensureVersion: EnsureVersion }) {
   const qc = useQueryClient();
   const schedule = useQuery({ queryKey: ["schedule", page.id], queryFn: () => api.listSchedule({ pageId: page.id }) });
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
@@ -84,9 +93,6 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
         ? origin + unlistedPath(page.unlistedKey)
         : null;
   const pending = (schedule.data?.actions ?? []).filter((a) => a.status === "scheduled" || a.status === "failed" || a.status === "running");
-
-  // 無効なボタンはホバーを受けないので、理由は外側の span に出す
-  const needsSave = dirty ? "先に版として残してください" : "";
 
   return (
     <Box component="section" aria-label="公開">
@@ -134,12 +140,13 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
               限定公開（URLを知る人のみ）{!canPick("unlisted") && `（${parentReason}選べません）`}
             </MenuItem>
           </TextField>
-          <Tooltip title={needsSave || (blockedByParent ? `${parentReason}公開できません` : "")}>
+          {/* 無効なボタンはホバーを受けないので、理由は外側の span に出す */}
+          <Tooltip title={blockedByParent ? `${parentReason}公開できません` : ""}>
             <span>
               <Button
                 variant="contained"
                 size="medium"
-                disabled={dirty || action.isPending || blockedByParent || blockedByDescendants}
+                disabled={action.isPending || blockedByParent || blockedByDescendants}
                 onClick={async () => {
                   if (applyToDescendants && impact.changed > 0) {
                     const ok = await confirmDialog({
@@ -150,14 +157,15 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
                     });
                     if (!ok) return;
                   }
-                  action.mutate(() => api.publish(page.id, { versionId: page.headVersionId, visibility, applyToDescendants }));
+                  action.mutate(async () => api.publish(page.id, { versionId: (await ensureVersion()).headVersionId, visibility, applyToDescendants }));
                 }}
               >
-                {published ? "最新版で公開し直す" : "今すぐ公開"}
+                {published ? (dirty ? "いまの内容で公開し直す" : "最新版で公開し直す") : "今すぐ公開"}
               </Button>
             </span>
           </Tooltip>
         </Row>
+        {dirty && !blockedByParent && <Muted>いまの内容を版として残し、その版を公開します。</Muted>}
         {publishedDescendants > 0 && !blockedByParent && (
           <FormControlLabel
             control={<Checkbox size="small" checked={applyToDescendants} onChange={(e) => setApplyToDescendants(e.target.checked)} />}
@@ -224,26 +232,32 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
             <MenuItem value="unpublish_page">非公開化を予約</MenuItem>
           </TextField>
           <TextField type="datetime-local" label="日時（JST）" fullWidth value={runAt} onChange={(e) => setRunAt(e.target.value)} />
-          <Tooltip title={needsSave}>
-            <span>
-              <Button
-                variant="outlined"
-                disabled={dirty || action.isPending || !runAt}
-                onClick={() =>
-                  action.mutate(() =>
-                    api.createSchedule(
-                      scheduleKind === "publish_page"
-                        ? { actionType: "publish_page", pageId: page.id, versionId: page.headVersionId, targetVisibility: visibility, runAt: jstLocalToIso(runAt) }
-                        : { actionType: "unpublish_page", pageId: page.id, runAt: jstLocalToIso(runAt) },
-                    ),
-                  )
-                }
-              >
-                予約する
-              </Button>
-            </span>
-          </Tooltip>
-          <Muted>予約時点の版が公開されます。予約後の編集は含まれません。反映は予約時刻から数分以内です。</Muted>
+          <Button
+            variant="outlined"
+            disabled={action.isPending || !runAt}
+            onClick={() =>
+              action.mutate(async () =>
+                api.createSchedule(
+                  scheduleKind === "publish_page"
+                    ? {
+                        actionType: "publish_page",
+                        pageId: page.id,
+                        versionId: (await ensureVersion()).headVersionId,
+                        targetVisibility: visibility,
+                        runAt: jstLocalToIso(runAt),
+                      }
+                    : { actionType: "unpublish_page", pageId: page.id, runAt: jstLocalToIso(runAt) },
+                ),
+              )
+            }
+          >
+            予約する
+          </Button>
+          <Muted>
+            {scheduleKind === "publish_page" &&
+              `${dirty ? "いまの内容を版として残し、その版を予約します。" : "予約時点の版が公開されます。"}予約後の編集は含まれません。`}
+            反映は予約時刻から数分以内です。
+          </Muted>
         </Stack>
         {action.error && <Alert severity="error">{errorMessage(action.error)}</Alert>}
 

@@ -1,6 +1,7 @@
 import type {
   PageDetail,
   PageDraft,
+  SavePageDraftResult,
   PageViews,
   PageTemplate,
   PageSummary,
@@ -68,7 +69,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 /** via：外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
-export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdAt"> & { via: string | null };
+export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "keep" | "createdAt"> & { via: string | null };
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
@@ -118,7 +119,7 @@ export const api = {
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
   getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
   saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
-    request<{ draft: PageDraft | null }>("PUT", w(`/pages/${id}/draft`), input),
+    request<SavePageDraftResult>("PUT", w(`/pages/${id}/draft`), input),
   discardDraft: (id: string) => request<{ draft: null }>("DELETE", w(`/pages/${id}/draft`)),
   /** 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る */
   uploadImage: async (file: Blob): Promise<{ url: string }> => {
