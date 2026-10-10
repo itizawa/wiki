@@ -10,16 +10,30 @@
 .body :global(.callout[data-callout="tip"]) { --callout: var(--ok); }
 .body :global(.callout[data-callout="warning"]) { --callout: var(--warn); }
 .body :global(.callout[data-callout="caution"]) { --callout: var(--danger); }
+/* トグル（+++）。見出しの行を押すと開閉する */
+.body :global(details.toggle) { margin: 12px 0; }
+.body :global(details.toggle > summary) { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.body :global(details.toggle > summary:hover) { color: var(--accent); }
+.body :global(details.toggle > :not(summary)) { margin-left: 20px; }
 /* Markdownから生成した本文（クラスを付けられないので :global で当てる） */
 .body :global(pre) { overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+/* 色分けしたコード（Shiki）。ライト・ダークの色を両方持っていて、OS の設定で切り替える。背景はサイトの色のまま */
+.body :global(.shiki span) { color: var(--shiki-light); }
+@media (prefers-color-scheme: dark) {
+  .body :global(.shiki span) { color: var(--shiki-dark); }
+}
+/* 「折り返す」を押したコード。長い行を横スクロールにせず、枠の中で折り返す */
+.body :global([data-code-wrap] pre) { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* コードブロックの「コピー」ボタン（スクリプトが足す要素なので data 属性で当てる） */
 .body :global([data-code-block]) { position: relative; }
-.body :global([data-code-copy]) {
-  position: absolute; top: 6px; right: 6px; padding: 2px 10px;
+.body :global([data-code-tools]) { position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; }
+.body :global([data-code-tools] button) {
+  padding: 2px 10px;
   font: inherit; font-size: 0.75rem; line-height: 1.6; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
 }
-.body :global([data-code-copy]:hover) { border-color: var(--muted); }
+.body :global([data-code-tools] button:hover) { border-color: var(--muted); }
+.body :global([data-code-tools] button[aria-pressed="true"]) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .body :global(img) { max-width: 100%; }
 .body :global(table) { border-collapse: collapse; }
 .body :global(th),

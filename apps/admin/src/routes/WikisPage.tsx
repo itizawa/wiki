@@ -21,9 +21,10 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { checkWikiKey, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
+import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
 import { useState } from "react";
 import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
+import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useSession, useWikis } from "./Layout";
@@ -36,12 +37,12 @@ export function keyChecks(key: string, taken: readonly string[]): { label: strin
   ];
 }
 
-/** wiki の一覧・作成・名前の変更・アーカイブ・戻す。オーナーにだけ出す。 */
+/** wiki の一覧・作成・表示名と画像の変更・アーカイブ・戻す。オーナーにだけ出す。 */
 export function WikisPage() {
   const session = useSession();
   const wikis = useWikis();
   const [done, setDone] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<WikiSummary | null>(null);
+  const [editing, setEditing] = useState<WikiSummary | null>(null);
   const [archiving, setArchiving] = useState<WikiSummary | null>(null);
 
   const all = wikis.data?.wikis ?? [];
@@ -94,12 +95,17 @@ export function WikisPage() {
                   {active.map((w) => (
                     <TableRow key={w.key}>
                       <TableCell>
-                        <RouterLink to="/w/$wikiKey" params={{ wikiKey: w.key }} sx={{ fontWeight: 600 }}>
-                          {w.name}
-                        </RouterLink>
-                        <Muted>
-                          <Mono>{w.key}</Mono>
-                        </Muted>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                          <WikiIcon wiki={w} size={32} />
+                          <div>
+                            <RouterLink to="/w/$wikiKey" params={{ wikiKey: w.key }} sx={{ fontWeight: 600 }}>
+                              {w.name}
+                            </RouterLink>
+                            <Muted>
+                              <Mono>{w.key}</Mono>
+                            </Muted>
+                          </div>
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <SiteLink origin={w.origin} />
@@ -108,8 +114,8 @@ export function WikisPage() {
                       <TableCell>
                         {/* 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く */}
                         <Row sx={{ flexWrap: "nowrap" }}>
-                          <Button variant="outlined" onClick={() => setRenaming(w)}>
-                            名前を変更
+                          <Button variant="outlined" onClick={() => setEditing(w)}>
+                            表示名と画像
                           </Button>
                           <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3 }}>
                             アーカイブ
@@ -127,13 +133,17 @@ export function WikisPage() {
 
       {session.isOwner && archived.length > 0 && <ArchivedWikis wikis={archived} />}
 
-      {renaming && (
-        <RenameDialog
-          wiki={renaming}
-          onClose={() => setRenaming(null)}
-          onDone={(w) => {
-            setRenaming(null);
-            setDone(`表示名を「${w.name}」に変更しました。公開サイトには、次のビルドで反映されます。`);
+      {editing && (
+        <EditDialog
+          wiki={editing}
+          onClose={() => setEditing(null)}
+          onDone={(before, w) => {
+            setEditing(null);
+            setDone(
+              before.name !== w.name
+                ? `「${w.name}」を保存しました。表示名は、公開サイトに次のビルドで反映されます。`
+                : `「${w.name}」の画像を保存しました。`,
+            );
           }}
         />
       )}
@@ -258,28 +268,41 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
   );
 }
 
-function RenameDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () => void; onDone: (wiki: WikiSummary) => void }) {
+/** 画像の URL の入力欄の確かめ。空なら「画像なし」。 */
+export function iconUrlProblem(value: string): string | null {
+  const v = value.trim();
+  if (v === "") return null;
+  if (v.length > WIKI_ICON_URL_MAX) return `URL が長すぎます（${WIKI_ICON_URL_MAX}文字まで）`;
+  if (!isHttpUrl(v)) return "http:// か https:// で始まる URL を入れてください";
+  return null;
+}
+
+function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () => void; onDone: (before: WikiSummary, after: WikiSummary) => void }) {
   const qc = useQueryClient();
   const [name, setName] = useState(wiki.name);
-  const rename = useMutation({
-    mutationFn: () => api.renameWiki(wiki.key, name.trim()),
+  const [iconUrl, setIconUrl] = useState(wiki.iconUrl ?? "");
+  const nextIcon = iconUrl.trim() === "" ? null : iconUrl.trim();
+  const problem = iconUrlProblem(iconUrl);
+  const changed = name.trim() !== wiki.name || nextIcon !== wiki.iconUrl;
+  const save = useMutation({
+    mutationFn: () => api.updateWiki(wiki.key, { name: name.trim(), iconUrl: nextIcon }),
     onSuccess: async (w) => {
       await qc.invalidateQueries({ queryKey: ["wikis"] });
-      onDone(w);
+      onDone(wiki, w);
     },
   });
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="xs">
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <Box
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim() && !rename.isPending) rename.mutate();
+          if (name.trim() && !problem && changed && !save.isPending) save.mutate();
         }}
       >
-        <DialogTitle>表示名を変更</DialogTitle>
+        <DialogTitle>表示名と画像</DialogTitle>
         <DialogContent>
-          <Stack spacing={1.5} sx={{ pt: 1 }}>
+          <Stack spacing={2.5} sx={{ pt: 1 }}>
             <TextField
               label="表示名"
               value={name}
@@ -289,15 +312,38 @@ function RenameDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: (
               helperText={`公開サイトの名前になります。key（${wiki.key}）と公開 URL は変わりません。`}
               slotProps={{ htmlInput: { maxLength: 100 } }}
             />
-            {rename.error && <Alert severity="error">{errorMessage(rename.error)}</Alert>}
+            <Box>
+              <TextField
+                label="画像の URL（任意）"
+                value={iconUrl}
+                onChange={(e) => setIconUrl(e.target.value)}
+                fullWidth
+                placeholder="https://example.com/icon.png"
+                error={problem !== null}
+                helperText={problem ?? "サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。空にすると頭文字に戻ります。"}
+                slotProps={{ htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false }, inputLabel: { shrink: true } }}
+              />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1.5 }}>
+                <Muted>見え方</Muted>
+                {/* 入力中の URL で、実際に出る形を見せる（読み込めなければ頭文字になる） */}
+                <WikiIcon key={nextIcon ?? ""} wiki={{ name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
+                <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={40} />
+                {iconUrl !== "" && (
+                  <Button variant="text" onClick={() => setIconUrl("")} sx={{ ml: "auto" }}>
+                    画像を外す
+                  </Button>
+                )}
+              </Box>
+            </Box>
+            {save.error && <Alert severity="error">{errorMessage(save.error)}</Alert>}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button variant="text" onClick={onClose}>
             変更しない
           </Button>
-          <Button type="submit" variant="contained" disabled={!name.trim() || name.trim() === wiki.name || rename.isPending}>
-            表示名を保存
+          <Button type="submit" variant="contained" disabled={!name.trim() || problem !== null || !changed || save.isPending}>
+            保存する
           </Button>
         </DialogActions>
       </Box>
@@ -385,10 +431,15 @@ function ArchivedWikis({ wikis }: { wikis: WikiSummary[] }) {
           {wikis.map((w) => (
             <TableRow key={w.key}>
               <TableCell>
-                <Box sx={{ fontWeight: 600 }}>{w.name}</Box>
-                <Muted>
-                  <Mono>{w.key}</Mono>
-                </Muted>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                  <WikiIcon wiki={w} size={32} />
+                  <div>
+                    <Box sx={{ fontWeight: 600 }}>{w.name}</Box>
+                    <Muted>
+                      <Mono>{w.key}</Mono>
+                    </Muted>
+                  </div>
+                </Box>
               </TableCell>
               <TableCell>{formatDateTime(w.archivedAt!)}</TableCell>
               <TableCell>
