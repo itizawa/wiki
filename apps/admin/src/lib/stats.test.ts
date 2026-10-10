@@ -12,6 +12,10 @@ describe("本文の文字数", () => {
     expect(textStats("```ts\nab\n```").chars).toBe(2);
   });
 
+  it("トグルの印（+++）は数えない（見出しと中身は数える）", () => {
+    expect(textStats("+++ 質問\n\n答え\n\n+++").chars).toBe(4);
+  });
+
   it("コールアウトの印の行は数えない（中身は数える）", () => {
     expect(textStats("> [!NOTE]\n> 補足です").chars).toBe("補足です".length);
     expect(textStats("> [!warning]\n> 注意").chars).toBe("注意".length);

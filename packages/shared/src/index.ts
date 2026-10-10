@@ -12,4 +12,5 @@ export * from "./structure/apply";
 export * from "./structure/validate";
 export * from "./structure/diff";
 export * from "./callout";
+export * from "./toggle";
 export * from "./wiki";

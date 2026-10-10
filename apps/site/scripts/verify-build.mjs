@@ -37,6 +37,11 @@ check(top.join() === ["_astro", "_headers", "favicon.svg", "notes", "wiki"].join
 const tPage = await read("wiki/t/by-theme/aaaaaaaaa2.html");
 check(tPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "/t/ page has canonical to /p/ on the wiki's origin");
 
+check(
+  tPage.includes('<details class="toggle"><summary>コミットとは？</summary>') && tPage.includes("とぐるのなかみ"),
+  "a +++ toggle is rendered as <details> with its body in the page",
+);
+
 const unlisted = await read(`wiki/u/${key}/index.html`);
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
