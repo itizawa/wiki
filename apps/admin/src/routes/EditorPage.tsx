@@ -4,14 +4,10 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
-import List from "@mui/material/List";
-import ListItemButton from "@mui/material/ListItemButton";
 import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { pagePath, type PageDetail, type PageDraft } from "@wiki/shared";
-import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openFindBar } from "../editor/FindBar";
 import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
@@ -20,28 +16,23 @@ import { api, errorMessage } from "../lib/api";
 import { screenLink } from "../lib/wiki";
 import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
-import { usePersistentState } from "../lib/storage";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { PageMenu } from "../components/PageMenu";
-import { PublishPanel } from "../components/PublishPanel";
+import { PublishMenu } from "../components/PublishMenu";
 import { StarButton } from "../components/StarButton";
 import { Tooltip } from "../components/Tooltip";
-import { WorkflowPanel } from "../components/WorkflowPanel";
+import { VersionHistory } from "../components/VersionHistory";
+import { Muted } from "../components/ui";
 import { TemplatePicker } from "./TemplatePicker";
-import { Mono, Muted, Section, StatusChip } from "../components/ui";
-import { monoFont } from "../theme";
-import { visibilityLabel } from "./PagesPage";
 
 type Draft = { title: string; bodyMd: string };
-
-const VERSION_PANEL_ID = "version-history";
 
 /** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
 const UNTITLED = "無題";
 
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
 
-export function EditorPage({ pageId }: { pageId: string }) {
+export function EditorPage({ pageId, historyVersionId }: { pageId: string; historyVersionId: string | null }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
@@ -51,16 +42,10 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   /** 開いたときに続きから書けるようにした下書き。版として残すか破棄したら消す */
   const [restored, setRestored] = useState<PageDraft | null>(null);
-  const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
-  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
 
-  // タイトルの下の「版履歴を見る」から：パネルを開き、版履歴の位置までスクロールする
-  const [showHistory, setShowHistory] = useState(false);
-  useEffect(() => {
-    if (!showHistory || !panelOpen) return;
-    document.getElementById(VERSION_PANEL_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
-    setShowHistory(false);
-  }, [showHistory, panelOpen]);
+  // 版履歴の開閉と選んだ版は URL に持つ。開くときだけ履歴に積み（ブラウザの「戻る」で閉じる）、版の選び直しと閉じるときは積まない
+  const showVersion = (versionId: string | null, replace = false) =>
+    void navigate({ to: ".", search: versionId ? { history: versionId } : {}, replace });
 
   const save = useMutation({
     mutationFn: async (content: Draft) => {
@@ -123,6 +108,17 @@ export function EditorPage({ pageId }: { pageId: string }) {
     },
   });
 
+  const deletePage = async () => {
+    const ok = await confirmDialog({
+      title: `「${page.data?.title ?? ""}」を削除しますか？`,
+      body: `ツリーからも外れます。${page.data?.publishedVersionId ? "公開中のページなので、公開サイトからも見られなくなります。" : ""}この画面からは元に戻せません。`,
+      confirmLabel: "削除する",
+      cancelLabel: "削除しない",
+      danger: true,
+    });
+    if (ok) remove.mutate();
+  };
+
   const canSave = draft !== null && draft.title.trim() !== "" && dirty && !save.isPending;
 
   useEffect(() => {
@@ -139,7 +135,9 @@ export function EditorPage({ pageId }: { pageId: string }) {
   // 下書きの保存が済んでいないまま別のページへ移るときは、先に保存する。保存できなかったときだけ確認する（削除後の移動は除く）
   const unsynced = autosave.pending || autosave.saving;
   useBlocker({
-    shouldBlockFn: async () =>
+    // 同じページの中の移動（版履歴の開閉）では確かめない
+    shouldBlockFn: async ({ current, next }) =>
+      current.pathname !== next.pathname &&
       unsynced &&
       !removed.current &&
       !(await autosave.flush()) &&
@@ -186,7 +184,6 @@ export function EditorPage({ pageId }: { pageId: string }) {
         >
           <Breadcrumb pageId={pageId} title={draft.title} />
           <StarButton pageId={pageId} />
-          <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
           <Tooltip title="本文を検索・置換 (⌘F)">
             <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
               <Search size={18} />
@@ -199,10 +196,14 @@ export function EditorPage({ pageId }: { pageId: string }) {
               </Button>
             </Box>
           </Tooltip>
-          <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-            公開・履歴
-          </Button>
-          <PageMenu title={draft.title} bodyMd={draft.bodyMd} />
+          <PublishMenu page={p} dirty={dirty} />
+          <PageMenu
+            title={draft.title}
+            bodyMd={draft.bodyMd}
+            path={pagePath(p.id)}
+            onOpenHistory={() => showVersion(p.headVersionId)}
+            onDelete={() => void deletePage()}
+          />
         </Box>
 
         <Box sx={{ width: "100%", maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
@@ -259,10 +260,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
             <Button
               color="inherit"
               startIcon={<History size={18} />}
-              onClick={() => {
-                setPanelOpen(true);
-                setShowHistory(true);
-              }}
+              onClick={() => showVersion(p.headVersionId)}
               sx={{ color: "text.secondary" }}
             >
               版履歴を見る
@@ -279,66 +277,22 @@ export function EditorPage({ pageId }: { pageId: string }) {
         <EditingStats bodyMd={draft.bodyMd} />
       </Box>
 
-      {panelOpen && (
-        <Stack
-          component="aside"
-          aria-label="公開・履歴"
-          spacing={1.5}
-          sx={{
-            width: { xs: "100%", lg: 340 },
-            flexShrink: 0,
-            position: { xs: "fixed", lg: "sticky" },
-            inset: { xs: "48px 0 0 auto", lg: "auto" },
-            maxWidth: { xs: 380, lg: "none" },
-            top: { lg: 0 },
-            zIndex: 3,
-            height: { lg: "100vh" },
-            overflowY: "auto",
-            p: 1.5,
-            borderLeft: 1,
-            borderColor: "divider",
-            bgcolor: "background.default",
-          }}
-        >
-          <WorkflowPanel page={p} dirty={dirty} />
-          <PublishPanel page={p} dirty={dirty} />
-          <VersionPanel
-            pageId={pageId}
-            headVersionId={p.headVersionId}
-            selected={selectedVersion}
-            onSelect={setSelectedVersion}
-            current={draft}
-            onRestore={(v) => setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd })}
-          />
-          <Section>
-            <Stack spacing={1.5} sx={{ alignItems: "flex-start" }}>
-              <Typography variant="subtitle1" component="h3">
-                ページ
-              </Typography>
-              <Muted sx={{ wordBreak: "break-all" }}>
-                <Mono>{pagePath(p.id)}</Mono>
-              </Muted>
-              <Button
-                variant="outlined"
-                color="error"
-                disabled={remove.isPending}
-                onClick={async () => {
-                  const ok = await confirmDialog({
-                    title: `「${p.title}」を削除しますか？`,
-                    body: `ツリーからも外れます。${p.publishedVersionId ? "公開中のページなので、公開サイトからも見られなくなります。" : ""}この画面からは元に戻せません。`,
-                    confirmLabel: "削除する",
-                    cancelLabel: "削除しない",
-                    danger: true,
-                  });
-                  if (ok) remove.mutate();
-                }}
-              >
-                このページを削除…
-              </Button>
-              {remove.error && <Alert severity="error">{errorMessage(remove.error)}</Alert>}
-            </Stack>
-          </Section>
-        </Stack>
+      <VersionHistory
+        pageId={pageId}
+        headVersionId={p.headVersionId}
+        selected={historyVersionId}
+        onSelect={(id) => showVersion(id, true)}
+        onClose={() => showVersion(null, true)}
+        current={draft}
+        onRestore={(v) => {
+          setDraft({ ...draft, title: v.title, bodyMd: v.bodyMd });
+          showVersion(null, true);
+        }}
+      />
+      {remove.error && (
+        <Alert severity="error" sx={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 4 }}>
+          {errorMessage(remove.error)}
+        </Alert>
       )}
     </Box>
   );
@@ -421,78 +375,5 @@ function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
         {title || "無題"}
       </Box>
     </Muted>
-  );
-}
-
-function VersionPanel(props: {
-  pageId: string;
-  headVersionId: string;
-  selected: string | null;
-  onSelect: (id: string | null) => void;
-  current: Draft;
-  onRestore: (v: { title: string; bodyMd: string }) => void;
-}) {
-  const versions = useQuery({ queryKey: ["versions", props.pageId, props.headVersionId], queryFn: () => api.listVersions(props.pageId) });
-  const version = useQuery({
-    queryKey: ["version", props.pageId, props.selected],
-    queryFn: () => api.getVersion(props.pageId, props.selected!),
-    enabled: props.selected !== null,
-  });
-
-  return (
-    <Section id={VERSION_PANEL_ID} sx={{ scrollMarginTop: 12 }}>
-      <Typography variant="subtitle1" component="h3">
-        版履歴
-      </Typography>
-      <List dense disablePadding sx={{ maxHeight: 240, overflow: "auto", mx: -1 }}>
-        {versions.data?.versions.map((v, i) => (
-          <ListItemButton
-            key={v.id}
-            selected={props.selected === v.id}
-            onClick={() => props.onSelect(props.selected === v.id ? null : v.id)}
-            sx={{ px: 1, gap: 0.75, borderRadius: 1 }}
-          >
-            {formatDateTime(v.createdAt)}
-            {i === 0 && <StatusChip label="head" />}
-            {v.authorType === "ai" && <StatusChip label="AI" />}
-            {v.via && <StatusChip label={`${v.via} 経由`} />}
-          </ListItemButton>
-        ))}
-      </List>
-      {version.data && (
-        <Stack spacing={1.5} sx={{ mt: 1.5, minWidth: 0 }}>
-          <Muted>この版 → 編集中の内容 の差分</Muted>
-          <Diff before={`# ${version.data.title}\n\n${version.data.bodyMd}`} after={`# ${props.current.title}\n\n${props.current.bodyMd}`} />
-          <Button variant="outlined" onClick={() => props.onRestore(version.data!)}>
-            この版の内容をエディタに戻す
-          </Button>
-        </Stack>
-      )}
-    </Section>
-  );
-}
-
-function Diff({ before, after }: { before: string; after: string }) {
-  const parts = useMemo(() => diffLines(before, after), [before, after]);
-  if (parts.every((p) => !p.added && !p.removed)) return <Muted>差分はありません。</Muted>;
-  return (
-    <Box
-      component="pre"
-      sx={{ fontFamily: monoFont, fontSize: "0.8rem", maxHeight: 320, overflow: "auto", m: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-    >
-      {parts.map((p, i) => (
-        <Box
-          key={i}
-          component="span"
-          sx={{ display: "block", bgcolor: p.added ? "diff.added" : p.removed ? "diff.removed" : undefined, color: p.added || p.removed ? undefined : "text.secondary" }}
-        >
-          {p.value
-            .replace(/\n$/, "")
-            .split("\n")
-            .map((line) => `${p.added ? "+" : p.removed ? "-" : " "} ${line}`)
-            .join("\n")}
-        </Box>
-      ))}
-    </Box>
   );
 }
