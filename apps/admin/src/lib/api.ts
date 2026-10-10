@@ -78,7 +78,7 @@ export const api = {
 
   listWikis: () => request<{ wikis: WikiSummary[]; baseDomain: string }>("GET", "/admin/wikis"),
   createWiki: (input: { key: string; name: string }) => request<WikiSummary>("POST", "/admin/wikis", input),
-  renameWiki: (key: string, name: string) => request<WikiSummary>("PATCH", `/admin/wikis/${key}`, { name }),
+  updateWiki: (key: string, input: { name?: string; iconUrl?: string | null }) => request<WikiSummary>("PATCH", `/admin/wikis/${key}`, input),
   archiveWiki: (key: string) => request<WikiSummary>("POST", `/admin/wikis/${key}/archive`),
   unarchiveWiki: (key: string) => request<WikiSummary>("POST", `/admin/wikis/${key}/unarchive`),
 

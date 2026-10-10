@@ -9,6 +9,8 @@ export type Wiki = {
   key: string;
   /** 表示名。公開サイトの名前として使う。あとから変えられる */
   name: string;
+  /** 管理画面で wiki を見分けるための画像（アイコン）の URL。null なら表示名の頭文字を出す */
+  iconUrl: string | null;
   /** 公開サイトのオリジン（末尾のスラッシュなし） */
   origin: string;
   /** アーカイブした日時。null なら使用中 */
@@ -61,11 +63,29 @@ export const wikiKeySchema = z.string().refine(isValidWikiKey, { message: "inval
 
 const wikiName = z.string().trim().min(1).max(100);
 
-export const createWikiInput = z.object({ key: wikiKeySchema, name: wikiName });
+export const WIKI_ICON_URL_MAX = 2048;
+
+/** http(s) の URL か。`javascript:` や `data:` などは通さない。 */
+export function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** wiki の画像の URL。外すときは null。 */
+export const wikiIconUrl = z.string().trim().max(WIKI_ICON_URL_MAX).refine(isHttpUrl, { message: "icon url must be http(s)" }).nullable();
+
+export const createWikiInput = z.object({ key: wikiKeySchema, name: wikiName, iconUrl: wikiIconUrl.optional() });
 export type CreateWikiInput = z.infer<typeof createWikiInput>;
 
-export const renameWikiInput = z.object({ name: wikiName });
-export type RenameWikiInput = z.infer<typeof renameWikiInput>;
+/** 表示名と画像の変更。どちらか一方だけでもよい。 */
+export const updateWikiInput = z
+  .object({ name: wikiName.optional(), iconUrl: wikiIconUrl.optional() })
+  .refine((v) => v.name !== undefined || v.iconUrl !== undefined, { message: "nothing to update" });
+export type UpdateWikiInput = z.infer<typeof updateWikiInput>;
 
 /**
  * wiki の公開サイトのオリジン。`{key}.{baseDomain}`。

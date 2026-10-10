@@ -159,10 +159,10 @@ export function EditorPage({ pageId }: { pageId: string }) {
               <SearchIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()}>
+          <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
             {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
           </Button>
-          <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
+          <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
             公開・履歴
           </Button>
           <PageMenu title={draft.title} bodyMd={draft.bodyMd} />

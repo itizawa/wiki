@@ -1,5 +1,6 @@
-import { CALLOUT_LABELS, parseCalloutMarker } from "@wiki/shared";
+import { CALLOUT_LABELS, matchToggle, parseCalloutMarker, toggleStart } from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
+import { createHighlighter } from "shiki";
 
 export type RenderOptions = {
   /** 公開ページの id → 正規パス。ここに無いページへの内部リンクはプレーンテキストにする */
@@ -28,6 +29,15 @@ export function internalPageId(href: string, origin?: string): string | null {
   if (m[1] && origin && m[1].toLowerCase() !== origin.toLowerCase()) return null;
   return m[2]!;
 }
+
+/** 色分けする言語。管理画面のコードブロックで選べるもの（apps/admin の CodeBlockMenu）に合わせる。 */
+const CODE_LANGS = ["bash", "css", "diff", "go", "html", "javascript", "json", "jsx", "markdown", "python", "ruby", "rust", "sql", "typescript", "tsx", "yaml"];
+const CODE_THEMES = { light: "github-light", dark: "github-dark" } as const;
+
+// ビルド時に1回だけ用意する（文法と配色の読み込みは非同期、色分けそのものは同期でできる）
+const highlighter = await createHighlighter({ themes: Object.values(CODE_THEMES), langs: CODE_LANGS });
+/** `js` `ts` `sh` `yml` などの別名も含む */
+const highlightable = new Set(highlighter.getLoadedLanguages());
 
 export type Heading = { id: string; depth: number; text: string };
 
@@ -58,6 +68,8 @@ function plainText(tokens: Tokens.Generic[] | undefined): string {
  * - 内部リンク（/p/{id}...）は公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
  * - 本文中の生HTMLはエスケープする
  * - 見出しには id を振る
+ * - `+++` のトグルは <details> にする（中身も検索の索引と目次に入る）
+ * - 言語の付いたコードブロックは色分けする（ライト・ダーク両方の色を持たせ、CSS で切り替える）
  */
 export function renderMarkdown(md: string, opts: RenderOptions): string {
   return renderArticle(md, opts).html;
@@ -69,11 +81,36 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
   const used = new Set<string>();
   const marked = new Marked({ gfm: true });
   marked.use({
+    // `+++ 見出し` 〜 `+++` のトグルを <details> として出す（packages/shared/src/toggle.ts）
+    extensions: [
+      {
+        name: "toggle",
+        level: "block",
+        start: (src: string) => {
+          const i = toggleStart(src);
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = matchToggle(src);
+          if (!m) return undefined;
+          return { type: "toggle", raw: m.raw, summary: m.summary, tokens: this.lexer.blockTokens(m.body, []) };
+        },
+        renderer(token) {
+          return `<details class="toggle"><summary>${escapeHtml(String(token.summary))}</summary>\n${this.parser.parse(token.tokens ?? [])}</details>\n`;
+        },
+      },
+    ],
     renderer: {
       heading(token: Tokens.Heading) {
         const id = headingId(plainText(token.tokens), used);
         if (token.depth <= TOC_MAX_DEPTH) headings.push({ id, depth: token.depth, text: plainText(token.tokens) });
         return `<h${token.depth} id="${escapeHtml(id)}">${this.parser.parseInline(token.tokens)}</h${token.depth}>\n`;
+      },
+      code(token: Tokens.Code) {
+        const lang = (token.lang ?? "").trim().split(/\s+/)[0]!.toLowerCase();
+        // 言語が無い・知らない言語のときは、色分けせずそのまま出す
+        if (!highlightable.has(lang)) return false;
+        return `${highlighter.codeToHtml(token.text, { lang, themes: CODE_THEMES, defaultColor: false })}\n`;
       },
       html(token: Tokens.HTML | Tokens.Tag) {
         return escapeHtml(token.text);
@@ -112,6 +149,7 @@ export function excerpt(md: string, length = 120): string {
   const text = md
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
+    .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/[#>*_`~-]/g, "")

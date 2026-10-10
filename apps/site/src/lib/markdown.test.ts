@@ -32,6 +32,31 @@ describe("renderMarkdown", () => {
   });
 });
 
+describe("コードブロックの色分け", () => {
+  it("言語が付いていれば、ライト・ダーク両方の色を持たせて色分けする", () => {
+    const html = renderMarkdown("```ts\nconst a: number = 1;\n```", { publicPaths });
+    expect(html).toContain('<pre class="shiki');
+    expect(html).toContain("--shiki-light:");
+    expect(html).toContain("--shiki-dark:");
+    // 中身の文字は変えない
+    expect(html.replace(/<[^>]+>/g, "")).toContain("const a: number = 1;");
+  });
+
+  it("別名（js・sh・yml）でも色分けする", () => {
+    for (const lang of ["js", "sh", "yml"]) expect(renderMarkdown(`\`\`\`${lang}\na\n\`\`\``, { publicPaths })).toContain("shiki");
+  });
+
+  it("言語が無い・知らない言語のときは、そのまま出す（中身はエスケープする）", () => {
+    expect(renderMarkdown("```\n<b>x</b>\n```", { publicPaths })).toContain("<pre><code>&lt;b&gt;x&lt;/b&gt;");
+    expect(renderMarkdown("```kotlin\nval a = 1\n```", { publicPaths })).toContain('<pre><code class="language-kotlin">val a = 1');
+  });
+
+  it("コードの中の HTML は、色分けしてもエスケープされる", () => {
+    const html = renderMarkdown("```html\n<script>alert(1)</script>\n```", { publicPaths });
+    expect(html).not.toContain("<script>");
+  });
+});
+
 describe("renderArticle", () => {
   it("gives headings ids and lists them in order, up to depth 4", () => {
     const { html, headings } = renderArticle("# はじめに\n\n## 使い *方*\n\n##### 深い\n\n## 使い方", { publicPaths });
@@ -79,5 +104,28 @@ describe("callouts", () => {
 
   it("still rewrites links inside a callout", () => {
     expect(renderMarkdown("> [!TIP]\n> [非公開](/p/zzzzzzzzzz)", { publicPaths })).not.toContain("zzzzzzzzzz");
+  });
+});
+
+describe("toggles", () => {
+  it("renders +++ blocks as <details>, escaping the summary and keeping links and headings inside", () => {
+    const md = "+++ よくある<b>質問</b>\n\n## 中の見出し\n\n[公開](/p/abcdefghij) と [非公開](/p/zzzzzzzzzz)\n\n+++ 入れ子\n中身\n+++\n\n+++\n\n後ろ";
+    const { html, headings } = renderArticle(md, { publicPaths });
+    expect(html).toContain('<details class="toggle"><summary>よくある&lt;b&gt;質問&lt;/b&gt;</summary>');
+    expect(html).toContain('<details class="toggle"><summary>入れ子</summary>');
+    expect(html).toContain('<a href="/p/abcdefghij">公開</a>');
+    expect(html).not.toContain("zzzzzzzzzz");
+    expect(html).toMatch(/<\/details>\n<\/details>\n<p>後ろ<\/p>/);
+    expect(headings.map((h) => h.text)).toEqual(["中の見出し"]);
+  });
+
+  it("leaves an unclosed +++ as plain text", () => {
+    expect(renderMarkdown("+++ 見出し\n本文", { publicPaths })).toBe("<p>+++ 見出し\n本文</p>\n");
+  });
+});
+
+describe("excerpt with toggles", () => {
+  it("keeps the toggle's summary and body but drops the +++ markers", () => {
+    expect(excerpt("+++ 見出し\n\n本文\n\n+++")).toBe("見出し 本文");
   });
 });

@@ -135,8 +135,8 @@ describe("0005_multi_wiki", () => {
   });
 });
 
-describe("0007_drop_tree_is_public", () => {
-  const before = ["0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_multi_wiki", "0006_page_stars"];
+describe("0008_drop_tree_is_public", () => {
+  const before = ["0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_multi_wiki", "0006_wiki_icon", "0007_page_stars"];
   // 0005_multi_wiki が、空の DB にも最初の wiki を作る
   const tree = (id: string, key: string, name: string, isPublic: boolean, isPrimary: boolean) =>
     `insert into trees (id, wiki_id, key, name, is_public, is_primary) select '${id}', id, '${key}', '${name}', ${isPublic}, ${isPrimary} from wikis where key = 'wiki'`;
@@ -146,10 +146,10 @@ describe("0007_drop_tree_is_public", () => {
     for (const tag of before) await runMigration(db, tag);
     await db.exec(tree("t_main", "main", "メイン", false, true));
 
-    await expect(runMigration(db, "0007_drop_tree_is_public")).rejects.toThrow(/is_public is false/);
+    await expect(runMigration(db, "0008_drop_tree_is_public")).rejects.toThrow(/is_public is false/);
     // 止まったあとも列は残っていて、直してから流し直せる
     await db.exec(`update trees set is_public = true where is_primary`);
-    await runMigration(db, "0007_drop_tree_is_public");
+    await runMigration(db, "0008_drop_tree_is_public");
     const columns = await db.query<{ column_name: string }>(`select column_name from information_schema.columns where table_name = 'trees'`);
     expect(columns.rows.map((r) => r.column_name)).not.toContain("is_public");
   });
@@ -160,7 +160,7 @@ describe("0007_drop_tree_is_public", () => {
     await db.exec(tree("t_main", "main", "ブログ", true, true));
     await db.exec(tree("t_old", "by-theme", "テーマ別", false, false));
 
-    await runMigration(db, "0007_drop_tree_is_public");
+    await runMigration(db, "0008_drop_tree_is_public");
     const rows = await db.query<{ name: string }>(`select name from trees order by id`);
     expect(rows.rows.map((r) => r.name)).toEqual(["ブログ", "テーマ別"]);
   });
