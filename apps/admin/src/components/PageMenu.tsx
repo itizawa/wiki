@@ -15,13 +15,11 @@ import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
 import { Tooltip } from "./Tooltip";
-import { Mono, Muted } from "./ui";
 
 /**
  * 編集画面の「…」メニュー。版履歴を開く・いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す・テンプレートにする・ページを削除する。
- * 下にページのパスを出す。
  */
-export function PageMenu(props: { title: string; bodyMd: string; path: string; onOpenHistory: () => void; onDelete: () => void }) {
+export function PageMenu(props: { title: string; bodyMd: string; onOpenHistory: () => void; onDelete: () => void }) {
   const { title, bodyMd } = props;
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -130,9 +128,6 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
           </ListItemIcon>
           <ListItemText>このページを削除…</ListItemText>
         </MenuItem>
-        <Muted component="div" sx={{ px: 2, pt: 1, pb: 0.5, fontSize: "0.75rem", wordBreak: "break-all" }}>
-          <Mono>{props.path}</Mono>
-        </Muted>
       </Menu>
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
