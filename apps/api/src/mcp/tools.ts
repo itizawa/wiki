@@ -6,7 +6,7 @@ import type { Db } from "../db/client";
 import { pages, pageVersions, scheduledActions } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import type { AgentContext } from "../oauth/service";
-import { createPage, deletePage, findLivePage, savePage, setWorkflow } from "../routes/pages";
+import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage, setWorkflow } from "../routes/pages";
 import { cancelSchedule, createSchedule, listActions } from "../routes/publishing";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { publishPage, unpublishPage } from "../publishing/service";
@@ -15,7 +15,8 @@ import { findOpenWiki, listWikis } from "../wikis/service";
 
 /**
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
- * 公開・予約・承認は wiki.publish、削除は wiki.delete を許したアプリだけが使える。
+ * 公開・予約・承認は wiki.publish、削除（ゴミ箱に入れる・一覧・元に戻す）は wiki.delete を許したアプリだけが使える。
+ * ゴミ箱から完全に削除する道具は置かない（完全に消せるのは、管理画面の人だけ）。
  */
 type ToolContext = { db: Db; config: AppConfig; agent: AgentContext };
 
@@ -502,7 +503,8 @@ export const TOOLS = [
   tool({
     name: "delete_page",
     description:
-      "ページを削除する。子ページは1つ上の階層へ移る。公開中なら公開サイトからも消え（410）、予約は取り消される。元に戻す道具は無い。",
+      "ページを削除する（ゴミ箱に入れる）。配下のページもいっしょにゴミ箱に入り、ツリーから外れる。公開中なら公開サイトからも消え（410）、予約は取り消される。" +
+      "restore_page で配下ごと元に戻せる（公開と予約は戻らない）。完全に削除できるのは、管理画面の人だけ。",
     scope: "wiki.delete",
     input: z.object({ wiki: wikiKey, pageId }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
@@ -510,8 +512,49 @@ export const TOOLS = [
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       await assertSubtreeVisible(db, agent, wiki.id, page.id);
-      await db.transaction((tx) => deletePage(tx, wiki.id, page.id, { oauthGrantId: agent.grantId }));
-      return { id: page.id, deleted: true };
+      const { trashedPageIds } = await db.transaction((tx) => deletePage(tx, wiki.id, page.id, { oauthGrantId: agent.grantId }));
+      return { id: page.id, deleted: true, trashedPages: trashedPageIds.length };
+    },
+  }),
+  tool({
+    name: "list_trash",
+    description:
+      "ゴミ箱の一覧を、ゴミ箱に入れた日時の新しい順に返す。delete_page で選んだページごとに1件で、descendantCount はいっしょに入った配下のページ数。" +
+      "非公開のページも読む許可が無いと、その許可で作ったページだけを返す。",
+    scope: "wiki.delete",
+    input: z.object({ wiki: wikiKey }),
+    inputSchema: schema(WIKI_PROP, ["wiki"]),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      return { pages: await listTrash(db, wiki.id, visibleTo(agent)) };
+    },
+  }),
+  tool({
+    name: "restore_page",
+    description:
+      "ゴミ箱のページを、いっしょに入った配下ごと元に戻す（list_trash で返す id を渡す）。元の親ページが残っていればその下の末尾、無ければ最上位の末尾に戻る（parentMissing が true）。" +
+      "戻したページは非公開のままで、公開と予約は戻らない。",
+    scope: "wiki.delete",
+    input: z.object({ wiki: wikiKey, pageId }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ゴミ箱のページの ID（list_trash で返す id）") }, ["wiki", "pageId"]),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const result = await db.transaction(async (tx) => {
+        // 読めないページは無いものとして扱い、配下に読めないページがあれば止める（delete_page と同じ）
+        const { members } = await lockTrashGroup(tx, wiki.id, input.pageId);
+        const cond = visibleTo(agent);
+        if (cond) {
+          const ids = members.map((m) => m.id);
+          const seen = new Set((await tx.select({ id: pages.id }).from(pages).where(and(inArray(pages.id, ids), cond))).map((p) => p.id));
+          if (!seen.has(input.pageId)) throw notFound(`page ${input.pageId} in the trash`);
+          if (seen.size < ids.length) {
+            throw new HttpError(403, "insufficient_scope", "pages under this page are not visible to this connection (needs wiki.private)");
+          }
+        }
+        return restorePage(tx, wiki.id, input.pageId, { oauthGrantId: agent.grantId });
+      });
+      const { restoredPageIds, ...placed } = result;
+      return { id: input.pageId, restored: true, restoredPages: restoredPageIds.length, ...placed };
     },
   }),
 ];

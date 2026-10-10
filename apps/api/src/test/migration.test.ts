@@ -231,3 +231,48 @@ describe("0013_auto_version", () => {
     expect((await db.query(`select 1 from page_drafts`)).rows).toEqual([]);
   });
 });
+
+describe("0014_page_trash", () => {
+  const before = [
+    "0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_multi_wiki", "0006_wiki_icon",
+    "0007_page_stars", "0008_drop_tree_is_public", "0009_page_drafts", "0010_page_templates", "0011_oauth", "0012_page_views", "0013_auto_version",
+  ];
+
+  it("keeps every existing row, and shows the pages deleted so far in the trash one by one", async () => {
+    const db = (client = new PGlite());
+    for (const tag of before) await runMigration(db, tag);
+    await db.exec(`
+      insert into pages (id, wiki_id, title, head_version_id, published_version_id, visibility, first_published_at, deleted_at)
+        select v.id, w.id, v.title, v.head::uuid, v.published::uuid, v.visibility, v.first_published_at::timestamptz, v.deleted_at::timestamptz
+        from wikis w, (values
+          ('pagelive01', '公開中', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000a1', 'public', '2026-01-01', null),
+          ('pagelive02', '下書き', '00000000-0000-0000-0000-0000000000a2', null, 'private', null, null),
+          ('pagegone01', '消した公開ページ', '00000000-0000-0000-0000-0000000000a3', null, 'private', '2026-01-02', '2026-02-01'),
+          ('pagegone02', '消した下書き', '00000000-0000-0000-0000-0000000000a4', null, 'private', null, '2026-02-02')
+        ) as v(id, title, head, published, visibility, first_published_at, deleted_at)
+        where w.key = 'wiki';
+      insert into page_versions (id, page_id, title, body_md, author_type) values
+        ('00000000-0000-0000-0000-0000000000a1', 'pagelive01', '公開中', '本文1', 'human'),
+        ('00000000-0000-0000-0000-0000000000a2', 'pagelive02', '下書き', '本文2', 'human'),
+        ('00000000-0000-0000-0000-0000000000a3', 'pagegone01', '消した公開ページ', '本文3', 'human'),
+        ('00000000-0000-0000-0000-0000000000a4', 'pagegone02', '消した下書き', '本文4', 'human');
+    `);
+    const snapshot = async () =>
+      (await db.query(`select id, wiki_id, title, head_version_id, published_version_id, visibility, first_published_at, workflow_state, created_at, updated_at, deleted_at from pages order by id`)).rows;
+    const pagesBefore = await snapshot();
+
+    await runMigration(db, "0014_page_trash");
+
+    // もとの列は、どの行も変わらない
+    expect(await snapshot()).toEqual(pagesBefore);
+    expect((await db.query<{ n: number }>(`select count(*)::int as n from page_versions`)).rows[0]!.n).toBe(4);
+    type Row = { id: string; trash_root_id: string | null; trashed_parent_id: string | null; trashed_position: string | null; purged_at: string | null };
+    const rows = (await db.query<Row>(`select id, trash_root_id, trashed_parent_id, trashed_position, purged_at from pages order by id`)).rows;
+    expect(rows).toEqual([
+      { id: "pagegone01", trash_root_id: "pagegone01", trashed_parent_id: null, trashed_position: null, purged_at: null },
+      { id: "pagegone02", trash_root_id: "pagegone02", trashed_parent_id: null, trashed_position: null, purged_at: null },
+      { id: "pagelive01", trash_root_id: null, trashed_parent_id: null, trashed_position: null, purged_at: null },
+      { id: "pagelive02", trash_root_id: null, trashed_parent_id: null, trashed_position: null, purged_at: null },
+    ]);
+  });
+});

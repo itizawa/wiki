@@ -16,6 +16,7 @@ import type {
   OAuthGrantSummary,
   StructureChange,
   StructureOpInput,
+  TrashedPage,
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
@@ -136,7 +137,15 @@ export const api = {
     }
     return data as { url: string };
   },
-  deletePage: (id: string) => request<{ ok: true }>("DELETE", w(`/pages/${id}`)),
+  /** ゴミ箱に入れる（配下のページもいっしょに入る） */
+  deletePage: (id: string) => request<{ ok: true; trashedPages: number }>("DELETE", w(`/pages/${id}`)),
+  /** ゴミ箱の一覧。削除で選んだページごとに1行、新しい順 */
+  listTrash: () => request<{ pages: TrashedPage[] }>("GET", w("/pages/trash")),
+  /** ゴミ箱から、配下ごと元に戻す。parentMissing：元の親ページが無く、最上位に戻した */
+  restorePage: (id: string) =>
+    request<{ id: string; restoredPages: number; parentPageId: string | null; parentMissing: boolean }>("POST", w(`/pages/${id}/restore`)),
+  /** ゴミ箱から、配下ごと完全に削除する（元に戻せない） */
+  purgePage: (id: string) => request<{ ok: true; purgedPages: number }>("DELETE", w(`/pages/${id}/trash`)),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
