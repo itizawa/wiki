@@ -1,8 +1,6 @@
-import { Search } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Snackbar from "@mui/material/Snackbar";
 import { useTheme } from "@mui/material/styles";
@@ -12,7 +10,6 @@ import { useBlocker, useNavigate } from "@tanstack/react-router";
 import type { PageDetail, PageDraft } from "@wiki/shared";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { openFindBar } from "../editor/FindBar";
 import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { caretOnLastLine, enterBodyFromTitle } from "../editor/titleBridge";
@@ -29,7 +26,6 @@ import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
 import { PublishMenu } from "../components/PublishMenu";
 import { StarButton } from "../components/StarButton";
-import { Tooltip } from "../components/Tooltip";
 import { VersionHistory } from "../components/VersionHistory";
 import { Muted, SkeletonEditor } from "../components/ui";
 import { TemplatePicker } from "./TemplatePicker";
@@ -73,7 +69,9 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const titleRow = useRef<HTMLDivElement>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const headings = useOutline(editor);
-  // スマホ幅では、この画面の帯を置かず、操作を「…」メニューにまとめて上の帯に出す
+  // 狭い画面（md 未満。WikiLayout が上の帯を置く幅）では、この画面の帯を置かず、操作を上の帯に出して1段にする
+  const barBelow = useMediaQuery(useTheme().breakpoints.down("md"));
+  // スマホ幅では、さらに操作を「…」メニューにまとめる
   const narrow = useMediaQuery(useTheme().breakpoints.down("sm"));
 
   // 版履歴の開閉と選んだ版は URL に持つ。開くときだけ履歴に積み（ブラウザの「戻る」で閉じる）、版の選び直しと閉じるときは積まない
@@ -248,6 +246,19 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     />
   );
 
+  // 「…」の手前に並べるボタン（スマホ幅では「…」メニューの中に出す）
+  const actions = (
+    <>
+      <StarButton pageId={pageId} />
+      {editor && headings.length > 0 && (
+        <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
+          <OutlineButton editor={editor} headings={headings} />
+        </Box>
+      )}
+      <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
+    </>
+  );
+
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
       {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
@@ -255,9 +266,13 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         data-find-bar-bounds
         sx={{ flex: 1, minWidth: 0, minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column", containerType: "inline-size" }}
       >
-        {narrow ? (
-          // スマホ幅では、この画面の帯を置かず、「…」を上の帯（サイドバーを開くボタンと wiki 名）の右端に出す
-          <NarrowBarActions>{pageMenu}</NarrowBarActions>
+        {/* ページの操作。スマホ幅では「…」メニューにまとめる。検索・置換はどの幅でも「…」メニューから開く（⌘F でも開く） */}
+        {barBelow ? (
+          // 狭い画面（md 未満）では、この画面の帯を置かず、上の帯（サイドバーを開くボタンと wiki 名）の右端に出す。パンくずは出さない（タイトルは本文の上で見える）
+          <NarrowBarActions>
+            {!narrow && actions}
+            {pageMenu}
+          </NarrowBarActions>
         ) : (
           <Box
             component="header"
@@ -268,26 +283,13 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               height: 48,
               display: "flex",
               alignItems: "center",
-              // 狭い画面ではパンくずを出さないので、ボタンを右に寄せる（広い画面ではパンくずが残りの幅を取る）
-              justifyContent: "flex-end",
               gap: 1,
               px: 2,
               bgcolor: "background.paper",
             }}
           >
             <Breadcrumb pageId={pageId} title={draft.title} />
-            <StarButton pageId={pageId} />
-            <Tooltip title="本文を検索・置換 (⌘F)">
-              <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
-                <Search size={18} />
-              </IconButton>
-            </Tooltip>
-            {editor && headings.length > 0 && (
-              <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
-                <OutlineButton editor={editor} headings={headings} />
-              </Box>
-            )}
-            <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
+            {actions}
             {pageMenu}
           </Box>
         )}
@@ -442,10 +444,7 @@ function EditingStats({ bodyMd }: { bodyMd: string }) {
   );
 }
 
-/**
- * ツリー上の置き場所（親ページの並び）とタイトル。
- * 狭い画面（md 未満）では、幅をボタンに回すために出さない。タイトルは本文の上のタイトル欄で見える。
- */
+/** ツリー上の置き場所（親ページの並び）とタイトル。 */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const ancestors = useMemo(() => {
@@ -464,7 +463,7 @@ function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   return (
     <Muted
       component="div"
-      sx={{ display: { xs: "none", md: "block" }, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+      sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
     >
       {ancestors.map((name, i) => (
         <span key={i}>{name} / </span>
