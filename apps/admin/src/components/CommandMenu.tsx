@@ -9,6 +9,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
+import PostAddIcon from "@mui/icons-material/PostAdd";
 import SearchIcon from "@mui/icons-material/Search";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import ViewSidebarOutlinedIcon from "@mui/icons-material/ViewSidebarOutlined";
@@ -28,6 +29,7 @@ import { api, errorMessage } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/FindBar";
 import { usePageActions } from "../lib/pageActions";
+import { useCreateFromTemplate } from "../routes/TemplatesPage";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
@@ -66,6 +68,9 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
   });
 
+  const templates = useQuery({ queryKey: ["templates"], queryFn: api.listTemplates, enabled: open });
+  const fromTemplate = useCreateFromTemplate();
+
   const { wiki, wikis } = useWiki();
   // メニューを閉じてから実行する操作
   const closing = (run: () => void) => () => {
@@ -84,9 +89,22 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       icon: <AddIcon fontSize="small" />,
       run: () => !create.isPending && create.mutate(),
     },
+    // テンプレートの名前でも探せる。タイトルはテンプレートのもの（変数を置き換えたもの）になる
+    ...(templates.data?.templates ?? []).map((t) => ({
+      id: `template:${t.id}`,
+      label: `テンプレート「${t.title}」で新しいページを作る`,
+      keywords: ["template", "new", "create"],
+      icon: <PostAddIcon fontSize="small" />,
+      run: () => {
+        if (fromTemplate.isPending) return;
+        onClose();
+        fromTemplate.mutate({ templateId: t.id });
+      },
+    })),
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <HomeOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey") },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <CalendarMonthOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey/calendar") },
     { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <AutoModeIcon fontSize="small" />, run: go("/w/$wikiKey/rules") },
+    { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <PostAddIcon fontSize="small" />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <HistoryIcon fontSize="small" />, run: go("/w/$wikiKey/history") },
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis

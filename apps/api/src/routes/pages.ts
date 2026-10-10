@@ -3,7 +3,6 @@ import {
   newPageId,
   savePageInput,
   setWorkflowInput,
-  type CreatePageInput,
   type PageDetail,
   type PageSummary,
   type PageVersion,
@@ -17,6 +16,7 @@ import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePage } from "../structure/repo";
 import { parseJson } from "../validation";
+import { findTemplate, renderTemplate } from "./templates";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
@@ -86,7 +86,11 @@ async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyMd: stri
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
-export async function createPage(tx: Db, wikiId: string, input: CreatePageInput): Promise<string> {
+export async function createPage(
+  tx: Db,
+  wikiId: string,
+  input: { title: string; bodyMd: string; parentPageId?: string | null },
+): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
   await tx.insert(pages).values({ id, wikiId, title: input.title, headVersionId: versionId });
@@ -118,7 +122,12 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const input = await parseJson(c, createPageInput);
     const wikiId = c.get("wiki").id;
-    const id = await db.transaction((tx) => createPage(tx, wikiId, input));
+    const id = await db.transaction(async (tx) => {
+      if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! });
+      // テンプレートから作る：変数を置き換えた本文で始める。タイトルの指定が無ければテンプレートのタイトルにする
+      const filled = renderTemplate(await findTemplate(tx, wikiId, input.templateId), c.get("adminEmail"));
+      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId });
+    });
     return c.json(await getDetail(db, wikiId, id), 201);
   })
   .get("/:id", async (c) => {

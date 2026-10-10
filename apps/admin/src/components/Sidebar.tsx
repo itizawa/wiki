@@ -12,6 +12,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import AutoModeIcon from "@mui/icons-material/AutoMode";
 import CheckIcon from "@mui/icons-material/Check";
+import PostAddIcon from "@mui/icons-material/PostAdd";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
@@ -174,6 +175,9 @@ export function Sidebar(props: {
             </NavItem>
             <NavItem to="/w/$wikiKey/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
               ルール
+            </NavItem>
+            <NavItem to="/w/$wikiKey/templates" icon={<PostAddIcon fontSize="small" />} onClick={props.onNavigate}>
+              テンプレート
             </NavItem>
             <NavItem to="/w/$wikiKey/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
               構造の履歴

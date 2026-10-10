@@ -29,6 +29,7 @@ import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
 import { Tooltip } from "../components/Tooltip";
 import { WorkflowPanel } from "../components/WorkflowPanel";
+import { TemplatePicker } from "./TemplatePicker";
 import { Mono, Muted, Section, StatusChip } from "../components/ui";
 import { monoFont } from "../theme";
 import { visibilityLabel } from "./PagesPage";
@@ -36,6 +37,9 @@ import { visibilityLabel } from "./PagesPage";
 type Draft = { title: string; bodyMd: string };
 
 const VERSION_PANEL_ID = "version-history";
+
+/** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
+const UNTITLED = "無題";
 
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
 
@@ -219,6 +223,12 @@ export function EditorPage({ pageId }: { pageId: string }) {
               版履歴を見る
             </Button>
           </Stack>
+          {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
+          {draft.bodyMd.trim() === "" && (
+            <TemplatePicker
+              onApply={(t) => setDraft((d) => (d ? { title: d.title.trim() === "" || d.title === UNTITLED ? t.title : d.title, bodyMd: t.bodyMd } : d))}
+            />
+          )}
           <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
         <EditingStats bodyMd={draft.bodyMd} />

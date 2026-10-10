@@ -8,6 +8,7 @@ import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
 import { structureRoutes, treeRoutes } from "./routes/structure";
+import { templateRoutes } from "./routes/templates";
 import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
 
 export function createApp(deps: Deps) {
@@ -45,6 +46,7 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/rules", ruleRoutes);
+  wiki.route("/templates", templateRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
   admin.route("/w/:wikiKey", wiki);
