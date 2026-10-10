@@ -16,6 +16,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { CommandMenu } from "../components/CommandMenu";
 import { Muted, Section } from "../components/ui";
+import { ShortcutGuide } from "../components/ShortcutGuide";
 import { api, ApiError } from "../lib/api";
 import { usePersistentState } from "../lib/storage";
 
@@ -107,6 +108,7 @@ export function Layout() {
           onLogout={logout}
         />
       </Drawer>
+      <ShortcutGuide />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>
