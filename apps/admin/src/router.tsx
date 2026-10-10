@@ -11,6 +11,7 @@ import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
 import { RulesPage } from "./routes/RulesPage";
 import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
+import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikisPage } from "./routes/WikisPage";
@@ -84,6 +85,7 @@ const templateEditorRoute = createRoute({
   },
 });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
+const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -108,7 +110,7 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   consentRoute,
   connectionsRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, trashRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),

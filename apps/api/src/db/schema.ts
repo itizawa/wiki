@@ -79,7 +79,21 @@ export const pages = pgTable(
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** ゴミ箱に入れた日時。nullならゴミ箱に入っていない */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    /**
+     * いっしょにゴミ箱に入れたページのまとまり。削除で選んだページ（まとまりの先頭）の ID が入り、先頭のページでは自分の ID。
+     * 元に戻す・完全に削除するのは、まとまりごと
+     */
+    trashRootId: text("trash_root_id"),
+    /** ゴミ箱に入れる前の親ページ（nullなら最上位）と、兄弟の中の並び。元に戻すときに使う */
+    trashedParentId: text("trashed_parent_id"),
+    trashedPosition: text("trashed_position"),
+    /**
+     * 完全に削除した日時。版・下書きなどは消し、行だけを残す
+     * （公開したことがあるページを公開サイトで 410 にし続けるためと、構造の履歴がこの行を指しているため）
+     */
+    purgedAt: timestamp("purged_at", { withTimezone: true }),
   },
   (t) => [
     check("pages_visibility_check", sql`${t.visibility} in ('public', 'unlisted', 'private')`),
