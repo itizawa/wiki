@@ -35,6 +35,50 @@
 .body :global([data-code-tools] button:hover) { border-color: var(--muted); }
 .body :global([data-code-tools] button[aria-pressed="true"]) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .body :global(img) { max-width: 100%; }
+/* 画像の拡大表示（スクリプトが足す要素なので data 属性で当てる）。画像を包むボタンは、見た目を画像だけにする */
+.body :global([data-image-zoom-open]) {
+  display: inline-block; max-width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0;
+  font: inherit; color: inherit; background: none; cursor: zoom-in;
+}
+.body :global([data-image-zoom-open]:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 重ねて出す側。画面いっぱいの透明な箱にして、下のページは半透明の背景ごしに見えるままにする */
+.article :global(dialog[data-image-zoom]) {
+  width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+  color: var(--text); background: transparent; overflow: hidden; overscroll-behavior: contain;
+}
+.article :global(dialog[data-image-zoom])::backdrop { background: rgb(0 0 0 / 0.7); }
+/* 開いている間は、下のページをスクロールさせない。スクロールバーの幅は空けたままにして、ページが横にずれないようにする */
+:global(html:has(dialog[data-image-zoom][open])) { overflow: hidden; scrollbar-gutter: stable; }
+.article :global([data-image-zoom-content]) {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 100%; padding: 68px 16px 16px; cursor: zoom-out;
+}
+/* 「閉じる」は画像に重ならないよう、画像の上の余白（右上）に置く */
+.article :global([data-image-zoom-content] button) {
+  position: absolute; top: 12px; right: 16px; min-width: 88px; min-height: 44px; padding: 4px 16px;
+  font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.article :global([data-image-zoom-content] button:hover) { border-color: var(--muted); }
+/* 画面に収まる最大の大きさで、縦横比を保つ（元の大きさより引き伸ばさない）。透過画像の地は、本文と同じ色にする */
+.article :global([data-image-zoom-content] img) {
+  flex: 0 1 auto; width: auto; height: auto; min-height: 0; max-width: 100%; max-height: 100%;
+  object-fit: contain; background: var(--bg); border-radius: 4px;
+}
+/* 開く・閉じるを短くつなぐ（動きを減らす設定のときは付けない） */
+@media (prefers-reduced-motion: no-preference) {
+  .article :global(dialog[data-image-zoom]),
+  .article :global(dialog[data-image-zoom])::backdrop {
+    opacity: 0;
+    transition: opacity 0.15s ease-out, overlay 0.15s allow-discrete, display 0.15s allow-discrete;
+  }
+  .article :global(dialog[data-image-zoom][open]),
+  .article :global(dialog[data-image-zoom][open])::backdrop { opacity: 1; }
+  @starting-style {
+    .article :global(dialog[data-image-zoom][open]),
+    .article :global(dialog[data-image-zoom][open])::backdrop { opacity: 0; }
+  }
+}
 .body :global(table) { border-collapse: collapse; }
 .body :global(th),
 .body :global(td) { border: 1px solid var(--border); padding: 4px 8px; }

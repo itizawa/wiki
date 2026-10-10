@@ -124,4 +124,53 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
     // 読み上げとキーボード操作で、コードより先にボタンに着くようにする
     wrap.append(tools, pre);
   }
+
+  // 本文の画像を、クリックでページの上に重ねて大きく表示する。リンクの中の画像は、リンク先へ移るのでそのままにする。
+  // 画像をボタンで包むので、キーボード（Enter / Space）でも開ける
+  const article = document.querySelector("article");
+  let zoom: { dialog: HTMLDialogElement; image: HTMLImageElement } | undefined;
+  let zoomOpener: HTMLButtonElement | undefined;
+  const openZoom = (opener: HTMLButtonElement, source: HTMLImageElement) => {
+    if (!zoom) {
+      const dialog = document.createElement("dialog");
+      dialog.dataset.imageZoom = "";
+      dialog.setAttribute("aria-label", "画像の拡大表示");
+      const close = document.createElement("button");
+      close.type = "button";
+      close.textContent = "閉じる";
+      const image = document.createElement("img");
+      // 背景（画像と「閉じる」以外のところ）か、画像そのものを押したら閉じる
+      const content = document.createElement("div");
+      content.dataset.imageZoomContent = "";
+      content.append(close, image);
+      dialog.append(content);
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog || e.target === content || e.target === image || e.target === close) dialog.close();
+      });
+      // Esc・背景・「閉じる」のどれで閉じても、フォーカスを元の画像に戻す
+      dialog.addEventListener("close", () => zoomOpener?.focus());
+      article!.append(dialog);
+      zoom = { dialog, image };
+    }
+    zoomOpener = opener;
+    zoom.image.src = source.currentSrc || source.src;
+    zoom.image.alt = source.alt;
+    zoom.dialog.showModal();
+  };
+  if (article && typeof HTMLDialogElement !== "undefined") {
+    for (const img of article.querySelectorAll<HTMLImageElement>("img")) {
+      if (img.closest("a, button")) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.imageZoomOpen = "";
+      button.setAttribute("aria-label", img.alt ? `画像を拡大する: ${img.alt}` : "画像を拡大する");
+      img.replaceWith(button);
+      button.append(img);
+      button.addEventListener("click", (e) => {
+        // トグルの見出しの中にある画像でも、トグルは開閉しない
+        e.preventDefault();
+        openZoom(button, img);
+      });
+    }
+  }
 </script>
