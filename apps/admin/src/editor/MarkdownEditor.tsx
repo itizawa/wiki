@@ -25,10 +25,10 @@ import { Tooltip } from "../components/Tooltip";
 import { Placeholder } from "@tiptap/extensions";
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
+import { CodeBlockMenu } from "./CodeBlockMenu";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
-import { CodeBlockMenu } from "./CodeBlockMenu";
 import { editorExtensions } from "./extensions";
 
 const extensions = [...editorExtensions, Placeholder.configure({ placeholder: "本文を書く…" })];
@@ -62,7 +62,6 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
 
   return (
     <Box>
-      <CodeBlockMenu editor={editor} />
       <SelectionMenu editor={editor} />
       <InsertMenu editor={editor} />
       <Box
@@ -122,6 +121,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
       >
         <EditorContent editor={editor} />
       </Box>
+      <CodeBlockMenu editor={editor} />
     </Box>
   );
 }
