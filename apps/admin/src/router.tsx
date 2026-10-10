@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
@@ -36,13 +36,14 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
 const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
 // オーナーの追加・解除（オーナーだけ）
 const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
-// 招待リンク。ログインしていなくても開ける（Root がログインの確認を飛ばす）
+// 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
+// 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/invite/$token",
+  path: "/invite",
   component: function Invite() {
-    const { token } = inviteRoute.useParams();
-    return <InvitePage token={token} />;
+    const hash = useRouterState({ select: (s) => s.location.hash });
+    return <InvitePage token={decodeURIComponent(hash.replace(/^#/, ""))} />;
   },
 });
 // 外部のアプリ（MCP）：接続の依頼への同意と、与えた許可の一覧。wiki をまたぐので /w/ の外に置く

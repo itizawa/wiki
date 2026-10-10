@@ -3,11 +3,12 @@ import {
   inviteStatus,
   type Invite,
   type InviteInfo,
+  type InviteStatus,
   type Member,
   type UserSummary,
   type WikiRole,
 } from "@wiki/shared";
-import { and, asc, count, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { randomToken } from "../auth/session";
 import type { Db } from "../db/client";
@@ -29,7 +30,7 @@ export type LoginIdentity = { sub: string; email: string; name: string | null };
 /**
  * Google でログインした人の行を探し、メールアドレスと名前を最新にする。
  * sub で見つからなければ、メールアドレスだけで作ってある行（ADMIN_EMAILS からの移行・締め出し用のスクリプト）に結びつける。
- * 行が無ければ null（作らない。招待を受けるときだけ作る）。
+ * 行が無ければ null（作らない。招待リンクからログインしたときだけ作る）。
  */
 export async function findUserForLogin(db: Db, identity: LoginIdentity, now = new Date()): Promise<UserRow | null> {
   const update = { email: identity.email, name: identity.name, lastLoginAt: now };
@@ -51,7 +52,7 @@ export async function findUserForLogin(db: Db, identity: LoginIdentity, now = ne
   return linked ?? null;
 }
 
-/** 招待を受けるときに、初めてログインした人の行を作る。 */
+/** 招待リンクからログインした、初めての人の行を作る。 */
 async function createUserForLogin(db: Db, identity: LoginIdentity, now: Date): Promise<UserRow> {
   const [row] = await db
     .insert(users)
@@ -193,6 +194,7 @@ export async function changeMemberRole(db: Db, wikiId: string, userId: string, r
     if (member.role === role) return;
     if (member.role === "admin" && admins <= 1) throw lastAdmin();
     await tx.update(wikiMembers).set({ role }).where(and(eq(wikiMembers.wikiId, wikiId), eq(wikiMembers.userId, userId)));
+    if (member.role === "admin") await revokeInvitesBy(tx, userId, [wikiId]);
   });
 }
 
@@ -203,7 +205,28 @@ export async function removeMember(db: Db, wikiId: string, userId: string): Prom
     const member = await findMember(tx, wikiId, userId);
     if (member.role === "admin" && admins <= 1) throw lastAdmin();
     await tx.delete(wikiMembers).where(and(eq(wikiMembers.wikiId, wikiId), eq(wikiMembers.userId, userId)));
+    await revokeInvitesBy(tx, userId, [wikiId]);
   });
+}
+
+/**
+ * 管理者でなくなった人が発行した、使われる前の招待を無効にする（外されたあとに、作っておいたリンクで戻れないように）。
+ * オーナーのままなら、すべての wiki の管理者なので残す。ロールを変える・外す・オーナーを解除するのと同じトランザクションで呼ぶ。
+ */
+async function revokeInvitesBy(tx: Db, userId: string, wikiIds: string[], now = new Date()): Promise<void> {
+  if (wikiIds.length === 0) return;
+  const [user] = await tx.select({ isOwner: users.isOwner }).from(users).where(eq(users.id, userId));
+  if (user?.isOwner) return;
+  await tx
+    .update(invites)
+    .set({ revokedAt: now })
+    .where(and(eq(invites.createdBy, userId), inArray(invites.wikiId, wikiIds), isNull(invites.usedAt), isNull(invites.revokedAt)));
+}
+
+/** 招待を発行した人が、いまもその wiki の管理者（オーナーを含む）か。 */
+async function creatorIsAdmin(db: Db, invite: InviteRow): Promise<boolean> {
+  const creator = await findUser(db, invite.createdBy);
+  return creator !== null && (await roleIn(db, creator, invite.wikiId)) === "admin";
 }
 
 /** wiki を作ったオーナーを、その wiki の管理者としてメンバーに入れる。 */
@@ -290,6 +313,16 @@ async function findInvite(db: Db, token: string): Promise<{ invite: InviteRow; w
   return row ?? null;
 }
 
+/**
+ * 招待がいま使えるか。使用済み・無効・期限に加えて、発行した人がもう管理者でなければ（外された・降格された）無効と同じに扱う。
+ * 外すときに発行済みの招待は無効にしているので、ここは念のための確かめ。
+ */
+async function currentStatus(db: Db, invite: InviteRow, now: Date): Promise<InviteStatus> {
+  const status = inviteStatus(invite, now);
+  if (status !== "active") return status;
+  return (await creatorIsAdmin(db, invite)) ? "active" : "revoked";
+}
+
 /** リンクを開いた人に見せる中身。 */
 export async function inspectInvite(db: Db, token: string, viewer: UserRow | null, now = new Date()): Promise<InviteInfo> {
   const found = await findInvite(db, token);
@@ -305,59 +338,61 @@ export async function inspectInvite(db: Db, token: string, viewer: UserRow | nul
   return {
     wiki: { key: wiki.key, name: wiki.name, iconUrl: wiki.iconUrl },
     role: invite.role,
-    status: inviteStatus(invite, now),
+    status: await currentStatus(db, invite, now),
     expiresAt: invite.expiresAt.toISOString(),
     viewerEmail: viewer?.email ?? null,
     alreadyMember: member.length > 0,
   };
 }
 
+/**
+ * 招待リンクからログインした人のユーザーの行を用意する（参加はまださせない。招待の画面で「参加する」を押してもらう）。
+ * リンクが使えるなら、初めての人でも行を作る。使えないリンクなら、行のある人だけを返す。
+ */
+export async function userForInviteLogin(db: Db, token: string, identity: LoginIdentity, now = new Date()): Promise<UserRow | null> {
+  const existing = await findUserForLogin(db, identity, now);
+  if (existing) return existing;
+  const found = await findInvite(db, token);
+  if (!found || (await currentStatus(db, found.invite, now)) !== "active") return null;
+  return createUserForLogin(db, identity, now);
+}
+
 export type AcceptResult =
-  | { ok: true; user: UserRow; wikiKey: string; alreadyMember: boolean }
+  | { ok: true; wikiKey: string; alreadyMember: boolean }
   | { ok: false; reason: "not_found" | "used" | "expired" | "revoked" };
 
 /**
- * 招待を受けてメンバーになる。初めての人なら、ここでユーザーの行を作る。
- * すでにメンバーなら、リンクは使わずに残す（ロールも変えない）。
+ * 招待を受けてメンバーになる。すでにメンバーなら、リンクは使わずに残す（ロールも変えない）。
  * 同じリンクを2人が同時に使っても、使用済みにできた1人だけが入れる。
  */
-export async function acceptInvite(
-  db: Db,
-  token: string,
-  who: { user: UserRow } | { identity: LoginIdentity },
-  now = new Date(),
-): Promise<AcceptResult> {
-  return db.transaction(async (tx): Promise<AcceptResult> => {
-    const found = await findInvite(tx, token);
-    if (!found) return { ok: false, reason: "not_found" };
-    const { invite, wiki } = found;
-    const existing = "user" in who ? who.user : await findUserForLogin(tx, who.identity, now);
-    if (existing) {
+export async function acceptInvite(db: Db, token: string, user: UserRow, now = new Date()): Promise<AcceptResult> {
+  return db
+    .transaction(async (tx): Promise<AcceptResult> => {
+      const found = await findInvite(tx, token);
+      if (!found) return { ok: false, reason: "not_found" };
+      const { invite, wiki } = found;
       const [member] = await tx
         .select({ role: wikiMembers.role })
         .from(wikiMembers)
-        .where(and(eq(wikiMembers.wikiId, wiki.id), eq(wikiMembers.userId, existing.id)));
-      if (member) return { ok: true, user: existing, wikiKey: wiki.key, alreadyMember: true };
-    }
-    const status = inviteStatus(invite, now);
-    if (status !== "active") return { ok: false, reason: status };
-    const user = existing ?? (await createUserForLogin(tx, (who as { identity: LoginIdentity }).identity, now));
-    // 使用済みにできたときだけ入れる（同時に使われたら、後の人は 0 行になる）
-    const [claimed] = await tx
-      .update(invites)
-      .set({ usedBy: user.id, usedAt: now })
-      .where(and(eq(invites.id, invite.id), isNull(invites.usedAt), isNull(invites.revokedAt), gt(invites.expiresAt, now)))
-      .returning({ id: invites.id });
-    if (!claimed) {
-      // 後から来た人の行は、ここで作ったものなら残さない（トランザクションごと戻す）
-      throw new InviteRaceLost();
-    }
-    await tx.insert(wikiMembers).values({ wikiId: wiki.id, userId: user.id, role: invite.role, inviteId: invite.id, createdAt: now });
-    return { ok: true, user, wikiKey: wiki.key, alreadyMember: false };
-  }).catch((err): AcceptResult => {
-    if (err instanceof InviteRaceLost) return { ok: false, reason: "used" };
-    throw err;
-  });
+        .where(and(eq(wikiMembers.wikiId, wiki.id), eq(wikiMembers.userId, user.id)));
+      if (member) return { ok: true, wikiKey: wiki.key, alreadyMember: true };
+      const status = await currentStatus(tx, invite, now);
+      if (status !== "active") return { ok: false, reason: status };
+      // 使用済みにできたときだけ入れる（同時に使われたら、後の人は 0 行になる。
+      // 発行した人を外すのと同時なら、外す側が先に無効にした行は 0 行になる）
+      const [claimed] = await tx
+        .update(invites)
+        .set({ usedBy: user.id, usedAt: now })
+        .where(and(eq(invites.id, invite.id), isNull(invites.usedAt), isNull(invites.revokedAt), gt(invites.expiresAt, now)))
+        .returning({ id: invites.id });
+      if (!claimed) throw new InviteRaceLost();
+      await tx.insert(wikiMembers).values({ wikiId: wiki.id, userId: user.id, role: invite.role, inviteId: invite.id, createdAt: now });
+      return { ok: true, wikiKey: wiki.key, alreadyMember: false };
+    })
+    .catch((err): AcceptResult => {
+      if (err instanceof InviteRaceLost) return { ok: false, reason: "used" };
+      throw err;
+    });
 }
 
 class InviteRaceLost extends Error {}
@@ -374,6 +409,7 @@ export async function listUsers(db: Db): Promise<UserSummary[]> {
     name: u.name,
     isOwner: u.isOwner,
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+    linked: u.googleSub !== null,
     createdAt: u.createdAt.toISOString(),
   }));
 }
@@ -388,5 +424,21 @@ export async function setOwner(db: Db, userId: string, isOwner: boolean): Promis
     if (user.isOwner === isOwner) return;
     if (!isOwner && owners.length <= 1) throw new HttpError(409, "last_owner", "the last owner cannot be removed");
     await tx.update(users).set({ isOwner }).where(eq(users.id, userId));
+    if (!isOwner) {
+      // メンバーの管理者として入っていない wiki で発行した招待は、解除と同時に無効にする
+      const adminOf = await tx
+        .select({ wikiId: wikiMembers.wikiId })
+        .from(wikiMembers)
+        .where(and(eq(wikiMembers.userId, userId), eq(wikiMembers.role, "admin")));
+      const issued = await tx
+        .selectDistinct({ wikiId: invites.wikiId })
+        .from(invites)
+        .where(
+          adminOf.length > 0
+            ? and(eq(invites.createdBy, userId), notInArray(invites.wikiId, adminOf.map((r) => r.wikiId)))
+            : eq(invites.createdBy, userId),
+        );
+      await revokeInvitesBy(tx, userId, issued.map((r) => r.wikiId));
+    }
   });
 }

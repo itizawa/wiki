@@ -69,11 +69,16 @@ export type UserSummary = {
   isOwner: boolean;
   /** 一度もログインしていない（ADMIN_EMAILS からの移行・締め出し用のスクリプトで作った）なら null */
   lastLoginAt: string | null;
+  /** Google のアカウントと結びついているか。false ならメールアドレスだけの行で、そのアドレスで最初にログインしたアカウントに結びつく */
+  linked: boolean;
   createdAt: string;
 };
 
 export const createInviteInput = z.object({ role: wikiRoleSchema });
 export type CreateInviteInput = z.infer<typeof createInviteInput>;
+
+/** 招待リンクの値（URL ではなく本文で送る）。 */
+export const inviteTokenInput = z.object({ token: z.string().min(1).max(200) });
 
 export const updateMemberInput = z.object({ role: wikiRoleSchema });
 export type UpdateMemberInput = z.infer<typeof updateMemberInput>;

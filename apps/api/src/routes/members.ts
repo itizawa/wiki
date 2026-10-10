@@ -1,4 +1,4 @@
-import { createInviteInput, setOwnerInput, updateMemberInput } from "@wiki/shared";
+import { createInviteInput, inviteTokenInput, setOwnerInput, updateMemberInput } from "@wiki/shared";
 import { Hono } from "hono";
 import { currentUser, requireOwner, requireUser } from "../auth/routes";
 import type { AppEnv } from "../env";
@@ -57,14 +57,19 @@ export const inviteAdminRoutes = new Hono<AppEnv>()
     return c.json({ ok: true });
   });
 
-/** /invites/:token：招待リンクを開いた人向け。ログインしていなくても中身は見られる */
+/**
+ * /invites：招待リンクを開いた人向け。ログインしていなくても中身は見られる。
+ * リンクの値は、アクセスログに残らないように本文で受け取る。
+ */
 export const inviteRoutes = new Hono<AppEnv>()
-  .get("/:token", async (c) => {
+  .post("/inspect", async (c) => {
+    const { token } = await parseJson(c, inviteTokenInput);
     const viewer = await currentUser(c);
-    return c.json(await inspectInvite(c.get("deps").db, c.req.param("token"), viewer));
+    return c.json(await inspectInvite(c.get("deps").db, token, viewer));
   })
-  .post("/:token/accept", requireUser, async (c) => {
-    const result = await acceptInvite(c.get("deps").db, c.req.param("token"), { user: c.get("user") });
+  .post("/accept", requireUser, async (c) => {
+    const { token } = await parseJson(c, inviteTokenInput);
+    const result = await acceptInvite(c.get("deps").db, token, c.get("user"));
     if (!result.ok) {
       if (result.reason === "not_found") throw new HttpError(404, "invite_not_found", "invite not found");
       throw new HttpError(409, `invite_${result.reason}`, `the invite is ${result.reason}`);
