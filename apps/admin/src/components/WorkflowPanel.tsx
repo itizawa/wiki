@@ -27,7 +27,7 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
   });
   const approve = () => api.setWorkflow(page.id, { state: "approved", versionId: page.headVersionId });
   // 承認は保存済みの版に付けるので、未保存の編集があるあいだは選べない
-  const needsSave = dirty ? "先に保存してください" : "";
+  const needsSave = dirty ? "先に版として残してください" : "";
 
   return (
     <Box component="section" aria-label="記事の状態">
@@ -49,7 +49,7 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
           <MenuItem value="draft">{workflowLabel.draft}</MenuItem>
           <MenuItem value="approved" disabled={dirty}>
             {workflowLabel.approved}
-            {dirty && "（先に保存してください）"}
+            {dirty && "（先に版として残してください）"}
           </MenuItem>
         </TextField>
         {page.workflowState === "approved" && page.approvedVersionId === page.headVersionId && (

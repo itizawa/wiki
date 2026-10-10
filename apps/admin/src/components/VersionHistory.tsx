@@ -1,4 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
+import { X } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -58,7 +58,7 @@ export function VersionHistory(props: {
         </Typography>
         <Tooltip title="閉じる (Esc)">
           <IconButton size="small" aria-label="版履歴を閉じる" onClick={props.onClose}>
-            <CloseIcon fontSize="small" />
+            <X size={18} />
           </IconButton>
         </Tooltip>
       </Stack>

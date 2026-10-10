@@ -1,14 +1,14 @@
 ---
 import page from "../../styles/page.module.css";
 import Base from "../../layouts/Base.astro";
-import { allWikis, siteData } from "../../lib/manifest";
+import { allWikis, siteData, TREE_LABEL } from "../../lib/manifest";
 import { excerpt } from "../../lib/markdown";
 
 export async function getStaticPaths() {
   return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
 }
 
-const { wiki: manifest } = await siteData(Astro.params.wiki);
+const { wiki: manifest, primaryTree } = await siteData(Astro.params.wiki);
 const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
 ---
 
@@ -30,16 +30,12 @@ const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle
     }
   </ul>
   {
-    manifest.trees.length > 0 && (
+    primaryTree && (
       <section>
-        <h2>カテゴリから探す</h2>
-        <ul>
-          {manifest.trees.map((t) => (
-            <li>
-              <a href={`/t/${t.key}/`}>{t.name}</a>
-            </li>
-          ))}
-        </ul>
+        <h2>階層から探す</h2>
+        <p>
+          <a href={`/t/${primaryTree.key}/`}>{TREE_LABEL}を見る</a>
+        </p>
       </section>
     )
   }

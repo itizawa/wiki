@@ -1,4 +1,4 @@
-import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import { ChevronDown } from "lucide-react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
@@ -47,7 +47,7 @@ export function PublishMenu({ page, dirty }: { page: PageDetail; dirty: boolean 
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? PANEL_ID : undefined}
-        endIcon={<ArrowDropDownIcon />}
+        endIcon={<ChevronDown size={18} />}
         onClick={(e) => setAnchor(open ? null : e.currentTarget)}
         sx={{ flexShrink: 0, whiteSpace: "nowrap" }}
       >

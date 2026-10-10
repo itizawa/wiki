@@ -1,6 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -126,20 +124,20 @@ export function FindBar({ editor }: { editor: Editor }) {
             <Tooltip title="前の一致 (Shift+Enter)">
               <span>
                 <IconButton size="small" aria-label="前の一致" disabled={found.count === 0} onClick={() => run(step(editor.state, -1))}>
-                  <KeyboardArrowUpIcon fontSize="small" />
+                  <ChevronUp size={18} />
                 </IconButton>
               </span>
             </Tooltip>
             <Tooltip title="次の一致 (Enter)">
               <span>
                 <IconButton size="small" aria-label="次の一致" disabled={found.count === 0} onClick={() => run(step(editor.state, 1))}>
-                  <KeyboardArrowDownIcon fontSize="small" />
+                  <ChevronDown size={18} />
                 </IconButton>
               </span>
             </Tooltip>
             <Tooltip title="検索を閉じる (Esc)">
               <IconButton size="small" aria-label="検索を閉じる" onClick={close} sx={{ ml: 0.5 }}>
-                <CloseIcon fontSize="small" />
+                <X size={18} />
               </IconButton>
             </Tooltip>
           </Stack>

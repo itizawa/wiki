@@ -1,8 +1,4 @@
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
-import HistoryIcon from "@mui/icons-material/History";
-import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import { Copy, Download, Ellipsis, History, Trash2 } from "lucide-react";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
@@ -57,7 +53,7 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
     <>
       <Tooltip title="その他の操作">
         <IconButton size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
-          <MoreHorizIcon fontSize="small" />
+          <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
@@ -68,20 +64,20 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
           }}
         >
           <ListItemIcon>
-            <HistoryIcon fontSize="small" />
+            <History size={18} />
           </ListItemIcon>
           <ListItemText>版履歴</ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem onClick={copy}>
           <ListItemIcon>
-            <ContentCopyIcon fontSize="small" />
+            <Copy size={18} />
           </ListItemIcon>
           <ListItemText>Markdown をコピー</ListItemText>
         </MenuItem>
         <MenuItem onClick={download}>
           <ListItemIcon>
-            <FileDownloadOutlinedIcon fontSize="small" />
+            <Download size={18} />
           </ListItemIcon>
           <ListItemText>Markdown ファイル（.md）をダウンロード</ListItemText>
         </MenuItem>
@@ -94,7 +90,7 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
           sx={{ color: "error.main" }}
         >
           <ListItemIcon sx={{ color: "inherit" }}>
-            <DeleteOutlineIcon fontSize="small" />
+            <Trash2 size={18} />
           </ListItemIcon>
           <ListItemText>このページを削除…</ListItemText>
         </MenuItem>

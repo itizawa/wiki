@@ -1,5 +1,6 @@
 import type {
   PageDetail,
+  PageDraft,
   PageSummary,
   PageVersion,
   PublishVisibility,
@@ -14,6 +15,7 @@ import type {
   UpdateRuleInput,
   WikiSummary,
 } from "@wiki/shared";
+import { IMAGE_LIMIT_LABEL } from "@wiki/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -88,9 +90,33 @@ export const api = {
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
+  getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
+  saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
+    request<{ draft: PageDraft | null }>("PUT", w(`/pages/${id}/draft`), input),
+  discardDraft: (id: string) => request<{ draft: null }>("DELETE", w(`/pages/${id}/draft`)),
+  /** 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る */
+  uploadImage: async (file: Blob): Promise<{ url: string }> => {
+    const res = await fetch(`/api${w("/images")}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = data?.error ?? {};
+      throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
+    }
+    return data as { url: string };
+  },
   deletePage: (id: string) => request<{ ok: true }>("DELETE", w(`/pages/${id}`)),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
+
+  listStars: () => request<{ pageIds: string[] }>("GET", w("/stars")),
+  addStar: (pageId: string) => request<{ pageIds: string[] }>("PUT", w(`/stars/${pageId}`)),
+  removeStar: (pageId: string) => request<{ pageIds: string[] }>("DELETE", w(`/stars/${pageId}`)),
+  reorderStars: (pageIds: string[]) => request<{ pageIds: string[] }>("PUT", w("/stars"), { pageIds }),
 
   setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", w(`/pages/${id}/workflow`), input),
   reviewDone: (id: string) => request<PageDetail>("POST", w(`/pages/${id}/review-done`)),
@@ -122,15 +148,19 @@ export const api = {
   history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
   commitDetail: (id: string) =>
     request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
-  updateTree: (id: string, input: { name?: string; isPublic?: boolean }) =>
-    request<TreeMeta>("PATCH", w(`/trees/${id}`), input),
 };
 
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "version_conflict":
-        return "別の画面で先に保存されています。再読み込みしてから編集してください。";
+        return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
+      case "image_too_large":
+        return `画像が大きすぎます。${IMAGE_LIMIT_LABEL}です。`;
+      case "unsupported_image_type":
+        return `この形式の画像はアップロードできません。${IMAGE_LIMIT_LABEL}です。`;
+      case "images_not_configured":
+        return "画像の置き場所が設定されていないため、アップロードできません。";
       case "head_moved":
         return "ツリーが別の操作で更新されました。最新の状態を読み込みました。もう一度操作してください。";
       case "has_children":
