@@ -1,5 +1,5 @@
 {
-  "id": "e05584ed-73b0-4668-b29f-787cc3f86457",
+  "id": "ca1390ab-5959-4638-86f1-3fa679dc3fc2",
   "prevId": "092787d2-8788-4a14-9272-dec94d752c17",
   "version": "7",
   "dialect": "postgresql",
@@ -81,150 +81,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.invites": {
-      "name": "invites",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "wiki_id": {
-          "name": "wiki_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "used_by": {
-          "name": "used_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "used_at": {
-          "name": "used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "invites_wiki_idx": {
-          "name": "invites_wiki_idx",
-          "columns": [
-            {
-              "expression": "wiki_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "invites_wiki_id_wikis_id_fk": {
-          "name": "invites_wiki_id_wikis_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "wikis",
-          "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "invites_created_by_users_id_fk": {
-          "name": "invites_created_by_users_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "invites_used_by_users_id_fk": {
-          "name": "invites_used_by_users_id_fk",
-          "tableFrom": "invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "used_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "invites_token_hash_unique": {
-          "name": "invites_token_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "invites_role_check": {
-          "name": "invites_role_check",
-          "value": "\"invites\".\"role\" in ('admin', 'editor')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.oauth_clients": {
@@ -352,9 +208,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
+        "user_email": {
+          "name": "user_email",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -408,7 +264,7 @@
           "name": "oauth_grants_user_idx",
           "columns": [
             {
-              "expression": "user_id",
+              "expression": "user_email",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -433,19 +289,6 @@
           "tableTo": "oauth_clients",
           "columnsFrom": [
             "client_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "oauth_grants_user_id_users_id_fk": {
-          "name": "oauth_grants_user_id_users_id_fk",
-          "tableFrom": "oauth_grants",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -555,9 +398,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
+        "author_email": {
+          "name": "author_email",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -601,27 +444,14 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "page_drafts_user_id_users_id_fk": {
-          "name": "page_drafts_user_id_users_id_fk",
-          "tableFrom": "page_drafts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "page_drafts_page_id_user_id_pk": {
-          "name": "page_drafts_page_id_user_id_pk",
+        "page_drafts_page_id_author_email_pk": {
+          "name": "page_drafts_page_id_author_email_pk",
           "columns": [
             "page_id",
-            "user_id"
+            "author_email"
           ]
         }
       },
@@ -697,9 +527,9 @@
       "name": "page_stars",
       "schema": "",
       "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
+        "admin_email": {
+          "name": "admin_email",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -725,19 +555,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "page_stars_user_id_users_id_fk": {
-          "name": "page_stars_user_id_users_id_fk",
-          "tableFrom": "page_stars",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "page_stars_page_id_pages_id_fk": {
           "name": "page_stars_page_id_pages_id_fk",
           "tableFrom": "page_stars",
@@ -753,10 +570,10 @@
         }
       },
       "compositePrimaryKeys": {
-        "page_stars_user_id_page_id_pk": {
-          "name": "page_stars_user_id_page_id_pk",
+        "page_stars_admin_email_page_id_pk": {
+          "name": "page_stars_admin_email_page_id_pk",
           "columns": [
-            "user_id",
+            "admin_email",
             "page_id"
           ]
         }
@@ -987,6 +804,101 @@
           "value": "\"page_versions\".\"author_type\" in ('human', 'ai')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.page_views_daily": {
+      "name": "page_views_daily",
+      "schema": "",
+      "columns": {
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_id": {
+          "name": "page_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "page_views_daily_wiki_day_idx": {
+          "name": "page_views_daily_wiki_day_idx",
+          "columns": [
+            {
+              "expression": "wiki_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "page_views_daily_wiki_id_wikis_id_fk": {
+          "name": "page_views_daily_wiki_id_wikis_id_fk",
+          "tableFrom": "page_views_daily",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "page_views_daily_page_id_pages_id_fk": {
+          "name": "page_views_daily_page_id_pages_id_fk",
+          "tableFrom": "page_views_daily",
+          "tableTo": "pages",
+          "columnsFrom": [
+            "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "page_views_daily_page_id_day_pk": {
+          "name": "page_views_daily_page_id_day_pk",
+          "columns": [
+            "page_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.pages": {
@@ -2204,201 +2116,6 @@
       },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.users": {
-      "name": "users",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "google_sub": {
-          "name": "google_sub",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_owner": {
-          "name": "is_owner",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_login_at": {
-          "name": "last_login_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "users_email_idx": {
-          "name": "users_email_idx",
-          "columns": [
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "users_google_sub_unique": {
-          "name": "users_google_sub_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "google_sub"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.wiki_members": {
-      "name": "wiki_members",
-      "schema": "",
-      "columns": {
-        "wiki_id": {
-          "name": "wiki_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "invite_id": {
-          "name": "invite_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "wiki_members_user_idx": {
-          "name": "wiki_members_user_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "wiki_members_wiki_id_wikis_id_fk": {
-          "name": "wiki_members_wiki_id_wikis_id_fk",
-          "tableFrom": "wiki_members",
-          "tableTo": "wikis",
-          "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "wiki_members_user_id_users_id_fk": {
-          "name": "wiki_members_user_id_users_id_fk",
-          "tableFrom": "wiki_members",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "wiki_members_invite_id_invites_id_fk": {
-          "name": "wiki_members_invite_id_invites_id_fk",
-          "tableFrom": "wiki_members",
-          "tableTo": "invites",
-          "columnsFrom": [
-            "invite_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "wiki_members_wiki_id_user_id_pk": {
-          "name": "wiki_members_wiki_id_user_id_pk",
-          "columns": [
-            "wiki_id",
-            "user_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "wiki_members_role_check": {
-          "name": "wiki_members_role_check",
-          "value": "\"wiki_members\".\"role\" in ('admin', 'editor')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.wikis": {

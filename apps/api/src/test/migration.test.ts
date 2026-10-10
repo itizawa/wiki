@@ -166,12 +166,12 @@ describe("0008_drop_tree_is_public", () => {
   });
 });
 
-describe("0012_users_and_invites", () => {
+describe("0013_users_and_invites", () => {
   it("keeps stars, drafts and app grants by turning their emails into users, which ADMIN_EMAILS then makes owners", async () => {
     const db = (client = new PGlite());
     const { readdir } = await import("node:fs/promises");
     const tags = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).sort();
-    for (const tag of tags.filter((t) => t < "0012")) await runMigration(db, tag);
+    for (const tag of tags.filter((t) => t < "0013")) await runMigration(db, tag);
 
     await db.exec(`
       insert into wikis (id, key, name) values ('w_first', 'wiki', 'メイン') on conflict do nothing;
@@ -181,7 +181,7 @@ describe("0012_users_and_invites", () => {
       insert into oauth_clients (id, name, redirect_uris) values ('wc_app', 'app', '["https://app.example/cb"]');
       insert into oauth_grants (client_id, user_email, scopes, expires_at) values ('wc_app', 'OWNER@example.com', '["wiki.read"]', now() + interval '1 day');
     `);
-    await runMigration(db, tags.find((t) => t.startsWith("0012"))!);
+    await runMigration(db, tags.find((t) => t.startsWith("0013"))!);
 
     const users = (await db.query<{ id: string; email: string; is_owner: boolean }>(`select id, email, is_owner from users order by email`)).rows;
     expect(users.map((u) => [u.email, u.is_owner])).toEqual([

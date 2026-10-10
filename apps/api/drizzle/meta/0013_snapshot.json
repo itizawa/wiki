@@ -1,257 +1,9 @@
 {
-  "id": "0f518b45-b7f8-4c39-a7cb-21624f999317",
-  "prevId": "e05584ed-73b0-4668-b29f-787cc3f86457",
+  "id": "46a3195e-c4d1-4d20-8a1f-7240862dbd9d",
+  "prevId": "ca1390ab-5959-4638-86f1-3fa679dc3fc2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.audit_logs": {
-      "name": "audit_logs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "wiki_id": {
-          "name": "wiki_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_type": {
-          "name": "actor_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actor_user_id": {
-          "name": "actor_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_label": {
-          "name": "actor_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actor_email": {
-          "name": "actor_email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rule_run_id": {
-          "name": "rule_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "via": {
-          "name": "via",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_type": {
-          "name": "target_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "target_id": {
-          "name": "target_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "target_label": {
-          "name": "target_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "detail": {
-          "name": "detail",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "ip": {
-          "name": "ip",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_agent": {
-          "name": "user_agent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "audit_logs_wiki_created_idx": {
-          "name": "audit_logs_wiki_created_idx",
-          "columns": [
-            {
-              "expression": "wiki_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "audit_logs_created_idx": {
-          "name": "audit_logs_created_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "audit_logs_actor_idx": {
-          "name": "audit_logs_actor_idx",
-          "columns": [
-            {
-              "expression": "actor_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "audit_logs_target_idx": {
-          "name": "audit_logs_target_idx",
-          "columns": [
-            {
-              "expression": "target_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "target_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "audit_logs_wiki_id_wikis_id_fk": {
-          "name": "audit_logs_wiki_id_wikis_id_fk",
-          "tableFrom": "audit_logs",
-          "tableTo": "wikis",
-          "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "audit_logs_actor_user_id_users_id_fk": {
-          "name": "audit_logs_actor_user_id_users_id_fk",
-          "tableFrom": "audit_logs",
-          "tableTo": "users",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "audit_logs_rule_run_id_rule_runs_id_fk": {
-          "name": "audit_logs_rule_run_id_rule_runs_id_fk",
-          "tableFrom": "audit_logs",
-          "tableTo": "rule_runs",
-          "columnsFrom": [
-            "rule_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "audit_logs_actor_type_check": {
-          "name": "audit_logs_actor_type_check",
-          "value": "\"audit_logs\".\"actor_type\" in ('user', 'rule', 'system')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.commit_trees": {
       "name": "commit_trees",
       "schema": "",
@@ -1161,12 +913,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "oauth_grant_id": {
           "name": "oauth_grant_id",
           "type": "uuid",
@@ -1218,19 +964,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "page_versions_created_by_users_id_fk": {
-          "name": "page_versions_created_by_users_id_fk",
-          "tableFrom": "page_versions",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "page_versions_oauth_grant_id_oauth_grants_id_fk": {
           "name": "page_versions_oauth_grant_id_oauth_grants_id_fk",
           "tableFrom": "page_versions",
@@ -1254,6 +987,101 @@
           "value": "\"page_versions\".\"author_type\" in ('human', 'ai')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.page_views_daily": {
+      "name": "page_views_daily",
+      "schema": "",
+      "columns": {
+        "wiki_id": {
+          "name": "wiki_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "page_id": {
+          "name": "page_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "page_views_daily_wiki_day_idx": {
+          "name": "page_views_daily_wiki_day_idx",
+          "columns": [
+            {
+              "expression": "wiki_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "page_views_daily_wiki_id_wikis_id_fk": {
+          "name": "page_views_daily_wiki_id_wikis_id_fk",
+          "tableFrom": "page_views_daily",
+          "tableTo": "wikis",
+          "columnsFrom": [
+            "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "page_views_daily_page_id_pages_id_fk": {
+          "name": "page_views_daily_page_id_pages_id_fk",
+          "tableFrom": "page_views_daily",
+          "tableTo": "pages",
+          "columnsFrom": [
+            "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "page_views_daily_page_id_day_pk": {
+          "name": "page_views_daily_page_id_day_pk",
+          "columns": [
+            "page_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.pages": {
@@ -1792,12 +1620,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "oauth_grant_id": {
           "name": "oauth_grant_id",
           "type": "uuid",
@@ -1923,19 +1745,6 @@
           "tableTo": "rule_runs",
           "columnsFrom": [
             "rule_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "scheduled_actions_created_by_users_id_fk": {
-          "name": "scheduled_actions_created_by_users_id_fk",
-          "tableFrom": "scheduled_actions",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
           ],
           "columnsTo": [
             "id"
@@ -2204,12 +2013,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "oauth_grant_id": {
           "name": "oauth_grant_id",
           "type": "uuid",
@@ -2232,19 +2035,6 @@
           "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "structure_commits_created_by_users_id_fk": {
-          "name": "structure_commits_created_by_users_id_fk",
-          "tableFrom": "structure_commits",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
           ],
           "columnsTo": [
             "id"

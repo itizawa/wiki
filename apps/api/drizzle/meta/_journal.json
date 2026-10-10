@@ -89,15 +89,22 @@
     {
       "idx": 12,
       "version": "7",
-      "when": 1791640319988,
-      "tag": "0012_users_and_invites",
+      "when": 1791640302684,
+      "tag": "0012_page_views",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "7",
+      "when": 1791640319988,
+      "tag": "0013_users_and_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
       "when": 1791641918363,
-      "tag": "0013_audit_logs",
+      "tag": "0014_audit_logs",
       "breakpoints": true
     }
   ]

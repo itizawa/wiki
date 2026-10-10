@@ -21,3 +21,4 @@ export * from "./images";
 export * from "./users";
 export * from "./audit";
 export * from "./oauth";
+export * from "./views";

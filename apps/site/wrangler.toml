@@ -34,6 +34,16 @@ SITE_BASE_DOMAIN = "hatchery-works.com"
 # Host で wiki が決まらないとき（プレビューの *.workers.dev、手元の `pnpm preview`）に表示する wiki。
 # `?wiki={key}` を付けて開くと、その wiki に切り替わる
 DEFAULT_WIKI = "wiki"
+# 閲覧数（`POST /_v`）を渡す先。管理画面と API の Worker（wiki-admin）のオリジン。
+# あわせて secret の INTERNAL_TOKEN（API と同じ値）が要る。どちらかが無ければ数えない（README「デプロイ」）
+API_ORIGIN = "https://wiki-admin.hatchery-works.com"
+
+# 閲覧数の記録用の経路（`POST /_v`）の回数の制限。接続元ごとに 60 秒で 30 回まで（超えたぶんは数えない）。
+# namespace_id はアカウントの中で重ならない数字なら何でもよい
+[[ratelimits]]
+name = "VIEW_LIMITER"
+namespace_id = "6001"
+simple = { limit = 30, period = 60 }
 
 [observability]
 enabled = true
