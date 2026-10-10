@@ -1,22 +1,50 @@
-import { Copy, Download, Ellipsis } from "lucide-react";
+import Button from "@mui/material/Button";
+import Divider from "@mui/material/Divider";
+import { Copy, Download, Ellipsis, History, LayoutTemplate, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Snackbar from "@mui/material/Snackbar";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { api, errorMessage } from "../lib/api";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
+import { templateLink } from "../lib/wiki";
 import { Tooltip } from "./Tooltip";
+import { Mono, Muted } from "./ui";
 
-/** 編集画面の「…」メニュー。いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す。 */
-export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
+/**
+ * 編集画面の「…」メニュー。版履歴を開く・いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す・テンプレートにする・ページを削除する。
+ * 下にページのパスを出す。
+ */
+export function PageMenu(props: { title: string; bodyMd: string; path: string; onOpenHistory: () => void; onDelete: () => void }) {
+  const { title, bodyMd } = props;
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [createdTemplate, setCreatedTemplate] = useState<string | null>(null);
+
+  const saveAsTemplate = useMutation({
+    mutationFn: () => api.createTemplate({ title: title.trim() || "無題", bodyMd }),
+    onSuccess: (t) => {
+      void qc.invalidateQueries({ queryKey: ["templates"] });
+      setCreatedTemplate(t.id);
+      setNotice(`テンプレート「${t.title}」を作りました`);
+    },
+    onError: (err) => {
+      setCreatedTemplate(null);
+      setNotice(`テンプレートを作れませんでした：${errorMessage(err)}`);
+    },
+  });
 
   const copy = async () => {
     setAnchor(null);
+    setCreatedTemplate(null);
     try {
       await navigator.clipboard.writeText(toMarkdownDocument(title, bodyMd));
       setNotice("Markdown をコピーしました");
@@ -45,12 +73,24 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
 
   return (
     <>
-      <Tooltip title="書き出す">
-        <IconButton size="small" aria-label="書き出す" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
+      <Tooltip title="その他の操作">
+        <IconButton size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
           <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            props.onOpenHistory();
+          }}
+        >
+          <ListItemIcon>
+            <History size={18} />
+          </ListItemIcon>
+          <ListItemText>版履歴</ListItemText>
+        </MenuItem>
+        <Divider />
         <MenuItem onClick={copy}>
           <ListItemIcon>
             <Copy size={18} />
@@ -63,6 +103,36 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
           </ListItemIcon>
           <ListItemText>Markdown ファイル（.md）をダウンロード</ListItemText>
         </MenuItem>
+        <Divider />
+        <MenuItem
+          disabled={saveAsTemplate.isPending}
+          onClick={() => {
+            setAnchor(null);
+            setCreatedTemplate(null);
+            saveAsTemplate.mutate();
+          }}
+        >
+          <ListItemIcon>
+            <LayoutTemplate size={18} />
+          </ListItemIcon>
+          <ListItemText>テンプレートとして保存</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            props.onDelete();
+          }}
+          sx={{ color: "error.main" }}
+        >
+          <ListItemIcon sx={{ color: "inherit" }}>
+            <Trash2 size={18} />
+          </ListItemIcon>
+          <ListItemText>このページを削除…</ListItemText>
+        </MenuItem>
+        <Muted component="div" sx={{ px: 2, pt: 1, pb: 0.5, fontSize: "0.75rem", wordBreak: "break-all" }}>
+          <Mono>{props.path}</Mono>
+        </Muted>
       </Menu>
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
@@ -70,6 +140,20 @@ export function PageMenu({ title, bodyMd }: { title: string; bodyMd: string }) {
         message={notice}
         autoHideDuration={4000}
         onClose={() => setNotice(null)}
+        action={
+          createdTemplate && (
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                setNotice(null);
+                void navigate(templateLink(createdTemplate));
+              }}
+            >
+              開く
+            </Button>
+          )
+        }
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
         sx={{ mt: 5 }}
       />

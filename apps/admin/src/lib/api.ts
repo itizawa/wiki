@@ -5,6 +5,7 @@ import type {
   Member,
   PageDetail,
   PageDraft,
+  PageTemplate,
   PageSummary,
   PageVersion,
   PublishVisibility,
@@ -103,7 +104,9 @@ export const api = {
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
   search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
-  createPage: (input: { title: string; bodyMd?: string; parentPageId?: string | null }) => request<PageDetail>("POST", w("/pages"), input),
+  /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */
+  createPage: (input: { title?: string; bodyMd?: string; parentPageId?: string | null; templateId?: string }) =>
+    request<PageDetail>("POST", w("/pages"), input),
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
@@ -159,6 +162,13 @@ export const api = {
   saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", w(`/rules/${id}`), input),
   listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", w("/rules/runs")),
 
+  listTemplates: () => request<{ templates: PageTemplate[] }>("GET", w("/templates")),
+  getTemplate: (id: string) => request<PageTemplate>("GET", w(`/templates/${id}`)),
+  createTemplate: (input: { title: string; bodyMd: string }) => request<PageTemplate>("POST", w("/templates"), input),
+  updateTemplate: (id: string, input: { title: string; bodyMd: string }) => request<PageTemplate>("PUT", w(`/templates/${id}`), input),
+  deleteTemplate: (id: string) => request<{ ok: true }>("DELETE", w(`/templates/${id}`)),
+  /** 変数を置き換えたタイトルと本文 */
+  renderTemplate: (id: string) => request<{ title: string; bodyMd: string }>("GET", w(`/templates/${id}/render`)),
   listMembers: () => request<{ members: Member[] }>("GET", w("/members")),
   changeRole: (userId: string, role: WikiRole) => request<{ members: Member[] }>("PATCH", w(`/members/${userId}`), { role }),
   removeMember: (userId: string) => request<{ ok: true }>("DELETE", w(`/members/${userId}`)),

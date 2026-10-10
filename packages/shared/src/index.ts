@@ -15,6 +15,7 @@ export * from "./callout";
 export * from "./search";
 export * from "./toggle";
 export * from "./wiki";
+export * from "./template";
 export * from "./visibility";
 export * from "./images";
 export * from "./users";

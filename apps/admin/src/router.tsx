@@ -11,6 +11,7 @@ import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
 import { RulesPage } from "./routes/RulesPage";
+import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
 import { SearchPage } from "./routes/SearchPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikisPage } from "./routes/WikisPage";
@@ -57,9 +58,13 @@ const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", com
 const editorRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "pages/$pageId",
+  // ?history={版のID}：版履歴を開き、その版を選んだ状態。再読み込みや URL の共有で同じ版が開く
+  validateSearch: (search: Record<string, unknown>): { history?: string } =>
+    typeof search.history === "string" && search.history !== "" ? { history: search.history } : {},
   component: function Editor() {
     const { pageId } = editorRoute.useParams();
-    return <EditorPage key={pageId} pageId={pageId} />;
+    const { history } = editorRoute.useSearch();
+    return <EditorPage key={pageId} pageId={pageId} historyVersionId={history ?? null} />;
   },
 });
 const searchRoute = createRoute({
@@ -79,6 +84,15 @@ const searchRoute = createRoute({
 });
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
 const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
+const templatesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "templates", component: padded(TemplatesPage) });
+const templateEditorRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "templates/$templateId",
+  component: function TemplateEditor() {
+    const { templateId } = templateEditorRoute.useParams();
+    return <TemplateEditorPage key={templateId} templateId={templateId} />;
+  },
+});
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
 
@@ -105,7 +119,7 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   ownersRoute,
   inviteRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, historyRoute, membersRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),
