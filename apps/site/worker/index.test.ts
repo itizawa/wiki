@@ -90,6 +90,16 @@ describe("site worker", () => {
     expect((await wiki("/index.html", e)).headers.get("location")).toBe("/");
   });
 
+  it("adds security headers to every response, keeping the ones a response sets itself", async () => {
+    for (const res of [await wiki("/"), await wiki("/p/yyyyyyyyyy"), await wiki("/p/zzzzzzzzzz"), await get("https://ghost.site.test/")]) {
+      expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+    }
+    expect((await wiki("/u/SecretKey/")).headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
   it("marks unlisted pages noindex and no-referrer", async () => {
     const res = await wiki("/u/SecretKey/");
     expect(res.status).toBe(200);

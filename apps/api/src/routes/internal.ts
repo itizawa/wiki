@@ -15,14 +15,16 @@ export const requireInternalToken: MiddlewareHandler<AppEnv> = async (c, next) =
   const token = c.get("deps").config.internalToken;
   if (!token) throw new HttpError(404, "not_found", "not found");
   const header = c.req.header("authorization") ?? "";
-  if (!timingSafeEqual(header, `Bearer ${token}`)) throw new HttpError(401, "unauthenticated", "invalid token");
+  if (!(await timingSafeEqual(header, `Bearer ${token}`))) throw new HttpError(401, "unauthenticated", "invalid token");
   await next();
 };
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+/** 長さも漏らさないよう、両方を SHA-256 にしてから定数時間で比べる */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const digest = async (s: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  const [x, y] = await Promise.all([digest(a), digest(b)]);
   let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < x.length; i++) diff |= x[i]! ^ y[i]!;
   return diff === 0;
 }
 
