@@ -34,7 +34,6 @@
   "trees": [
     {
       "key": "main",
-      "name": "メイン",
       "isPrimary": true,
       "nodes": [
         { "nodeId": "aaaaaaaaa1", "pageId": "aaaaaaaaa1", "parentNodeId": null, "position": "a0" },
@@ -43,7 +42,6 @@
     },
     {
       "key": "by-theme",
-      "name": "テーマ別",
       "isPrimary": false,
       "nodes": [
         { "nodeId": "aaaaaaaaa2", "pageId": "aaaaaaaaa2", "parentNodeId": null, "position": "a0" }

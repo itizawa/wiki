@@ -195,7 +195,7 @@ export async function bootstrapStructure(db: Db): Promise<void> {
     const [existing] = await tx.select().from(structureBranches).where(eq(structureBranches.name, MAIN_BRANCH));
     if (existing) return;
     const treeId = newTreeId();
-    await tx.insert(trees).values({ id: treeId, key: "main", name: "メイン", isPublic: true, isPrimary: true });
+    await tx.insert(trees).values({ id: treeId, key: "main", name: "メイン", isPrimary: true });
     const state: StructureState = { trees: { [treeId]: { treeId, nodes: [] } } };
     const commitId = await writeCommit(tx, {
       parents: [],

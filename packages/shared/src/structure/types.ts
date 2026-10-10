@@ -28,7 +28,6 @@ export type TreeMeta = {
   id: string;
   key: string;
   name: string;
-  isPublic: boolean;
   isPrimary: boolean;
 };
 

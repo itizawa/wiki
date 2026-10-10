@@ -92,7 +92,6 @@ export type ManifestTreeNode = {
 
 export type ManifestTree = {
   key: string;
-  name: string;
   isPrimary: boolean;
   nodes: ManifestTreeNode[];
 };

@@ -123,8 +123,8 @@ export const trees = pgTable("trees", {
   id: text("id").primaryKey(),
   /** URLに使用（'by-project' 'by-theme'） */
   key: text("key").notNull().unique(),
+  /** 以前は画面から変えられた表示名。いまはどこにも出していない（公開サイト・管理画面は固定の文言を使う） */
   name: text("name").notNull(),
-  isPublic: boolean("is_public").notNull().default(true),
   /** パンくず・既定ナビ用（1つだけ） */
   isPrimary: boolean("is_primary").notNull().default(false),
 }, (t) => [

@@ -75,3 +75,33 @@ describe("0002_pages_only", () => {
     expect(versions).toEqual([expect.objectContaining({ id: docs.head_version_id, title: "ガイド", body_md: "" })]);
   });
 });
+
+describe("0006_drop_tree_is_public", () => {
+  const before = ["0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_page_stars"];
+
+  it("stops when the tree is hidden from the public site, instead of silently showing it", async () => {
+    const db = (client = new PGlite());
+    for (const tag of before) await runMigration(db, tag);
+    await db.exec(`insert into trees (id, key, name, is_public, is_primary) values ('t_main', 'main', 'メイン', false, true)`);
+
+    await expect(runMigration(db, "0006_drop_tree_is_public")).rejects.toThrow(/is_public is false/);
+    // 止まったあとも列は残っていて、直してから流し直せる
+    await db.exec(`update trees set is_public = true where is_primary`);
+    await runMigration(db, "0006_drop_tree_is_public");
+    const columns = await db.query<{ column_name: string }>(`select column_name from information_schema.columns where table_name = 'trees'`);
+    expect(columns.rows.map((r) => r.column_name)).not.toContain("is_public");
+  });
+
+  it("ignores hidden legacy trees that are no longer used, and keeps the tree name", async () => {
+    const db = (client = new PGlite());
+    for (const tag of before) await runMigration(db, tag);
+    await db.exec(`
+      insert into trees (id, key, name, is_public, is_primary) values
+        ('t_main', 'main', 'ブログ', true, true),
+        ('t_old', 'by-theme', 'テーマ別', false, false)`);
+
+    await runMigration(db, "0006_drop_tree_is_public");
+    const rows = await db.query<{ name: string }>(`select name from trees order by id`);
+    expect(rows.rows.map((r) => r.name)).toEqual(["ブログ", "テーマ別"]);
+  });
+});

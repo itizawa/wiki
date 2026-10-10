@@ -30,3 +30,5 @@ export async function siteData(): Promise<SiteData> {
 }
 
 export const SITE_NAME = process.env.SITE_NAME ?? "wiki";
+/** ツリー（ページの階層）の一覧ページの呼び名。ツリーは1本なので、名前は固定にしている。 */
+export const TREE_LABEL = "ページ一覧";

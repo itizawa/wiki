@@ -1,10 +1,10 @@
 ---
 import page from "../styles/page.module.css";
 import Base from "../layouts/Base.astro";
-import { SITE_NAME, siteData } from "../lib/manifest";
+import { SITE_NAME, siteData, TREE_LABEL } from "../lib/manifest";
 import { excerpt } from "../lib/markdown";
 
-const { manifest } = await siteData();
+const { manifest, primaryTree } = await siteData();
 const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
 ---
 
@@ -26,16 +26,12 @@ const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle
     }
   </ul>
   {
-    manifest.trees.length > 0 && (
+    primaryTree && (
       <section>
-        <h2>カテゴリから探す</h2>
-        <ul>
-          {manifest.trees.map((t) => (
-            <li>
-              <a href={`/t/${t.key}/`}>{t.name}</a>
-            </li>
-          ))}
-        </ul>
+        <h2>階層から探す</h2>
+        <p>
+          <a href={`/t/${primaryTree.key}/`}>{TREE_LABEL}を見る</a>
+        </p>
       </section>
     )
   }

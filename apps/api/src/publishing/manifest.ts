@@ -17,7 +17,7 @@ import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure
  * 公開ビルド用マニフェスト。含めるのは
  * - visibility='public' かつ公開版のあるページ
  * - unlisted ページ（隠しパスのみ。idは出さない）
- * - mainのheadコミットの、公開ツリーのスナップショット（公開ページだけに絞る）
+ * - mainのheadコミットの、ツリーのスナップショット（公開ページだけに絞る）
  * 下書き・予約中の版・ブランチ上の変更は一切含めない。
  */
 export async function buildManifest(db: Db, now = new Date()): Promise<PublicManifest> {
@@ -56,16 +56,8 @@ export async function buildManifest(db: Db, now = new Date()): Promise<PublicMan
   const main = await getBranch(db, MAIN_BRANCH);
   const { state } = await loadCommit(db, main.headCommitId);
   const tree = await getPrimaryTree(db);
-  const trees: ManifestTree[] = tree.isPublic
-    ? [
-        {
-          key: tree.key,
-          name: tree.name,
-          isPrimary: true,
-          nodes: publicTreeNodes(state.trees[tree.id]?.nodes ?? [], publicIds),
-        },
-      ]
-    : [];
+  // ツリーは常に公開サイトに出す。出す・出さないは、ページごとの公開範囲で決まる
+  const trees: ManifestTree[] = [{ key: tree.key, isPrimary: true, nodes: publicTreeNodes(state.trees[tree.id]?.nodes ?? [], publicIds) }];
 
   const goneRows = await db
     .select({ id: pages.id })
