@@ -166,12 +166,12 @@ describe("0008_drop_tree_is_public", () => {
   });
 });
 
-describe("0010_users_and_invites", () => {
+describe("0011_users_and_invites", () => {
   it("keeps stars and drafts by turning their emails into users, which ADMIN_EMAILS then makes owners", async () => {
     const db = (client = new PGlite());
     const { readdir } = await import("node:fs/promises");
     const tags = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).sort();
-    for (const tag of tags.filter((t) => t < "0010")) await runMigration(db, tag);
+    for (const tag of tags.filter((t) => t < "0011")) await runMigration(db, tag);
 
     await db.exec(`
       insert into wikis (id, key, name) values ('w_first', 'wiki', 'メイン') on conflict do nothing;
@@ -179,7 +179,7 @@ describe("0010_users_and_invites", () => {
       insert into page_stars (admin_email, page_id, position) values ('Owner@example.com', 'pageaaaaa1', 0), ('former@example.com', 'pageaaaaa1', 0);
       insert into page_drafts (page_id, author_email, base_version_id, title, body_md) values ('pageaaaaa1', 'owner@example.com', gen_random_uuid(), 't', 'b');
     `);
-    await runMigration(db, tags.find((t) => t.startsWith("0010"))!);
+    await runMigration(db, tags.find((t) => t.startsWith("0011"))!);
 
     const users = (await db.query<{ id: string; email: string; is_owner: boolean }>(`select id, email, is_owner from users order by email`)).rows;
     expect(users.map((u) => [u.email, u.is_owner])).toEqual([
