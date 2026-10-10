@@ -4,6 +4,7 @@ import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import FindReplaceIcon from "@mui/icons-material/FindReplace";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
@@ -25,6 +26,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
+import { openFindBar } from "../editor/FindBar";
 import { usePageActions } from "../lib/pageActions";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
@@ -102,6 +104,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す
     ...(pageActions
       ? [
+          { id: "find", label: "本文を検索・置換する", keywords: ["find", "search", "replace", "kensaku"], icon: <FindReplaceIcon fontSize="small" />, run: closing(openFindBar) },
           { id: "copy-md", label: "このページの Markdown をコピー", keywords: ["copy", "markdown", "md", "export"], icon: <ContentCopyIcon fontSize="small" />, run: closing(pageActions.copyMarkdown) },
           {
             id: "download-md",
