@@ -20,7 +20,7 @@ import { Muted } from "./ui";
 
 const MAX_PAGES = 8;
 
-type Item = { key: string; label: string; icon: ReactNode; run: () => void };
+type Item = { key: string; label: string; secondary?: string; icon: ReactNode; run: () => void };
 
 export type Command = { id: string; label: string; keywords: string[]; icon: ReactNode; run: () => void };
 
@@ -42,12 +42,14 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const q = query.trim();
   const pageActions = usePageActions();
 
-  const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q), enabled: open, placeholderData: keepPreviousData });
+  // 検索の画面と同じ検索（タイトルと本文）。何も打っていなければ、最近更新したページ
+  const pages = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: open, placeholderData: keepPreviousData });
   const create = useMutation({
     mutationFn: () => api.createPage({ title: q || "無題" }),
     onSuccess: async (page) => {
       void qc.invalidateQueries({ queryKey: ["structure"] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
       onClose();
       await navigate(pageLink(page.id));
     },
@@ -70,6 +72,16 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       keywords: ["new", "create", "page", "tsukuru"],
       icon: <Plus size={18} />,
       run: () => !create.isPending && create.mutate(),
+    },
+    {
+      id: "search",
+      label: q ? `「${q}」の検索結果を、本文の一致した所と一緒に見る` : "「検索」を開く",
+      keywords: ["search", "find", "kensaku"],
+      icon: <Search size={18} />,
+      run: () => {
+        onClose();
+        void navigate({ ...screenLink("/w/$wikiKey/search"), search: q ? { q } : {} });
+      },
     },
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
@@ -129,13 +141,13 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
   ];
 
-  const pageItems = (pages.data?.pages ?? []).slice(0, MAX_PAGES);
-  // 「新しいページを作る」は、打った文字が何であっても残す（その名前で作れるため）
-  const matched = filterCommands(commands.slice(1), q);
-  const actions = [commands[0]!, ...matched];
+  const pageItems = (pages.data?.results ?? []).slice(0, MAX_PAGES);
+  // 「新しいページを作る」と検索は、打った文字が何であっても残す（その文字で作る・探すため）
+  const matched = filterCommands(commands.slice(2), q);
+  const actions = [commands[0]!, commands[1]!, ...matched];
   // 探しているときはページを先に、何も打っていないときは操作を先に出す
   const sections: { title: string; items: Item[] }[] = [
-    { title: "ページ", items: pageItems.map((p) => ({ key: p.id, label: p.title, icon: <FileText size={18} />, run: () => openPage(p.id) })) },
+    { title: "ページ", items: pageItems.map((p) => ({ key: p.id, label: p.title, secondary: p.snippet ?? undefined, icon: <FileText size={18} />, run: () => openPage(p.id) })) },
     { title: "操作", items: actions.map((c) => ({ key: c.id, label: c.label, icon: c.icon, run: c.run })) },
   ];
   if (q === "") sections.reverse();
@@ -166,7 +178,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           fullWidth
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="ページを探す、または操作を選ぶ"
+          placeholder="ページを探す（タイトルと本文）、または操作を選ぶ"
           inputProps={{ "aria-label": "ページを探す、または操作を選ぶ", role: "combobox", "aria-expanded": true, "aria-controls": "command-menu-list" }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
@@ -194,7 +206,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
               return (
                 <MenuItem key={item.key} role="option" aria-selected={selected} selected={selected} ref={selected ? scrollIntoView : undefined} onClick={item.run}>
                   <ListItemIcon>{item.icon}</ListItemIcon>
-                  <ListItemText slotProps={{ primary: { noWrap: true } }}>{item.label}</ListItemText>
+                  <ListItemText primary={item.label} secondary={item.secondary} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true, sx: { fontSize: "0.75rem" } } }} />
                 </MenuItem>
               );
             }),

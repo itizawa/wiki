@@ -8,6 +8,7 @@ import { HistoryPage } from "./routes/HistoryPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
 import { RulesPage } from "./routes/RulesPage";
+import { SearchPage } from "./routes/SearchPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikisPage } from "./routes/WikisPage";
 
@@ -46,6 +47,21 @@ const editorRoute = createRoute({
     return <EditorPage key={pageId} pageId={pageId} />;
   },
 });
+const searchRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "search",
+  validateSearch: (search: Record<string, unknown>): { q?: string } => (typeof search.q === "string" && search.q !== "" ? { q: search.q } : {}),
+  component: function Search() {
+    const { q = "" } = searchRoute.useSearch();
+    const navigate = searchRoute.useNavigate();
+    return (
+      <PageBody>
+        {/* 打つたびに履歴を増やさない */}
+        <SearchPage q={q} onChange={(next) => void navigate({ search: next ? { q: next } : {}, replace: true })} />
+      </PageBody>
+    );
+  },
+});
 const calendarRoute = createRoute({ getParentRoute: () => wikiRoute, path: "calendar", component: padded(CalendarPage) });
 const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
@@ -71,7 +87,7 @@ const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
   wikisRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, calendarRoute, rulesRoute, historyRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, historyRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),
