@@ -62,6 +62,18 @@ check(notesPage.includes("広告を含みます") && notesPage.includes('rel="sp
 
 check(notesPage.includes("このページにリンクしているページ") && !intro.includes("このページにリンクしているページ"), "backlinks are listed only on pages that are linked from another public page");
 check(!unlisted.includes("このページにリンクしているページ"), "unlisted page shows no backlinks");
+
+// 閲覧数：公開の記事（/p/ と /t/）だけが数え、限定公開のページからは何も送らない
+const counterScript = async (html) => {
+  // スクリプトは小さければページに埋め込まれ、大きければ _astro/ のファイルになる。どちらでも送り先（/_v）を探す
+  const srcs = [...html.matchAll(/<script[^>]*src="(\/_astro\/[^"]+)"/g)].map((m) => m[1]);
+  const external = await Promise.all(srcs.map((src) => read(src.slice(1))));
+  return [html, ...external].some((t) => t.includes('"/_v"'));
+};
+check(intro.includes('data-count-view="aaaaaaaaa1"') && (await counterScript(intro)), "a public page counts its views with its own id");
+check(tPage.includes('data-count-view="aaaaaaaaa2"') && (await counterScript(tPage)), "a page viewed through the tree counts as the same page");
+check(!unlisted.includes("data-count-view") && !(await counterScript(unlisted)), "an unlisted page does not count views or send anything");
+check(!(await counterScript(await read("wiki/index.html"))), "list pages (the top) do not count views");
 check(!(await read("notes/p/bbbbbbbbb1.html")).includes("このページにリンクしているページ"), "a link from another wiki is not a backlink");
 
 const routes = JSON.parse(await read("wiki/page-routes.json"));

@@ -1,6 +1,7 @@
 import { imageNameFromPath, isValidWikiKey, resolvePagePath, wikiKeyFromHost, type PublicRoutes } from "@wiki/shared";
+import { recordView, VIEW_PATH, type ViewEnv } from "./views";
 
-export type Env = {
+export type Env = ViewEnv & {
   ASSETS: { fetch(input: Request | URL): Promise<Response> };
   /** アップロードした画像（R2。管理画面の Worker と同じバケット） */
   IMAGES?: { get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null> };
@@ -23,9 +24,10 @@ const notFound = () => new Response("Not Found", { status: 404, headers: { "cont
  * - ほかの wiki のディレクトリは、パスを直接指定しても開けない（必ず自分の wiki のディレクトリの下として読む）
  * - 知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
+ * - `POST /_v`：記事の閲覧数を数える（worker/views.ts）
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url);
     const target = resolveWiki(request, url, env);
     // wiki ではないサブドメイン（管理画面など、ほかの Worker のもの）は、そのまま本来の行き先へ渡す
@@ -40,6 +42,12 @@ export default {
       assetUrl.pathname = prefix + pathname;
       return assetUrl;
     };
+    if (url.pathname === VIEW_PATH && request.method === "POST") {
+      return recordView(request, env, ctx, target, async () => {
+        const res = await env.ASSETS.fetch(asset("/page-routes.json"));
+        return res.ok ? ((await res.json()) as PublicRoutes) : null;
+      });
+    }
     const res = withoutPrefix(await env.ASSETS.fetch(new Request(asset(url.pathname), request)), url, prefix);
     if (url.pathname.startsWith("/u/")) return unlisted(res);
     if (res.status !== 404 || !url.pathname.startsWith("/p/")) return res;

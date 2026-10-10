@@ -118,6 +118,25 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
   - 本文の「@」「[[」の「「…」をテンプレート「…」で作ってリンクする」（タイトルは打った名前）
 - 変数：ページを作るとき（API の `POST /pages` に `templateId` を渡したとき）に、タイトルと本文の `{date}`（今日の日付、JST）`{datetime}`（今の日時、JST）`{author}`（作った人のメールアドレス）を置き換える（`packages/shared/src/template.ts`）
 
+## 閲覧数
+
+公開サイトの記事がどれだけ読まれているかを数え、管理画面だけに出す（公開サイトには出さない）。Bot を除いた**目安の数字**として扱う。
+
+- 数えるもの：公開（`public`）の記事。`/p/{id}` とツリー経由の `/t/...` は同じ記事として合わせて数える。トップ・新着・検索などの一覧と、限定公開（`unlisted`）のページは数えない（限定公開のページには数えるスクリプトを入れず、外へ何も送らない。`build:sample` の検査で確かめる）
+- **同じブラウザが同じ記事を同じ日（JST）に何度開いても1回**。判定はブラウザ側で、`localStorage` に「この記事を数えた日」（今日のぶんだけ）を持つ。**IP アドレス・Cookie・個人を見分ける値は、サーバーに送らず、残さない**。管理画面にログインしている本人の閲覧も数える（公開サイトは別のドメインで見分けられないため）
+- 数え方（`apps/site/src/components/ViewCounter.astro` → `apps/site/worker/views.ts` → API の `/internal/views`）
+  1. 記事が実際に表示されたとき（先読み・裏のタブで開いただけのときは表示されるまで待つ）に、ブラウザが同じオリジンの `POST /_v` へ記事の ID だけを送る（`navigator.sendBeacon`）。自動操作のブラウザ（`navigator.webdriver`）は送らない
+  2. 公開サイトの Worker が確かめる：User-Agent が Bot のものでない、Cloudflare が確認済みの Bot としているリクエストでない、先読みでない、その wiki の `page-routes.json` にある（いま公開している）記事である、回数の制限（接続元ごとに 60 秒で 30 回。`wrangler.toml` の `[[ratelimits]]`）を超えていない
+  3. 確かめたら、API の `/internal/views`（`INTERNAL_TOKEN` が要る）へ wiki の key と記事の ID を渡し、API がもう一度（使用中の wiki の、削除していない公開中の記事か）確かめて、`page_views_daily`（`wiki_id` / `page_id` / `day` / `count`）の、その日の行に1を足す。1件ずつの記録は持たない。公開サイトの Worker から DB へは直接つながない
+  - `/_v` は、数えたかどうかにかかわらず、いつも 204 を返す。API へ渡すのは応答を返したあとで、失敗しても記事の表示には関わらず、数が静かに欠ける
+  - Cloudflare の「確認済みの Bot」（`request.cf.botManagement.verifiedBot`）は Bot Management のある（Enterprise の）プランでだけ値が入る。それ以外のプランでは値が無く、User-Agent の判定だけが効く
+- **除ききれないもの**：User-Agent を偽って JavaScript も動かす Bot は数に入る。反対に、JavaScript を切っている人や、広告ブロックで送信が止められた人は数に入らない。ブラウザの保存領域を消した・別のブラウザで開いた場合は、同じ日でももう1回と数える。数え始めたのは、この機能を出した日から（それより前のぶんは無い）
+- 管理画面（その wiki を開ける人ならだれでも見られる）
+  - 記事の画面：タイトルの下の「閲覧」から、合計・直近30日と、直近30日の日別の推移
+  - 「すべてのページ」：閲覧数の列（合計・直近30日）。列の見出しで多い順・少ない順に並べ替えられる
+  - 数えていない記事（まだ公開していない・限定公開）で数が無いものは「—」、公開していて0回のときは「0」。「◯年◯月◯日から計測」は、いちばん古い記録の日
+  - ページを削除したら、そのページの数は出さない（行は残す）。非公開にしたページは、それまでの数を出し続ける
+
 ## デプロイ
 
 `main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
@@ -143,6 +162,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
    - ビルドの環境変数：`API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`INTERNAL_TOKEN` `SITE_BASE_DOMAIN`（`hatchery-works.com`）。サイト名とオリジンは、wiki の表示名と key から決まる
    - wiki は `{key}.hatchery-works.com` で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルート `*.hatchery-works.com/*` で受ける（`apps/site/wrangler.toml`）。**DNS に、プロキシを有効にしたワイルドカードのレコード（`*.hatchery-works.com`）を1つ足す**（行き先は使われないので、`AAAA` で `100::` など）。wiki を作るたびに DNS や設定を足す必要は無い
    - このルートは `wiki-admin` など、ほかの Worker のサブドメインにも当たる。wiki の key として使えないホスト名（予約語）は、公開サイトの Worker がそのまま本来の Worker へ渡す。**新しい Worker を同じゾーンのサブドメインで出すときは、その名前を `RESERVED_WIKI_KEYS` に足す**
+   - 閲覧数のために、Worker の実行時のシークレット `INTERNAL_TOKEN`（手順6と同じ値）を入れる（Settings → Variables and Secrets、または `apps/site` で `npx wrangler secret put INTERNAL_TOKEN`）。ビルドの環境変数とは別に要る（ビルドの環境変数は Worker からは読めない）。渡す先の `API_ORIGIN` は `apps/site/wrangler.toml` の `[vars]` にある。どちらかが無い間は数えない（記事の表示には影響しない）
    - つないだらデプロイフック（Settings → Builds → Deploy Hooks、ブランチ `main`）を発行する
 6. GitHub の Settings → Secrets and variables → Actions に次を登録する
 
@@ -154,7 +174,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
    | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
    | `ADMIN_EMAILS` | 管理者として許可する Google アカウント（カンマ区切り） |
    | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順4のクライアント |
-   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数と同じ値 |
+   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数・実行時のシークレットと同じ値 |
    | `SITE_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗とルールからの通知を送る Slack 互換 Incoming Webhook |
 

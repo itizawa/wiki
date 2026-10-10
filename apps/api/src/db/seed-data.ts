@@ -1,4 +1,4 @@
-import { pagePath } from "@wiki/shared";
+import { addDays, jstDay, pagePath } from "@wiki/shared";
 import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import { publishPage } from "../publishing/service";
@@ -7,7 +7,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { createWiki, DEFAULT_WIKI_KEY } from "../wikis/service";
 import type { Db } from "./client";
 import * as schema from "./schema";
-import { pages, pageTemplates, pageVersions, scheduledActions, wikis } from "./schema";
+import { pages, pageTemplates, pageVersions, pageViewsDaily, scheduledActions, wikis } from "./schema";
 
 const DAY = 24 * 3600_000;
 
@@ -204,6 +204,8 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
           visibility: page.state,
           publishedAt: new Date(now.getTime() - (page.daysAgo ?? 0) * DAY),
         });
+        const views = page.state === "public" ? seedViews(wikiId, id, count, page.daysAgo ?? 0, now) : [];
+        if (views.length > 0) await tx.insert(pageViewsDaily).values(views);
       } else if (page.state === "scheduled") {
         await tx.insert(scheduledActions).values({
           wikiId,
@@ -234,6 +236,21 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
     for (const page of seed) await add(page, null);
     return count;
   });
+}
+
+/**
+ * 公開した日（最長で60日前）から今日までの、日ごとの閲覧数。ページごとに数の大きさを変え、曜日で波を付ける（乱数は使わない）。
+ * 0回の日は行を作らない。
+ */
+function seedViews(wikiId: string, pageId: string, n: number, daysAgo: number, now: Date) {
+  const today = jstDay(now);
+  const span = Math.min(daysAgo, 60);
+  const scale = [12, 5, 3, 8, 1, 2][n % 6]!;
+  return Array.from({ length: span + 1 }, (_, i) => {
+    const day = addDays(today, -i);
+    const count = Math.max(0, Math.round(scale * (1 + Math.sin((i + n) / 2.3)) - (i % 7 === 3 ? scale : 0)));
+    return { wikiId, pageId, day, count };
+  }).filter((r) => r.count > 0);
 }
 
 /** すべてのテーブルを空にして、最初の wiki と空のツリーだけがある初期状態に戻す。 */

@@ -8,6 +8,7 @@ import { allWikis, siteData } from "../../../lib/manifest";
 import { excerpt } from "../../../lib/markdown";
 import { ancestors, navItems } from "../../../lib/tree";
 import Backlinks from "../../../components/Backlinks.astro";
+import ViewCounter from "../../../components/ViewCounter.astro";
 import { siteBacklinks } from "../../../lib/backlinks";
 
 export async function getStaticPaths() {
@@ -48,6 +49,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
         origin={origin}
       />
       <Backlinks pages={backlinks} />
+      <ViewCounter pageId={page.id} />
     </main>
     {
       primaryTree && (

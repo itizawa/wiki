@@ -18,3 +18,4 @@ export * from "./wiki";
 export * from "./template";
 export * from "./visibility";
 export * from "./images";
+export * from "./views";

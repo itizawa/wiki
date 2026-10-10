@@ -12,6 +12,7 @@ import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { templateRoutes } from "./routes/templates";
+import { viewRoutes } from "./routes/views";
 import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
 
 export function createApp(deps: Deps) {
@@ -56,6 +57,7 @@ export function createApp(deps: Deps) {
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
   wiki.route("/images", imageUploadRoutes);
+  wiki.route("/views", viewRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 
