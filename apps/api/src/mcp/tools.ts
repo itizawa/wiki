@@ -8,6 +8,7 @@ import { HttpError, notFound } from "../errors";
 import type { AgentContext } from "../oauth/service";
 import { createPage, deletePage, findLivePage, savePage, setWorkflow } from "../routes/pages";
 import { cancelSchedule, createSchedule, listActions } from "../routes/publishing";
+import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { publishPage, unpublishPage } from "../publishing/service";
 import { commitOps, getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
 import { findOpenWiki, listWikis } from "../wikis/service";
@@ -41,16 +42,53 @@ const schema = (properties: Record<string, unknown>, required: string[]) => ({
 });
 const WIKI_PROP = { wiki: str("wiki の key（list_wikis で分かる）") };
 
-/**
- * wiki.private が無い許可で読めるページ：公開中のものと、その許可で作ったもの。
- * 1つのテーブルからの問い合わせでは列名にテーブル名が付かないので、相関する列は名前で書く
- */
+/** その許可で作ったページ。1つのテーブルからの問い合わせでは列名にテーブル名が付かないので、相関する列は名前で書く */
+const createdBy = (agent: AgentContext) =>
+  sql`exists (select 1 from "page_versions" v where v."page_id" = "pages"."id" and v."base_version_id" is null and v."oauth_grant_id" = ${agent.grantId})`;
+
+/** wiki.private が無い許可で読めるページ：公開中のものと、その許可で作ったもの */
 function visibleTo(agent: AgentContext): SQL | undefined {
   if (agent.scopes.includes("wiki.private")) return undefined;
-  return or(
-    and(eq(pages.visibility, "public"), isNotNull(pages.publishedVersionId)),
-    sql`exists (select 1 from "page_versions" v where v."page_id" = "pages"."id" and v."base_version_id" is null and v."oauth_grant_id" = ${agent.grantId})`,
-  );
+  return or(and(eq(pages.visibility, "public"), isNotNull(pages.publishedVersionId)), createdBy(agent));
+}
+
+/**
+ * 読める版。wiki.private が無いと、公開中のページは公開した版までで、公開前の書きかけは見せない。
+ * ただし、その許可で作ったページと、最新の版をその許可で書いたページは最新の版。
+ */
+function readableVersionId(agent: AgentContext): SQL {
+  if (agent.scopes.includes("wiki.private")) return sql`"pages"."head_version_id"`;
+  return sql`case when ${createdBy(agent)}
+    or exists (select 1 from "page_versions" hv where hv."id" = "pages"."head_version_id" and hv."oauth_grant_id" = ${agent.grantId})
+    then "pages"."head_version_id" else "pages"."published_version_id" end`;
+}
+
+async function readableVersion(db: Db, agent: AgentContext, id: string): Promise<string> {
+  const [row] = await db.select({ versionId: sql<string>`${readableVersionId(agent)}` }).from(pages).where(eq(pages.id, id));
+  return row!.versionId;
+}
+
+/** 指定の版を公開・承認してよいか。wiki.private が無いと、読める版しか扱えない（見ていない書きかけを公開させない） */
+async function usableVersion(db: Db, agent: AgentContext, id: string, versionId: string | undefined): Promise<string> {
+  const readable = await readableVersion(db, agent, id);
+  if (versionId === undefined || versionId === readable || agent.scopes.includes("wiki.private")) return versionId ?? readable;
+  throw new HttpError(403, "insufficient_scope", "this version is not readable without wiki.private");
+}
+
+/**
+ * 配下のページも一緒に変わる操作の前に。wiki.private が無いと、配下に読めないページがあれば止める
+ * （中身は漏れなくても、非公開・限定公開のページの置き場所や公開範囲を変えてしまうので）
+ */
+async function assertSubtreeVisible(db: Db, agent: AgentContext, wikiId: string, id: string): Promise<void> {
+  const cond = visibleTo(agent);
+  if (!cond) return;
+  const ids = descendantIds(await loadTreeIndex(db, wikiId), id);
+  if (ids.length === 0) return;
+  const seen = await db.select({ id: pages.id }).from(pages).where(and(inArray(pages.id, ids), isNull(pages.deletedAt), cond));
+  const live = await db.select({ id: pages.id }).from(pages).where(and(inArray(pages.id, ids), isNull(pages.deletedAt)));
+  if (seen.length < live.length) {
+    throw new HttpError(403, "insufficient_scope", "pages under this page are not visible to this connection (needs wiki.private)");
+  }
 }
 
 async function canSee(db: Db, agent: AgentContext, id: string): Promise<boolean> {
@@ -95,20 +133,20 @@ export const TOOLS = [
       const rows = await db
         .select({
           id: pages.id,
-          title: pages.title,
+          title: pageVersions.title,
           visibility: pages.visibility,
           workflowState: pages.workflowState,
           published: isNotNull(pages.publishedVersionId).mapWith(Boolean),
           updatedAt: pages.updatedAt,
         })
         .from(pages)
-        .innerJoin(pageVersions, eq(pageVersions.id, pages.headVersionId))
+        .innerJoin(pageVersions, eq(pageVersions.id, readableVersionId(agent)))
         .where(
           and(
             eq(pages.wikiId, wiki.id),
             isNull(pages.deletedAt),
             visibleTo(agent),
-            like ? or(ilike(pages.title, like), ilike(pageVersions.bodyMd, like)) : undefined,
+            like ? or(ilike(pageVersions.title, like), ilike(pageVersions.bodyMd, like)) : undefined,
           ),
         )
         .orderBy(desc(pages.updatedAt))
@@ -118,19 +156,23 @@ export const TOOLS = [
   }),
   tool({
     name: "get_page",
-    description: "ページの最新の本文（Markdown）を返す。update_page には、ここで返す headVersionId を baseVersionId として渡す。",
+    description:
+      "ページの最新の本文（Markdown）を返す。update_page には、ここで返す headVersionId を baseVersionId として渡す。" +
+      "非公開のページも読む許可が無いと、公開中のページは公開した版を返し、公開前の編集があれば hasHiddenEdits が true になる（そのあいだは更新できない）。",
     scope: "wiki.read",
     input: z.object({ wiki: wikiKey, pageId }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
-      const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+      const versionId = await readableVersion(db, agent, page.id);
+      const [version] = await db.select().from(pageVersions).where(eq(pageVersions.id, versionId));
       return {
         id: page.id,
-        title: head!.title,
-        bodyMd: head!.bodyMd,
-        headVersionId: page.headVersionId,
+        title: version!.title,
+        bodyMd: version!.bodyMd,
+        headVersionId: versionId,
+        hasHiddenEdits: versionId !== page.headVersionId,
         visibility: page.visibility,
         published: page.publishedVersionId !== null,
         workflowState: page.workflowState,
@@ -154,8 +196,9 @@ export const TOOLS = [
       const titles = new Map(
         (
           await db
-            .select({ id: pages.id, title: pages.title })
+            .select({ id: pages.id, title: pageVersions.title })
             .from(pages)
+            .innerJoin(pageVersions, eq(pageVersions.id, readableVersionId(agent)))
             .where(and(eq(pages.wikiId, wiki.id), isNull(pages.deletedAt), visibleTo(agent)))
         ).map((p) => [p.id, p.title]),
       );
@@ -212,6 +255,9 @@ export const TOOLS = [
       const wiki = await findOpenWiki(db, input.wiki);
       await db.transaction(async (tx) => {
         const page = await visiblePage(tx, agent, wiki.id, input.pageId);
+        if ((await readableVersion(tx, agent, page.id)) !== page.headVersionId) {
+          throw new HttpError(409, "hidden_edits", "this page has unpublished edits that this connection cannot read (needs wiki.private)");
+        }
         await savePage(
           tx,
           wiki.id,
@@ -248,6 +294,7 @@ export const TOOLS = [
       const wiki = await findOpenWiki(db, input.wiki);
       await visiblePage(db, agent, wiki.id, input.pageId);
       if (input.newParentPageId) await visiblePage(db, agent, wiki.id, input.newParentPageId);
+      await assertSubtreeVisible(db, agent, wiki.id, input.pageId);
       const tree = await getPrimaryTree(db, wiki.id);
       const result = await commitOps(db, wiki.id, {
         expectedHeadCommitId: input.expectedHeadCommitId,
@@ -274,7 +321,7 @@ export const TOOLS = [
       {
         ...WIKI_PROP,
         pageId: str("ページの ID"),
-        versionId: str("公開する版（省略すると最新の版）"),
+        versionId: str("公開する版（省略すると get_page で返す版）"),
         visibility: { type: "string", enum: ["public", "unlisted"], description: "public（公開）か unlisted（限定公開）。既定は public" },
         applyToDescendants: { type: "boolean", description: "配下で公開中のページの公開範囲も、これにそろえる。既定は false" },
       },
@@ -283,11 +330,8 @@ export const TOOLS = [
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
-      // 配下をそろえると、見えていない限定公開のページを公開にしうる。非公開も見てよい許可があるときだけ
-      if (input.applyToDescendants && input.visibility === "public" && !agent.scopes.includes("wiki.private")) {
-        throw new HttpError(403, "insufficient_scope", "applyToDescendants with public needs wiki.private");
-      }
-      const versionId = input.versionId ?? page.headVersionId;
+      if (input.applyToDescendants) await assertSubtreeVisible(db, agent, wiki.id, page.id);
+      const versionId = await usableVersion(db, agent, page.id, input.versionId);
       await db.transaction((tx) =>
         publishPage(tx, {
           wikiId: wiki.id,
@@ -317,6 +361,7 @@ export const TOOLS = [
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      if (input.applyToDescendants) await assertSubtreeVisible(db, agent, wiki.id, page.id);
       await db.transaction((tx) =>
         unpublishPage(tx, wiki.id, page.id, { applyToDescendants: input.applyToDescendants, oauthGrantId: agent.grantId }),
       );
@@ -336,24 +381,26 @@ export const TOOLS = [
         wiki.id,
         and(eq(scheduledActions.status, "scheduled"), gte(scheduledActions.runAt, new Date())),
       );
-      const visible = new Set(
+      // タイトルも、読める版のものを出す
+      const titles = new Map(
         actions.length === 0
           ? []
           : (
               await db
-                .select({ id: pages.id })
+                .select({ id: pages.id, title: pageVersions.title })
                 .from(pages)
+                .innerJoin(pageVersions, eq(pageVersions.id, readableVersionId(agent)))
                 .where(and(inArray(pages.id, actions.map((a) => a.pageId!).filter(Boolean)), visibleTo(agent)))
-            ).map((p) => p.id),
+            ).map((p) => [p.id, p.title]),
       );
       return {
         actions: actions
-          .filter((a) => a.pageId && visible.has(a.pageId))
+          .filter((a) => a.pageId && titles.has(a.pageId))
           .map((a) => ({
             id: a.id,
             actionType: a.actionType,
             pageId: a.pageId,
-            pageTitle: a.pageTitle,
+            pageTitle: titles.get(a.pageId!),
             versionId: a.versionId,
             targetVisibility: a.targetVisibility,
             runAt: a.runAt,
@@ -381,7 +428,7 @@ export const TOOLS = [
         pageId: str("ページの ID"),
         action: { type: "string", enum: ["publish_page", "unpublish_page"], description: "公開か非公開化か" },
         runAt: str("実行する日時（ISO 8601、時差つき）"),
-        versionId: str("公開する版（公開のときだけ。省略すると最新の版）"),
+        versionId: str("公開する版（公開のときだけ。省略すると get_page で返す版）"),
         visibility: { type: "string", enum: ["public", "unlisted"], description: "公開のときの公開範囲。既定は public" },
       },
       ["wiki", "pageId", "action", "runAt"],
@@ -390,6 +437,7 @@ export const TOOLS = [
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       const runAt = new Date(input.runAt);
+      const versionId = input.action === "publish_page" ? await usableVersion(db, agent, page.id, input.versionId) : undefined;
       const action = await createSchedule(
         db,
         wiki.id,
@@ -397,7 +445,7 @@ export const TOOLS = [
           ? {
               actionType: "publish_page",
               pageId: page.id,
-              versionId: input.versionId ?? page.headVersionId,
+              versionId: versionId!,
               targetVisibility: input.visibility,
               runAt,
             }
@@ -436,20 +484,16 @@ export const TOOLS = [
         ...WIKI_PROP,
         pageId: str("ページの ID"),
         state: { type: "string", enum: ["idea", "draft", "approved"], description: "新しい状態" },
-        versionId: str("承認する版（approved のときだけ。省略すると最新の版）"),
+        versionId: str("承認する版（approved のときだけ。省略すると get_page で返す版）"),
       },
       ["wiki", "pageId", "state"],
     ),
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const versionId = input.state === "approved" ? await usableVersion(db, agent, page.id, input.versionId) : undefined;
       await db.transaction((tx) =>
-        setWorkflow(
-          tx,
-          wiki.id,
-          page.id,
-          input.state === "approved" ? { state: "approved", versionId: input.versionId ?? page.headVersionId } : { state: input.state },
-        ),
+        setWorkflow(tx, wiki.id, page.id, versionId ? { state: "approved", versionId } : { state: input.state as "idea" | "draft" }),
       );
       const after = await findLivePage(db, wiki.id, page.id);
       return { id: page.id, workflowState: after.workflowState, approvedVersionId: after.approvedVersionId };
@@ -465,6 +509,7 @@ export const TOOLS = [
     async run({ db, agent }, input) {
       const wiki = await findOpenWiki(db, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      await assertSubtreeVisible(db, agent, wiki.id, page.id);
       await db.transaction((tx) => deletePage(tx, wiki.id, page.id, { oauthGrantId: agent.grantId }));
       return { id: page.id, deleted: true };
     },
