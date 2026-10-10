@@ -144,6 +144,22 @@ export const pageLinks = pgTable(
   (t) => [primaryKey({ columns: [t.fromPageId, t.toPageId] }), index("page_links_to_idx").on(t.toPageId)],
 );
 
+/** 新しいページのひな形。ツリーにも公開サイトにも出さない。変数（`{date}` など）はページを作るときに置き換える */
+export const pageTemplates = pgTable(
+  "page_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** 作った人のメールアドレス */
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [index("page_templates_wiki_idx").on(t.wikiId, t.updatedAt)],
+);
+
 /** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
 export const pageStars = pgTable(
   "page_stars",

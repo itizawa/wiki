@@ -13,6 +13,7 @@ import { ruleRoutes } from "./routes/rules";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
+import { templateRoutes } from "./routes/templates";
 import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
 
 export function createApp(deps: Deps) {
@@ -63,6 +64,7 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/rules", ruleRoutes);
+  wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);
   wiki.route("/stars", starRoutes);
   wiki.route("/structure", structureRoutes);

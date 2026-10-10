@@ -7,7 +7,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { createWiki, DEFAULT_WIKI_KEY } from "../wikis/service";
 import type { Db } from "./client";
 import * as schema from "./schema";
-import { pages, pageVersions, scheduledActions, wikis } from "./schema";
+import { pages, pageTemplates, pageVersions, scheduledActions, wikis } from "./schema";
 
 const DAY = 24 * 3600_000;
 
@@ -146,6 +146,15 @@ const SECOND_SEED: SeedPage[] = [
   { title: "あとで書く", workflow: "idea", body: "ビルド時間を測る。" },
 ];
 
+/** 最初の wiki のテンプレート。変数（`{date}` など）はページを作るときに置き換わる。 */
+const SEED_TEMPLATES = [
+  {
+    title: "議事録 {date}",
+    bodyMd: "- 日時：{datetime}\n- 記録：{author}\n- 参加者：\n\n## 議題\n\n## 決まったこと\n\n## 次にやること\n\n- [ ] ",
+  },
+  { title: "週報 {date}", bodyMd: "## やったこと\n\n## 次にやること\n\n## 困っていること\n" },
+];
+
 /**
  * テスト用のデータを投入する。ページが1件でもあれば何もせずに失敗する（先に resetDatabase を呼ぶ）。
  * 最初の wiki と、2つめの wiki（SECOND_WIKI）に入れる。
@@ -159,6 +168,7 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
   const [second] = await db.select().from(wikis).where(eq(wikis.key, SECOND_WIKI.key));
   const secondId = (second ?? (await createWiki(db, SECOND_WIKI, null))).id;
   const count = (await seedWiki(db, first, SEED, now)) + (await seedWiki(db, secondId, SECOND_SEED, now));
+  await db.insert(pageTemplates).values(SEED_TEMPLATES.map((t) => ({ ...t, wikiId: first, createdBy: "seed@example.com" })));
   return { pages: count };
 }
 
