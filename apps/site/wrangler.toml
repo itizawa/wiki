@@ -5,7 +5,7 @@ main = "worker/index.ts"
 compatibility_date = "2026-10-01"
 routes = [{ pattern = "wiki.hatchery-works.com", custom_domain = true }]
 workers_dev = false
-# main 以外のブランチは Workers Builds が版だけ上げる（本番には出ない）。その確認用に版ごとの URL（*.workers.dev）を出す
+# main 以外のブランチは Workers Builds が `wrangler preview` でプレビューを作る（本番には出ない）。その確認用の URL（*.workers.dev）を出す
 preview_urls = true
 
 [assets]
@@ -17,3 +17,6 @@ not_found_handling = "404-page"
 
 [observability]
 enabled = true
+
+# `wrangler preview` はこのブロックが無いと失敗する。プレビュー専用の設定は無いので空でよい
+[previews]
