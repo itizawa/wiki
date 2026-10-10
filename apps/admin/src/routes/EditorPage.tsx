@@ -75,6 +75,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
       setRestored(null);
       void qc.invalidateQueries({ queryKey: ["versions", pageId] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
       void qc.invalidateQueries({ queryKey: ["structure"] });
       // 「予約後に編集あり」の表示を更新する
       void qc.invalidateQueries({ queryKey: ["schedule"] });

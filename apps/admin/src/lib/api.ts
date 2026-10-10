@@ -7,6 +7,7 @@ import type {
   PublishVisibility,
   Rule,
   RuleRun,
+  SearchResult,
   ScheduledAction,
   SetWorkflowInput,
   StructureChange,
@@ -87,6 +88,8 @@ export const api = {
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
+  /** タイトルと本文の検索。語が無ければ、最近更新したページ */
+  search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
   /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */
   createPage: (input: { title?: string; bodyMd?: string; parentPageId?: string | null; templateId?: string }) =>
     request<PageDetail>("POST", w("/pages"), input),

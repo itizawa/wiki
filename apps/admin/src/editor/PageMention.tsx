@@ -31,8 +31,9 @@ export function PageMention({ editor }: { editor: Editor }) {
   const match = useTriggerMatch(editor, mentionTrigger);
   const q = match?.query.trim() ?? "";
   const pages = useQuery({
-    queryKey: ["pages", q],
-    queryFn: () => api.listPages(q),
+    // 検索の画面と同じ検索（タイトルと本文）。タイトルに一致したページが先に来る
+    queryKey: ["search", q],
+    queryFn: () => api.search(q),
     enabled: match !== null,
     placeholderData: keepPreviousData,
   });
@@ -56,10 +57,11 @@ export function PageMention({ editor }: { editor: Editor }) {
       insertLink(v.range, page);
       void qc.invalidateQueries({ queryKey: ["structure"] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
     },
   });
 
-  const items: Item[] = (pages.data?.pages ?? []).slice(0, MAX_ITEMS).map((p) => ({ kind: "page", id: p.id, title: p.title }));
+  const items: Item[] = (pages.data?.results ?? []).slice(0, MAX_ITEMS).map((p) => ({ kind: "page", id: p.id, title: p.title }));
   // 打った名前のページが無ければ、その名前で新しく作れるようにする
   // テンプレートがあれば、その本文で作ることもできる（タイトルは打った名前）
   if (q !== "" && !items.some((i) => i.title === q)) {

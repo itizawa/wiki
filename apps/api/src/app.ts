@@ -8,6 +8,7 @@ import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
+import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { templateRoutes } from "./routes/templates";
@@ -50,6 +51,7 @@ export function createApp(deps: Deps) {
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/rules", ruleRoutes);
   wiki.route("/templates", templateRoutes);
+  wiki.route("/search", searchRoutes);
   wiki.route("/stars", starRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
