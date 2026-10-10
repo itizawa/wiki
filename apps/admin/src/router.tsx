@@ -3,6 +3,8 @@ import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
 import { CalendarPage } from "./routes/CalendarPage";
+import { ConnectionsPage } from "./routes/ConnectionsPage";
+import { ConsentPage } from "./routes/ConsentPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { InvitePage } from "./routes/InvitePage";
@@ -43,6 +45,9 @@ const inviteRoute = createRoute({
     return <InvitePage token={token} />;
   },
 });
+// 外部のアプリ（MCP）：接続の依頼への同意と、与えた許可の一覧。wiki をまたぐので /w/ の外に置く
+const consentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/consent", component: ConsentPage });
+const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/connections", component: padded(ConnectionsPage) });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -118,6 +123,8 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   ownersRoute,
   inviteRoute,
+  consentRoute,
+  connectionsRoute,
   wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),

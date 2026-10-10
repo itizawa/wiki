@@ -31,7 +31,7 @@ export async function verifySession(secret: string, token: string): Promise<stri
  * OAuthの state / nonce を短命の署名付きCookieに入れて往復させる。
  * 招待リンクから来たときは、その値も入れてログインをまたいで引き継ぐ。
  */
-export type OAuthState = { state: string; nonce: string; invite?: string };
+export type OAuthState = { state: string; nonce: string; invite?: string; next?: string };
 
 export async function signOAuthState(secret: string, data: OAuthState): Promise<string> {
   return new SignJWT({ ...data, typ: "oauth" })
@@ -51,6 +51,7 @@ export async function verifyOAuthState(
       state: payload.state,
       nonce: payload.nonce,
       ...(typeof payload.invite === "string" && { invite: payload.invite }),
+      ...(typeof payload.next === "string" && { next: payload.next }),
     };
   } catch {
     return null;

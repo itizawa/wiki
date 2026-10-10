@@ -5,6 +5,7 @@ import {
   rescheduleInput,
   scheduleActionInput,
   unpublishPageInput,
+  type ScheduleActionInput,
   type ScheduledAction,
 } from "@wiki/shared";
 import { and, asc, eq, gte, inArray, isNull, lt, type SQL } from "drizzle-orm";
@@ -42,7 +43,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const statuses = ["scheduled", "running", "done", "failed", "canceled"] as const;
 
 /** 開いている wiki の予約だけを返す。 */
-async function listActions(db: Db, wikiId: string, where: SQL | undefined): Promise<ScheduledAction[]> {
+export async function listActions(db: Db, wikiId: string, where: SQL | undefined): Promise<ScheduledAction[]> {
   const rows = await db
     .select({ action: scheduledActions, title: pages.title, head: pages.headVersionId })
     .from(scheduledActions)
@@ -120,34 +121,7 @@ export const scheduleRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, scheduleActionInput);
-    if (input.runAt.getTime() <= Date.now()) throw new HttpError(400, "run_at_in_past", "runAt must be in the future");
-    const [page] = await db
-      .select({ id: pages.id, title: pages.title })
-      .from(pages)
-      .where(and(eq(pages.wikiId, wikiId), eq(pages.id, input.pageId), isNull(pages.deletedAt)));
-    if (!page) throw notFound(`page ${input.pageId}`);
-    if (input.actionType === "publish_page") {
-      const [v] = await db
-        .select({ id: pageVersions.id })
-        .from(pageVersions)
-        .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, input.pageId)));
-      if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
-    }
-    await assertScheduleKeepsHierarchy(db, wikiId, page, input);
-    const [row] = await db
-      .insert(scheduledActions)
-      .values({
-        wikiId,
-        actionType: input.actionType,
-        pageId: input.pageId,
-        versionId: input.actionType === "publish_page" ? input.versionId : null,
-        targetVisibility: input.actionType === "publish_page" ? input.targetVisibility : null,
-        batchId: input.batchId,
-        runAt: input.runAt,
-      })
-      .returning({ id: scheduledActions.id });
-    const [created] = await listActions(db, wikiId, eq(scheduledActions.id, row!.id));
-    return c.json(created, 201);
+    return c.json(await createSchedule(db, wikiId, input), 201);
   })
   .patch("/:id", async (c) => {
     const { db } = c.get("deps");
@@ -168,15 +142,56 @@ export const scheduleRoutes = new Hono<AppEnv>()
   })
   .post("/:id/cancel", async (c) => {
     const { db } = c.get("deps");
-    const id = c.req.param("id");
-    const wikiId = c.get("wiki").id;
-    if (!UUID.test(id)) throw notFound("scheduled action");
-    const updated = await db
-      .update(scheduledActions)
-      .set({ status: "canceled" })
-      .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), inArray(scheduledActions.status, ["scheduled", "failed"])))
-      .returning({ id: scheduledActions.id });
-    if (updated.length === 0) throw new HttpError(409, "not_scheduled", "this action can no longer be canceled");
-    const [action] = await listActions(db, wikiId, eq(scheduledActions.id, id));
-    return c.json(action);
+    return c.json(await cancelSchedule(db, c.get("wiki").id, c.req.param("id")));
   });
+
+/** 予約を入れる。publish_page は指定の版を固定する */
+export async function createSchedule(
+  db: Db,
+  wikiId: string,
+  input: ScheduleActionInput,
+  opts: { oauthGrantId?: string } = {},
+): Promise<ScheduledAction> {
+  if (input.runAt.getTime() <= Date.now()) throw new HttpError(400, "run_at_in_past", "runAt must be in the future");
+  const [page] = await db
+    .select({ id: pages.id, title: pages.title })
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), eq(pages.id, input.pageId), isNull(pages.deletedAt)));
+  if (!page) throw notFound(`page ${input.pageId}`);
+  if (input.actionType === "publish_page") {
+    const [v] = await db
+      .select({ id: pageVersions.id })
+      .from(pageVersions)
+      .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, input.pageId)));
+    if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
+  }
+  await assertScheduleKeepsHierarchy(db, wikiId, page, input);
+  const [row] = await db
+    .insert(scheduledActions)
+    .values({
+      wikiId,
+      actionType: input.actionType,
+      pageId: input.pageId,
+      versionId: input.actionType === "publish_page" ? input.versionId : null,
+      targetVisibility: input.actionType === "publish_page" ? input.targetVisibility : null,
+      batchId: input.batchId,
+      runAt: input.runAt,
+      oauthGrantId: opts.oauthGrantId ?? null,
+    })
+    .returning({ id: scheduledActions.id });
+  const [created] = await listActions(db, wikiId, eq(scheduledActions.id, row!.id));
+  return created!;
+}
+
+/** 予約のキャンセル。実行前（と失敗したもの）だけ */
+export async function cancelSchedule(db: Db, wikiId: string, id: string): Promise<ScheduledAction> {
+  if (!UUID.test(id)) throw notFound("scheduled action");
+  const updated = await db
+    .update(scheduledActions)
+    .set({ status: "canceled" })
+    .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), inArray(scheduledActions.status, ["scheduled", "failed"])))
+    .returning({ id: scheduledActions.id });
+  if (updated.length === 0) throw new HttpError(409, "not_scheduled", "this action can no longer be canceled");
+  const [action] = await listActions(db, wikiId, eq(scheduledActions.id, id));
+  return action!;
+}

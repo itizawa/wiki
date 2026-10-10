@@ -8,12 +8,15 @@ import Stack from "@mui/material/Stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { pagePath, type PageDetail, type PageDraft } from "@wiki/shared";
+import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openFindBar } from "../editor/FindBar";
 import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
+import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
 import { api, errorMessage } from "../lib/api";
 import { screenLink } from "../lib/wiki";
+import { FULL_HEIGHT } from "./WikiLayout";
 import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
@@ -26,6 +29,9 @@ import { Muted } from "../components/ui";
 import { TemplatePicker } from "./TemplatePicker";
 
 type Draft = { title: string; bodyMd: string };
+
+/** 本文の右に目次を置ける、本文の列の幅。これより狭いときは、ヘッダーのボタンから目次を開く。 */
+const SIDE_OUTLINE = "@container (min-width: 1100px)";
 
 /** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
 const UNTITLED = "無題";
@@ -42,6 +48,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   /** 開いたときに続きから書けるようにした下書き。版として残すか破棄したら消す */
   const [restored, setRestored] = useState<PageDraft | null>(null);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const headings = useOutline(editor);
 
   // 版履歴の開閉と選んだ版は URL に持つ。開くときだけ履歴に積み（ブラウザの「戻る」で閉じる）、版の選び直しと閉じるときは積まない
   const showVersion = (versionId: string | null, replace = false) =>
@@ -167,7 +175,10 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
       {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
-      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <Box
+        data-find-bar-bounds
+        sx={{ flex: 1, minWidth: 0, minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column", containerType: "inline-size" }}
+      >
         <Box
           component="header"
           sx={{
@@ -189,6 +200,11 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               <Search size={18} />
             </IconButton>
           </Tooltip>
+          {editor && headings.length > 0 && (
+            <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
+              <OutlineButton editor={editor} headings={headings} />
+            </Box>
+          )}
           <Tooltip title="いまの内容を版として残します。承認・公開・予約は版に対して行います">
             <Box component="span" sx={{ flexShrink: 0 }}>
               <Button variant="contained" disabled={!canSave} onClick={() => save.mutate(draft)} sx={{ whiteSpace: "nowrap" }}>
@@ -206,73 +222,81 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
           />
         </Box>
 
-        <Box sx={{ width: "100%", maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
-          {saveError ? (
-            <Alert
-              severity="error"
-              sx={{ mb: 2 }}
-              action={
-                // 競合時：サーバーの最新版を読み直す（ローカルの編集と下書きは破棄される）
-                <Button color="inherit" onClick={() => void revertToLatest()}>
-                  最新版を読み込む
-                </Button>
-              }
-            >
-              {errorMessage(saveError)}
-            </Alert>
-          ) : (
-            restored && (
-              <RestoredDraftNotice
-                draft={restored}
-                stale={restored.baseVersionId !== p.headVersionId}
-                onDiscard={async () => {
-                  const ok = await confirmDialog({
-                    title: "下書きを破棄しますか？",
-                    body: "自動保存した下書きを捨てて、最後に残した版の内容に戻します。",
-                    confirmLabel: "破棄して最新の版に戻す",
-                    cancelLabel: "下書きを続ける",
-                    danger: true,
-                  });
-                  if (ok) await revertToLatest();
-                }}
-              />
-            )
-          )}
-          <InputBase
-            fullWidth
-            multiline
-            value={draft.title}
-            onChange={(e) => setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") })}
-            placeholder="無題"
-            inputProps={{ "aria-label": "タイトル" }}
-            sx={{ p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
-          />
-          <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", columnGap: 1, mt: 0.5, mb: 2 }}>
-            <Muted>
-              最後に残した版 <time dateTime={p.head.createdAt}>{formatDateTime(p.head.createdAt)}</time>
-              {dirty && (
-                <>
-                  {" ・ "}
-                  <AutosaveStatus pending={autosave.pending} saving={autosave.saving} failed={autosave.error !== null} savedAt={autosave.savedAt} />
-                </>
-              )}
-            </Muted>
-            <Button
-              color="inherit"
-              startIcon={<History size={18} />}
-              onClick={() => showVersion(p.headVersionId)}
-              sx={{ color: "text.secondary" }}
-            >
-              版履歴を見る
-            </Button>
-          </Stack>
-          {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
-          {draft.bodyMd.trim() === "" && (
-            <TemplatePicker
-              onApply={(t) => setDraft((d) => (d ? { title: d.title.trim() === "" || d.title === UNTITLED ? t.title : d.title, bodyMd: t.bodyMd } : d))}
+        <Box sx={{ display: "flex", justifyContent: "center", columnGap: 4, [SIDE_OUTLINE]: { pr: 4 } }}>
+          <Box sx={{ flex: "0 1 780px", minWidth: 0, px: { xs: 2, md: 4 }, pt: 4 }}>
+            {saveError ? (
+              <Alert
+                severity="error"
+                sx={{ mb: 2 }}
+                action={
+                  // 競合時：サーバーの最新版を読み直す（ローカルの編集と下書きは破棄される）
+                  <Button color="inherit" onClick={() => void revertToLatest()}>
+                    最新版を読み込む
+                  </Button>
+                }
+              >
+                {errorMessage(saveError)}
+              </Alert>
+            ) : (
+              restored && (
+                <RestoredDraftNotice
+                  draft={restored}
+                  stale={restored.baseVersionId !== p.headVersionId}
+                  onDiscard={async () => {
+                    const ok = await confirmDialog({
+                      title: "下書きを破棄しますか？",
+                      body: "自動保存した下書きを捨てて、最後に残した版の内容に戻します。",
+                      confirmLabel: "破棄して最新の版に戻す",
+                      cancelLabel: "下書きを続ける",
+                      danger: true,
+                    });
+                    if (ok) await revertToLatest();
+                  }}
+                />
+              )
+            )}
+            <InputBase
+              fullWidth
+              multiline
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") })}
+              placeholder="無題"
+              inputProps={{ "aria-label": "タイトル" }}
+              sx={{ p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
             />
+            <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", columnGap: 1, mt: 0.5, mb: 2 }}>
+              <Muted>
+                最後に残した版 <time dateTime={p.head.createdAt}>{formatDateTime(p.head.createdAt)}</time>
+                {dirty && (
+                  <>
+                    {" ・ "}
+                    <AutosaveStatus pending={autosave.pending} saving={autosave.saving} failed={autosave.error !== null} savedAt={autosave.savedAt} />
+                  </>
+                )}
+              </Muted>
+              <Button
+                color="inherit"
+                startIcon={<History size={18} />}
+                onClick={() => showVersion(p.headVersionId)}
+                sx={{ color: "text.secondary" }}
+              >
+                版履歴を見る
+              </Button>
+            </Stack>
+            {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
+            {draft.bodyMd.trim() === "" && (
+              <TemplatePicker
+                onApply={(t) => setDraft((d) => (d ? { title: d.title.trim() === "" || d.title === UNTITLED ? t.title : d.title, bodyMd: t.bodyMd } : d))}
+              />
+            )}
+            <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} onEditor={setEditor} />
+          </Box>
+          {/* 広い画面では、目次を本文の右に置いて、スクロール中も見えるようにする */}
+          {editor && headings.length > 0 && (
+            <Box sx={{ display: "none", flex: "0 0 200px", pt: 4, [SIDE_OUTLINE]: { display: "block" } }}>
+              <OutlineSide editor={editor} headings={headings} />
+            </Box>
           )}
-          <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
         <EditingStats bodyMd={draft.bodyMd} />
       </Box>

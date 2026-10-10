@@ -58,7 +58,9 @@ export const authRoutes = new Hono<AppEnv>()
     const nonce = randomToken();
     // 招待リンクから来たら、ログインのあとで参加させる
     const invite = c.req.query("invite") || undefined;
-    setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, invite }), {
+    // ログインのあとに戻る管理画面の中の場所（外部アプリ連携の同意の画面など）
+    const next = safeNextPath(c.req.query("next"));
+    setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, invite, next }), {
       httpOnly: true,
       secure: config.secureCookies,
       sameSite: "Lax",
@@ -101,7 +103,7 @@ export const authRoutes = new Hono<AppEnv>()
     // どの wiki のメンバーでもない人の行は作らない。招待制であることを出す
     if (!user) return c.redirect(`${config.adminOrigin}/login?error=invite_only&email=${encodeURIComponent(identity.email)}`);
     await startSession(c, user.id);
-    return c.redirect(`${config.adminOrigin}/`);
+    return c.redirect(`${config.adminOrigin}${safeNextPath(saved.next) ?? "/"}`);
   })
   // ローカル開発専用（production では無効）。DEV_LOGIN_EMAIL のユーザーをオーナーとして作ってログインする
   .post("/dev-login", async (c) => {
@@ -121,6 +123,12 @@ export const authRoutes = new Hono<AppEnv>()
     const { config, google } = c.get("deps");
     return c.json({ google: google !== null, devLogin: Boolean(config.devLoginEmail) });
   });
+
+/** 同じオリジンの中のパスだけを受け付ける（`//evil.example` のような別オリジンへの移動を防ぐ） */
+export function safeNextPath(next: string | undefined): string | undefined {
+  if (!next || next.length > 4000 || !/^\/[\x21-\x7e]*$/.test(next) || next.startsWith("//") || next.includes("\\")) return undefined;
+  return next;
+}
 
 async function startSession(c: Context<AppEnv>, userId: string) {
   const { config } = c.get("deps");
