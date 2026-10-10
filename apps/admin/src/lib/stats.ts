@@ -16,6 +16,8 @@ export function textStats(md: string): TextStats {
   const text = md
     .replace(/^```.*$/gm, "")
     .replace(CALLOUT_MARKER_LINE, "")
+    // トグルの印（`+++`）は数えない。見出しの文字は数える
+    .replace(/^\s*\+\+\+[ \t]*/gm, "")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s*(?:#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")

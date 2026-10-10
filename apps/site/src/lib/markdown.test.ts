@@ -81,3 +81,26 @@ describe("callouts", () => {
     expect(renderMarkdown("> [!TIP]\n> [非公開](/p/zzzzzzzzzz)", { publicPaths })).not.toContain("zzzzzzzzzz");
   });
 });
+
+describe("toggles", () => {
+  it("renders +++ blocks as <details>, escaping the summary and keeping links and headings inside", () => {
+    const md = "+++ よくある<b>質問</b>\n\n## 中の見出し\n\n[公開](/p/abcdefghij) と [非公開](/p/zzzzzzzzzz)\n\n+++ 入れ子\n中身\n+++\n\n+++\n\n後ろ";
+    const { html, headings } = renderArticle(md, { publicPaths });
+    expect(html).toContain('<details class="toggle"><summary>よくある&lt;b&gt;質問&lt;/b&gt;</summary>');
+    expect(html).toContain('<details class="toggle"><summary>入れ子</summary>');
+    expect(html).toContain('<a href="/p/abcdefghij">公開</a>');
+    expect(html).not.toContain("zzzzzzzzzz");
+    expect(html).toMatch(/<\/details>\n<\/details>\n<p>後ろ<\/p>/);
+    expect(headings.map((h) => h.text)).toEqual(["中の見出し"]);
+  });
+
+  it("leaves an unclosed +++ as plain text", () => {
+    expect(renderMarkdown("+++ 見出し\n本文", { publicPaths })).toBe("<p>+++ 見出し\n本文</p>\n");
+  });
+});
+
+describe("excerpt with toggles", () => {
+  it("keeps the toggle's summary and body but drops the +++ markers", () => {
+    expect(excerpt("+++ 見出し\n\n本文\n\n+++")).toBe("見出し 本文");
+  });
+});

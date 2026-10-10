@@ -7,11 +7,13 @@ import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
+import ArrowRightIcon from "@mui/icons-material/ArrowRight";
 import TitleIcon from "@mui/icons-material/Title";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
 import { useState, type ReactNode } from "react";
+import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage } from "./LinkForm";
 import { createTrigger, TriggerMenu, useTriggerMatch, type FindTrigger } from "./trigger";
 
@@ -57,6 +59,13 @@ const blocks: Block[] = [
     keywords: ["callout", "note", "tip", "warning", "memo", "chuui"],
     icon: <CampaignOutlinedIcon fontSize="small" />,
     run: (e) => chain(e).setBlockquote().setCalloutType("note").run(),
+  },
+  {
+    id: "toggle",
+    label: "トグル（クリックで開閉する折りたたみ）",
+    keywords: ["toggle", "details", "fold", "accordion", "oritatami", "+++"],
+    icon: <ArrowRightIcon fontSize="small" />,
+    run: (e) => insertToggle(e),
   },
   { id: "hr", label: "区切り線", keywords: ["hr", "divider", "line", "---"], icon: <HorizontalRuleIcon fontSize="small" />, run: (e) => chain(e).setHorizontalRule().run() },
 ];
