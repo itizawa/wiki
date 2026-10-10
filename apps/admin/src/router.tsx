@@ -7,6 +7,7 @@ import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { PagesPage } from "./routes/PagesPage";
 import { RulesPage } from "./routes/RulesPage";
+import { SearchPage } from "./routes/SearchPage";
 
 const rootRoute = createRootRoute({ component: Layout });
 
@@ -26,13 +27,28 @@ const editorRoute = createRoute({
     return <EditorPage key={pageId} pageId={pageId} />;
   },
 });
+const searchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/search",
+  validateSearch: (search: Record<string, unknown>): { q?: string } => (typeof search.q === "string" && search.q !== "" ? { q: search.q } : {}),
+  component: function Search() {
+    const { q = "" } = searchRoute.useSearch();
+    const navigate = searchRoute.useNavigate();
+    return (
+      <PageBody>
+        {/* 打つたびに履歴を増やさない */}
+        <SearchPage q={q} onChange={(next) => void navigate({ search: next ? { q: next } : {}, replace: true })} />
+      </PageBody>
+    );
+  },
+});
 const calendarRoute = createRoute({ getParentRoute: () => rootRoute, path: "/calendar", component: padded(CalendarPage) });
 const rulesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/rules", component: padded(RulesPage) });
 const historyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/history", component: padded(HistoryPage) });
 // ログイン失敗時のリダイレクト先。Layout がログイン画面を出す
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: padded(PagesPage) });
 
-const routeTree = rootRoute.addChildren([pagesRoute, editorRoute, calendarRoute, rulesRoute, historyRoute, loginRoute]);
+const routeTree = rootRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, historyRoute, loginRoute]);
 
 export const router = createRouter({ routeTree });
 

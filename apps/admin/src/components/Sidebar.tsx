@@ -28,8 +28,6 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
 import IconButton from "@mui/material/IconButton";
-import InputAdornment from "@mui/material/InputAdornment";
-import InputBase from "@mui/material/InputBase";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -80,7 +78,6 @@ export function Sidebar(props: {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
-  const [q, setQ] = useState("");
   const tree = structure.data?.trees[0];
 
   const refreshStructure = () => {
@@ -101,6 +98,7 @@ export function Sidebar(props: {
     onSettled: () => {
       refreshStructure();
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      void qc.invalidateQueries({ queryKey: ["search"] });
     },
     onSuccess: async (page) => {
       await navigate({ to: "/pages/$pageId", params: { pageId: page.id } });
@@ -153,79 +151,60 @@ export function Sidebar(props: {
         )}
       </Box>
 
-      <Box sx={{ px: 1.5, pb: 1 }}>
-        <InputBase
-          fullWidth
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="検索…"
-          inputProps={{ "aria-label": "ページを検索" }}
-          startAdornment={
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" />
-            </InputAdornment>
-          }
-          sx={{ px: 1, height: 32, fontSize: "0.9rem", borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper" }}
-        />
-      </Box>
-
       <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 1, pb: 2 }}>
-        {q.trim() ? (
-          <SearchResults q={q.trim()} onNavigate={props.onNavigate} />
-        ) : (
-          <>
-            <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
-              <KeyboardCommandKeyIcon fontSize="small" />
-              <Box component="span" sx={ellipsis}>
-                コマンドメニュー
-              </Box>
-              <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
-                ⌘K
-              </Box>
-            </Box>
-            <NavItem to="/" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
-              すべてのページ
-            </NavItem>
-            <NavItem to="/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
-              編集カレンダー
-            </NavItem>
-            <NavItem to="/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
-              ルール
-            </NavItem>
-            <NavItem to="/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
-              構造の履歴
-            </NavItem>
+        <NavItem to="/search" icon={<SearchIcon fontSize="small" />} onClick={props.onNavigate}>
+          検索
+        </NavItem>
+        <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
+          <KeyboardCommandKeyIcon fontSize="small" />
+          <Box component="span" sx={ellipsis}>
+            コマンドメニュー
+          </Box>
+          <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
+            ⌘K
+          </Box>
+        </Box>
+        <NavItem to="/" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+          すべてのページ
+        </NavItem>
+        <NavItem to="/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+          編集カレンダー
+        </NavItem>
+        <NavItem to="/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
+          ルール
+        </NavItem>
+        <NavItem to="/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
+          構造の履歴
+        </NavItem>
 
-            {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
+        {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 
-            <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
-              <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
-                ドキュメント
-              </Typography>
-              {tree && <TreeSettings tree={tree} />}
-              <Tooltip title="最上位に新しいページ">
-                <span>
-                  <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
-                    <AddIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
-            {structure.isPending && <Muted sx={{ px: 1 }}>読み込み中…</Muted>}
-            {tree && structure.data && (
-              <DocumentTree
-                tree={tree}
-                data={structure.data}
-                busy={commit.isPending || create.isPending}
-                run={(ops) => {
-                  commit.reset();
-                  commit.mutate(ops);
-                }}
-                onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
-                onNavigate={props.onNavigate}
-              />
-            )}
-          </>
+        <Box sx={{ display: "flex", alignItems: "center", mt: 2.5, mb: 0.5, pl: 1 }}>
+          <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
+            ドキュメント
+          </Typography>
+          {tree && <TreeSettings tree={tree} />}
+          <Tooltip title="最上位に新しいページ">
+            <span>
+              <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
+                <AddIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+        {structure.isPending && <Muted sx={{ px: 1 }}>読み込み中…</Muted>}
+        {tree && structure.data && (
+          <DocumentTree
+            tree={tree}
+            data={structure.data}
+            busy={commit.isPending || create.isPending}
+            run={(ops) => {
+              commit.reset();
+              commit.mutate(ops);
+            }}
+            onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
+            onNavigate={props.onNavigate}
+          />
         )}
       </Box>
 
@@ -261,7 +240,7 @@ export function Sidebar(props: {
   );
 }
 
-function NavItem(props: { to: "/" | "/calendar" | "/rules" | "/history"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
+function NavItem(props: { to: "/" | "/search" | "/calendar" | "/rules" | "/history"; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
   return (
     <RouterLink to={props.to} activeOptions={{ exact: props.exact }} onClick={props.onClick} underline="none" sx={rowSx}>
       {props.icon}
@@ -292,25 +271,6 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
         </RouterLink>
       ))}
     </Box>
-  );
-}
-
-function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }) {
-  const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q) });
-  if (pages.isPending) return <Muted sx={{ px: 1 }}>検索中…</Muted>;
-  if (pages.error) return <Muted sx={{ px: 1 }}>{errorMessage(pages.error)}</Muted>;
-  if (pages.data.pages.length === 0) return <Muted sx={{ px: 1 }}>「{q}」に一致するページはありません。</Muted>;
-  return (
-    <>
-      {pages.data.pages.map((p) => (
-        <RouterLink key={p.id} to="/pages/$pageId" params={{ pageId: p.id }} onClick={onNavigate} underline="none" sx={rowSx}>
-          <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
-          <Box component="span" sx={ellipsis}>
-            {p.title}
-          </Box>
-        </RouterLink>
-      ))}
-    </>
   );
 }
 

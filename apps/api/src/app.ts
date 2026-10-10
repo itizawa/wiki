@@ -7,6 +7,7 @@ import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
+import { searchRoutes } from "./routes/search";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 
 export function createApp(deps: Deps) {
@@ -40,6 +41,7 @@ export function createApp(deps: Deps) {
   admin.route("/pages", pagePublishRoutes);
   admin.route("/schedule", scheduleRoutes);
   admin.route("/rules", ruleRoutes);
+  admin.route("/search", searchRoutes);
   admin.route("/structure", structureRoutes);
   admin.route("/trees", treeRoutes);
   app.route("/admin", admin);
