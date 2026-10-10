@@ -57,9 +57,13 @@ const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", com
 const editorRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "pages/$pageId",
+  // ?history={版のID}：版履歴を開き、その版を選んだ状態。再読み込みや URL の共有で同じ版が開く
+  validateSearch: (search: Record<string, unknown>): { history?: string } =>
+    typeof search.history === "string" && search.history !== "" ? { history: search.history } : {},
   component: function Editor() {
     const { pageId } = editorRoute.useParams();
-    return <EditorPage key={pageId} pageId={pageId} />;
+    const { history } = editorRoute.useSearch();
+    return <EditorPage key={pageId} pageId={pageId} historyVersionId={history ?? null} />;
   },
 });
 const searchRoute = createRoute({
