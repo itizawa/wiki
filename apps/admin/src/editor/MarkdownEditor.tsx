@@ -28,6 +28,7 @@ import { ImageDialog, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
+import { CodeBlockMenu } from "./CodeBlockMenu";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
@@ -131,6 +132,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
         <EditorContent editor={editor} />
         <TableMenu editor={editor} />
       </Box>
+      <CodeBlockMenu editor={editor} />
     </Box>
   );
 }
