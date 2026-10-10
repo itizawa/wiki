@@ -23,13 +23,13 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { Placeholder } from "@tiptap/extensions";
+import { ImageDialog, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
 import { editorExtensions } from "./extensions";
-import { ImageDialog, LinkForm } from "./LinkForm";
 
 const extensions = [...editorExtensions, Placeholder.configure({ placeholder: "本文を書く…" })];
 
