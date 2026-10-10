@@ -1,4 +1,3 @@
-import HistoryIcon from "@mui/icons-material/History";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -7,6 +6,7 @@ import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import HistoryIcon from "@mui/icons-material/History";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { pagePath, type PageDetail } from "@wiki/shared";
