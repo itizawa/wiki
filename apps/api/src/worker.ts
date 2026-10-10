@@ -15,8 +15,11 @@ type Context = { waitUntil(promise: Promise<unknown>): void };
 
 /** 管理画面と同一オリジンで `/api/*` として出す（ローカルの Vite プロキシと同じ形）。 */
 const API_PREFIX = "/api";
-/** サイトのビルドと Cron ワーカーがトークンで呼ぶ経路。プレフィックス無しで出す。 */
-const DIRECT_PATHS = ["/export/", "/internal/"];
+/**
+ * プレフィックス無しで出す経路：サイトのビルドと Cron ワーカーがトークンで呼ぶもの、
+ * MCP クライアントが呼ぶ OAuth と MCP サーバー（場所は OAuth のメタデータの決まりによる）。
+ */
+const DIRECT_PATHS = ["/export/", "/internal/", "/oauth/", "/.well-known/oauth-"];
 
 function toAppRequest(request: Request): Request | null {
   const url = new URL(request.url);
@@ -24,7 +27,7 @@ function toAppRequest(request: Request): Request | null {
     url.pathname = url.pathname.slice(API_PREFIX.length);
     return new Request(url, request);
   }
-  if (url.pathname === "/health" || DIRECT_PATHS.some((p) => url.pathname.startsWith(p))) return request;
+  if (url.pathname === "/health" || url.pathname === "/mcp" || DIRECT_PATHS.some((p) => url.pathname.startsWith(p))) return request;
   return null;
 }
 

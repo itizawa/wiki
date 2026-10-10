@@ -24,7 +24,7 @@ export async function verifySession(secret: string, token: string): Promise<stri
 }
 
 /** OAuthの state / nonce を短命の署名付きCookieに入れて往復させる。 */
-export async function signOAuthState(secret: string, data: { state: string; nonce: string }): Promise<string> {
+export async function signOAuthState(secret: string, data: { state: string; nonce: string; next?: string }): Promise<string> {
   return new SignJWT({ ...data, typ: "oauth" })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("10m")
@@ -34,11 +34,11 @@ export async function signOAuthState(secret: string, data: { state: string; nonc
 export async function verifyOAuthState(
   secret: string,
   token: string,
-): Promise<{ state: string; nonce: string } | null> {
+): Promise<{ state: string; nonce: string; next?: string } | null> {
   try {
     const { payload } = await jwtVerify(token, key(secret), { algorithms: ["HS256"] });
     if (payload.typ !== "oauth" || typeof payload.state !== "string" || typeof payload.nonce !== "string") return null;
-    return { state: payload.state, nonce: payload.nonce };
+    return { state: payload.state, nonce: payload.nonce, next: typeof payload.next === "string" ? payload.next : undefined };
   } catch {
     return null;
   }

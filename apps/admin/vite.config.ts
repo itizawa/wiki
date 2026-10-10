@@ -15,6 +15,10 @@ export default defineConfig({
         // APIのCSRF検査は Origin を見るので、ブラウザの Origin をそのまま渡す
         changeOrigin: false,
       },
+      // 外部のアプリ（MCP クライアント）が呼ぶ経路。本番と同じく、プレフィックス無しで同じオリジンに出す
+      "/oauth": { target: apiTarget, changeOrigin: false },
+      "/.well-known/oauth-": { target: apiTarget, changeOrigin: false },
+      "/mcp": { target: apiTarget, changeOrigin: false },
     },
   },
 });

@@ -14,7 +14,8 @@ directory = "../admin/dist"
 # 管理画面はSPAなので、ファイルに無いパスは index.html を返す
 not_found_handling = "single-page-application"
 # API の経路はアセットより先に Worker へ渡す（OAuth のコールバックは画面遷移なので、指定しないと index.html が返る）
-run_worker_first = ["/api/*", "/export/*", "/internal/*", "/health"]
+# /oauth/* /.well-known/* /mcp は MCP クライアント（外部のアプリ）が呼ぶ。同意の画面（/consent）は管理画面の側
+run_worker_first = ["/api/*", "/export/*", "/internal/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
 
 # DB（PostgreSQL）へは Hyperdrive 経由でつなぐ
 [[hyperdrive]]

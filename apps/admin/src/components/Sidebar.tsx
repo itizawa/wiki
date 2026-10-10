@@ -12,6 +12,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import AutoModeIcon from "@mui/icons-material/AutoMode";
 import CheckIcon from "@mui/icons-material/Check";
+import ExtensionOutlinedIcon from "@mui/icons-material/ExtensionOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
@@ -310,7 +311,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
           </MenuItemLink>
         ))}
-        {isOwner && <Divider />}
+        <Divider />
         {isOwner && (
           <MenuItemLink to="/wikis" onClick={close}>
             <ListItemIcon>
@@ -319,6 +320,12 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
           </MenuItemLink>
         )}
+        <MenuItemLink to="/connections" onClick={close}>
+          <ListItemIcon>
+            <ExtensionOutlinedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>外部アプリ連携（MCP）</ListItemText>
+        </MenuItemLink>
       </Menu>
     </>
   );

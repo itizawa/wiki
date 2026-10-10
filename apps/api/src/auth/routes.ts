@@ -30,7 +30,9 @@ export const authRoutes = new Hono<AppEnv>()
     if (!google) throw new HttpError(400, "google_not_configured", "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set");
     const state = randomToken();
     const nonce = randomToken();
-    setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce }), {
+    // ログインのあとに戻る管理画面の中の場所（外部アプリ連携の同意の画面など）
+    const next = safeNextPath(c.req.query("next"));
+    setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, next }), {
       httpOnly: true,
       secure: config.secureCookies,
       sameSite: "Lax",
@@ -54,7 +56,7 @@ export const authRoutes = new Hono<AppEnv>()
       return c.redirect(`${config.adminOrigin}/login?error=forbidden`);
     }
     await startSession(c, identity.email);
-    return c.redirect(`${config.adminOrigin}/`);
+    return c.redirect(`${config.adminOrigin}${safeNextPath(saved.next) ?? "/"}`);
   })
   // ローカル開発専用。DEV_LOGIN_EMAIL が設定され、かつ allowlist にある場合のみ有効。
   .post("/dev-login", async (c) => {
@@ -72,6 +74,12 @@ export const authRoutes = new Hono<AppEnv>()
     const { config, google } = c.get("deps");
     return c.json({ google: google !== null, devLogin: Boolean(config.devLoginEmail) });
   });
+
+/** 同じオリジンの中のパスだけを受け付ける（`//evil.example` のような別オリジンへの移動を防ぐ） */
+export function safeNextPath(next: string | undefined): string | undefined {
+  if (!next || next.length > 4000 || !/^\/[\x21-\x7e]*$/.test(next) || next.startsWith("//") || next.includes("\\")) return undefined;
+  return next;
+}
 
 async function startSession(c: Parameters<MiddlewareHandler<AppEnv>>[0], email: string) {
   const { config } = c.get("deps");

@@ -7,11 +7,12 @@ import {
   type PageDetail,
   type PageSummary,
   type PageVersion,
+  type SavePageInput,
 } from "@wiki/shared";
 import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
+import { oauthClients, oauthGrants, pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
@@ -47,7 +48,7 @@ const toVersion = (v: VersionRow): PageVersion => ({
 });
 
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
-async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
+export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
   const q = db
     .select()
     .from(pages)
@@ -57,7 +58,7 @@ async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = fals
   return page;
 }
 
-async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
+export async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
   const page = await findLivePage(db, wikiId, id);
   const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
   return { ...toSummary(page), head: toVersion(head!) };
@@ -86,7 +87,12 @@ async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyMd: stri
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
-export async function createPage(tx: Db, wikiId: string, input: CreatePageInput): Promise<string> {
+export async function createPage(
+  tx: Db,
+  wikiId: string,
+  input: CreatePageInput,
+  opts: { oauthGrantId?: string } = {},
+): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
   await tx.insert(pages).values({ id, wikiId, title: input.title, headVersionId: versionId });
@@ -96,13 +102,55 @@ export async function createPage(tx: Db, wikiId: string, input: CreatePageInput)
     title: input.title,
     bodyMd: input.bodyMd,
     authorType: "human",
+    oauthGrantId: opts.oauthGrantId ?? null,
   });
   await replaceLinks(tx, wikiId, id, input.bodyMd);
   await commitOps(tx, wikiId, {
     message: `「${input.title}」を追加`,
     ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx, wikiId)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
+    oauthGrantId: opts.oauthGrantId,
   });
   return id;
+}
+
+/**
+ * 本文の保存（楽観ロック：baseVersionId が head と一致する場合のみ）。トランザクション内で呼ぶ。
+ * `canEdit` はページを行ロックしたあとに呼び、false ならそのページは無いものとして扱う。
+ */
+export async function savePage(
+  tx: Db,
+  wikiId: string,
+  id: string,
+  input: SavePageInput,
+  opts: { oauthGrantId?: string; canEdit?: (page: PageRow) => boolean | Promise<boolean> } = {},
+): Promise<void> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  if (opts.canEdit && !(await opts.canEdit(page))) throw notFound(`page ${id}`);
+  // 楽観ロック：別タブ等で先に保存されていたら保存しない
+  if (page.headVersionId !== input.baseVersionId) {
+    throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
+      headVersionId: page.headVersionId,
+    });
+  }
+  const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+  if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
+
+  const [version] = await tx
+    .insert(pageVersions)
+    .values({
+      pageId: id,
+      baseVersionId: input.baseVersionId,
+      title: input.title,
+      bodyMd: input.bodyMd,
+      authorType: "human",
+      oauthGrantId: opts.oauthGrantId ?? null,
+    })
+    .returning();
+  await tx
+    .update(pages)
+    .set({ title: input.title, headVersionId: version!.id, updatedAt: new Date() })
+    .where(eq(pages.id, id));
+  await replaceLinks(tx, wikiId, id, input.bodyMd);
 }
 
 export const pageRoutes = new Hono<AppEnv>()
@@ -130,33 +178,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, savePageInput);
-    await db.transaction(async (tx) => {
-      const page = await findLivePage(tx, wikiId, id, true);
-      // 楽観ロック：別タブ等で先に保存されていたら保存しない
-      if (page.headVersionId !== input.baseVersionId) {
-        throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
-          headVersionId: page.headVersionId,
-        });
-      }
-      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-      if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
-
-      const [version] = await tx
-        .insert(pageVersions)
-        .values({
-          pageId: id,
-          baseVersionId: input.baseVersionId,
-          title: input.title,
-          bodyMd: input.bodyMd,
-          authorType: "human",
-        })
-        .returning();
-      await tx
-        .update(pages)
-        .set({ title: input.title, headVersionId: version!.id, updatedAt: new Date() })
-        .where(eq(pages.id, id));
-      await replaceLinks(tx, wikiId, id, input.bodyMd);
-    });
+    await db.transaction((tx) => savePage(tx, wikiId, id, input));
     return c.json(await getDetail(db, wikiId, id));
   })
   .delete("/:id", async (c) => {
@@ -229,8 +251,12 @@ export const pageRoutes = new Hono<AppEnv>()
         title: pageVersions.title,
         authorType: pageVersions.authorType,
         createdAt: pageVersions.createdAt,
+        // 外部のアプリ（MCP）から保存した版なら、そのアプリの名前
+        via: oauthClients.name,
       })
       .from(pageVersions)
+      .leftJoin(oauthGrants, eq(oauthGrants.id, pageVersions.oauthGrantId))
+      .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
       .where(eq(pageVersions.pageId, id))
       .orderBy(desc(pageVersions.createdAt));
     return c.json({ versions: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });

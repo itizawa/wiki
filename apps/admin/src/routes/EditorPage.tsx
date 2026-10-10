@@ -366,6 +366,7 @@ function VersionPanel(props: {
             {formatDateTime(v.createdAt)}
             {i === 0 && <StatusChip label="head" />}
             {v.authorType === "ai" && <StatusChip label="AI" />}
+            {v.via && <StatusChip label={`${v.via} 経由`} />}
           </ListItemButton>
         ))}
       </List>

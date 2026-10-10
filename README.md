@@ -93,6 +93,49 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
 - 実行ログ（`rule_runs`）：何かをした回と失敗した回だけを残す（同じ失敗が続くあいだは1件）。ルールが入れた予約は `scheduled_actions.rule_run_id` で辿れ、編集カレンダーに「ルールが予約」と出る
 - 管理画面：エディタ横の「記事の状態」（承認・見直し済み）、「ルール」画面（設定・見直しキュー・実行ログ）
 
+## 外部のアプリ（MCP）からの操作
+
+Claude などの AI エージェントや手元のスクリプトから、MCP でページを探す・読む・下書きを書くことができる。認証は MCP の仕様にある OAuth 2.1 で、管理画面の Google ログインとは別の、短命のトークンを使う。
+
+### つなぎ方
+
+- MCP サーバーの URL は `https://wiki-admin.hatchery-works.com/mcp`（ローカルでは API のオリジンの `/mcp`）。管理画面の wiki の切り替えメニューにある「外部アプリ連携（MCP）」にも出る
+- Claude：設定 → コネクタ → カスタムコネクタを追加 に URL を入れる。Claude Code：`claude mcp add --transport http wiki https://wiki-admin.hatchery-works.com/mcp`
+- つなぐと、ブラウザで管理画面の同意の画面（`/consent`）が開く。ログインして、許可することを選んで「許可する」を押す。許可したアプリの一覧と取り消しは「外部アプリ連携」の画面にある
+
+### できること（道具）
+
+| 道具 | スコープ | 内容 |
+|---|---|---|
+| `list_wikis` | 読む | 使用中の wiki の一覧 |
+| `search_pages` | 読む | タイトルと本文から探す |
+| `get_page` | 読む | 最新の本文（Markdown）と `headVersionId` |
+| `get_tree` | 読む | ツリー（親子と並び順）と `headCommitId` |
+| `create_page` | 書く | ページを作る（非公開の下書き） |
+| `update_page` | 書く | 本文・タイトルの保存。`baseVersionId` が必須（楽観ロック） |
+| `move_page` | 書く | 別の親の下へ移す。`expectedHeadCommitId` が必須（楽観ロック） |
+
+- **公開・予約・承認・削除・公開範囲の変更は、どのスコープでもできない**。外からの操作は下書きとして保存するところまでで、公開は人が管理画面で行う（ルールと同じ扱い）
+- スコープ：`wiki.read`（公開中のページを読む。必ず含む）、`wiki.write`（作る・更新・移動）、`wiki.private`（非公開・限定公開のページも読み書きする）
+  - `wiki.private` が無いと、読めるのは公開中のページと、その許可で作ったページだけ。ほかのページは無いものとして扱い、ツリーではタイトルを伏せる
+  - `wiki.private` は同意の画面で既定では外してある。許すと、非公開の本文が外の AI サービスへ送られる
+- 版と構造のコミットに、どの許可（アプリ）からの操作かを残す（`page_versions.oauth_grant_id` / `structure_commits.oauth_grant_id`）。管理画面の版履歴と構造の履歴に「〜 経由」と出る
+
+### 認証のしくみ
+
+- 認可サーバーは `wiki-admin` の Worker の中にある。メタデータは `/.well-known/oauth-authorization-server`（RFC 8414）と `/.well-known/oauth-protected-resource/mcp`（RFC 9728）。MCP サーバーはトークンが無いと `401` と `WWW-Authenticate: Bearer resource_metadata=...` を返し、クライアントはそこから認可サーバーを見つける
+- アプリは動的クライアント登録（`/oauth/register`、RFC 7591）で登録する。秘密鍵を持たない公開クライアントだけで、**PKCE（S256）が必須**。戻り先（`redirect_uri`）は https か手元（`localhost` / `127.0.0.1` / `[::1]`）の http だけで、登録したものと完全一致でなければ戻さない
+- 同意の画面には、アプリが名乗った名前と戻り先のホストを出す。依頼は署名して画面へ渡し（10分で切れる）、許すスコープは依頼の範囲から減らすことしかできない
+- トークン
+  - アクセストークンは1時間、リフレッシュトークンは30日。リフレッシュトークンは使うたびに入れ替え、入れ替え済みのものがまた使われたら、漏れたものとみなして許可ごと取り消す。認可コード（5分、1回だけ）の2回目の使用も同じ
+  - 許可（同意）は90日で切れ、そのあとはつなぎ直して同意し直す
+  - DB にはトークン・認可コードの SHA-256 ハッシュだけを持つ（`oauth_tokens` / `oauth_codes`）
+  - リクエストのたびに、トークン・許可の取り消しと期限、許可した人が `ADMIN_EMAILS` にいるかを確かめる。取り消しや allowlist から外したことは、次のリクエストから効く
+- アクセストークンは MCP サーバー（`/mcp`）でだけ使える。管理画面の API（`/admin/*`）は Cookie だけで、トークンでは通らない
+- `/oauth/*` と `/mcp` は Cookie を見ないので、`Origin` の確認（CSRF 対策）の対象外。`/mcp` は、ブラウザからの呼び出し（`Origin` つき）を管理画面のオリジンからのものだけ受け付ける
+- レート制限：許可ごとに1分あたり120リクエスト（`oauth_grants` の固定窓）。超えると `429`
+- データ：`oauth_clients`（登録したアプリ）、`oauth_grants`（同意。誰が・どのアプリに・どのスコープを・期限・取り消し・最後に使った日時）、`oauth_codes`、`oauth_tokens`
+
 ## デプロイ
 
 `main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
@@ -173,6 +216,7 @@ APIのデータでビルドする場合は `API_ORIGIN=http://localhost:8787 INT
 
 `DEV_LOGIN_EMAIL` を設定すると、Googleを通さない「開発用ログイン」ボタンが出る（`NODE_ENV=production` では無効）。
 Googleログインを試す場合は OAuth クライアントを作り、承認済みリダイレクトURIに `http://localhost:5173/api/auth/google/callback` を登録する。
+MCP は `http://localhost:5173/mcp` でつなげる（管理画面の開発サーバーが `/oauth` `/.well-known/oauth-*` `/mcp` を API へ渡す）。例：`claude mcp add --transport http wiki-local http://localhost:5173/mcp`。
 
 テスト・型チェック（DBはPGliteで動くのでPostgreSQL不要）：
 
