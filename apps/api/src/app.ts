@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { authRoutes, requireAdmin } from "./auth/routes";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
+import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
@@ -33,6 +34,7 @@ export function createApp(deps: Deps) {
   app.route("/auth", authRoutes);
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
+  app.route("/images", imageServeRoutes);
 
   const admin = new Hono<AppEnv>();
   admin.use("*", requireAdmin);
@@ -49,6 +51,7 @@ export function createApp(deps: Deps) {
   wiki.route("/stars", starRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
+  wiki.route("/images", imageUploadRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

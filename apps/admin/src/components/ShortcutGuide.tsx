@@ -1,4 +1,4 @@
-import CloseIcon from "@mui/icons-material/Close";
+import { X } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -112,7 +112,7 @@ export function ShortcutGuide() {
         </Box>
         <Tooltip title="閉じる (Esc)">
           <IconButton size="small" aria-label="閉じる" onClick={() => setOpen(false)}>
-            <CloseIcon fontSize="small" />
+            <X size={18} />
           </IconButton>
         </Tooltip>
       </DialogTitle>

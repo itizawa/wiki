@@ -1,5 +1,4 @@
-import SearchIcon from "@mui/icons-material/Search";
-import HistoryIcon from "@mui/icons-material/History";
+import { History, Search } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -156,7 +155,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
           <Tooltip title="本文を検索・置換 (⌘F)">
             <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
-              <SearchIcon fontSize="small" />
+              <Search size={18} />
             </IconButton>
           </Tooltip>
           <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -207,7 +206,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
             </Muted>
             <Button
               color="inherit"
-              startIcon={<HistoryIcon fontSize="small" />}
+              startIcon={<History size={18} />}
               onClick={() => {
                 setPanelOpen(true);
                 setShowHistory(true);

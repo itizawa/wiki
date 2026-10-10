@@ -3,10 +3,13 @@ import { createGoogleOidc } from "./auth/google";
 import { loadConfig } from "./config";
 import type { Db } from "./db/client";
 import { createPostgresDb } from "./db/postgres";
+import { r2ImageStore, type R2BucketLike } from "./images/store";
 
 /** wrangler.toml の [vars] と secrets（どちらも文字列）、および Hyperdrive のバインディング。 */
 export type WorkerEnv = {
   HYPERDRIVE: { connectionString: string };
+  /** アップロードした画像（R2）。無ければアップロードできない */
+  IMAGES?: R2BucketLike;
   [key: string]: unknown;
 };
 
@@ -15,8 +18,8 @@ type Context = { waitUntil(promise: Promise<unknown>): void };
 
 /** 管理画面と同一オリジンで `/api/*` として出す（ローカルの Vite プロキシと同じ形）。 */
 const API_PREFIX = "/api";
-/** サイトのビルドと Cron ワーカーがトークンで呼ぶ経路。プレフィックス無しで出す。 */
-const DIRECT_PATHS = ["/export/", "/internal/"];
+/** サイトのビルドと Cron ワーカーがトークンで呼ぶ経路と、画像（本文に書くパスのまま配る）。プレフィックス無しで出す。 */
+const DIRECT_PATHS = ["/export/", "/internal/", "/images/"];
 
 function toAppRequest(request: Request): Request | null {
   const url = new URL(request.url);
@@ -43,7 +46,7 @@ export function createWorker(connect: Connect) {
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const { db, close } = connect(env);
       try {
-        return await createApp({ db, config, google }).fetch(appRequest);
+        return await createApp({ db, config, google, images: env.IMAGES ? r2ImageStore(env.IMAGES) : null }).fetch(appRequest);
       } finally {
         ctx.waitUntil(close());
       }

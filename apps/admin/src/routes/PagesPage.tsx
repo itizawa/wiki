@@ -1,14 +1,13 @@
 import Alert from "@mui/material/Alert";
-import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
+import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { StarButton } from "../components/StarButton";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
@@ -19,39 +18,10 @@ import { formatDateTime } from "../lib/format";
 
 export function PagesPage() {
   const [q, setQ] = useState("");
-  const [title, setTitle] = useState("");
-  const navigate = useNavigate();
   const pages = useQuery({ queryKey: ["pages", q], queryFn: () => api.listPages(q) });
-  const create = useMutation({
-    mutationFn: () => api.createPage({ title }),
-    onSuccess: (page) => navigate(pageLink(page.id)),
-  });
 
   return (
     <Stack spacing={1.5}>
-      <Section>
-        <Typography variant="h6" component="h2" gutterBottom>
-          新しいページ
-        </Typography>
-        <Row
-          component="form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (title.trim()) create.mutate();
-          }}
-        >
-          <TextField value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル" sx={{ flex: 1, minWidth: 0 }} />
-          <Button type="submit" variant="contained" size="medium" disabled={!title.trim() || create.isPending}>
-            作成
-          </Button>
-        </Row>
-        {create.error && (
-          <Alert severity="error" sx={{ mt: 1 }}>
-            {errorMessage(create.error)}
-          </Alert>
-        )}
-      </Section>
-
       <Section>
         <Row sx={{ mb: 1 }}>
           <Typography variant="h6" component="h2" sx={{ flex: 1, minWidth: 0 }}>
@@ -61,39 +31,54 @@ export function PagesPage() {
         </Row>
         {pages.isPending && <Muted>読み込み中…</Muted>}
         {pages.error && <Alert severity="error">{errorMessage(pages.error)}</Alert>}
-        {pages.data && pages.data.pages.length === 0 && <Muted>ページはまだありません。</Muted>}
-        <Table size="small">
-          <TableBody>
-            {pages.data?.pages.map((p) => (
-              <TableRow key={p.id} hover>
-                <TableCell padding="none" sx={{ width: 36, pl: 0.5 }}>
-                  <StarButton pageId={p.id} title={p.title} />
-                </TableCell>
-                <TableCell>
-                  <RouterLink {...pageLink(p.id)}>
-                    {p.title}
-                  </RouterLink>
-                </TableCell>
-                <TableCell>
-                  <Muted component="span">
-                    <Mono>{p.id}</Mono>
-                  </Muted>
-                </TableCell>
-                <TableCell>
-                  <Row>
-                    <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
-                    {p.workflowState !== "draft" && <StatusChip label={workflowLabel[p.workflowState]} />}
-                    {p.origin === "ai_draft" && <StatusChip label="AI下書き" />}
-                    {p.reviewRequestedAt && <StatusChip status="unlisted" label="見直し待ち" />}
-                  </Row>
-                </TableCell>
-                <TableCell>
-                  <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>
-                </TableCell>
+        {pages.data && pages.data.pages.length === 0 && (
+          <Muted>
+            {q ? `「${q}」をタイトルに含むページはありません。` : "ページはまだありません。サイドバーの「最上位に新しいページ」（＋）から作れます。"}
+          </Muted>
+        )}
+        {pages.data && pages.data.pages.length > 0 && (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell padding="none" sx={{ width: 36 }} />
+                <TableCell>タイトル</TableCell>
+                <TableCell>ID</TableCell>
+                <TableCell>状態</TableCell>
+                <TableCell>更新日時</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {pages.data.pages.map((p) => (
+                <TableRow key={p.id} hover>
+                  <TableCell padding="none" sx={{ width: 36, pl: 0.5 }}>
+                    <StarButton pageId={p.id} title={p.title} />
+                  </TableCell>
+                  <TableCell>
+                    <RouterLink {...pageLink(p.id)}>
+                      {p.title}
+                    </RouterLink>
+                  </TableCell>
+                  <TableCell>
+                    <Muted component="span">
+                      <Mono>{p.id}</Mono>
+                    </Muted>
+                  </TableCell>
+                  <TableCell>
+                    <Row>
+                      <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
+                      {p.workflowState !== "draft" && <StatusChip label={workflowLabel[p.workflowState]} />}
+                      {p.origin === "ai_draft" && <StatusChip label="AI下書き" />}
+                      {p.reviewRequestedAt && <StatusChip status="unlisted" label="見直し待ち" />}
+                    </Row>
+                  </TableCell>
+                  <TableCell>
+                    <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
     </Stack>
   );

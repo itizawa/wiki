@@ -1,4 +1,4 @@
-import MenuIcon from "@mui/icons-material/Menu";
+import { Menu } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
@@ -159,7 +159,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
           >
             <Tooltip title="サイドバーを開く (⌘.)" placement="right">
               <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setOpen(true)}>
-                <MenuIcon fontSize="small" />
+                <Menu size={18} />
               </IconButton>
             </Tooltip>
           </Box>
@@ -168,7 +168,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         <Box sx={{ flexShrink: 0, width: COLLAPSED_WIDTH, pt: 1.25, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
           <Tooltip title="サイドバーを開く (⌘.)" placement="right">
             <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setDrawer(true)}>
-              <MenuIcon fontSize="small" />
+              <Menu size={18} />
             </IconButton>
           </Tooltip>
         </Box>
