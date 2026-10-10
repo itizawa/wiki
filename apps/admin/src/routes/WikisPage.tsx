@@ -323,8 +323,8 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1.5 }}>
                 <Muted>見え方</Muted>
                 {/* 入力中の URL で、実際に出る形を見せる（読み込めなければ頭文字になる） */}
-                <WikiIcon key={nextIcon ?? ""} wiki={{ name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
-                <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={40} />
+                <WikiIcon key={nextIcon ?? ""} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
+                <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={40} />
                 {iconUrl !== "" && (
                   <Button variant="text" onClick={() => setIconUrl("")} sx={{ ml: "auto" }}>
                     画像を外す
