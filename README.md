@@ -113,7 +113,7 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 ### つなぎ方
 
 - MCP サーバーの URL は `https://wiki-admin.hatchery-works.com/mcp`（ローカルでは API のオリジンの `/mcp`）。管理画面の wiki の切り替えメニューにある「外部アプリ連携（MCP）」にも出る
-- Claude：設定 → コネクタ → カスタムコネクタを追加 に URL を入れる。Claude Code：`claude mcp add --transport http wiki https://wiki-admin.hatchery-works.com/mcp`
+- Claude：設定 → コネクタ → カスタムコネクタを追加 に URL を入れる。Claude Code：このリポジトリの中で起動すれば、`.mcp.json` に `wiki` として入っているのでそのまま使える（初回に、このサーバーを使うかを聞かれる。認可は `/mcp` から）。ほかの場所で使うなら `claude mcp add --transport http wiki https://wiki-admin.hatchery-works.com/mcp`
 - つなぐと、ブラウザで管理画面の同意の画面（`/consent`）が開く。ログインして、許可することを選んで「許可する」を押す。許可したアプリの一覧と取り消しは「外部アプリ連携」の画面にある
 
 ### できること（道具）
