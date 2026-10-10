@@ -22,6 +22,11 @@ const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
 const STOCK_DAYS = 7;
 const STOCK_MIN = 3;
+/**
+ * 行の中の、ページの名前の枠。残りの幅を取る。
+ * 最低の幅を決めておき、足りなければ右のボタンを次の行へ送る（決めておかないと、スマホの幅ではボタンに押されて1文字ずつ折り返す）。
+ */
+const titleCellSx = { flex: "1 1 10em", minWidth: 0 } as const;
 
 type Entry =
   | { kind: "action"; at: string; action: ScheduledAction }
@@ -113,7 +118,7 @@ export function CalendarPage() {
           <Stack component="ul" spacing={1} sx={{ listStyle: "none", p: 0, m: 0 }}>
             {failed.data!.actions.map((a) => (
               <Row component="li" key={a.id}>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={titleCellSx}>
                   <PageLink action={a} /> {actionLabel(a)}（{formatDateTime(a.runAt)}）
                   <Typography component="span" variant="body2" color="error">
                     {" "}
@@ -167,7 +172,7 @@ export function CalendarPage() {
                     {e.kind === "action" && (
                       <>
                         <StatusChip status={e.action.status} label={actionLabel(e.action)} />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={titleCellSx}>
                           <PageLink action={e.action} />
                           {e.action.ruleRunId && (
                             <Box component="span" sx={{ color: "text.secondary" }}>

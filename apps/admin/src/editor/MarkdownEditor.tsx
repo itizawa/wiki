@@ -23,7 +23,7 @@ import { ImageMenu } from "./ImageMenu";
 import { ImageUpload } from "./imageUpload";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { monoFont } from "../theme";
+import { MENU_MAX_WIDTH, monoFont, TOUCH } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
 import { highlightSx } from "./highlight";
@@ -161,9 +161,11 @@ export function MarkdownEditor(props: {
       <PageMention editor={editor} />
       <SlashMenu editor={editor} />
       <Box
-        sx={{
+        sx={(t) => ({
           // 浮かぶメニューの位置の基準
           position: "relative",
+          // 「挿入」のボタンは行の左の余白に出す。狭い画面では余白が 16px しか無く、画面の外にはみ出すので、行の右端に出す
+          [t.breakpoints.down("md")]: { "& .insert-menu": { left: "auto !important", right: 0 } },
           "& .tiptap": {
             outline: "none",
             minHeight: "50vh",
@@ -196,7 +198,7 @@ export function MarkdownEditor(props: {
               pointerEvents: "none",
             },
           },
-        }}
+        })}
       >
         <EditorContent editor={editor} />
         <TableMenu editor={editor} />
@@ -260,7 +262,8 @@ function SelectionMenu({ editor }: { editor: Editor }) {
 
   return (
     <BubbleMenu editor={editor} shouldShow={showSelectionMenu} options={selectionMenuOptions} style={{ zIndex: 1 }}>
-      <Paper elevation={4}>
+      {/* スマホの幅では1行に収まらないので、画面の幅で折り返す（折り返さないと、右のボタンが画面の外に出て押せない） */}
+      <Paper elevation={4} sx={{ maxWidth: MENU_MAX_WIDTH }}>
         {linkEditing && (
           <LinkForm
             initial={(editor.getAttributes("link").href as string | undefined) ?? ""}
@@ -269,7 +272,7 @@ function SelectionMenu({ editor }: { editor: Editor }) {
             onClose={() => closeLink(() => editor.commands.focus())}
           />
         )}
-        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", gap: 0.25, p: 0.5 }}>
+        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", flexWrap: "wrap", gap: 0.25, p: 0.5 }}>
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
             <Bold size={18} />
           </Tool>
@@ -327,7 +330,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
   const [imageOpen, setImageOpen] = useState(false);
 
   return (
-    <FloatingMenu editor={editor} options={insertMenuOptions} style={{ zIndex: 1 }}>
+    <FloatingMenu editor={editor} options={insertMenuOptions} className="insert-menu" style={{ zIndex: 1 }}>
       <Tooltip title="挿入">
         <IconButton
           size="small"
@@ -336,7 +339,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
           aria-expanded={!!anchor}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => setAnchor(e.currentTarget)}
-          sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary" }}
+          sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary", [TOUCH]: { width: 32, height: 32 } }}
         >
           <Plus size={18} />
         </IconButton>
@@ -421,7 +424,8 @@ function Tool(props: { label: string; active?: boolean; disabled?: boolean; onCl
           // 押してもエディタの選択範囲を失わないようにする
           onMouseDown={(e) => e.preventDefault()}
           onClick={props.onClick}
-          sx={[{ borderRadius: 1, width: 30, height: 30 }, !!props.active && { bgcolor: "action.selected", color: "primary.main" }]}
+          // 指で操作する端末では大きくする。ボタンの間が狭いので、押せる範囲は見た目どおりにする
+          sx={[{ borderRadius: 1, width: 30, height: 30, [TOUCH]: { width: 36, height: 36, "&::after": { display: "none" } } }, !!props.active && { bgcolor: "action.selected", color: "primary.main" }]}
         >
           {props.children}
         </IconButton>
