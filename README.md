@@ -54,6 +54,7 @@ packages/shared  型、zodスキーマ（構造操作・ルール）、URLルー
 
 - Google認証（OIDC）＋ 許可メールの allowlist（`ADMIN_EMAILS`）。セッションは署名付きCookie。allowlistから外すと次のリクエストから拒否
 - `pages` / `page_versions`：Markdownエディタ、版履歴と差分、楽観ロック（`base_version_id` が head と一致する場合のみ保存）
+- `page_drafts`：編集中の内容は、打つのが止まると人ごとの下書きとして自動保存する（版は作らない）。「版として残す」（⌘S）を押したときだけ版を作り、自分の下書きを消す。承認・公開・予約は版に対して行う
 - 画像のアップロード：本文への貼り付け・ドラッグ、挿入メニューの「画像…」から。PNG・JPEG・WebP・GIF、5MB まで（形式は中身で判定し、SVG は受け付けない）
   - 置き場所は Cloudflare R2 のバケット `wiki-images`。名前はランダムな24文字で、本文には相対パス `/images/{name}` と書く。管理画面（`wiki-admin`）と公開サイト（`wiki-site`、どの wiki のサブドメインでも）が、同じバケットからこのパスで配る
   - 認証はしない。非公開・限定公開のページに貼った画像も、URL を知っていればだれでも見られる
