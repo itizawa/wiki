@@ -166,11 +166,7 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
       button.setAttribute("aria-label", img.alt ? `画像を拡大する: ${img.alt}` : "画像を拡大する");
       img.replaceWith(button);
       button.append(img);
-      button.addEventListener("click", (e) => {
-        // トグルの見出しの中にある画像でも、トグルは開閉しない
-        e.preventDefault();
-        openZoom(button, img);
-      });
+      button.addEventListener("click", () => openZoom(button, img));
     }
   }
 </script>
