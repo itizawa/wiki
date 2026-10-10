@@ -16,16 +16,15 @@ import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
 import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
-import { Mono, Muted } from "./ui";
+import { Muted } from "./ui";
 
 /**
  * 編集画面の「…」メニュー。いまの内容を版として残す・版履歴を開く・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
- * テンプレートにする・ページを削除する。下にページのパスを出す。
+ * テンプレートにする・ページを削除する。
  */
 export function PageMenu(props: {
   title: string;
   bodyMd: string;
-  path: string;
   /** いまの内容を版として残す（⌘S と同じ）。結果の知らせは、呼ばれた側が出す */
   onKeepVersion: () => void;
   onOpenHistory: () => void;
@@ -157,9 +156,6 @@ export function PageMenu(props: {
           </ListItemIcon>
           <ListItemText>このページを削除…</ListItemText>
         </MenuItem>
-        <Muted component="div" sx={{ px: 2, pt: 1, pb: 0.5, fontSize: "0.75rem", wordBreak: "break-all" }}>
-          <Mono>{props.path}</Mono>
-        </Muted>
       </Menu>
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar

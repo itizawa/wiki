@@ -61,8 +61,11 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
     const update = () => {
       queued = false;
       let index = 0;
+      // 見出しの scroll-margin-top（狭い画面ではヘッダーの高さぶん増える）に合わせる。ページ内リンクで飛んだ先の節が「いま」になる
+      const first = targets.find((el) => el);
+      const line = (first ? parseFloat(getComputedStyle(first).scrollMarginTop) || 16 : 16) + 8;
       targets.forEach((el, i) => {
-        if (el && el.getBoundingClientRect().top <= 24) index = i;
+        if (el && el.getBoundingClientRect().top <= line) index = i;
       });
       // ページの最後まで来たら、上端に届かない最後の節を「いま」にする
       if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) index = tocLinks.length - 1;

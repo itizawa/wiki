@@ -8,7 +8,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
-import { pagePath, type PageDetail, type PageDraft } from "@wiki/shared";
+import type { PageDetail, PageDraft } from "@wiki/shared";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { openFindBar } from "../editor/FindBar";
@@ -265,7 +265,6 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
           <PageMenu
             title={draft.title}
             bodyMd={draft.bodyMd}
-            path={pagePath(p.id)}
             onKeepVersion={() => void keepVersion()}
             onOpenHistory={() => showVersion(p.headVersionId)}
             onDelete={() => void deletePage()}

@@ -95,6 +95,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { isOwner } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -171,6 +172,15 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
           構造の履歴
         </NavItem>
+        {/* wiki の管理は /w/ の外の画面なので、NavItem ではなくリンクを直接置く。オーナーにだけ出す */}
+        {isOwner && (
+          <RouterLink to="/wikis" onClick={props.onNavigate} underline="none" sx={rowSx}>
+            <Settings size={18} />
+            <Box component="span" sx={ellipsis}>
+              wiki の管理
+            </Box>
+          </RouterLink>
+        )}
 
         {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 
@@ -215,18 +225,11 @@ export function Sidebar(props: {
         </Alert>
       )}
 
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 1, borderTop: 1, borderColor: "divider" }}>
-        <Muted sx={ellipsis} title={props.email}>
-          {props.email}
-        </Muted>
+      <Box sx={{ display: "flex", alignItems: "stretch", gap: 0.5, pl: 1, pr: 1.5, borderTop: 1, borderColor: "divider" }}>
+        <UserMenu email={props.email} onLogout={props.onLogout} />
         <Tooltip title="キーボードショートカットと記法 (?)">
-          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide}>
+          <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide} sx={{ alignSelf: "center" }}>
             <Keyboard size={18} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="ログアウト">
-          <IconButton size="small" aria-label="ログアウト" onClick={props.onLogout}>
-            <LogOut size={18} />
           </IconButton>
         </Tooltip>
       </Box>
@@ -234,14 +237,83 @@ export function Sidebar(props: {
   );
 }
 
+/**
+ * 左下のユーザーメニュー。ログイン中のメールアドレスを出し、押すとメニューが上に開く。ログアウトはここから行う。
+ * 押せる範囲は、行の高さいっぱいに取る。
+ */
+function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <Box
+        component="button"
+        type="button"
+        title={email}
+        aria-label={`アカウントのメニューを開く（${email}）`}
+        aria-haspopup="menu"
+        aria-expanded={anchor !== null}
+        onClick={(e) => setAnchor(e.currentTarget)}
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 46,
+          display: "flex",
+          alignItems: "center",
+          gap: 0.5,
+          px: 0.5,
+          border: 0,
+          borderRadius: 1,
+          bgcolor: "transparent",
+          color: "text.secondary",
+          font: "inherit",
+          fontSize: "0.875rem",
+          textAlign: "left",
+          cursor: "pointer",
+          "&:hover": { bgcolor: "action.hover" },
+        }}
+      >
+        <Box component="span" sx={ellipsis}>
+          {email}
+        </Box>
+        <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0 }} />
+      </Box>
+      <Menu
+        open={anchor !== null}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: "top", horizontal: "left" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+        slotProps={{ list: { dense: true, sx: { minWidth: 240, maxWidth: 320 } } }}
+      >
+        {/* 長いメールアドレスも省略せず、折り返して全体を出す */}
+        <ListSubheader disableSticky sx={{ py: 0.75, lineHeight: 1.5, fontSize: "0.75rem", fontWeight: 600, overflowWrap: "anywhere" }}>
+          {email}
+        </ListSubheader>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onLogout();
+          }}
+        >
+          <ListItemIcon>
+            <LogOut size={18} />
+          </ListItemIcon>
+          <ListItemText>ログアウトする</ListItemText>
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
 const MenuItemLink = createLink(MenuItem);
 
 /**
  * wiki の切り替え。いまどの wiki にいるかを、サイドバーの上に常に出す（表示名と、公開サイトのサブドメインになる key）。
- * 押すと、選べる wiki の一覧と、wiki の管理（オーナーだけ）への入口を出す。
+ * 押すと、選べる wiki の一覧と、外部アプリ連携への入口を出す。
  */
 function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
-  const { wiki, wikis, isOwner } = useWiki();
+  const { wiki, wikis } = useWiki();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const close = () => {
     setAnchor(null);
@@ -301,14 +373,6 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           </MenuItemLink>
         ))}
         <Divider />
-        {isOwner && (
-          <MenuItemLink to="/wikis" onClick={close}>
-            <ListItemIcon>
-              <Settings size={18} />
-            </ListItemIcon>
-            <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
-          </MenuItemLink>
-        )}
         <MenuItemLink to="/connections" onClick={close}>
           <ListItemIcon>
             <Puzzle size={18} />

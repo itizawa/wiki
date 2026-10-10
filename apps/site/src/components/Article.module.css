@@ -58,3 +58,7 @@
 }
 /* ページ内リンクで飛んだとき、見出しが画面の上端に張りつかないようにする */
 .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: 16px; }
+/* 狭い画面では上にヘッダーが張り付く（Base.module.css）ので、その高さぶん空ける */
+@media (max-width: 800px) {
+  .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: calc(var(--header-height) + 16px); }
+}

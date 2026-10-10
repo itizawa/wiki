@@ -37,13 +37,13 @@ describe("recording a view (/internal/views)", () => {
     const id = await newPage("記事", "public");
     expect((await internal({ wiki: "wiki", pageId: id })).status).toBe(204);
     expect((await internal({ wiki: "wiki", pageId: id })).status).toBe(204);
-    // UTC では 10/10 15:30、JST では 10/11 00:30
-    await recordView(ctx.db, { wiki: "wiki", pageId: id }, new Date("2026-10-10T15:30:00Z"));
+    // UTC では 1/1 15:30、JST では 1/2 00:30（テストを流す日と重ならない、過ぎた日にする）
+    await recordView(ctx.db, { wiki: "wiki", pageId: id }, new Date("2020-01-01T15:30:00Z"));
     const rows = await ctx.client.query<{ day: string; count: number }>(
       "select to_char(day, 'YYYY-MM-DD') as day, count from page_views_daily where page_id = $1 order by day",
       [id],
     );
-    expect(rows.rows.at(-1)).toEqual({ day: "2026-10-11", count: 1 });
+    expect(rows.rows[0]).toEqual({ day: "2020-01-02", count: 1 });
     expect(rows.rows.reduce((n, r) => n + r.count, 0)).toBe(3);
   });
 
