@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, LogOut, Plus, Search, Settings, Star, Workflow } from "lucide-react";
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Search, Settings, Star, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -28,7 +28,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useNavigate, useParams } from "@tanstack/react-router";
-import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
+import { childrenByParent, type StructureOpInput, type TreeNode, type Visibility } from "@wiki/shared";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
@@ -366,6 +366,7 @@ function StarredRow({ page, onNavigate }: { page: StructureResponse["pages"][str
 type TreeContext = {
   childrenOf: ReadonlyMap<string | null, TreeNode[]>;
   label: (node: TreeNode) => string;
+  visibility: (node: TreeNode) => Visibility;
   activePageId: string | undefined;
   collapsed: ReadonlySet<string>;
   toggle: (nodeId: string) => void;
@@ -398,6 +399,7 @@ function DocumentTree(props: {
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const label = (n: TreeNode) => data.pages[n.pageId]?.title ?? n.pageId;
+  const visibility = (n: TreeNode) => (data.pages[n.pageId]?.visibility ?? "private") as Visibility;
   const expand = (nodeId: string) => {
     if (collapsed.has(nodeId)) setCollapsedIds(collapsedIds.filter((id) => id !== nodeId));
   };
@@ -416,6 +418,7 @@ function DocumentTree(props: {
   const ctx: TreeContext = {
     childrenOf,
     label,
+    visibility,
     activePageId,
     collapsed,
     toggle: (nodeId) =>
@@ -466,6 +469,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
   const before = useDroppable({ id: encodeDropTarget({ kind: "before", nodeId: node.nodeId }) });
   const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
   const title = ctx.label(node);
+  const visibility = ctx.visibility(node);
 
   // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
   const labelSx = { ...ellipsis, display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
@@ -507,6 +511,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           <Box component="span" sx={ellipsis}>
             {title}
           </Box>
+          <VisibilityMark visibility={visibility} />
         </RouterLink>
         <Box className="row-actions" sx={{ flexShrink: 0 }}>
           <StarButton pageId={node.pageId} title={title} iconSize={18} sx={{ p: 0.25 }} />
@@ -526,6 +531,20 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
         </Collapse>
       )}
     </Box>
+  );
+}
+
+/** 限定公開・非公開のページに付ける印。公開のページには何も付けない。 */
+export function VisibilityMark({ visibility }: { visibility: Visibility }) {
+  if (visibility === "public") return null;
+  const label = visibility === "unlisted" ? "限定公開" : "非公開";
+  const Icon = visibility === "unlisted" ? Link : Lock;
+  return (
+    <Tooltip title={label}>
+      <Box component="span" role="img" aria-label={label} sx={{ display: "inline-flex", ml: 0.5, flexShrink: 0, color: "text.disabled" }}>
+        <Icon size={14} />
+      </Box>
+    </Tooltip>
   );
 }
 
