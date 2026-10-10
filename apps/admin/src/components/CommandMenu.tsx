@@ -1,17 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
-import AutoModeIcon from "@mui/icons-material/AutoMode";
-import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
-import FindReplaceIcon from "@mui/icons-material/FindReplace";
-import HistoryIcon from "@mui/icons-material/History";
-import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
-import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
-import LogoutIcon from "@mui/icons-material/Logout";
-import SearchIcon from "@mui/icons-material/Search";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
-import ViewSidebarOutlinedIcon from "@mui/icons-material/ViewSidebarOutlined";
+import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LogOut, PanelLeft, Plus, Replace, Search, Workflow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -83,23 +70,23 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       id: "new",
       label: q ? `「${q}」という名前で新しいページを作る` : "新しいページを作る",
       keywords: ["new", "create", "page", "tsukuru"],
-      icon: <AddIcon fontSize="small" />,
+      icon: <Plus size={18} />,
       run: () => !create.isPending && create.mutate(),
     },
     {
       id: "search",
       label: q ? `「${q}」の検索結果を、本文の一致した所と一緒に見る` : "「検索」を開く",
       keywords: ["search", "find", "kensaku"],
-      icon: <SearchIcon fontSize="small" />,
+      icon: <Search size={18} />,
       run: () => {
         onClose();
         void navigate({ ...screenLink("/w/$wikiKey/search"), search: q ? { q } : {} });
       },
     },
-    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <HomeOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey") },
-    { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <CalendarMonthOutlinedIcon fontSize="small" />, run: go("/w/$wikiKey/calendar") },
-    { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <AutoModeIcon fontSize="small" />, run: go("/w/$wikiKey/rules") },
-    { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <HistoryIcon fontSize="small" />, run: go("/w/$wikiKey/history") },
+    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
+    { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/rules") },
+    { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis
       .filter((w) => w.key !== wiki.key)
@@ -107,7 +94,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
         id: `wiki:${w.key}`,
         label: `wiki「${w.name}」に切り替える`,
         keywords: ["wiki", "switch", w.key],
-        icon: <SwapHorizIcon fontSize="small" />,
+        icon: <ArrowLeftRight size={18} />,
         run: () => {
           onClose();
           void navigate({ to: "/w/$wikiKey", params: { wikiKey: w.key } });
@@ -116,13 +103,13 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // 編集画面を開いているときだけ出す。いま画面にある内容（保存前の変更も含む）を持ち出す
     ...(pageActions
       ? [
-          { id: "find", label: "本文を検索・置換する", keywords: ["find", "search", "replace", "kensaku"], icon: <FindReplaceIcon fontSize="small" />, run: closing(openFindBar) },
-          { id: "copy-md", label: "このページの Markdown をコピー", keywords: ["copy", "markdown", "md", "export"], icon: <ContentCopyIcon fontSize="small" />, run: closing(pageActions.copyMarkdown) },
+          { id: "find", label: "本文を検索・置換する", keywords: ["find", "search", "replace", "kensaku"], icon: <Replace size={18} />, run: closing(openFindBar) },
+          { id: "copy-md", label: "このページの Markdown をコピー", keywords: ["copy", "markdown", "md", "export"], icon: <Copy size={18} />, run: closing(pageActions.copyMarkdown) },
           {
             id: "download-md",
             label: "このページの Markdown ファイル（.md）をダウンロード",
             keywords: ["download", "markdown", "md", "export"],
-            icon: <FileDownloadOutlinedIcon fontSize="small" />,
+            icon: <Download size={18} />,
             run: closing(pageActions.downloadMarkdown),
           },
         ]
@@ -133,7 +120,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
             id: "sidebar",
             label: "サイドバーを開く／閉じる",
             keywords: ["sidebar", "toggle"],
-            icon: <ViewSidebarOutlinedIcon fontSize="small" />,
+            icon: <PanelLeft size={18} />,
             run: () => {
               onClose();
               props.onToggleSidebar?.();
@@ -141,12 +128,12 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           },
         ]
       : []),
-    { id: "shortcuts", label: "キーボードショートカットと記法の一覧を開く", keywords: ["shortcut", "keyboard", "help", "markdown", "?"], icon: <KeyboardOutlinedIcon fontSize="small" />, run: closing(openShortcutGuide) },
+    { id: "shortcuts", label: "キーボードショートカットと記法の一覧を開く", keywords: ["shortcut", "keyboard", "help", "markdown", "?"], icon: <Keyboard size={18} />, run: closing(openShortcutGuide) },
     {
       id: "logout",
       label: "ログアウトする",
       keywords: ["logout", "signout"],
-      icon: <LogoutIcon fontSize="small" />,
+      icon: <LogOut size={18} />,
       run: () => {
         onClose();
         props.onLogout();
@@ -160,7 +147,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const actions = [commands[0]!, commands[1]!, ...matched];
   // 探しているときはページを先に、何も打っていないときは操作を先に出す
   const sections: { title: string; items: Item[] }[] = [
-    { title: "ページ", items: pageItems.map((p) => ({ key: p.id, label: p.title, secondary: p.snippet ?? undefined, icon: <DescriptionOutlinedIcon fontSize="small" />, run: () => openPage(p.id) })) },
+    { title: "ページ", items: pageItems.map((p) => ({ key: p.id, label: p.title, secondary: p.snippet ?? undefined, icon: <FileText size={18} />, run: () => openPage(p.id) })) },
     { title: "操作", items: actions.map((c) => ({ key: c.id, label: c.label, icon: c.icon, run: c.run })) },
   ];
   if (q === "") sections.reverse();
@@ -185,7 +172,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" sx={{ "& .MuiDialog-container": { alignItems: "flex-start" } }} slotProps={{ paper: { sx: { mt: "12vh" } }, transition: { onEntering: () => inputRef.current?.focus() } }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, py: 1.25 }}>
-        <SearchIcon fontSize="small" sx={{ color: "text.secondary" }} />
+        <Box component={Search} size={18} sx={{ color: "text.secondary" }} />
         <InputBase
           inputRef={inputRef}
           fullWidth

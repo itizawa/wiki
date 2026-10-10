@@ -1,3 +1,4 @@
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, Ellipsis, History, House, Keyboard, LogOut, Plus, Search, Settings, Star, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -9,22 +10,6 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import AddIcon from "@mui/icons-material/Add";
-import AutoModeIcon from "@mui/icons-material/AutoMode";
-import CheckIcon from "@mui/icons-material/Check";
-import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
-import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
-import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import HistoryIcon from "@mui/icons-material/History";
-import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
-import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
-import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
-import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
-import LogoutIcon from "@mui/icons-material/Logout";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import SearchIcon from "@mui/icons-material/Search";
-import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
@@ -128,18 +113,18 @@ export function Sidebar(props: {
         {props.onCollapse && (
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
-              <KeyboardDoubleArrowLeftIcon fontSize="small" />
+              <ChevronsLeft size={18} />
             </IconButton>
           </Tooltip>
         )}
       </Box>
 
       <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 1, pb: 2 }}>
-        <NavItem to="/w/$wikiKey/search" icon={<SearchIcon fontSize="small" />} onClick={props.onNavigate}>
+        <NavItem to="/w/$wikiKey/search" icon={<Search size={18} />} onClick={props.onNavigate}>
           検索
         </NavItem>
         <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
-          <KeyboardCommandKeyIcon fontSize="small" />
+          <Command size={18} />
           <Box component="span" sx={ellipsis}>
             コマンドメニュー
           </Box>
@@ -147,16 +132,16 @@ export function Sidebar(props: {
             ⌘K
           </Box>
         </Box>
-        <NavItem to="/w/$wikiKey" exact icon={<HomeOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+        <NavItem to="/w/$wikiKey" exact icon={<House size={18} />} onClick={props.onNavigate}>
           すべてのページ
         </NavItem>
-        <NavItem to="/w/$wikiKey/calendar" icon={<CalendarMonthOutlinedIcon fontSize="small" />} onClick={props.onNavigate}>
+        <NavItem to="/w/$wikiKey/calendar" icon={<Calendar size={18} />} onClick={props.onNavigate}>
           編集カレンダー
         </NavItem>
-        <NavItem to="/w/$wikiKey/rules" icon={<AutoModeIcon fontSize="small" />} onClick={props.onNavigate}>
+        <NavItem to="/w/$wikiKey/rules" icon={<Workflow size={18} />} onClick={props.onNavigate}>
           ルール
         </NavItem>
-        <NavItem to="/w/$wikiKey/history" icon={<HistoryIcon fontSize="small" />} onClick={props.onNavigate}>
+        <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
           構造の履歴
         </NavItem>
 
@@ -170,7 +155,7 @@ export function Sidebar(props: {
           <Tooltip title="最上位に新しいページ">
             <span>
               <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
-                <AddIcon sx={{ fontSize: 18 }} />
+                <Plus size={18} />
               </IconButton>
             </span>
           </Tooltip>
@@ -210,12 +195,12 @@ export function Sidebar(props: {
         </Muted>
         <Tooltip title="キーボードショートカットと記法 (?)">
           <IconButton size="small" aria-label="キーボードショートカットと記法" onClick={openShortcutGuide}>
-            <KeyboardOutlinedIcon fontSize="small" />
+            <Keyboard size={18} />
           </IconButton>
         </Tooltip>
         <Tooltip title="ログアウト">
           <IconButton size="small" aria-label="ログアウト" onClick={props.onLogout}>
-            <LogoutIcon fontSize="small" />
+            <LogOut size={18} />
           </IconButton>
         </Tooltip>
       </Box>
@@ -272,7 +257,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               {wiki.key}
             </Box>
           </Box>
-          <UnfoldMoreIcon sx={{ fontSize: 18, flexShrink: 0, color: "text.secondary" }} />
+          <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0, color: "text.secondary" }} />
         </Box>
       </Tooltip>
       <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true, sx: { minWidth: 240 } } }}>
@@ -282,7 +267,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         {wikis.map((w) => (
           <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
             {/* いまの wiki は、色だけでなくチェックの印でも示す */}
-            <ListItemIcon>{w.key === wiki.key && <CheckIcon fontSize="small" />}</ListItemIcon>
+            <ListItemIcon>{w.key === wiki.key && <Check size={18} />}</ListItemIcon>
             <Box sx={{ mr: 1.25, display: "flex" }}>
               <WikiIcon wiki={w} size={24} />
             </Box>
@@ -293,7 +278,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
         {isOwner && (
           <MenuItemLink to="/wikis" onClick={close}>
             <ListItemIcon>
-              <SettingsOutlinedIcon fontSize="small" />
+              <Settings size={18} />
             </ListItemIcon>
             <ListItemText>wiki の管理（作成・アーカイブ）</ListItemText>
           </MenuItemLink>
@@ -327,7 +312,7 @@ function StarredPages({ pages, onNavigate }: { pages: StructureResponse["pages"]
       </Typography>
       {starred.map((p) => (
         <RouterLink key={p.id} {...pageLink(p.id)} onClick={onNavigate} underline="none" sx={rowSx}>
-          <StarIcon sx={{ fontSize: 18, color: "warning.main" }} />
+          <Box component={Star} size={18} fill="currentColor" sx={{ color: "warning.main" }} />
           <Box component="span" sx={ellipsis}>
             {p.title}
           </Box>
@@ -349,7 +334,7 @@ function TreeSettings({ tree }: { tree: StructureTree }) {
     <>
       <Tooltip title={update.error ? errorMessage(update.error) : "ツリーの設定"}>
         <IconButton size="small" aria-label="ツリーの設定" color={update.error ? "error" : "default"} onClick={(e) => setAnchor(e.currentTarget)}>
-          <MoreHorizIcon sx={{ fontSize: 18 }} />
+          <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
       <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
@@ -509,7 +494,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           onClick={() => ctx.toggle(node.nodeId)}
           sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden" }}
         >
-          <ChevronRightIcon sx={{ fontSize: 18, transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
+          <Box component={ChevronRight} size={18} sx={{ transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
         <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
           <Box component="span" sx={ellipsis}>
@@ -519,7 +504,7 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
         <Box className="row-actions" sx={{ flexShrink: 0 }}>
           <Tooltip title="この下に新しいページ">
             <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={{ p: 0.25 }}>
-              <AddIcon sx={{ fontSize: 18 }} />
+              <Plus size={18} />
             </IconButton>
           </Tooltip>
         </Box>

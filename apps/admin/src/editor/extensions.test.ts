@@ -22,6 +22,10 @@ describe("本文のMarkdown往復", () => {
     ["一覧に無い言語のコードブロック", "```kotlin\nval a = 1\n```"],
     ["画像", "![alt](https://example.com/a.png)"],
     ["区切り線", "上\n\n---\n\n下"],
+    ["リストの項目の中の区切り線", "- a\n\n  ---\n- b"],
+    ["リストの項目の中の画像", "- a\n\n  ![alt](https://example.com/a.png)\n- b"],
+    ["番号つきリストの項目の中の画像", "1. a\n\n   ![alt](https://example.com/a.png)\n2. b"],
+    ["チェックリストの項目の中の区切り線", "- [ ] a\n\n  ---\n- [x] b"],
     ["トグル", "+++ よくある質問\n\n答えです\n\n+++"],
     ["トグル（中に見出しとリスト）", "+++ 詳しく\n\n## 見出し\n\n- a\n- b\n\n+++\n\n後ろの段落"],
     ["入れ子のトグル", "+++ 外\n\n+++ 内\n\n中身\n\n+++\n\n+++"],
@@ -35,6 +39,15 @@ describe("本文のMarkdown往復", () => {
     expect(once).toMatch(/\|\s*a\s*\|\s*b\s*\|/);
     expect(once).toMatch(/\|\s*1\s*\|\s*2\s*\|/);
     expect(roundTrip(once)).toBe(once);
+  });
+
+  it("リストの項目の中で段落の後ろに置いた区切り線と画像は、読み直しても別のものに変わらない", () => {
+    const p = (text: string) => ({ type: "paragraph", content: [{ type: "text", text }] });
+    for (const block of [{ type: "horizontalRule" }, { type: "image", attrs: { src: "https://example.com/a.png", alt: "alt" } }]) {
+      const doc = { type: "doc", content: [{ type: "bulletList", content: [{ type: "listItem", content: [p("a"), block] }] }] };
+      const reparsed = manager.parse(manager.serialize(doc));
+      expect(reparsed.content?.[0]?.content?.[0]?.content?.map((n) => n.type)).toEqual(["paragraph", block.type]);
+    }
   });
 
   it("トグルは、見出しと中身を持つ部品として読む", () => {

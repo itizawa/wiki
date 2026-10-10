@@ -23,6 +23,11 @@ html_handling = "auto-trailing-slash"
 # 無いパスは、その wiki の 404.html（{wiki}/404.html）を返す
 not_found_handling = "404-page"
 
+# アップロードした画像（管理画面の Worker と同じバケット）。`/images/{name}` をどの wiki のサブドメインでも配る
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "wiki-images"
+
 [vars]
 # 公開サイトのドメインの共通部分。ビルドの環境変数 SITE_BASE_DOMAIN と同じ値
 SITE_BASE_DOMAIN = "hatchery-works.com"

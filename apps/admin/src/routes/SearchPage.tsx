@@ -1,4 +1,4 @@
-import SearchIcon from "@mui/icons-material/Search";
+import { Search } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -53,7 +53,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
           input: {
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
+                <Search size={18} />
               </InputAdornment>
             ),
           },
