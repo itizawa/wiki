@@ -165,7 +165,7 @@ export function VersionHistory(props: {
               >
                 {formatDateTime(v.createdAt)}
                 {v.id === props.headVersionId && <StatusChip label="最新" size="small" />}
-                {/* 下書きから自動でできた版。人が「版として残す」を選ぶか、公開・予約・承認に使うと外れる */}
+                {/* 下書きから自動でできた版。人が「版として残す」を選ぶか、公開・予約に使うと外れる */}
                 {!v.keep && <StatusChip label="自動" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
                 {v.via && <StatusChip label={`${v.via} 経由`} size="small" />}

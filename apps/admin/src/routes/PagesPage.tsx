@@ -9,7 +9,6 @@ import { useEffect, useMemo, useState } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { StarButton } from "../components/StarButton";
 import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
-import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
@@ -95,9 +94,7 @@ export function PagesPage() {
       render: (p) => (
         <Row>
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
-          {p.workflowState !== "draft" && <StatusChip label={workflowLabel[p.workflowState]} />}
           {p.origin === "ai_draft" && <StatusChip label="AI下書き" />}
-          {p.reviewRequestedAt && <StatusChip status="unlisted" label="見直し待ち" />}
         </Row>
       ),
     },

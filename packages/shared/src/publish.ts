@@ -62,8 +62,6 @@ export type ScheduledAction = {
   lastError: string | null;
   createdAt: string;
   executedAt: string | null;
-  /** ルールが入れた予約なら、その実行ログの id */
-  ruleRunId: string | null;
   /** 予約後にページが編集された（予約内容には反映されない） */
   editedAfterSchedule: boolean;
 };

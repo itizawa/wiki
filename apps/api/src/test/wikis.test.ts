@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildManifest } from "../publishing/manifest";
 import { requestBuild } from "../publishing/builds";
 import { runDueActions } from "../publishing/scheduler";
-import { runRules } from "../rules/engine";
 import { ARCHIVED_REASON } from "../wikis/service";
 import { SESSION_COOKIE, signSession } from "../auth/session";
 import { setup, W, wikiManifest } from "./harness";
@@ -44,7 +43,7 @@ describe("wikis", () => {
     ]);
   });
 
-  it("creates a wiki with an empty tree and every rule disabled", async () => {
+  it("creates a wiki with an empty tree", async () => {
     ctx = await setup();
     const wiki = await createNotes();
     expect(wiki).toEqual(expect.objectContaining({ key: "notes", name: "開発ノート", origin: "https://notes.site.test", archivedAt: null }));
@@ -53,9 +52,6 @@ describe("wikis", () => {
     const structure = (await ctx.call("GET", `${N}/structure`)).body;
     expect(structure.trees).toHaveLength(1);
     expect(structure.trees[0].nodes).toEqual([]);
-    const rules = (await ctx.call("GET", `${N}/rules`)).body.rules;
-    expect(rules.length).toBeGreaterThan(0);
-    expect(rules.every((r: any) => r.enabled === false)).toBe(true);
   });
 
   it("rejects keys that break the rules, reserved names and keys already in use", async () => {
@@ -120,7 +116,7 @@ describe("wikis", () => {
 });
 
 describe("wiki isolation", () => {
-  it("lists only the pages, tree, schedule, rules and history of the open wiki", async () => {
+  it("lists only the pages, tree, schedule and history of the open wiki", async () => {
     ctx = await setup();
     await createNotes();
     const a = await newPage(W, "最初の wiki のページ");
@@ -140,11 +136,6 @@ describe("wiki isolation", () => {
     expect(scheduled.status).toBe(201);
     expect((await ctx.call("GET", `${W}/schedule`)).body.actions).toEqual([]);
     expect((await ctx.call("GET", `${N}/schedule`)).body.actions).toHaveLength(1);
-
-    const rule = (await ctx.call("GET", `${N}/rules`)).body.rules[0];
-    await ctx.call("PUT", `${N}/rules/${rule.id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
-    expect((await ctx.call("GET", `${N}/rules`)).body.rules[0].enabled).toBe(true);
-    expect((await ctx.call("GET", `${W}/rules`)).body.rules[0].enabled).toBe(false);
 
     const history = async (base: string) => (await ctx.call("GET", `${base}/structure/commits`)).body.commits;
     expect((await history(W)).map((c: any) => c.message)).toEqual(["「最初の wiki のページ」を追加", "初期コミット"]);
@@ -168,8 +159,6 @@ describe("wiki isolation", () => {
       ["DELETE", `${W}/pages/${b.id}`],
       ["GET", `${W}/pages/${b.id}/versions`],
       ["GET", `${W}/pages/${b.id}/versions/${b.headVersionId}`],
-      ["POST", `${W}/pages/${b.id}/workflow`, { state: "approved", versionId: b.headVersionId }],
-      ["POST", `${W}/pages/${b.id}/review-done`],
       ["POST", `${W}/pages/${b.id}/publish`, { versionId: b.headVersionId, visibility: "public" }],
       ["POST", `${W}/pages/${b.id}/unpublish`],
       ["POST", `${W}/pages/${b.id}/unlisted-key`],
@@ -185,7 +174,7 @@ describe("wiki isolation", () => {
 
     // ノートのページは何も変わっていない
     const page = (await ctx.call("GET", `${N}/pages/${b.id}`)).body;
-    expect(page).toEqual(expect.objectContaining({ title: "ノートのページ", visibility: "private", workflowState: "draft", headVersionId: b.headVersionId }));
+    expect(page).toEqual(expect.objectContaining({ title: "ノートのページ", visibility: "private", headVersionId: b.headVersionId }));
     expect((await ctx.call("GET", `${N}/schedule`)).body.actions[0].status).toBe("scheduled");
   });
 
@@ -248,32 +237,10 @@ describe("wiki isolation", () => {
     expect(JSON.stringify(first)).not.toContain("B の");
   });
 
-  it("runs the rules of each wiki on its own pages and names the wiki in notifications", async () => {
-    ctx = await setup();
-    await createNotes();
-    const enable = async (base: string, id: string) => {
-      const rule = (await ctx.call("GET", `${base}/rules`)).body.rules.find((r: any) => r.id === id);
-      await ctx.call("PUT", `${base}/rules/${id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
-    };
-    await enable(N, "notify-low-stock");
-    await enable(N, "fill-slots");
-    // 承認済みの記事は、最初の wiki にだけある
-    const a = await newPage(W, "承認済み");
-    await ctx.call("POST", `${W}/pages/${a.id}/workflow`, { state: "approved", versionId: a.headVersionId });
-
-    const result = await runRules(ctx.db, new Date("2026-10-10T09:00:00+09:00"));
-    expect(result.runs.map((r) => [r.wikiKey, r.ruleId])).toEqual([["notes", "notify-low-stock"]]);
-    expect(result.notifications).toEqual([
-      { wikiKey: "notes", ruleId: "notify-low-stock", text: "【開発ノート】予約ストックが減っています（今後7日の公開予約：0件、目安：3件）" },
-    ]);
-    expect((await ctx.call("GET", `${W}/schedule`)).body.actions).toEqual([]);
-    expect((await ctx.call("GET", `${W}/rules/runs`)).body.runs).toEqual([]);
-    expect((await ctx.call("GET", `${N}/rules/runs`)).body.runs).toHaveLength(1);
-  });
 });
 
 describe("archiving a wiki", () => {
-  it("hides the wiki, stops its site, schedule and rules, and keeps the key taken", async () => {
+  it("hides the wiki, stops its site and schedule, and keeps the key taken", async () => {
     ctx = await setup();
     await createNotes();
     const page = await newPage(N, "公開中", "本文");
@@ -281,8 +248,6 @@ describe("archiving a wiki", () => {
     const later = await newPage(N, "予約");
     const runAt = new Date(Date.now() + 60_000);
     await ctx.call("POST", `${N}/schedule`, { actionType: "publish_page", pageId: later.id, versionId: later.headVersionId, runAt: runAt.toISOString() });
-    const rule = (await ctx.call("GET", `${N}/rules`)).body.rules.find((r: any) => r.id === "notify-low-stock");
-    await ctx.call("PUT", `${N}/rules/${rule.id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
 
     const listed = (await ctx.call("GET", "/admin/wikis")).body.wikis.find((w: any) => w.key === "notes");
     expect(listed.publishedPages).toBe(1);
@@ -296,10 +261,9 @@ describe("archiving a wiki", () => {
     expect((await ctx.call("POST", `${N}/pages`, { title: "x" })).status).toBe(404);
     // 公開用のデータに含めない
     expect((await buildManifest(ctx.db)).wikis.map((w) => w.key)).toEqual(["wiki"]);
-    // 予約とルールは実行しない
+    // 予約は実行しない
     const after = new Date(runAt.getTime() + 60_000);
     expect((await runDueActions(ctx.db, after)).done).toEqual([]);
-    expect((await runRules(ctx.db, after)).runs).toEqual([]);
     // key はほかの wiki で使えない
     expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "x" })).status).toBe(409);
     // データは残っている

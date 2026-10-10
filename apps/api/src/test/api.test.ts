@@ -360,7 +360,7 @@ describe("pages", () => {
     expect((await ctx.call("PUT", url, { baseVersionId: auto2, title: "A", bodyMd: "old tab" })).status).toBe(409);
   });
 
-  it("marks versions to keep: made by hand, kept by hand on top of an automatic one, published, scheduled, approved", async () => {
+  it("marks versions to keep: made by hand, kept by hand on top of an automatic one, published, scheduled", async () => {
     ctx = await setup();
     const keepOf = async (versionId: string) =>
       (await ctx.client.query<{ keep: boolean }>(`select keep from page_versions where id = $1`, [versionId])).rows[0]!.keep;
@@ -404,12 +404,6 @@ describe("pages", () => {
     const runAt = new Date(Date.now() + 60_000).toISOString();
     expect((await ctx.call("POST", `${W}/schedule`, { actionType: "publish_page", pageId: c.id, versionId: autoC, runAt })).status).toBe(201);
     expect(await keepOf(autoC)).toBe(true);
-
-    // 承認した版
-    const d = await newPage();
-    const autoD = await autoVersion(d, "auto");
-    expect((await ctx.call("POST", `${W}/pages/${d.id}/workflow`, { state: "approved", versionId: autoD })).status).toBe(200);
-    expect(await keepOf(autoD)).toBe(true);
   });
 
   it("deletes a page together with the pages under it", async () => {

@@ -10,11 +10,8 @@ import type {
   PageSummary,
   PageVersion,
   PublishVisibility,
-  Rule,
-  RuleRun,
   SearchResult,
   ScheduledAction,
-  SetWorkflowInput,
   OAuthConsentRequest,
   OAuthGrantSummary,
   StructureChange,
@@ -22,7 +19,6 @@ import type {
   TrashedPage,
   TreeMeta,
   TreeNode,
-  UpdateRuleInput,
   WikiAnalytics,
   WikiSettings,
   WikiSummary,
@@ -42,7 +38,7 @@ export class ApiError extends Error {
 }
 
 /**
- * いま開いている wiki の key。wiki の内容を扱う API（ページ・ツリー・予約・ルール）は、すべてこの wiki の経路を呼ぶ。
+ * いま開いている wiki の key。wiki の内容を扱う API（ページ・ツリー・予約）は、すべてこの wiki の経路を呼ぶ。
  * `/w/{key}/...` の画面（WikiLayout）が、子の画面を描く前に設定する。
  */
 let wikiKey = "";
@@ -201,8 +197,6 @@ export const api = {
   removeStar: (pageId: string) => request<{ pageIds: string[] }>("DELETE", w(`/stars/${pageId}`)),
   reorderStars: (pageIds: string[]) => request<{ pageIds: string[] }>("PUT", w("/stars"), { pageIds }),
 
-  setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", w(`/pages/${id}/workflow`), input),
-  reviewDone: (id: string) => request<PageDetail>("POST", w(`/pages/${id}/review-done`)),
 
   publish: (id: string, input: { versionId: string; visibility: PublishVisibility; applyToDescendants?: boolean }) =>
     request<{ ok: true }>("POST", w(`/pages/${id}/publish`), input),
@@ -221,9 +215,6 @@ export const api = {
   reschedule: (id: string, runAt: string) => request<ScheduledAction>("PATCH", w(`/schedule/${id}`), { runAt }),
   cancelSchedule: (id: string) => request<ScheduledAction>("POST", w(`/schedule/${id}/cancel`)),
 
-  listRules: () => request<{ rules: Rule[] }>("GET", w("/rules")),
-  saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", w(`/rules/${id}`), input),
-  listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", w("/rules/runs")),
 
   listTemplates: () => request<{ templates: PageTemplate[] }>("GET", w("/templates")),
   getTemplate: (id: string) => request<PageTemplate>("GET", w(`/templates/${id}`)),

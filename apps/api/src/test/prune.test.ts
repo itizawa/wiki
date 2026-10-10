@@ -175,9 +175,6 @@ describe("pruning automatic versions", () => {
     // 公開中の版
     const published = await addVersion(a.id, day(3));
     await ctx.client.query(`update pages set published_version_id = $1, visibility = 'public', first_published_at = now() where id = $2`, [published, a.id]);
-    // 承認した版
-    const approved = await addVersion(a.id, day(4));
-    await ctx.client.query(`update pages set workflow_state = 'approved', approved_version_id = $1, approved_at = now() where id = $2`, [approved, a.id]);
     // 予約が指す版。終わった・取り消した・失敗した予約の行も、外部キーで版を指したまま残る
     const scheduled: string[] = [];
     for (const [i, status] of (["scheduled", "running", "done", "failed", "canceled"] as const).entries()) {
@@ -202,7 +199,7 @@ describe("pruning automatic versions", () => {
     const mcpBase = await addVersion(a.id, day(11));
     const mcpVersion = await addVersion(a.id, "2026-06-19T00:00:00Z", { keep: true, base: mcpBase, grant });
 
-    // ほかのページの版を指していても（head・公開中・承認は外部キーが無い）消さない
+    // ほかのページの版を指していても（head・公開中は外部キーが無い）消さない
     const bNewest = await addVersion(b.id, day(12));
     const cOld = await addVersion(c.id, day(1));
     const cNewest = await addVersion(c.id, day(12));
@@ -211,7 +208,7 @@ describe("pruning automatic versions", () => {
     const before = await wikiManifest(ctx.db);
     expect(await pruneVersions(ctx.db, NOW)).toEqual({ deleted: 1 });
     await expectVersions(
-      [newest, head, published, approved, ...scheduled, draftBase, mcpBase, mcpVersion, bNewest, cOld, cNewest, b.head, c.head],
+      [newest, head, published, ...scheduled, draftBase, mcpBase, mcpVersion, bNewest, cOld, cNewest, b.head, c.head],
       [unprotected],
     );
     // 公開サイトの内容は変わらない
@@ -222,7 +219,7 @@ describe("pruning automatic versions", () => {
     // 指しているものが無くなれば、次の回で消える（予約の行は残り続けるので、予約が指す版はずっと残る）
     await ctx.client.query(`delete from page_drafts where page_id = $1`, [a.id]);
     expect(await pruneVersions(ctx.db, NOW)).toEqual({ deleted: 1 });
-    await expectVersions([newest, head, published, approved, ...scheduled, mcpBase], [draftBase]);
+    await expectVersions([newest, head, published, ...scheduled, mcpBase], [draftBase]);
   });
 
   it("clears base_version_id of versions that were based on a deleted one", async () => {

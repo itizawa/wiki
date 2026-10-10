@@ -20,7 +20,7 @@ const SHORT_LABEL: Record<string, string> = {
   "wiki.read": "読む",
   "wiki.write": "書く",
   "wiki.private": "非公開も",
-  "wiki.publish": "公開・予約・承認",
+  "wiki.publish": "公開・予約",
   "wiki.delete": "削除",
 };
 
@@ -73,7 +73,7 @@ export function ConnectionsPage() {
             <Mono>claude mcp add --transport http wiki {mcpUrl}</Mono> を実行します。つなぐと、この管理画面で許可するかを聞かれます。
           </Muted>
           <Muted>
-            何を許すかは、つなぐときに選びます。公開・予約・承認と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。
+            何を許すかは、つなぐときに選びます。公開・予約と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。
           </Muted>
         </Stack>
       </Section>

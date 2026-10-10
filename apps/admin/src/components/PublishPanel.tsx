@@ -47,7 +47,7 @@ export const actionLabel = (a: Pick<ScheduledAction, "actionType" | "targetVisib
 
 /**
  * まだ版になっていない変更があれば、いまの内容を版にしてから、その版を持つページを返す（無ければ、いまのページをそのまま返す）。
- * 版を作れなかったら例外を投げる（公開・予約・承認は行わない）。
+ * 版を作れなかったら例外を投げる（公開・予約は行わない）。
  */
 export type EnsureVersion = () => Promise<PageDetail>;
 

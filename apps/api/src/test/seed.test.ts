@@ -25,7 +25,6 @@ describe("seedDatabase", () => {
     const pages: any[] = (await ctx.call("GET", `${W}/pages`)).body.pages;
     expect(pages.length).toBe(nodes.length);
     expect(new Set(pages.map((p) => p.visibility))).toEqual(new Set(["public", "unlisted", "private"]));
-    expect(new Set(pages.map((p) => p.workflowState))).toEqual(new Set(["idea", "draft", "approved"]));
 
     const m = await wikiManifest(ctx.db);
     expect(m.pages.length).toBeGreaterThanOrEqual(3);

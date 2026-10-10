@@ -61,7 +61,6 @@ export async function listActions(db: Db, wikiId: string, where: SQL | undefined
     targetVisibility: a.targetVisibility,
     branchName: a.branchName,
     batchId: a.batchId,
-    ruleRunId: a.ruleRunId,
     runAt: a.runAt.toISOString(),
     status: a.status,
     attempts: a.attempts,

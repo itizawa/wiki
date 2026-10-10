@@ -21,7 +21,6 @@ function fakeFetch(responses: Record<string, unknown>, failing: string[] = []) {
 const tickResponses = {
   "https://api.test/internal/drafts/promote": { promoted: [], skipped: 0, failed: [] },
   "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
-  "https://api.test/internal/rules/run": { runs: [], notifications: [] },
   "https://api.test/internal/builds/request": { trigger: false, reason: "no_changes" },
 };
 
@@ -38,7 +37,6 @@ describe("scheduled", () => {
     expect(calls.map((c) => c.url)).toEqual([
       "https://api.test/internal/drafts/promote",
       "https://api.test/internal/scheduled/run",
-      "https://api.test/internal/rules/run",
       "https://api.test/internal/builds/request",
     ]);
   });

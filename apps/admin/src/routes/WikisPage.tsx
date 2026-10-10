@@ -88,7 +88,7 @@ export function WikisPage() {
         <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
           wiki の管理
         </Typography>
-        <Muted>wiki ごとに、ページ・ツリー・ルール・予約を分け、それぞれ別のサブドメインで公開します。</Muted>
+        <Muted>wiki ごとに、ページ・ツリー・予約を分け、それぞれ別のサブドメインで公開します。</Muted>
       </Box>
 
       {!session.isOwner && <Alert severity="info">wiki の作成・アーカイブは、オーナーだけが行えます。</Alert>}
@@ -261,7 +261,7 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
             </Box>
           </Box>
         </Box>
-        <Muted>作った wiki には、空のツリーを1本用意します。ルールは、どれも無効で始まります。</Muted>
+        <Muted>作った wiki には、空のツリーを1本用意します。</Muted>
         {create.error && !keyTaken && <Alert severity="error">{errorMessage(create.error)}</Alert>}
         <Box>
           <Button type="submit" variant="contained" size="medium" disabled={!valid || create.isPending}>
@@ -392,7 +392,7 @@ function ArchiveDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: 
           </Box>
           <Box component="ul" sx={{ m: 0, pl: 2.5, "& li": { mb: 0.5 } }}>
             <li>公開サイトは次のビルドで止まり、このサブドメインは「ページが見つかりません」（404）になります。</li>
-            <li>管理画面の wiki の一覧から外れ、予約とルールは実行されなくなります。</li>
+            <li>管理画面の wiki の一覧から外れ、予約は実行されなくなります。</li>
             <li>
               ページなどのデータは残ります。この画面の「アーカイブ中の wiki」から、いつでも元に戻せます。key（<Mono>{wiki.key}</Mono>）は、ほかの wiki では使えないままです。
             </li>
