@@ -24,6 +24,10 @@ describe("wiki の画像の URL の入力", () => {
     expect(iconUrlProblem("")).toBeNull();
     expect(iconUrlProblem("  ")).toBeNull();
     expect(iconUrlProblem("https://example.com/a.png")).toBeNull();
+    // アップロードした画像のパスは通す。それ以外の相対パスは通さない
+    expect(iconUrlProblem("/images/0123456789abcdefghijklmn.png")).toBeNull();
+    expect(iconUrlProblem("/images/a.png")).toMatch(/http/);
+    expect(iconUrlProblem("/relative.png")).toMatch(/http/);
     expect(iconUrlProblem("javascript:alert(1)")).toMatch(/http/);
     expect(iconUrlProblem("example.com/a.png")).toMatch(/http/);
     expect(iconUrlProblem(`https://example.com/${"a".repeat(2048)}`)).toMatch(/長すぎます/);

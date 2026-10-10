@@ -80,7 +80,7 @@ describe("wikis", () => {
     expect((await ctx.call("PATCH", "/admin/wikis/nope", { name: "x" })).status).toBe(404);
   });
 
-  it("sets, changes and removes a wiki's image URL, accepting only http(s) URLs", async () => {
+  it("sets, changes and removes a wiki's image URL, accepting only http(s) URLs and uploaded image paths", async () => {
     ctx = await setup();
     await createNotes();
     const created = await ctx.call("POST", "/admin/wikis", { key: "blog", name: "ブログ", iconUrl: "https://example.com/blog.png" });
@@ -93,7 +93,19 @@ describe("wikis", () => {
 
     const set = await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: " http://example.com/n.png " });
     expect(set.body).toEqual(expect.objectContaining({ name: "開発ノート", iconUrl: "http://example.com/n.png" }));
-    for (const iconUrl of ["javascript:alert(1)", "data:image/png;base64,AAAA", "/relative.png", "example.com/a.png", `https://example.com/${"a".repeat(2048)}`]) {
+    // アップロードした画像（POST /admin/w/{key}/images が返すパス）は、そのまま設定できる
+    const uploaded = await ctx.call("POST", "/admin/w/notes/images", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]));
+    expect((await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: uploaded.body.url })).body.iconUrl).toBe(uploaded.body.url);
+    for (const iconUrl of [
+      "javascript:alert(1)",
+      "data:image/png;base64,AAAA",
+      "/relative.png",
+      "/images/../secret.png",
+      "/images/aaaaaaaaaaaaaaaaaaaaaaaa.svg",
+      "//evil.example/images/aaaaaaaaaaaaaaaaaaaaaaaa.png",
+      "example.com/a.png",
+      `https://example.com/${"a".repeat(2048)}`,
+    ]) {
       expect((await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl })).status, iconUrl).toBe(400);
     }
     expect((await ctx.call("PATCH", "/admin/wikis/notes", {})).status).toBe(400);
