@@ -18,6 +18,17 @@ const escapeHtml = (s: string) =>
 
 const INTERNAL = /^(https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
 
+/**
+ * リンク先が、この wiki のページ（`/p/{id}...`）ならその id を返す。
+ * origin を渡すと、絶対URLは同じオリジンのものだけを内部リンクとして扱う（別の wiki のページへのリンクは外部リンクと同じ扱い）。
+ */
+export function internalPageId(href: string, origin?: string): string | null {
+  const m = INTERNAL.exec(href);
+  if (!m) return null;
+  if (m[1] && origin && m[1].toLowerCase() !== origin.toLowerCase()) return null;
+  return m[2]!;
+}
+
 export type Heading = { id: string; depth: number; text: string };
 
 /** 目次に載せる見出しの深さ（#### まで）。 */
@@ -69,9 +80,9 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
       },
       link(token: Tokens.Link) {
         const text = this.parser.parseInline(token.tokens);
-        const m = INTERNAL.exec(token.href);
-        if (m && (!m[1] || !opts.origin || m[1].toLowerCase() === opts.origin.toLowerCase())) {
-          const path = opts.publicPaths.get(m[2]!);
+        const pageId = internalPageId(token.href, opts.origin);
+        if (pageId) {
+          const path = opts.publicPaths.get(pageId);
           return path ? `<a href="${escapeHtml(path)}">${text}</a>` : text;
         }
         if (!/^(https?:|mailto:|#|\/)/i.test(token.href)) return text;

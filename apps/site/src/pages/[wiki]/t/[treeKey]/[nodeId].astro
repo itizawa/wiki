@@ -7,6 +7,8 @@ import Base from "../../../../layouts/Base.astro";
 import { allWikis, siteData } from "../../../../lib/manifest";
 import { excerpt } from "../../../../lib/markdown";
 import { ancestors, navItems } from "../../../../lib/tree";
+import Backlinks from "../../../../components/Backlinks.astro";
+import { siteBacklinks } from "../../../../lib/backlinks";
 
 // ツリー経由の閲覧：本文を再掲し、ツリーナビを付ける。正規URLは /p/...（重複コンテンツ対策）。
 // ビルド量は「公開ページ数 × 公開ツリー数」に比例する（設計書 6章）。
@@ -25,6 +27,7 @@ const { tree, page } = Astro.props as { tree: ManifestTree; page: ManifestPage }
 const { wiki } = Astro.params;
 const { pagesById, publicPaths, origin } = await siteData(wiki);
 const titleOf = (id: string) => pagesById.get(id)?.title;
+const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const crumbs = ancestors(tree, page.id).slice(0, -1);
 ---
 
@@ -51,6 +54,7 @@ const crumbs = ancestors(tree, page.id).slice(0, -1);
         publicPaths={publicPaths}
         origin={origin}
       />
+      <Backlinks pages={backlinks} />
     </main>
     <aside>
       <TreeNav client:idle items={navItems(tree, titleOf)} current={page.id} />

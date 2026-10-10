@@ -53,6 +53,10 @@ check(intro.includes('href="http://notes.localhost:4321/p/bbbbbbbbb1" rel="noope
 const notesPage = await read("wiki/p/aaaaaaaaa2.html");
 check(notesPage.includes("広告を含みます") && notesPage.includes('rel="sponsored noopener"'), "monetized pages show the ad notice and sponsored links");
 
+check(notesPage.includes("このページにリンクしているページ") && !intro.includes("このページにリンクしているページ"), "backlinks are listed only on pages that are linked from another public page");
+check(!unlisted.includes("このページにリンクしているページ"), "unlisted page shows no backlinks");
+check(!(await read("notes/p/bbbbbbbbb1.html")).includes("このページにリンクしているページ"), "a link from another wiki is not a backlink");
+
 const routes = JSON.parse(await read("wiki/page-routes.json"));
 check(routes.canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check(routes.gone.includes("ggggggggg1"), "page-routes.json lists gone pages");

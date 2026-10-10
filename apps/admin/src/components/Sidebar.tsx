@@ -16,7 +16,6 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
@@ -386,7 +385,6 @@ function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }
     <>
       {pages.data.pages.map((p) => (
         <RouterLink key={p.id} {...pageLink(p.id)} onClick={onNavigate} underline="none" sx={rowSx}>
-          <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
           <Box component="span" sx={ellipsis}>
             {p.title}
           </Box>
@@ -527,7 +525,8 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
   const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
   const title = ctx.label(node);
 
-  const labelSx = { ...ellipsis, display: "flex", alignItems: "center", gap: 0.75, color: "inherit", textDecoration: "none" };
+  // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
+  const labelSx = { ...ellipsis, display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
 
   return (
     <Box role="treeitem" aria-expanded={kids.length > 0 ? isOpen : undefined} aria-selected={isActive}>
@@ -547,8 +546,9 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           opacity: drag.isDragging ? 0.4 : 1,
           boxShadow: (t) => (before.isOver ? `inset 0 2px 0 ${(t.vars ?? t).palette.primary.main}` : "none"),
           ...(into.isOver && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
-          "& .row-actions": { display: "none" },
-          "&:hover .row-actions, &:focus-within .row-actions": { display: "flex" },
+          // 行の操作は、いつも出しておく（マウスを乗せたときだけ出すと、タッチ端末では押せない）。ふだんは薄く、行に乗せたら濃くする
+          "& .row-actions": { display: "flex", opacity: 0.55 },
+          "&:hover .row-actions, &:focus-within .row-actions": { opacity: 1 },
         }}
       >
         <Box ref={before.setNodeRef} sx={{ ...dropZone, top: 0, height: "35%" }} />
@@ -562,7 +562,6 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           <ChevronRightIcon sx={{ fontSize: 18, transition: "transform 120ms", transform: isOpen ? "rotate(90deg)" : "none" }} />
         </IconButton>
         <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
-          <DescriptionOutlinedIcon sx={{ fontSize: 18 }} />
           <Box component="span" sx={ellipsis}>
             {title}
           </Box>

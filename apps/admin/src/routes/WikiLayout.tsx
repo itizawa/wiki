@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Outlet } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { CommandMenu } from "../components/CommandMenu";
+import { ConfirmHost } from "../components/ConfirmDialog";
 import { ShortcutGuide } from "../components/ShortcutGuide";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
@@ -126,6 +127,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         />
       </Drawer>
       <ShortcutGuide />
+      <ConfirmHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
         <Outlet />
       </Box>

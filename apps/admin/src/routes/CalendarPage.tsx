@@ -1,7 +1,12 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
@@ -10,6 +15,7 @@ import { actionLabel } from "../components/PublishPanel";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
+import { formatDateTime, formatDay } from "../lib/format";
 
 const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
@@ -66,6 +72,8 @@ export function CalendarPage() {
       new Date(a.runAt).getTime() < now + STOCK_DAYS * DAY,
   ).length;
   const today = jstDate(new Date(now).toISOString());
+  const thisYear = Number(today.slice(0, 4));
+  const [rescheduling, setRescheduling] = useState<ScheduledAction | null>(null);
 
   if (schedule.isPending || pages.isPending) return <Muted>読み込み中…</Muted>;
   if (schedule.error) return <Alert severity="error">{errorMessage(schedule.error)}</Alert>;
@@ -95,14 +103,14 @@ export function CalendarPage() {
             {failed.data!.actions.map((a) => (
               <Row component="li" key={a.id}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <PageLink action={a} /> {actionLabel(a)}（{isoToJstLocal(a.runAt).replace("T", " ")}）
+                  <PageLink action={a} /> {actionLabel(a)}（{formatDateTime(a.runAt)}）
                   <Typography component="span" variant="body2" color="error">
                     {" "}
                     {a.lastError}
                   </Typography>
                 </Box>
                 <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
-                  キャンセル
+                  予約を取り消す
                 </Button>
               </Row>
             ))}
@@ -122,7 +130,7 @@ export function CalendarPage() {
             <Box key={day} sx={{ borderTop: 1, borderColor: "divider", py: 1, opacity: day < today ? 0.7 : 1 }}>
               <Row sx={{ mb: 0.5 }}>
                 <Typography variant="subtitle2" component="h4" color={day === today ? "primary" : undefined}>
-                  {day}
+                  <time dateTime={day}>{formatDay(day, thisYear)}</time>
                 </Typography>
                 {day === today && <StatusChip label="今日" />}
               </Row>
@@ -156,17 +164,11 @@ export function CalendarPage() {
                         </Box>
                         {e.action.status === "scheduled" && (
                           <>
-                            <Button
-                              variant="text"
-                              onClick={() => {
-                                const next = prompt("新しい日時（JST, YYYY-MM-DDTHH:mm）", isoToJstLocal(e.action.runAt));
-                                if (next) mutate.mutate(() => api.reschedule(e.action.id, jstLocalToIso(next)));
-                              }}
-                            >
-                              変更
+                            <Button variant="text" onClick={() => setRescheduling(e.action)}>
+                              日時を変更…
                             </Button>
-                            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))}>
-                              キャンセル
+                            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))} sx={{ ml: 1 }}>
+                              予約を取り消す
                             </Button>
                           </>
                         )}
@@ -195,7 +197,65 @@ export function CalendarPage() {
           ))}
         </Stack>
       </Section>
+      <RescheduleDialog
+        action={rescheduling}
+        now={now}
+        onClose={() => setRescheduling(null)}
+        onSubmit={(action, runAt) => {
+          setRescheduling(null);
+          mutate.mutate(() => api.reschedule(action.id, runAt));
+        }}
+      />
     </Stack>
+  );
+}
+
+/** 予約の日時を変えるダイアログ。日時はピッカーで選ばせ、過去の日時は変更できないことを先に見せる。 */
+function RescheduleDialog(props: { action: ScheduledAction | null; now: number; onClose: () => void; onSubmit: (action: ScheduledAction, runAt: string) => void }) {
+  // 閉じるアニメーションの間も中身を出したままにする
+  const [shown, setShown] = useState<ScheduledAction | null>(null);
+  const [value, setValue] = useState("");
+  if (props.action && props.action !== shown) {
+    setShown(props.action);
+    setValue(isoToJstLocal(props.action.runAt));
+  }
+  const min = isoToJstLocal(new Date(props.now).toISOString());
+  const valid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value);
+  const past = valid && value < min;
+  const unchanged = shown !== null && value === isoToJstLocal(shown.runAt);
+  return (
+    <Dialog open={props.action !== null} onClose={props.onClose} fullWidth maxWidth="xs" aria-labelledby="reschedule-title">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (shown && valid && !past && !unchanged) props.onSubmit(shown, jstLocalToIso(value));
+        }}
+      >
+        <DialogTitle id="reschedule-title">予約の日時を変更</DialogTitle>
+        <DialogContent>
+          <Muted sx={{ mb: 2 }}>
+            「{shown?.pageTitle ?? shown?.pageId}」の{shown && actionLabel(shown)}の予約（いまは {shown && formatDateTime(shown.runAt)}）
+          </Muted>
+          <TextField
+            autoFocus
+            fullWidth
+            type="datetime-local"
+            label="新しい日時（JST）"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            error={past}
+            helperText={past ? "過去の日時です。いまより先の日時を選んでください。" : "いまより先の日時を選べます。"}
+            slotProps={{ htmlInput: { min }, inputLabel: { shrink: true } }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={props.onClose}>変更しない</Button>
+          <Button type="submit" variant="contained" disabled={!valid || past || unchanged}>
+            日時を変更する
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 }
 

@@ -5,6 +5,7 @@ import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import { confirmDialog } from "./ConfirmDialog";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,7 +21,7 @@ const statusLabel: Record<ScheduledAction["status"], string> = {
   running: "実行中",
   done: "実行済み",
   failed: "失敗",
-  canceled: "キャンセル",
+  canceled: "取り消し済み",
 };
 
 export const actionLabel = (a: Pick<ScheduledAction, "actionType" | "targetVisibility">) =>
@@ -110,20 +111,34 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
             <Button
               variant="outlined"
               disabled={action.isPending}
-              onClick={() => confirm("非公開にしますか？") && action.mutate(() => api.unpublish(page.id))}
+              onClick={async () => {
+                const ok = await confirmDialog({
+                  title: "このページを非公開にしますか？",
+                  body: "公開サイトから見られなくなります（反映は数分後、ビルドのあとです）。あとでもう一度公開できます。",
+                  confirmLabel: "非公開にする",
+                  cancelLabel: "公開したままにする",
+                });
+                if (ok) action.mutate(() => api.unpublish(page.id));
+              }}
             >
-              非公開にする
+              非公開にする…
             </Button>
             {page.visibility === "unlisted" && (
               <Button
                 variant="outlined"
                 disabled={action.isPending}
-                onClick={() =>
-                  confirm("限定公開URLを再発行しますか？旧URLは次のビルドで見られなくなります。") &&
-                  action.mutate(() => api.rotateUnlistedKey(page.id))
-                }
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    title: "限定公開URLを再発行しますか？",
+                    body: "いまのURLは、次のビルドのあと見られなくなります。すでに伝えた相手には、新しいURLを伝え直す必要があります。",
+                    confirmLabel: "URLを再発行する",
+                    cancelLabel: "いまのURLのままにする",
+                    danger: true,
+                  });
+                  if (ok) action.mutate(() => api.rotateUnlistedKey(page.id));
+                }}
               >
-                URLを再発行
+                URLを再発行…
               </Button>
             )}
           </Row>
@@ -172,7 +187,7 @@ export function PublishPanel({ page, dirty }: { page: PageDetail; dirty: boolean
                   </Typography>
                   {(a.status === "scheduled" || a.status === "failed") && (
                     <Button variant="text" color="error" onClick={() => action.mutate(() => api.cancelSchedule(a.id))}>
-                      キャンセル
+                      予約を取り消す
                     </Button>
                   )}
                 </Row>
