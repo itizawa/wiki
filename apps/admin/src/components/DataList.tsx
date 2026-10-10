@@ -191,7 +191,8 @@ export function DataList<T>(props: DataListProps<T>) {
         <Box
           role="table"
           aria-label={props.label}
-          aria-rowcount={props.virtualized && rows ? rows.length + (hasHeader ? 1 : 0) : undefined}
+          // 描いていない行があるので、行の数を伝える。続きがあるうちは、全部でいくつかは分からない（-1）
+          aria-rowcount={props.virtualized && rows ? (hasNextPage ? -1 : rows.length + (hasHeader ? 1 : 0)) : undefined}
           aria-busy={rows === undefined || isFetchingNextPage}
           sx={{ display: "grid", gridTemplateColumns: columns.map((c) => c.width ?? "auto").join(" "), minWidth: "100%" }}
         >
