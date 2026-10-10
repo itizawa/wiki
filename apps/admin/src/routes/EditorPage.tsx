@@ -18,6 +18,7 @@ import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { screenLink } from "../lib/wiki";
+import { FULL_HEIGHT, NARROW_BAR_HEIGHT } from "./WikiLayout";
 import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
@@ -169,7 +170,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
       {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
-      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column" }}>
         <Box
           component="header"
           sx={{
@@ -288,7 +289,8 @@ export function EditorPage({ pageId }: { pageId: string }) {
             width: { xs: "100%", lg: 340 },
             flexShrink: 0,
             position: { xs: "fixed", lg: "sticky" },
-            inset: { xs: "48px 0 0 auto", lg: "auto" },
+            // 狭い画面では、上の帯（メニューを開くボタン）とヘッダーの下から出す
+            inset: { xs: `${NARROW_BAR_HEIGHT + 48}px 0 0 auto`, md: "48px 0 0 auto", lg: "auto" },
             maxWidth: { xs: 380, lg: "none" },
             top: { lg: 0 },
             zIndex: 3,

@@ -15,6 +15,7 @@ import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { pageLink, screenLink, templateLink } from "../lib/wiki";
+import { FULL_HEIGHT } from "./WikiLayout";
 
 /** テンプレートを消す前の確認。 */
 const confirmDelete = (title: string) =>
@@ -199,7 +200,7 @@ export function TemplateEditorPage({ templateId }: { templateId: string }) {
   if (!draft) return <Muted sx={{ p: 3 }}>読み込み中…</Muted>;
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <Box sx={{ minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column" }}>
       <Box component="header" sx={{ position: "sticky", top: 0, zIndex: 2, height: 48, display: "flex", alignItems: "center", gap: 1, px: 2, bgcolor: "background.paper" }}>
         <Muted component="div" sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           <RouterLink {...screenLink("/w/$wikiKey/templates")} color="inherit">
