@@ -44,10 +44,10 @@ import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
 
 /**
- * 編集画面の「…」メニュー。プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * 編集画面の「…」メニュー。本文を検索・置換する・プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
  * テンプレートにする・ページをゴミ箱に入れる。
  *
- * スマホ幅（`narrow`）では、ヘッダーに置けない操作（公開・予約、スター、本文の検索・置換、目次）も、このメニューの先頭に並べる。
+ * スマホ幅（`narrow`）では、ヘッダーに置けない操作（公開・予約、スター、目次）も、このメニューの先頭に並べる。
  */
 export function PageMenu(props: {
   pageId: string;
@@ -180,18 +180,6 @@ export function PageMenu(props: {
             </ListItemIcon>
             <ListItemText>{starred ? "スターを外す" : "スターを付ける"}</ListItemText>
           </MenuItem>,
-          <MenuItem
-            key="find"
-            onClick={() => {
-              setAnchor(null);
-              openFindBar();
-            }}
-          >
-            <ListItemIcon>
-              <Search size={18} />
-            </ListItemIcon>
-            <ListItemText>本文を検索・置換</ListItemText>
-          </MenuItem>,
           props.headings.length > 0 && (
             <MenuItem
               key="outline"
@@ -209,6 +197,20 @@ export function PageMenu(props: {
           ),
           <Divider key="divider" />,
         ]}
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            openFindBar();
+          }}
+        >
+          <ListItemIcon>
+            <Search size={18} />
+          </ListItemIcon>
+          <ListItemText>本文を検索・置換</ListItemText>
+          <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
+            {modKey()}F
+          </Muted>
+        </MenuItem>
         <MenuItem aria-haspopup="dialog" onClick={present}>
           <ListItemIcon>
             <PresentationIcon size={18} />
