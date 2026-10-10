@@ -9,6 +9,7 @@ import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
 import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
 import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
 import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
+import ArrowRightIcon from "@mui/icons-material/ArrowRight";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import LinkIcon from "@mui/icons-material/Link";
 import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
@@ -25,6 +26,7 @@ import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
+import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
@@ -115,6 +117,27 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               "& code": { bgcolor: "transparent", p: 0, fontSize: "0.875rem" },
               ...highlightSx,
             },
+            // トグル（@tiptap/extension-details の部品）。左の三角で開閉する
+            "& [data-type='details']": { display: "flex", alignItems: "flex-start", gap: 0.5, my: 1 },
+            "& [data-type='details'] > button": {
+              flexShrink: 0,
+              width: 24,
+              height: 24,
+              mt: "3px",
+              p: 0,
+              border: 0,
+              borderRadius: 0.5,
+              bgcolor: "transparent",
+              color: "text.secondary",
+              cursor: "pointer",
+              "&::before": { content: '"▶"', display: "inline-block", fontSize: "0.7rem", transition: "transform 120ms" },
+              "&:hover": { bgcolor: "action.hover" },
+            },
+            "& [data-type='details'].is-open > button::before": { transform: "rotate(90deg)" },
+            "& [data-type='details'] > div": { flex: 1, minWidth: 0 },
+            "& [data-type='details'] summary": { display: "block", fontWeight: 600, listStyle: "none" },
+            "& [data-type='details'] summary:empty::before": { content: '"トグルの見出し"', color: "text.disabled" },
+            "& [data-type='detailsContent'] > :first-of-type": { mt: 0.5 },
             "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
             "& img": { maxWidth: "100%", borderRadius: 1 },
             "& img.ProseMirror-selectednode": { outline: "2px solid", outlineColor: "primary.main" },
@@ -313,6 +336,12 @@ function InsertMenu({ editor }: { editor: Editor }) {
             <CampaignOutlinedIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>コールアウト（目立たせる注意書き）</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={insert(() => insertToggle(editor))}>
+          <ListItemIcon>
+            <ArrowRightIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>トグル（クリックで開閉する折りたたみ）</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().setHorizontalRule().run())}>
           <ListItemIcon>

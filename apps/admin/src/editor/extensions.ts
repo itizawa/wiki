@@ -7,6 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { CalloutBlockquote } from "./callout";
 import { lowlight } from "./highlight";
 import { MarkdownListItem, MarkdownTaskItem } from "./listItems";
+import { toggleExtensions } from "./toggle";
 
 /**
  * 本文エディタの拡張。保存形式はMarkdownのままなので、Markdownで表せない書式（下線など）は入れない。
@@ -25,6 +26,7 @@ export const editorExtensions = [
   }),
   CalloutBlockquote,
   MarkdownListItem,
+  ...toggleExtensions,
   // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）
   CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),
   Image,

@@ -26,6 +26,10 @@ describe("本文のMarkdown往復", () => {
     ["リストの項目の中の画像", "- a\n\n  ![alt](https://example.com/a.png)\n- b"],
     ["番号つきリストの項目の中の画像", "1. a\n\n   ![alt](https://example.com/a.png)\n2. b"],
     ["チェックリストの項目の中の区切り線", "- [ ] a\n\n  ---\n- [x] b"],
+    ["トグル", "+++ よくある質問\n\n答えです\n\n+++"],
+    ["トグル（中に見出しとリスト）", "+++ 詳しく\n\n## 見出し\n\n- a\n- b\n\n+++\n\n後ろの段落"],
+    ["入れ子のトグル", "+++ 外\n\n+++ 内\n\n中身\n\n+++\n\n+++"],
+    ["閉じていない +++ は、ふつうの文字", "+++ 見出しだけ"],
   ])("%s はそのまま残る", (_name, md) => {
     expect(roundTrip(md).trim()).toBe(md);
   });
@@ -44,5 +48,18 @@ describe("本文のMarkdown往復", () => {
       const reparsed = manager.parse(manager.serialize(doc));
       expect(reparsed.content?.[0]?.content?.[0]?.content?.map((n) => n.type)).toEqual(["paragraph", block.type]);
     }
+  });
+
+  it("トグルは、見出しと中身を持つ部品として読む", () => {
+    const doc = manager.parse("+++ 質問\n\n**答え**です\n\n+++");
+    const toggle = doc.content?.[0];
+    expect(toggle?.type).toBe("details");
+    expect(toggle?.content?.map((n) => n.type)).toEqual(["detailsSummary", "detailsContent"]);
+    expect(toggle?.content?.[0]?.content?.[0]?.text).toBe("質問");
+  });
+
+  it("見出しが空のトグルは、既定の見出しで書き出す", () => {
+    const doc = { type: "doc", content: [{ type: "details", content: [{ type: "detailsSummary" }, { type: "detailsContent", content: [{ type: "paragraph", content: [{ type: "text", text: "x" }] }] }] }] };
+    expect(manager.serialize(doc)).toBe("+++ 詳細\n\nx\n\n+++");
   });
 });
