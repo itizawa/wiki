@@ -90,6 +90,7 @@ export function VersionHistory(props: {
                   この版に戻す
                 </Button>
               </Stack>
+              {version.data.createdBy && <Muted>{version.data.createdBy.name} が作った版です。</Muted>}
               <Muted>
                 「この版に戻す」は、この版の内容をエディタに入れて閉じます。版として残すまで、公開中の内容や版履歴は変わりません。
               </Muted>
@@ -121,11 +122,17 @@ export function VersionHistory(props: {
                 selected={props.selected === v.id}
                 aria-current={props.selected === v.id ? "true" : undefined}
                 onClick={() => props.onSelect(v.id)}
-                sx={{ px: 1, gap: 0.75, borderRadius: 1 }}
+                sx={{ px: 1, gap: 0.75, borderRadius: 1, flexWrap: "wrap" }}
               >
                 {formatDateTime(v.createdAt)}
                 {v.id === props.headVersionId && <StatusChip label="最新" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
+                {/* 作った人。これより前の版と、ルール・AI による版には無い */}
+                {v.createdBy && (
+                  <Box component="span" sx={{ width: "100%", color: "text.secondary", fontSize: "0.8rem" }}>
+                    {v.createdBy.name}
+                  </Box>
+                )}
               </ListItemButton>
             ))}
           </List>

@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Search, Settings, ShieldUser, Star, Users, Workflow } from "lucide-react";
+import { Calendar, Check, ClipboardList, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Search, Settings, ShieldUser, Star, Users, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -75,6 +75,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -154,6 +155,11 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/members" icon={<Users size={18} />} onClick={props.onNavigate}>
           メンバー
         </NavItem>
+        {role === "admin" && (
+          <NavItem to="/w/$wikiKey/audit" icon={<ClipboardList size={18} />} onClick={props.onNavigate}>
+            監査ログ
+          </NavItem>
+        )}
 
         {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 
@@ -298,6 +304,14 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               <ShieldUser size={18} />
             </ListItemIcon>
             <ListItemText>オーナーの管理</ListItemText>
+          </MenuItemLink>
+        )}
+        {isOwner && (
+          <MenuItemLink to="/audit" onClick={close}>
+            <ListItemIcon>
+              <ClipboardList size={18} />
+            </ListItemIcon>
+            <ListItemText>監査ログ（すべての wiki）</ListItemText>
           </MenuItemLink>
         )}
       </Menu>

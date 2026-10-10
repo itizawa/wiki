@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
+import { AuditLogPage } from "./routes/AuditLogPage";
 import { CalendarPage } from "./routes/CalendarPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
@@ -34,6 +35,8 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
 const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
 // オーナーの追加・解除（オーナーだけ）
 const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
+// すべての wiki と全体にかかわる監査ログ（オーナーだけ）
+const auditAllRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit", component: padded(() => <AuditLogPage scope="all" />) });
 // 招待リンク。ログインしていなくても開ける（Root がログインの確認を飛ばす）
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -94,6 +97,8 @@ const templateEditorRoute = createRoute({
 });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
+// この wiki の監査ログ（管理者だけ）
+const auditRoute = createRoute({ getParentRoute: () => wikiRoute, path: "audit", component: padded(() => <AuditLogPage scope="wiki" />) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -117,8 +122,9 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   wikisRoute,
   ownersRoute,
+  auditAllRoute,
   inviteRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute, auditRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),

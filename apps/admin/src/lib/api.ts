@@ -1,4 +1,6 @@
 import type {
+  AuditActorOption,
+  AuditLogPage,
   Invite,
   InviteInfo,
   Me,
@@ -69,7 +71,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
-export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdAt">;
+export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdBy" | "createdAt">;
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
@@ -78,7 +80,23 @@ export type StructureResponse = {
   pages: Record<string, { id: string; title: string; visibility: string; publishedVersionId: string | null }>;
 };
 
-export type CommitListItem = { id: string; message: string | null; authorType: string; createdAt: string; parentIds: string[] };
+export type CommitListItem = {
+  id: string;
+  message: string | null;
+  authorType: string;
+  createdAt: string;
+  parentIds: string[];
+  /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
+  createdBy?: { id: string; name: string } | null;
+};
+
+/** 監査ログの絞り込み。from / to は JST の日付（YYYY-MM-DD）。wiki はオーナーの一覧だけ（"global" は全体にかかわるもの） */
+export type AuditLogFilter = { from?: string; to?: string; actor?: string; category?: string; wiki?: string };
+
+/** wiki：開いている wiki の監査ログ（管理者）／all：すべて（オーナー） */
+export type AuditScope = "wiki" | "all";
+
+const auditPath = (scope: AuditScope, path = "") => (scope === "wiki" ? w(`/audit-logs${path}`) : `/admin/audit-logs${path}`);
 
 export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
@@ -175,6 +193,12 @@ export const api = {
   listInvites: () => request<{ invites: Invite[] }>("GET", w("/invites")),
   createInvite: (role: WikiRole) => request<{ token: string; invite: Invite }>("POST", w("/invites"), { role }),
   revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
+
+  listAuditLogs: (scope: AuditScope, filter: AuditLogFilter, cursor?: string) => {
+    const q = new URLSearchParams(Object.entries({ ...filter, cursor }).filter(([, v]) => v) as [string, string][]);
+    return request<AuditLogPage>("GET", auditPath(scope, q.size ? `?${q}` : ""));
+  },
+  listAuditActors: (scope: AuditScope) => request<{ actors: AuditActorOption[] }>("GET", auditPath(scope, "/actors")),
 
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>

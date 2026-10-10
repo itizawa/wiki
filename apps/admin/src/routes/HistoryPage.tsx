@@ -41,7 +41,8 @@ export function HistoryPage() {
                 }
                 secondary={
                   <>
-                    {formatDateTime(c.createdAt)} · <Mono>{c.id.slice(0, 8)}</Mono>
+                    {formatDateTime(c.createdAt)}
+                    {c.createdBy && ` · ${c.createdBy.name}`} · <Mono>{c.id.slice(0, 8)}</Mono>
                   </>
                 }
               />
