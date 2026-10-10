@@ -1,6 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { Copy, Download, Ellipsis, History, LayoutTemplate, Save, Trash2 } from "lucide-react";
+import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Save, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -14,15 +14,19 @@ import { api, errorMessage } from "../lib/api";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
+import { PageViewsPopover, usePageViews } from "./PageViews";
 import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
 
 /**
- * 編集画面の「…」メニュー。いまの内容を版として残す・版履歴を開く・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * 編集画面の「…」メニュー。いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
  * テンプレートにする・ページを削除する。
  */
 export function PageMenu(props: {
+  pageId: string;
+  /** 閲覧を数えている記事か（公開していない記事の閲覧数は「—」） */
+  counted: boolean;
   title: string;
   bodyMd: string;
   /** いまの内容を版として残す（⌘S と同じ）。結果の知らせは、呼ばれた側が出す */
@@ -35,6 +39,10 @@ export function PageMenu(props: {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 「閲覧数」の中身は、メニューを閉じたあと「…」ボタンの下に開く
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const { views, totalLabel } = usePageViews(props.pageId, props.counted);
   const [createdTemplate, setCreatedTemplate] = useState<string | null>(null);
 
   const saveAsTemplate = useMutation({
@@ -86,7 +94,7 @@ export function PageMenu(props: {
   return (
     <>
       <Tooltip title="その他の操作">
-        <IconButton size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
+        <IconButton ref={menuButton} size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
           <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
@@ -115,6 +123,18 @@ export function PageMenu(props: {
             <History size={18} />
           </ListItemIcon>
           <ListItemText>版履歴</ListItemText>
+        </MenuItem>
+        <MenuItem
+          aria-haspopup="dialog"
+          onClick={() => {
+            setAnchor(null);
+            setViewsOpen(true);
+          }}
+        >
+          <ListItemIcon>
+            <ChartColumn size={18} />
+          </ListItemIcon>
+          <ListItemText>閲覧数 {totalLabel}</ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem onClick={copy}>
@@ -157,6 +177,7 @@ export function PageMenu(props: {
           <ListItemText>このページを削除…</ListItemText>
         </MenuItem>
       </Menu>
+      <PageViewsPopover views={views} counted={props.counted} anchorEl={menuButton.current} open={viewsOpen} onClose={() => setViewsOpen(false)} />
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
         open={notice !== null}
