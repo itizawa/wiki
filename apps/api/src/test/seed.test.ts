@@ -78,9 +78,13 @@ describe("seedDatabase", () => {
     ctx = await setup();
     await seedDatabase(ctx.db);
     const members: any[] = (await ctx.call("GET", `${W}/members`)).body.members;
-    expect(members.map((m) => [m.email, m.role])).toEqual([
-      ["sakura@example.com", "admin"],
-      ["minato@example.com", "editor"],
-    ]);
+    // 同じ時刻に入ることがあるので、並び順は見ない
+    expect(members.map((m) => [m.email, m.role])).toEqual(
+      expect.arrayContaining([
+        ["sakura@example.com", "admin"],
+        ["minato@example.com", "editor"],
+      ]),
+    );
+    expect(members).toHaveLength(2);
   });
 });
