@@ -465,8 +465,9 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           opacity: drag.isDragging ? 0.4 : 1,
           boxShadow: (t) => (before.isOver ? `inset 0 2px 0 ${(t.vars ?? t).palette.primary.main}` : "none"),
           ...(into.isOver && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
-          "& .row-actions": { display: "none" },
-          "&:hover .row-actions, &:focus-within .row-actions": { display: "flex" },
+          // 行の操作は、いつも出しておく（マウスを乗せたときだけ出すと、タッチ端末では押せない）。ふだんは薄く、行に乗せたら濃くする
+          "& .row-actions": { display: "flex", opacity: 0.55 },
+          "&:hover .row-actions, &:focus-within .row-actions": { opacity: 1 },
         }}
       >
         <Box ref={before.setNodeRef} sx={{ ...dropZone, top: 0, height: "35%" }} />
