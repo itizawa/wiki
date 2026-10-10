@@ -13,6 +13,8 @@ import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, o
 import type { Db } from "../db/client";
 import { pages, ruleRuns, rules, scheduledActions, wikis } from "../db/schema";
 import { loadTreeIndex, visibilityAt } from "../publishing/hierarchy";
+import { writeAudit, type AuditActor } from "../audit/service";
+import { scheduleRef, scheduleTarget } from "../audit/schedule";
 
 const DAY = 24 * 3600_000;
 /** 1回の実行で見直しキューに入れる上限 */
@@ -116,17 +118,31 @@ async function runWikiRules(db: Db, wiki: typeof wikis.$inferSelect, now: Date, 
           .returning({ id: ruleRuns.id });
         const schedule = done.flatMap((e) => e.schedule ?? []);
         if (schedule.length > 0) {
-          await tx.insert(scheduledActions).values(
-            schedule.map((s) => ({
+          const created = await tx
+            .insert(scheduledActions)
+            .values(
+              schedule.map((s) => ({
+                wikiId,
+                actionType: "publish_page" as const,
+                pageId: s.pageId,
+                versionId: s.versionId,
+                targetVisibility: "public" as const,
+                runAt: s.runAt,
+                ruleRunId: run!.id,
+              })),
+            )
+            .returning();
+          // 公開にかかわる操作を監査ログだけで追えるよう、ルールが入れた予約も残す
+          const actor: AuditActor = { type: "rule", ruleRunId: run!.id, label: preset.name };
+          for (const action of created) {
+            await writeAudit(tx, {
               wikiId,
-              actionType: "publish_page" as const,
-              pageId: s.pageId,
-              versionId: s.versionId,
-              targetVisibility: "public" as const,
-              runAt: s.runAt,
-              ruleRunId: run!.id,
-            })),
-          );
+              actor,
+              action: "schedule_create",
+              target: await scheduleTarget(tx, action),
+              detail: { ...scheduleRef(action), versionId: action.versionId! },
+            });
+          }
         }
         return done;
       });

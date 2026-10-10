@@ -106,6 +106,8 @@ export async function commitOps(
     authorType?: "human" | "ai";
     /** 移動で公開範囲の親子の決まりを破らないかを確かめる（ページの削除に伴う繰り上げでは確かめない） */
     checkVisibility?: boolean;
+    /** 構造を変えた人。人の操作でなければ省く */
+    createdBy?: string | null;
   },
 ): Promise<CommitResult> {
   return db.transaction(async (tx) => {
@@ -142,6 +144,7 @@ export async function commitOps(
       parents: [branch.headCommitId],
       message: input.message ?? describeOps(input.ops),
       authorType: input.authorType ?? "human",
+      createdBy: input.createdBy ?? null,
       state: result.state,
       changedTreeIds: new Set(result.changedTreeIds),
       previousSnapshots: head.snapshots,
@@ -190,6 +193,7 @@ async function writeCommit(
     parents: string[];
     message: string;
     authorType: "human" | "ai";
+    createdBy?: string | null;
     state: StructureState;
     changedTreeIds: Set<string>;
     previousSnapshots: Map<string, string>;
@@ -197,7 +201,7 @@ async function writeCommit(
 ): Promise<string> {
   const [commit] = await db
     .insert(structureCommits)
-    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType })
+    .values({ wikiId: input.wikiId, message: input.message, authorType: input.authorType, createdBy: input.createdBy ?? null })
     .returning({ id: structureCommits.id });
   const commitId = commit!.id;
   if (input.parents.length > 0) {
@@ -293,7 +297,15 @@ export async function adoptUnplacedPages(db: Db): Promise<void> {
 
 /** 第1親を辿って履歴を返す（新しい順）。 */
 export async function listHistory(db: Db, headCommitId: string, limit: number) {
-  type Row = { id: string; message: string | null; author_type: string; created_at: string | Date; parent_ids: string[] | null };
+  type Row = {
+    id: string;
+    message: string | null;
+    author_type: string;
+    created_at: string | Date;
+    parent_ids: string[] | null;
+    created_by: string | null;
+    created_by_name: string | null;
+  };
   const result = await db.execute(sql`
     with recursive history(id, depth) as (
       select ${headCommitId}::uuid, 0
@@ -303,10 +315,12 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
       join structure_commit_parents p on p.commit_id = h.id and p.ordinal = 0
       where h.depth < ${limit - 1}
     )
-    select c.id, c.message, c.author_type, c.created_at,
+    select c.id, c.message, c.author_type, c.created_at, c.created_by,
+      coalesce(u.name, u.email) as created_by_name,
       (select array_agg(p.parent_commit_id::text order by p.ordinal)
          from structure_commit_parents p where p.commit_id = c.id) as parent_ids
     from history h join structure_commits c on c.id = h.id
+    left join users u on u.id = c.created_by
     order by h.depth
   `);
   return rowsOf<Row>(result).map((r) => ({
@@ -315,6 +329,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     authorType: r.author_type,
     createdAt: new Date(r.created_at).toISOString(),
     parentIds: r.parent_ids ?? [],
+    /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
+    createdBy: r.created_by && r.created_by_name ? { id: r.created_by, name: r.created_by_name } : null,
   }));
 }
 

@@ -13,6 +13,7 @@ import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
+import { globalAuditRoutes, wikiAuditRoutes } from "./routes/audit";
 import { resolveWiki, wikiRoutes } from "./routes/wikis";
 
 export function createApp(deps: Deps) {
@@ -50,6 +51,7 @@ export function createApp(deps: Deps) {
   });
   admin.route("/wikis", wikiRoutes);
   admin.route("/users", userRoutes);
+  admin.route("/audit-logs", globalAuditRoutes);
 
   // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
   const wiki = new Hono<AppEnv>();
@@ -66,6 +68,7 @@ export function createApp(deps: Deps) {
   wiki.route("/images", imageUploadRoutes);
   wiki.route("/members", memberRoutes);
   wiki.route("/invites", inviteAdminRoutes);
+  wiki.route("/audit-logs", wikiAuditRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

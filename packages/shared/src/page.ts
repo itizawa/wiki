@@ -78,6 +78,8 @@ export type PageVersion = {
   title: string;
   bodyMd: string;
   authorType: AuthorType;
+  /** 版を作った人（いまの名前）。これより前の版と、ルール・AI による版は null */
+  createdBy: { id: string; name: string } | null;
   createdAt: string;
 };
 

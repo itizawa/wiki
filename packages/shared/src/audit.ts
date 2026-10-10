@@ -1,0 +1,321 @@
+import { z } from "zod";
+import type { Visibility } from "./page";
+import type { PublishVisibility } from "./publish";
+import type { RuleDefinition, WorkflowState } from "./rules";
+import { WIKI_ROLE_LABELS, type WikiRole } from "./users";
+
+/**
+ * 監査ログ：「誰が・いつ・何をしたか」を、あとから確かめるための記録。追記だけで、直したり消したりしない。
+ * 本文の保存と、並べ替え・移動・ページの作成は、ここには入れない（版履歴と構造の履歴に「誰が」を残す）。
+ */
+
+export const AUDIT_CATEGORIES = ["login", "member", "publish", "page", "settings", "wiki"] as const;
+export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
+export const auditCategorySchema = z.enum(AUDIT_CATEGORIES);
+
+export const AUDIT_CATEGORY_LABELS: Record<AuditCategory, string> = {
+  login: "ログイン",
+  member: "メンバー",
+  publish: "公開",
+  page: "ページ",
+  settings: "設定",
+  wiki: "wiki",
+};
+
+/** 操作の種類と、その分類。 */
+export const AUDIT_ACTIONS = {
+  login: "login",
+  login_denied: "login",
+  logout: "login",
+
+  invite_create: "member",
+  invite_accept: "member",
+  invite_revoke: "member",
+  member_role_change: "member",
+  member_remove: "member",
+  member_leave: "member",
+  owner_add: "member",
+  owner_remove: "member",
+
+  page_approve: "publish",
+  page_unapprove: "publish",
+  page_publish: "publish",
+  page_unpublish: "publish",
+  page_visibility_change: "publish",
+  unlisted_key_rotate: "publish",
+  schedule_create: "publish",
+  schedule_update: "publish",
+  schedule_cancel: "publish",
+  schedule_run: "publish",
+  schedule_fail: "publish",
+
+  page_delete: "page",
+
+  rule_update: "settings",
+  wiki_update: "settings",
+
+  wiki_create: "wiki",
+  wiki_archive: "wiki",
+  wiki_unarchive: "wiki",
+} as const satisfies Record<string, AuditCategory>;
+export type AuditAction = keyof typeof AUDIT_ACTIONS;
+
+/** 分類に入る操作。 */
+export function actionsIn(category: AuditCategory): AuditAction[] {
+  return (Object.keys(AUDIT_ACTIONS) as AuditAction[]).filter((a) => AUDIT_ACTIONS[a] === category);
+}
+
+/** user：人／rule：ルール（どの実行か）／system：システム（予約の実行） */
+export const AUDIT_ACTOR_TYPES = ["user", "rule", "system"] as const;
+export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
+
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "rule", "wiki"] as const;
+export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
+
+/** 予約を入れたのは誰か（予約の実行に残す）。 */
+export type AuditScheduledBy =
+  | { type: "user"; userId: string; label: string }
+  | { type: "rule"; ruleRunId: string; label: string }
+  | null;
+
+type ScheduleRef = {
+  scheduleId: string;
+  actionType: "publish_page" | "unpublish_page";
+  runAt: string;
+  visibility?: PublishVisibility;
+};
+
+/** 操作ごとの「変更の前と後」など。本文・招待リンクやトークンの値・シークレットは入れない。 */
+export type AuditDetailMap = {
+  login: Record<string, never>;
+  login_denied: { reason: "invite_only" | "unverified" };
+  logout: Record<string, never>;
+
+  invite_create: { role: WikiRole };
+  invite_accept: { role: WikiRole };
+  invite_revoke: { role: WikiRole };
+  member_role_change: { from: WikiRole; to: WikiRole };
+  member_remove: { role: WikiRole };
+  member_leave: { role: WikiRole };
+  owner_add: Record<string, never>;
+  owner_remove: Record<string, never>;
+
+  page_approve: { versionId: string };
+  page_unapprove: { to: WorkflowState };
+  page_publish: {
+    versionId: string;
+    visibility: PublishVisibility;
+    from: { visibility: Visibility; versionId: string | null };
+    /** 配下もまとめて同じ公開範囲にしたページの数 */
+    descendants?: number;
+  };
+  page_unpublish: { from: Visibility; descendants?: number };
+  page_visibility_change: { from: Visibility; to: Visibility; descendants?: number };
+  unlisted_key_rotate: Record<string, never>;
+  schedule_create: ScheduleRef & { versionId?: string };
+  schedule_update: ScheduleRef & { from: string };
+  schedule_cancel: ScheduleRef;
+  schedule_run: ScheduleRef & { scheduledBy: AuditScheduledBy };
+  schedule_fail: ScheduleRef & { scheduledBy: AuditScheduledBy; error: string };
+
+  page_delete: Record<string, never>;
+
+  rule_update: { from: (RuleDefinition & { enabled: boolean }) | null; to: RuleDefinition & { enabled: boolean } };
+  wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
+
+  wiki_create: { key: string };
+  wiki_archive: { key: string };
+  wiki_unarchive: { key: string };
+};
+
+/** 一覧の1件。名前・メールアドレス・対象のタイトルは、その時点の値。 */
+export type AuditLogEntry = {
+  [A in AuditAction]: {
+    id: string;
+    /** 全体にかかわる操作（ログイン・オーナーの変更・wiki の作成とアーカイブ）は null */
+    wiki: { key: string; name: string } | null;
+    actor: {
+      type: AuditActorType;
+      userId: string | null;
+      /** 人なら名前（無ければメールアドレス）、ルールならルールの名前 */
+      label: string;
+      email: string | null;
+      ruleRunId: string | null;
+    };
+    action: A;
+    category: AuditCategory;
+    target: { type: AuditTargetType; id: string | null; label: string | null } | null;
+    /** 対象のページがいまも開けるか（開けるならリンクにする） */
+    targetAvailable: boolean;
+    detail: AuditDetailMap[A];
+    /** ログイン・ログインの拒否のときだけ */
+    ip: string | null;
+    userAgent: string | null;
+    createdAt: string;
+  };
+}[AuditAction];
+
+export type AuditActorOption = { userId: string; label: string; email: string | null };
+
+export type AuditLogPage = { entries: AuditLogEntry[]; nextCursor: string | null };
+
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * 一覧の絞り込み。from / to は JST の日付（to の日を含む）。cursor は前のページの nextCursor。
+ * wiki はオーナーの一覧だけ（"global" は全体にかかわるもの）。
+ */
+export const auditLogQuery = z.object({
+  from: dateOnly.optional(),
+  to: dateOnly.optional(),
+  actor: z.string().uuid().optional(),
+  category: auditCategorySchema.optional(),
+  wiki: z.string().min(1).max(64).optional(),
+  cursor: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type AuditLogQuery = z.infer<typeof auditLogQuery>;
+
+// ---------------------------------------------------------------------------
+// 画面に出す文
+// ---------------------------------------------------------------------------
+
+/** 文の切れ目。target が立っている所は、対象（ページならリンクにする）。 */
+export type AuditSentence = { text: string; target?: boolean }[];
+
+const VISIBILITY_LABELS: Record<Visibility, string> = { public: "公開", unlisted: "限定公開", private: "非公開" };
+const WORKFLOW_LABELS: Record<WorkflowState, string> = { idea: "ネタ", draft: "下書き", approved: "承認済み" };
+const DENIED_LABELS: Record<AuditDetailMap["login_denied"]["reason"], string> = {
+  invite_only: "招待されていない",
+  unverified: "メールアドレスが未確認",
+};
+
+const jstFmt = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** 監査ログの日時（JST、桁を揃える）：2026/10/10 09:05 */
+export function formatAuditTime(iso: string): string {
+  return jstFmt.format(new Date(iso));
+}
+
+const quoted = (label: string | null | undefined): AuditSentence => [{ text: "「" }, { text: label ?? "（不明）", target: true }, { text: "」" }];
+const plain = (text: string): AuditSentence => [{ text }];
+const named = (label: string | null | undefined): AuditSentence => [{ text: label ?? "（不明）", target: true }];
+
+function scheduleKind(d: ScheduleRef): string {
+  return d.actionType === "publish_page" ? `${VISIBILITY_LABELS[d.visibility ?? "public"]}の予約` : "非公開化の予約";
+}
+
+/** 「誰が」を除いた、何をしたかの文。例：「はじめに」を公開しました（非公開 → 公開） */
+export function describeAudit(entry: AuditLogEntry): AuditSentence {
+  const t = entry.target?.label;
+  switch (entry.action) {
+    case "login":
+      return plain("ログインしました");
+    case "login_denied":
+      return plain(`ログインを拒否しました（${DENIED_LABELS[entry.detail.reason]}）`);
+    case "logout":
+      return plain("ログアウトしました");
+
+    case "invite_create":
+      return plain(`${WIKI_ROLE_LABELS[entry.detail.role]}の招待リンクを発行しました`);
+    case "invite_accept":
+      return plain(`招待リンクを使って${WIKI_ROLE_LABELS[entry.detail.role]}として参加しました`);
+    case "invite_revoke":
+      return plain(`${WIKI_ROLE_LABELS[entry.detail.role]}の招待リンクを無効にしました`);
+    case "member_role_change":
+      return [
+        ...named(t),
+        { text: ` のロールを変更しました（${WIKI_ROLE_LABELS[entry.detail.from]} → ${WIKI_ROLE_LABELS[entry.detail.to]}）` },
+      ];
+    case "member_remove":
+      return [...named(t), { text: ` をメンバーから外しました（${WIKI_ROLE_LABELS[entry.detail.role]}）` }];
+    case "member_leave":
+      return plain(`この wiki から抜けました（${WIKI_ROLE_LABELS[entry.detail.role]}）`);
+    case "owner_add":
+      return [...named(t), { text: " をオーナーにしました" }];
+    case "owner_remove":
+      return [...named(t), { text: " をオーナーから外しました" }];
+
+    case "page_approve":
+      return [...quoted(t), { text: "を承認しました" }];
+    case "page_unapprove":
+      return [...quoted(t), { text: `の承認を取り消しました（承認済み → ${WORKFLOW_LABELS[entry.detail.to]}）` }];
+    case "page_publish": {
+      const d = entry.detail;
+      const republish = d.from.versionId !== null && d.from.visibility !== "private";
+      const range = d.from.visibility === d.visibility ? VISIBILITY_LABELS[d.visibility] : `${VISIBILITY_LABELS[d.from.visibility]} → ${VISIBILITY_LABELS[d.visibility]}`;
+      const below = d.descendants ? `、配下の ${d.descendants} ページも同じ公開範囲に` : "";
+      return [...quoted(t), { text: `を${republish ? "公開し直しました" : "公開しました"}（${range}${below}）` }];
+    }
+    case "page_unpublish": {
+      const below = entry.detail.descendants ? `、配下の ${entry.detail.descendants} ページも` : "";
+      return [...quoted(t), { text: `を非公開にしました（${VISIBILITY_LABELS[entry.detail.from]} → 非公開${below}）` }];
+    }
+    case "page_visibility_change": {
+      const d = entry.detail;
+      const below = d.descendants ? `、配下の ${d.descendants} ページも` : "";
+      return [...quoted(t), { text: `の公開範囲を変更しました（${VISIBILITY_LABELS[d.from]} → ${VISIBILITY_LABELS[d.to]}${below}）` }];
+    }
+    case "unlisted_key_rotate":
+      return [...quoted(t), { text: "の限定公開 URL を再発行しました" }];
+    case "schedule_create":
+      return [...quoted(t), { text: `の${scheduleKind(entry.detail)}を作成しました（${formatAuditTime(entry.detail.runAt)}）` }];
+    case "schedule_update":
+      return [
+        ...quoted(t),
+        { text: `の${scheduleKind(entry.detail)}の日時を変更しました（${formatAuditTime(entry.detail.from)} → ${formatAuditTime(entry.detail.runAt)}）` },
+      ];
+    case "schedule_cancel":
+      return [...quoted(t), { text: `の${scheduleKind(entry.detail)}を取り消しました（${formatAuditTime(entry.detail.runAt)}）` }];
+    case "schedule_run":
+      return [...quoted(t), { text: `の${scheduleKind(entry.detail)}を実行しました${scheduledByText(entry.detail.scheduledBy)}` }];
+    case "schedule_fail":
+      return [...quoted(t), { text: `の${scheduleKind(entry.detail)}の実行に失敗しました${scheduledByText(entry.detail.scheduledBy)}` }];
+
+    case "page_delete":
+      return [...quoted(t), { text: "を削除しました" }];
+
+    case "rule_update": {
+      const { from, to } = entry.detail;
+      const wasEnabled = from?.enabled ?? false;
+      const settingsChanged = JSON.stringify(from ? { trigger: from.trigger, actions: from.actions } : null) !== JSON.stringify({ trigger: to.trigger, actions: to.actions });
+      const what =
+        wasEnabled !== to.enabled
+          ? `を${to.enabled ? "有効" : "無効"}にしました${settingsChanged && from ? "（設定も変更）" : ""}`
+          : "の設定を変更しました";
+      return [{ text: "ルール" }, ...quoted(t), { text: what }];
+    }
+    case "wiki_update": {
+      const parts: string[] = [];
+      if (entry.detail.name) parts.push(`名前を変更しました（${entry.detail.name.from} → ${entry.detail.name.to}）`);
+      if (entry.detail.iconUrl) parts.push("画像を変更しました");
+      return [{ text: "wiki の" }, { text: parts.join("。") || "設定を変更しました" }];
+    }
+
+    case "wiki_create":
+      return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];
+    case "wiki_archive":
+      return [{ text: "wiki " }, ...quoted(t), { text: `をアーカイブしました（${entry.detail.key}）` }];
+    case "wiki_unarchive":
+      return [{ text: "wiki " }, ...quoted(t), { text: `をアーカイブから戻しました（${entry.detail.key}）` }];
+  }
+}
+
+function scheduledByText(by: AuditScheduledBy): string {
+  if (!by) return "";
+  return by.type === "user" ? `（予約した人：${by.label}）` : `（ルール「${by.label}」が予約）`;
+}
+
+/** 文をつなげた文字列（テストや、リンクにしない所で使う）。 */
+export function auditSentenceText(entry: AuditLogEntry): string {
+  return describeAudit(entry)
+    .map((p) => p.text)
+    .join("");
+}

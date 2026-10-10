@@ -6,6 +6,7 @@ import { scheduledActions, wikiMembers, wikis } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { recordPublishEvent } from "../publishing/service";
 import { createStructure } from "../structure/repo";
+import { SYSTEM_ACTOR, userActor, writeAudit, type AuditActor } from "../audit/service";
 
 type WikiRow = typeof wikis.$inferSelect;
 
@@ -66,7 +67,11 @@ export async function findWiki(db: Db, key: string, forUpdate = false): Promise<
  * 作った人（オーナー）は、その wiki の管理者としてメンバーに入る。
  * key はアーカイブ中のものも含めて重ねられない。
  */
-export async function createWiki(db: Db, input: CreateWikiInput, creator: { id: string; email: string } | null): Promise<WikiRow> {
+export async function createWiki(
+  db: Db,
+  input: CreateWikiInput,
+  creator: { id: string; email: string; name: string | null } | null,
+): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(wikis)
@@ -78,12 +83,20 @@ export async function createWiki(db: Db, input: CreateWikiInput, creator: { id: 
     await createStructure(tx, row.id);
     // 新しいサブドメインを公開サイトに出す
     await recordPublishEvent(tx, row.id, "wiki_create");
+    // wiki の作成・アーカイブ・戻すは、全体にかかわる操作として残す（オーナーだけが見る）
+    await writeAudit(tx, {
+      wikiId: null,
+      actor: creator ? userActor(creator) : SYSTEM_ACTOR,
+      action: "wiki_create",
+      target: { type: "wiki", id: row.id, label: row.name },
+      detail: { key: row.key },
+    });
     return row;
   });
 }
 
 /** 表示名と画像の変更。画像は管理画面でだけ使うので、変えても公開サイトはビルドし直さない。 */
-export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): Promise<WikiRow> {
+export async function updateWiki(db: Db, key: string, input: UpdateWikiInput, actor: AuditActor): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     const renamed = input.name !== undefined && input.name !== wiki.name;
@@ -96,17 +109,28 @@ export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): P
       .returning();
     // 公開サイトの名前が変わる
     if (renamed && !wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_rename");
+    await writeAudit(tx, {
+      wikiId: wiki.id,
+      actor,
+      action: "wiki_update",
+      target: { type: "wiki", id: wiki.id, label: row!.name },
+      detail: {
+        ...(renamed && { name: { from: wiki.name, to: input.name! } }),
+        ...(iconChanged && { iconUrl: { from: wiki.iconUrl, to: input.iconUrl ?? null } }),
+      },
+    });
     return row!;
   });
 }
 
 /** アーカイブ。データは残す。公開サイトは次のビルドで止まり、予約とルールは実行されなくなる。 */
-export async function archiveWiki(db: Db, key: string, now = new Date()): Promise<WikiRow> {
+export async function archiveWiki(db: Db, key: string, actor: AuditActor, now = new Date()): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     if (wiki.archivedAt) return wiki;
     const [row] = await tx.update(wikis).set({ archivedAt: now }).where(eq(wikis.id, wiki.id)).returning();
     await recordPublishEvent(tx, wiki.id, "wiki_archive");
+    await writeAudit(tx, { wikiId: null, actor, action: "wiki_archive", target: { type: "wiki", id: wiki.id, label: wiki.name }, detail: { key: wiki.key } });
     return row!;
   });
 }
@@ -115,7 +139,7 @@ export async function archiveWiki(db: Db, key: string, now = new Date()): Promis
  * アーカイブから戻す。止まっていた間に時刻を過ぎた予約は実行せず、失敗として一覧に出す
  * （戻した途端に、古い予定の記事が公開されないようにする）。
  */
-export async function unarchiveWiki(db: Db, key: string, now = new Date()): Promise<WikiRow> {
+export async function unarchiveWiki(db: Db, key: string, actor: AuditActor, now = new Date()): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     if (!wiki.archivedAt) return wiki;
@@ -131,6 +155,7 @@ export async function unarchiveWiki(db: Db, key: string, now = new Date()): Prom
       );
     const [row] = await tx.update(wikis).set({ archivedAt: null }).where(eq(wikis.id, wiki.id)).returning();
     await recordPublishEvent(tx, wiki.id, "wiki_unarchive");
+    await writeAudit(tx, { wikiId: null, actor, action: "wiki_unarchive", target: { type: "wiki", id: wiki.id, label: wiki.name }, detail: { key: wiki.key } });
     return row!;
   });
 }

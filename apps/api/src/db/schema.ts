@@ -105,6 +105,8 @@ export const pageVersions = pgTable(
     summary: text("summary"),
     authorType: text("author_type", { enum: ["human", "ai"] }).notNull(),
     sourceProposalId: uuid("source_proposal_id"),
+    /** 版を作った人。これより前の版と、ルール・AI による版は null */
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
     createdAt: createdAt(),
   },
   (t) => [
@@ -240,6 +242,8 @@ export const structureCommits = pgTable("structure_commits", {
   message: text("message"),
   authorType: text("author_type", { enum: ["human", "ai"] }).notNull().default("human"),
   sourceProposalId: uuid("source_proposal_id"),
+  /** 構造を変えた人。これより前のコミットと、ルール・AI・システムによるものは null */
+  createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
   createdAt: createdAt(),
 });
 
@@ -363,6 +367,8 @@ export const scheduledActions = pgTable(
     batchId: uuid("batch_id"),
     /** ルールが入れた予約なら、その実行ログ */
     ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
+    /** 予約を入れた人。ルールが入れた予約とこれより前の予約は null（ルールのものは rule_run_id で辿る） */
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
     /** UTC保存。入出力はJST */
     runAt: timestamp("run_at", { withTimezone: true }).notNull(),
     status: text("status", { enum: ["scheduled", "running", "done", "failed", "canceled"] })
@@ -471,5 +477,46 @@ export const invites = pgTable(
   (t) => [
     check("invites_role_check", sql`${t.role} in ('admin', 'editor')`),
     index("invites_wiki_idx").on(t.wikiId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// 監査ログ（誰が・いつ・何をしたか）。追記だけ。直す・消す API は無い
+// ---------------------------------------------------------------------------
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** 全体にかかわる操作（ログイン・オーナーの変更・wiki の作成とアーカイブ）は null */
+    wikiId: text("wiki_id").references(() => wikis.id),
+    actorType: text("actor_type", { enum: ["user", "rule", "system"] }).notNull(),
+    /** 人のとき。ログインの拒否は、ユーザーの行が無いので null */
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    /** その時点の名前（無ければメールアドレス）。ルールならルールの名前 */
+    actorLabel: text("actor_label").notNull(),
+    /** その時点のメールアドレス（人のとき） */
+    actorEmail: text("actor_email"),
+    /** ルールのとき、その実行 */
+    ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
+    /** 操作の種類（shared の AUDIT_ACTIONS） */
+    action: text("action").notNull(),
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    /** その時点の対象のタイトル・名前（あとで変わっても、消えても読めるように） */
+    targetLabel: text("target_label"),
+    /** 変更の前と後など（shared の AuditDetailMap）。本文・招待リンクやトークンの値・シークレットは入れない */
+    detail: jsonb("detail").notNull().default({}),
+    /** ログイン・ログインの拒否のときだけ */
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("audit_logs_actor_type_check", sql`${t.actorType} in ('user', 'rule', 'system')`),
+    index("audit_logs_wiki_created_idx").on(t.wikiId, t.createdAt, t.id),
+    index("audit_logs_created_idx").on(t.createdAt, t.id),
+    index("audit_logs_actor_idx").on(t.actorUserId, t.createdAt),
+    index("audit_logs_target_idx").on(t.targetType, t.targetId),
   ],
 );

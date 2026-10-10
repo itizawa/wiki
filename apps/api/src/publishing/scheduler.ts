@@ -1,6 +1,9 @@
 import { and, eq, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { scheduledActions, wikis } from "../db/schema";
+import { RULE_PRESETS, type AuditScheduledBy } from "@wiki/shared";
+import { ruleRuns, scheduledActions, users, wikis } from "../db/schema";
+import { SYSTEM_ACTOR, writeAudit } from "../audit/service";
+import { scheduleRef, scheduleTarget } from "../audit/schedule";
 import { depthOf, loadTreeIndex } from "./hierarchy";
 import { publishPage, unpublishPage } from "./service";
 
@@ -32,7 +35,16 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
     if (claimed.length === 0) break;
     try {
       await db.transaction(async (tx) => {
-        for (const action of await orderForHierarchy(tx, claimed)) await execute(tx, action);
+        for (const action of await orderForHierarchy(tx, claimed)) {
+          await execute(tx, action);
+          await writeAudit(tx, {
+            wikiId: action.wikiId,
+            actor: SYSTEM_ACTOR,
+            action: "schedule_run",
+            target: await scheduleTarget(tx, action),
+            detail: { ...scheduleRef(action), scheduledBy: await scheduledBy(tx, action) },
+          });
+        }
         await tx
           .update(scheduledActions)
           .set({ status: "done", executedAt: new Date(), lastError: null })
@@ -44,10 +56,22 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
       for (const action of claimed) {
         const final = action.attempts >= MAX_ATTEMPTS;
         skip.push(action.id);
-        await db
-          .update(scheduledActions)
-          .set({ status: final ? "failed" : "scheduled", lastError: message })
-          .where(eq(scheduledActions.id, action.id));
+        await db.transaction(async (tx) => {
+          await tx
+            .update(scheduledActions)
+            .set({ status: final ? "failed" : "scheduled", lastError: message })
+            .where(eq(scheduledActions.id, action.id));
+          // 残すのは最終的な失敗だけ（再試行に戻したものは残さない）
+          if (final) {
+            await writeAudit(tx, {
+              wikiId: action.wikiId,
+              actor: SYSTEM_ACTOR,
+              action: "schedule_fail",
+              target: await scheduleTarget(tx, action),
+              detail: { ...scheduleRef(action), scheduledBy: await scheduledBy(tx, action), error: message.slice(0, 500) },
+            });
+          }
+        });
         if (final) {
           const [wiki] = await db.select({ name: wikis.name }).from(wikis).where(eq(wikis.id, action.wikiId));
           summary.failed.push({ id: action.id, error: message, wikiName: wiki?.name ?? action.wikiId });
@@ -57,6 +81,20 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
     }
   }
   return summary;
+}
+
+/** 予約を入れたのは誰か（その時点の名前）。ルールが入れた予約は、どのルールの実行か。 */
+async function scheduledBy(db: Db, action: ActionRow): Promise<AuditScheduledBy> {
+  if (action.createdBy) {
+    const [user] = await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, action.createdBy));
+    return { type: "user", userId: action.createdBy, label: user ? (user.name ?? user.email) : action.createdBy };
+  }
+  if (action.ruleRunId) {
+    const [run] = await db.select({ ruleId: ruleRuns.ruleId }).from(ruleRuns).where(eq(ruleRuns.id, action.ruleRunId));
+    const name = RULE_PRESETS.find((p) => p.id === run?.ruleId)?.name ?? run?.ruleId ?? "ルール";
+    return { type: "rule", ruleRunId: action.ruleRunId, label: name };
+  }
+  return null;
 }
 
 /** 実行対象を1件（batchならまとめて）取得し、running にして返す。 */

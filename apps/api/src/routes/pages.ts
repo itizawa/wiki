@@ -12,13 +12,14 @@ import {
 import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageDrafts, pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
+import { pageDrafts, pageLinks, pages, pageVersions, scheduledActions, users } from "../db/schema";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePage } from "../structure/repo";
 import { parseJson } from "../validation";
 import { findTemplate, renderTemplate } from "./templates";
+import { auditActor, writeAudit } from "../audit/service";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
@@ -39,15 +40,26 @@ const toSummary = (p: PageRow): PageSummary => ({
   updatedAt: p.updatedAt.toISOString(),
 });
 
-const toVersion = (v: VersionRow): PageVersion => ({
+const toVersion = (v: VersionRow, author: { name: string | null; email: string } | null): PageVersion => ({
   id: v.id,
   pageId: v.pageId,
   baseVersionId: v.baseVersionId,
   title: v.title,
   bodyMd: v.bodyMd,
   authorType: v.authorType,
+  createdBy: v.createdBy && author ? { id: v.createdBy, name: author.name ?? author.email } : null,
   createdAt: v.createdAt.toISOString(),
 });
+
+/** 版と、それを作った人（いまの名前）。 */
+async function findVersion(db: Db, where: ReturnType<typeof eq>): Promise<PageVersion | null> {
+  const [row] = await db
+    .select({ version: pageVersions, name: users.name, email: users.email })
+    .from(pageVersions)
+    .leftJoin(users, eq(users.id, pageVersions.createdBy))
+    .where(where);
+  return row ? toVersion(row.version, row.email === null ? null : { name: row.name, email: row.email }) : null;
+}
 
 const toDraft = (d: DraftRow): PageDraft => ({
   baseVersionId: d.baseVersionId,
@@ -71,8 +83,8 @@ async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = fals
 
 async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
   const page = await findLivePage(db, wikiId, id);
-  const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-  return { ...toSummary(page), head: toVersion(head!) };
+  const head = await findVersion(db, eq(pageVersions.id, page.headVersionId));
+  return { ...toSummary(page), head: head! };
 }
 
 /** 本文中の `/p/{id}` 形式の内部リンクを抽出する。 */
@@ -102,6 +114,8 @@ export async function createPage(
   tx: Db,
   wikiId: string,
   input: { title: string; bodyMd: string; parentPageId?: string | null },
+  /** 作った人（版と構造の履歴に残す）。シードなど人の操作でなければ null */
+  createdBy: string | null = null,
 ): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
@@ -112,9 +126,11 @@ export async function createPage(
     title: input.title,
     bodyMd: input.bodyMd,
     authorType: "human",
+    createdBy,
   });
   await replaceLinks(tx, wikiId, id, input.bodyMd);
   await commitOps(tx, wikiId, {
+    createdBy,
     message: `「${input.title}」を追加`,
     ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx, wikiId)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
   });
@@ -135,10 +151,11 @@ export const pageRoutes = new Hono<AppEnv>()
     const input = await parseJson(c, createPageInput);
     const wikiId = c.get("wiki").id;
     const id = await db.transaction(async (tx) => {
-      if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! });
+      const userId = c.get("user").id;
+      if (input.templateId === undefined) return createPage(tx, wikiId, { ...input, title: input.title! }, userId);
       // テンプレートから作る：変数を置き換えた本文で始める。タイトルの指定が無ければテンプレートのタイトルにする
       const filled = renderTemplate(await findTemplate(tx, wikiId, input.templateId), c.get("user").email);
-      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId });
+      return createPage(tx, wikiId, { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId }, userId);
     });
     return c.json(await getDetail(db, wikiId, id), 201);
   })
@@ -172,6 +189,7 @@ export const pageRoutes = new Hono<AppEnv>()
           title: input.title,
           bodyMd: input.bodyMd,
           authorType: "human",
+          createdBy: c.get("user").id,
         })
         .returning();
       await tx
@@ -234,7 +252,12 @@ export const pageRoutes = new Hono<AppEnv>()
       const main = await getBranch(tx, wikiId, MAIN_BRANCH);
       const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
       if (ops.length > 0) {
-        await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops, checkVisibility: false });
+        await commitOps(tx, wikiId, {
+          message: `「${page.title}」の削除に伴いツリーから外す`,
+          ops,
+          checkVisibility: false,
+          createdBy: c.get("user").id,
+        });
       }
       await tx
         .update(pages)
@@ -246,6 +269,7 @@ export const pageRoutes = new Hono<AppEnv>()
         .set({ status: "canceled", lastError: "page deleted" })
         .where(and(eq(scheduledActions.pageId, id), eq(scheduledActions.status, "scheduled")));
       if (page.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: id });
+      await writeAudit(tx, { wikiId, actor: auditActor(c), action: "page_delete", target: { type: "page", id, label: page.title }, detail: {} });
     });
     return c.json({ ok: true });
   })
@@ -255,7 +279,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, setWorkflowInput);
     await db.transaction(async (tx) => {
-      await findLivePage(tx, wikiId, id, true);
+      const page = await findLivePage(tx, wikiId, id, true);
       if (input.state === "approved") {
         const [v] = await tx
           .select({ id: pageVersions.id })
@@ -272,6 +296,13 @@ export const pageRoutes = new Hono<AppEnv>()
             : { workflowState: input.state, approvedVersionId: null, approvedAt: null },
         )
         .where(eq(pages.id, id));
+      // 監査ログに残すのは承認と、承認の取り消し（ネタ・下書きのあいだの移り変わりは残さない）
+      const target = { type: "page" as const, id, label: page.title };
+      if (input.state === "approved") {
+        await writeAudit(tx, { wikiId, actor: auditActor(c), action: "page_approve", target, detail: { versionId: input.versionId } });
+      } else if (page.workflowState === "approved") {
+        await writeAudit(tx, { wikiId, actor: auditActor(c), action: "page_unapprove", target, detail: { to: input.state } });
+      }
     });
     return c.json(await getDetail(db, wikiId, id));
   })
@@ -295,21 +326,27 @@ export const pageRoutes = new Hono<AppEnv>()
         title: pageVersions.title,
         authorType: pageVersions.authorType,
         createdAt: pageVersions.createdAt,
+        createdById: pageVersions.createdBy,
+        createdByName: sql<string | null>`coalesce(${users.name}, ${users.email})`,
       })
       .from(pageVersions)
+      .leftJoin(users, eq(users.id, pageVersions.createdBy))
       .where(eq(pageVersions.pageId, id))
       .orderBy(desc(pageVersions.createdAt));
-    return c.json({ versions: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
+    return c.json({
+      versions: rows.map(({ createdById, createdByName, ...r }) => ({
+        ...r,
+        createdBy: createdById && createdByName ? { id: createdById, name: createdByName } : null,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    });
   })
   .get("/:id/versions/:versionId", async (c) => {
     const { db } = c.get("deps");
     const versionId = c.req.param("versionId");
     if (!/^[0-9a-f-]{36}$/.test(versionId)) throw notFound("version");
     await findLivePage(db, c.get("wiki").id, c.req.param("id"));
-    const [v] = await db
-      .select()
-      .from(pageVersions)
-      .where(and(eq(pageVersions.pageId, c.req.param("id")), eq(pageVersions.id, versionId)));
+    const v = await findVersion(db, and(eq(pageVersions.pageId, c.req.param("id")), eq(pageVersions.id, versionId))!);
     if (!v) throw notFound("version");
-    return c.json(toVersion(v));
+    return c.json(v);
   });

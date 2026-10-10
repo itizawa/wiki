@@ -4,7 +4,9 @@ import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { acceptInvite, ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, type UserRow } from "../users/service";
+import { acceptInvite, ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, type LoginIdentity, type UserRow } from "../users/service";
+import { requestMeta, userActor, writeAudit } from "../audit/service";
+import type { Db } from "../db/client";
 import {
   OAUTH_COOKIE,
   randomToken,
@@ -79,27 +81,36 @@ export const authRoutes = new Hono<AppEnv>()
     }
     const identity = await google.exchangeCode({ code, nonce: saved.nonce });
     // メールアドレスが未確認のアカウントは、ログインも参加もできない
-    if (!identity.emailVerified) return c.redirect(`${config.adminOrigin}/login?error=unverified`);
     const { db } = c.get("deps");
     const login = { sub: identity.sub, email: identity.email, name: identity.name };
+    const meta = requestMeta(c);
+    if (!identity.emailVerified) {
+      await recordDenied(db, login, "unverified", meta);
+      return c.redirect(`${config.adminOrigin}/login?error=unverified`);
+    }
 
     if (saved.invite) {
       const invitePage = `${config.adminOrigin}/invite/${encodeURIComponent(saved.invite)}`;
       const result = await acceptInvite(db, saved.invite, { identity: login });
       if (result.ok) {
+        await writeAudit(db, { wikiId: null, actor: userActor(result.user), action: "login", detail: {}, request: meta });
         await startSession(c, result.user.id);
         // すでにメンバーなら、リンクを使っていないことを招待の画面で伝える
         return c.redirect(result.alreadyMember ? invitePage : `${config.adminOrigin}/w/${encodeURIComponent(result.wikiKey)}`);
       }
       // 使えないリンクなら、理由を招待の画面に出す。行のある人はログインだけはさせる
-      const user = await findUserForLogin(db, login);
+      const user = await loginExisting(db, login, meta);
       if (user) await startSession(c, user.id);
+      else await recordDenied(db, login, "invite_only", meta);
       return c.redirect(invitePage);
     }
 
-    const user = await findUserForLogin(db, login);
+    const user = await loginExisting(db, login, meta);
     // どの wiki のメンバーでもない人の行は作らない。招待制であることを出す
-    if (!user) return c.redirect(`${config.adminOrigin}/login?error=invite_only&email=${encodeURIComponent(identity.email)}`);
+    if (!user) {
+      await recordDenied(db, login, "invite_only", meta);
+      return c.redirect(`${config.adminOrigin}/login?error=invite_only&email=${encodeURIComponent(identity.email)}`);
+    }
     await startSession(c, user.id);
     return c.redirect(`${config.adminOrigin}/`);
   })
@@ -108,12 +119,18 @@ export const authRoutes = new Hono<AppEnv>()
     const { config, db } = c.get("deps");
     const email = config.devLoginEmail;
     if (!email) throw new HttpError(404, "not_found", "not found");
-    const user = await ensureOwnerByEmail(db, email);
-    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+    const user = await db.transaction(async (tx) => {
+      const user = await ensureOwnerByEmail(tx, email);
+      await tx.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+      await writeAudit(tx, { wikiId: null, actor: userActor(user), action: "login", detail: {}, request: requestMeta(c) });
+      return user;
+    });
     await startSession(c, user.id);
     return c.json({ email: user.email });
   })
-  .post("/logout", (c) => {
+  .post("/logout", async (c) => {
+    const user = await currentUser(c);
+    if (user) await writeAudit(c.get("deps").db, { wikiId: null, actor: userActor(user), action: "logout", detail: {} });
     deleteCookie(c, SESSION_COOKIE, { path: "/" });
     return c.json({ ok: true });
   })
@@ -121,6 +138,26 @@ export const authRoutes = new Hono<AppEnv>()
     const { config, google } = c.get("deps");
     return c.json({ google: google !== null, devLogin: Boolean(config.devLoginEmail) });
   });
+
+/** 行のある人をログインさせ、ログインを残す。行が無ければ null（招待制）。 */
+async function loginExisting(db: Db, login: LoginIdentity, meta: ReturnType<typeof requestMeta>): Promise<UserRow | null> {
+  return db.transaction(async (tx) => {
+    const user = await findUserForLogin(tx, login);
+    if (user) await writeAudit(tx, { wikiId: null, actor: userActor(user), action: "login", detail: {}, request: meta });
+    return user;
+  });
+}
+
+/** ログインの拒否。ユーザーの行は無いので、Google から受け取った名前とメールアドレスを残す。もとの操作にトランザクションは無いので単独で書く。 */
+async function recordDenied(db: Db, login: LoginIdentity, reason: "invite_only" | "unverified", meta: ReturnType<typeof requestMeta>) {
+  await writeAudit(db, {
+    wikiId: null,
+    actor: { type: "user", userId: null, label: login.name ?? login.email, email: login.email },
+    action: "login_denied",
+    detail: { reason },
+    request: meta,
+  });
+}
 
 async function startSession(c: Context<AppEnv>, userId: string) {
   const { config } = c.get("deps");

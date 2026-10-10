@@ -44,8 +44,9 @@ export async function publishPage(
     publishedAt?: Date;
     scheduledActionId?: string;
   },
-): Promise<void> {
+): Promise<PublishResult> {
   const page = await lockLivePage(db, input.wikiId, input.pageId);
+  let changed = 0;
   const [version] = await db
     .select({ id: pageVersions.id })
     .from(pageVersions)
@@ -82,9 +83,19 @@ export async function publishPage(
         })
         .where(eq(pages.id, d.id));
       await recordPublishEvent(db, input.wikiId, "publish", { pageId: d.id, scheduledActionId: input.scheduledActionId });
+      changed++;
     }
   }
+  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: changed };
 }
+
+/** 公開・非公開化の前の状態（監査ログに残す）。 */
+export type PublishResult = {
+  title: string;
+  from: { visibility: "public" | "unlisted" | "private"; versionId: string | null };
+  /** 配下もまとめて変えたページの数 */
+  descendants: number;
+};
 
 /**
  * 非公開化。再ビルドで静的ファイルが消える。
@@ -95,7 +106,7 @@ export async function unpublishPage(
   wikiId: string,
   pageId: string,
   options: { scheduledActionId?: string; applyToDescendants?: boolean } = {},
-): Promise<void> {
+): Promise<PublishResult> {
   const page = await lockLivePage(db, wikiId, pageId);
   const index = await loadTreeIndex(db, wikiId);
   const descendants = await livePages(db, wikiId, descendantIds(index, page.id));
@@ -108,10 +119,11 @@ export async function unpublishPage(
       .where(eq(pages.id, id));
     await recordPublishEvent(db, wikiId, "unpublish", { pageId: id, scheduledActionId: options.scheduledActionId });
   }
+  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: wider.length };
 }
 
 /** 限定公開URLの失効：キーを再発行してリビルドすると旧URLは404になる。 */
-export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string): Promise<string> {
+export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string): Promise<{ key: string; title: string }> {
   const page = await lockLivePage(db, wikiId, pageId);
   if (page.visibility !== "unlisted") {
     throw new HttpError(400, "not_unlisted", "only unlisted pages have a key to rotate");
@@ -119,5 +131,5 @@ export async function rotateUnlistedKey(db: Db, wikiId: string, pageId: string):
   const key = newUnlistedKey();
   await db.update(pages).set({ unlistedKey: key, updatedAt: new Date() }).where(eq(pages.id, pageId));
   await recordPublishEvent(db, wikiId, "rotate_unlisted_key", { pageId });
-  return key;
+  return { key, title: page.title };
 }

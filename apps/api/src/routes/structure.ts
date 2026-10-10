@@ -48,7 +48,7 @@ export const structureRoutes = new Hono<AppEnv>()
   .post("/commits", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, commitStructureInput);
-    const result = await commitOps(db, c.get("wiki").id, input);
+    const result = await commitOps(db, c.get("wiki").id, { ...input, createdBy: c.get("user").id });
     return c.json({ commitId: result.commitId }, 201);
   })
   .get("/commits", async (c) => {
@@ -63,7 +63,7 @@ export const structureRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     if (!/^[0-9a-f-]{36}$/.test(id)) throw notFound("commit");
     // 別の wiki のコミットは、無いものとして扱う
-    const { wikiId: _wikiId, ...commit } = await getCommit(db, c.get("wiki").id, id);
+    const { wikiId: _wikiId, createdBy: _createdBy, ...commit } = await getCommit(db, c.get("wiki").id, id);
     const parents = await getCommitParents(db, id);
     const after = await loadCommit(db, id);
     const before = parents[0] ? (await loadCommit(db, parents[0])).state : { trees: {} };

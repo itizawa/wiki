@@ -16,25 +16,76 @@ import { HttpError, notFound } from "../errors";
 import { descendantIds, descendantsWider, exceedsParent, loadTreeIndex, visibilityAt } from "../publishing/hierarchy";
 import { publishPage, rotateUnlistedKey, unpublishPage } from "../publishing/service";
 import { parseJson } from "../validation";
+import { auditActor, writeAudit } from "../audit/service";
+import { scheduleRef, scheduleTarget } from "../audit/schedule";
 
 /** /admin/w/:wikiKey/pages/:id/... の公開操作 */
 export const pagePublishRoutes = new Hono<AppEnv>()
   .post("/:id/publish", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, publishPageInput);
-    await db.transaction((tx) => publishPage(tx, { wikiId: c.get("wiki").id, pageId: c.req.param("id"), ...input }));
+    const wikiId = c.get("wiki").id;
+    const pageId = c.req.param("id");
+    await db.transaction(async (tx) => {
+      const result = await publishPage(tx, { wikiId, pageId, ...input });
+      const target = { type: "page" as const, id: pageId, label: result.title };
+      const descendants = result.descendants > 0 ? { descendants: result.descendants } : {};
+      // 公開中の同じ版のまま公開範囲だけを変えたなら「公開範囲の変更」、それ以外は「公開」
+      const published = result.from.versionId !== null && result.from.visibility !== "private";
+      if (published && result.from.versionId === input.versionId && result.from.visibility !== input.visibility) {
+        await writeAudit(tx, {
+          wikiId,
+          actor: auditActor(c),
+          action: "page_visibility_change",
+          target,
+          detail: { from: result.from.visibility, to: input.visibility, ...descendants },
+        });
+      } else {
+        await writeAudit(tx, {
+          wikiId,
+          actor: auditActor(c),
+          action: "page_publish",
+          target,
+          detail: { versionId: input.versionId, visibility: input.visibility, from: result.from, ...descendants },
+        });
+      }
+    });
     return c.json({ ok: true });
   })
   .post("/:id/unpublish", async (c) => {
     const { db } = c.get("deps");
     // 本文は省略できる（配下をまとめて非公開にするときだけ送る）
     const input = c.req.header("content-type")?.includes("json") ? await parseJson(c, unpublishPageInput) : unpublishPageInput.parse({});
-    await db.transaction((tx) => unpublishPage(tx, c.get("wiki").id, c.req.param("id"), input));
+    const wikiId = c.get("wiki").id;
+    const pageId = c.req.param("id");
+    await db.transaction(async (tx) => {
+      const result = await unpublishPage(tx, wikiId, pageId, input);
+      await writeAudit(tx, {
+        wikiId,
+        actor: auditActor(c),
+        action: "page_unpublish",
+        target: { type: "page", id: pageId, label: result.title },
+        detail: { from: result.from.visibility, ...(result.descendants > 0 && { descendants: result.descendants }) },
+      });
+    });
     return c.json({ ok: true });
   })
   .post("/:id/unlisted-key", async (c) => {
     const { db } = c.get("deps");
-    const key = await db.transaction((tx) => rotateUnlistedKey(tx, c.get("wiki").id, c.req.param("id")));
+    const wikiId = c.get("wiki").id;
+    const pageId = c.req.param("id");
+    const key = await db.transaction(async (tx) => {
+      const result = await rotateUnlistedKey(tx, wikiId, pageId);
+      // URL の値は残さない
+      await writeAudit(tx, {
+        wikiId,
+        actor: auditActor(c),
+        action: "unlisted_key_rotate",
+        target: { type: "page", id: pageId, label: result.title },
+        detail: {},
+      });
+      return result.key;
+    });
     return c.json({ unlistedKey: key });
   });
 
@@ -134,18 +185,32 @@ export const scheduleRoutes = new Hono<AppEnv>()
       if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
     }
     await assertScheduleKeepsHierarchy(db, wikiId, page, input);
-    const [row] = await db
-      .insert(scheduledActions)
-      .values({
+    const row = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(scheduledActions)
+        .values({
+          wikiId,
+          actionType: input.actionType,
+          pageId: input.pageId,
+          versionId: input.actionType === "publish_page" ? input.versionId : null,
+          targetVisibility: input.actionType === "publish_page" ? input.targetVisibility : null,
+          batchId: input.batchId,
+          runAt: input.runAt,
+          createdBy: c.get("user").id,
+        })
+        .returning();
+      await writeAudit(tx, {
         wikiId,
-        actionType: input.actionType,
-        pageId: input.pageId,
-        versionId: input.actionType === "publish_page" ? input.versionId : null,
-        targetVisibility: input.actionType === "publish_page" ? input.targetVisibility : null,
-        batchId: input.batchId,
-        runAt: input.runAt,
-      })
-      .returning({ id: scheduledActions.id });
+        actor: auditActor(c),
+        action: "schedule_create",
+        target: { type: "page", id: page.id, label: page.title },
+        detail: {
+          ...scheduleRef(row!),
+          ...(input.actionType === "publish_page" && { versionId: input.versionId }),
+        },
+      });
+      return row;
+    });
     const [created] = await listActions(db, wikiId, eq(scheduledActions.id, row!.id));
     return c.json(created, 201);
   })
@@ -156,11 +221,27 @@ export const scheduleRoutes = new Hono<AppEnv>()
     if (!UUID.test(id)) throw notFound("scheduled action");
     const input = await parseJson(c, rescheduleInput);
     if (input.runAt.getTime() <= Date.now()) throw new HttpError(400, "run_at_in_past", "runAt must be in the future");
-    const updated = await db
-      .update(scheduledActions)
-      .set({ runAt: input.runAt })
-      .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), eq(scheduledActions.status, "scheduled")))
-      .returning({ id: scheduledActions.id });
+    const updated = await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ runAt: scheduledActions.runAt })
+        .from(scheduledActions)
+        .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), eq(scheduledActions.status, "scheduled")))
+        .for("update");
+      if (!before) return [];
+      const rows = await tx
+        .update(scheduledActions)
+        .set({ runAt: input.runAt })
+        .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), eq(scheduledActions.status, "scheduled")))
+        .returning();
+      await writeAudit(tx, {
+        wikiId,
+        actor: auditActor(c),
+        action: "schedule_update",
+        target: await scheduleTarget(tx, rows[0]!),
+        detail: { ...scheduleRef(rows[0]!), from: before.runAt.toISOString() },
+      });
+      return rows;
+    });
     // running になった後は変更できない
     if (updated.length === 0) throw new HttpError(409, "not_scheduled", "only scheduled actions can be changed");
     const [action] = await listActions(db, wikiId, eq(scheduledActions.id, id));
@@ -171,11 +252,23 @@ export const scheduleRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     if (!UUID.test(id)) throw notFound("scheduled action");
-    const updated = await db
-      .update(scheduledActions)
-      .set({ status: "canceled" })
-      .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), inArray(scheduledActions.status, ["scheduled", "failed"])))
-      .returning({ id: scheduledActions.id });
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(scheduledActions)
+        .set({ status: "canceled" })
+        .where(and(eq(scheduledActions.wikiId, wikiId), eq(scheduledActions.id, id), inArray(scheduledActions.status, ["scheduled", "failed"])))
+        .returning();
+      if (rows[0]) {
+        await writeAudit(tx, {
+          wikiId,
+          actor: auditActor(c),
+          action: "schedule_cancel",
+          target: await scheduleTarget(tx, rows[0]),
+          detail: scheduleRef(rows[0]),
+        });
+      }
+      return rows;
+    });
     if (updated.length === 0) throw new HttpError(409, "not_scheduled", "this action can no longer be canceled");
     const [action] = await listActions(db, wikiId, eq(scheduledActions.id, id));
     return c.json(action);

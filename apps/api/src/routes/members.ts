@@ -16,6 +16,7 @@ import {
   setOwner,
 } from "../users/service";
 import { parseJson } from "../validation";
+import { auditActor } from "../audit/service";
 import { requireWikiAdmin } from "./wikis";
 
 /** /admin/w/:wikiKey/members：メンバーの一覧（メンバーなら見られる）、ロールの変更と削除（管理者）。自分で抜けるのは誰でもできる */
@@ -26,7 +27,7 @@ export const memberRoutes = new Hono<AppEnv>()
   .patch("/:userId", requireWikiAdmin, async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, updateMemberInput);
-    await changeMemberRole(db, c.get("wiki").id, c.req.param("userId"), input.role);
+    await changeMemberRole(db, c.get("wiki").id, c.req.param("userId"), input.role, auditActor(c));
     return c.json({ members: await listMembers(db, c.get("wiki").id) });
   })
   .delete("/:userId", async (c) => {
@@ -36,7 +37,7 @@ export const memberRoutes = new Hono<AppEnv>()
     if (userId !== c.get("user").id && c.get("role") !== "admin") {
       throw new HttpError(403, "admin_only", "only admins of this wiki can remove members");
     }
-    await removeMember(db, c.get("wiki").id, userId);
+    await removeMember(db, c.get("wiki").id, userId, auditActor(c));
     return c.json({ ok: true });
   });
 
@@ -49,11 +50,11 @@ export const inviteAdminRoutes = new Hono<AppEnv>()
   .post("/", async (c) => {
     const input = await parseJson(c, createInviteInput);
     // リンクの値は、ここで一度だけ返す
-    const result = await createInvite(c.get("deps").db, { wikiId: c.get("wiki").id, role: input.role, createdBy: c.get("user").id });
+    const result = await createInvite(c.get("deps").db, { wikiId: c.get("wiki").id, role: input.role, createdBy: c.get("user") });
     return c.json(result, 201);
   })
   .post("/:id/revoke", async (c) => {
-    await revokeInvite(c.get("deps").db, c.get("wiki").id, c.req.param("id"));
+    await revokeInvite(c.get("deps").db, c.get("wiki").id, c.req.param("id"), auditActor(c));
     return c.json({ ok: true });
   });
 
@@ -81,6 +82,6 @@ export const userRoutes = new Hono<AppEnv>()
   .put("/:id/owner", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, setOwnerInput);
-    await setOwner(db, c.req.param("id"), input.isOwner);
+    await setOwner(db, c.req.param("id"), input.isOwner, auditActor(c));
     return c.json({ users: await listUsers(db) });
   });

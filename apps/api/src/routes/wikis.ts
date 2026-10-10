@@ -6,6 +6,7 @@ import { archiveWiki, createWiki, findOpenWiki, listWikis, unarchiveWiki, update
 import { parseJson } from "../validation";
 import { requireOwner } from "../auth/routes";
 import { roleIn, rolesByWiki } from "../users/service";
+import { auditActor } from "../audit/service";
 
 /**
  * `/admin/w/:wikiKey/*` の入口。リクエストのたびに wiki と、ログインしている人のロールを引く。
@@ -49,17 +50,17 @@ export const wikiRoutes = new Hono<AppEnv>()
   .patch("/:key", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
     const input = await parseJson(c, updateWikiInput);
-    const row = await updateWiki(db, c.req.param("key"), input);
+    const row = await updateWiki(db, c.req.param("key"), input, auditActor(c));
     return c.json(await summary(db, config, row.key));
   })
   .post("/:key/archive", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
-    const row = await archiveWiki(db, c.req.param("key"));
+    const row = await archiveWiki(db, c.req.param("key"), auditActor(c));
     return c.json(await summary(db, config, row.key));
   })
   .post("/:key/unarchive", requireOwner, async (c) => {
     const { db, config } = c.get("deps");
-    const row = await unarchiveWiki(db, c.req.param("key"));
+    const row = await unarchiveWiki(db, c.req.param("key"), auditActor(c));
     return c.json(await summary(db, config, row.key));
   });
 

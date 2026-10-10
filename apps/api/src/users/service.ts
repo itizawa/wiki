@@ -14,6 +14,7 @@ import type { Db } from "../db/client";
 import { invites, users, wikiMembers, wikis } from "../db/schema";
 import { HttpError } from "../errors";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
+import { userActor, writeAudit, type AuditActor } from "../audit/service";
 
 export type UserRow = typeof users.$inferSelect;
 type InviteRow = typeof invites.$inferSelect;
@@ -186,23 +187,44 @@ async function findMember(tx: Db, wikiId: string, userId: string) {
 const lastAdmin = () =>
   new HttpError(409, "last_admin", "the wiki must keep at least one admin member");
 
-export async function changeMemberRole(db: Db, wikiId: string, userId: string, role: WikiRole): Promise<void> {
+/** 監査ログの対象にする人（その時点の名前を写す）。 */
+async function userTarget(tx: Db, userId: string) {
+  const [user] = await tx.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, userId));
+  return { type: "user" as const, id: userId, label: user ? (user.name ?? user.email) : null };
+}
+
+export async function changeMemberRole(db: Db, wikiId: string, userId: string, role: WikiRole, actor: AuditActor): Promise<void> {
   await db.transaction(async (tx) => {
     const admins = await lockAndCountAdmins(tx, wikiId);
     const member = await findMember(tx, wikiId, userId);
     if (member.role === role) return;
     if (member.role === "admin" && admins <= 1) throw lastAdmin();
     await tx.update(wikiMembers).set({ role }).where(and(eq(wikiMembers.wikiId, wikiId), eq(wikiMembers.userId, userId)));
+    await writeAudit(tx, {
+      wikiId,
+      actor,
+      action: "member_role_change",
+      target: await userTarget(tx, userId),
+      detail: { from: member.role, to: role },
+    });
   });
 }
 
 /** メンバーを外す（自分で抜けるのも同じ）。ユーザーの行と、その人が書いたものは残す。 */
-export async function removeMember(db: Db, wikiId: string, userId: string): Promise<void> {
+export async function removeMember(db: Db, wikiId: string, userId: string, actor: AuditActor): Promise<void> {
   await db.transaction(async (tx) => {
     const admins = await lockAndCountAdmins(tx, wikiId);
     const member = await findMember(tx, wikiId, userId);
     if (member.role === "admin" && admins <= 1) throw lastAdmin();
     await tx.delete(wikiMembers).where(and(eq(wikiMembers.wikiId, wikiId), eq(wikiMembers.userId, userId)));
+    const self = actor.type === "user" && actor.userId === userId;
+    await writeAudit(tx, {
+      wikiId,
+      actor,
+      action: self ? "member_leave" : "member_remove",
+      target: await userTarget(tx, userId),
+      detail: { role: member.role },
+    });
   });
 }
 
@@ -223,21 +245,33 @@ export async function hashToken(token: string): Promise<string> {
 /** 招待リンクを発行する。値（128bit の乱数）は、ここで一度だけ返す。DB にはハッシュだけを持つ。 */
 export async function createInvite(
   db: Db,
-  input: { wikiId: string; role: WikiRole; createdBy: string },
+  input: { wikiId: string; role: WikiRole; createdBy: UserRow },
   now = new Date(),
 ): Promise<{ token: string; invite: Invite }> {
   const token = randomToken(16);
-  const [row] = await db
-    .insert(invites)
-    .values({
+  const tokenHash = await hashToken(token);
+  const row = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(invites)
+      .values({
+        wikiId: input.wikiId,
+        role: input.role,
+        tokenHash,
+        createdBy: input.createdBy.id,
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + INVITE_TTL_DAYS * DAY_MS),
+      })
+      .returning();
+    // リンクの値は残さない
+    await writeAudit(tx, {
       wikiId: input.wikiId,
-      role: input.role,
-      tokenHash: await hashToken(token),
-      createdBy: input.createdBy,
-      createdAt: now,
-      expiresAt: new Date(now.getTime() + INVITE_TTL_DAYS * DAY_MS),
-    })
-    .returning();
+      actor: userActor(input.createdBy),
+      action: "invite_create",
+      target: { type: "invite", id: row!.id, label: null },
+      detail: { role: input.role },
+    });
+    return row;
+  });
   const invite = (await listInvites(db, input.wikiId, now)).find((i) => i.id === row!.id)!;
   return { token, invite };
 }
@@ -267,12 +301,24 @@ export async function listInvites(db: Db, wikiId: string, now = new Date()): Pro
 }
 
 /** 使われる前の招待を無効にする。使用済み・無効にしたものは変えない。 */
-export async function revokeInvite(db: Db, wikiId: string, inviteId: string, now = new Date()): Promise<void> {
-  const [row] = await db
-    .update(invites)
-    .set({ revokedAt: now })
-    .where(and(eq(invites.id, inviteId), eq(invites.wikiId, wikiId), isNull(invites.usedAt), isNull(invites.revokedAt)))
-    .returning({ id: invites.id });
+export async function revokeInvite(db: Db, wikiId: string, inviteId: string, actor: AuditActor, now = new Date()): Promise<void> {
+  const row = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(invites)
+      .set({ revokedAt: now })
+      .where(and(eq(invites.id, inviteId), eq(invites.wikiId, wikiId), isNull(invites.usedAt), isNull(invites.revokedAt)))
+      .returning({ id: invites.id, role: invites.role });
+    if (row) {
+      await writeAudit(tx, {
+        wikiId,
+        actor,
+        action: "invite_revoke",
+        target: { type: "invite", id: row.id, label: null },
+        detail: { role: row.role },
+      });
+    }
+    return row;
+  });
   if (row) return;
   const [exists] = await db.select({ id: invites.id }).from(invites).where(and(eq(invites.id, inviteId), eq(invites.wikiId, wikiId)));
   if (!exists) throw new HttpError(404, "invite_not_found", "invite not found");
@@ -353,6 +399,13 @@ export async function acceptInvite(
       throw new InviteRaceLost();
     }
     await tx.insert(wikiMembers).values({ wikiId: wiki.id, userId: user.id, role: invite.role, inviteId: invite.id, createdAt: now });
+    await writeAudit(tx, {
+      wikiId: wiki.id,
+      actor: userActor(user),
+      action: "invite_accept",
+      target: { type: "invite", id: invite.id, label: null },
+      detail: { role: invite.role },
+    });
     return { ok: true, user, wikiKey: wiki.key, alreadyMember: false };
   }).catch((err): AcceptResult => {
     if (err instanceof InviteRaceLost) return { ok: false, reason: "used" };
@@ -379,7 +432,7 @@ export async function listUsers(db: Db): Promise<UserSummary[]> {
 }
 
 /** オーナーの追加・解除。最後のオーナーは解除できない。 */
-export async function setOwner(db: Db, userId: string, isOwner: boolean): Promise<void> {
+export async function setOwner(db: Db, userId: string, isOwner: boolean, actor: AuditActor): Promise<void> {
   await db.transaction(async (tx) => {
     // オーナーの行を押さえて数える（同時に2人を解除して0人になるのを防ぐ）
     const owners = await tx.select({ id: users.id }).from(users).where(eq(users.isOwner, true)).for("update");
@@ -388,5 +441,12 @@ export async function setOwner(db: Db, userId: string, isOwner: boolean): Promis
     if (user.isOwner === isOwner) return;
     if (!isOwner && owners.length <= 1) throw new HttpError(409, "last_owner", "the last owner cannot be removed");
     await tx.update(users).set({ isOwner }).where(eq(users.id, userId));
+    await writeAudit(tx, {
+      wikiId: null,
+      actor,
+      action: isOwner ? "owner_add" : "owner_remove",
+      target: { type: "user", id: user.id, label: user.name ?? user.email },
+      detail: {},
+    });
   });
 }
