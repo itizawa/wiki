@@ -111,6 +111,10 @@ export type WikiManifest = {
   key: string;
   /** 公開サイトの名前 */
   name: string;
+  /** Google Analytics（GA4）の測定 ID。null なら Google タグを出さない */
+  gaMeasurementId: string | null;
+  /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */
+  searchConsoleVerification: string | null;
   headCommitId: string;
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];

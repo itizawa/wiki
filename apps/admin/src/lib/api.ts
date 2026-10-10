@@ -20,6 +20,7 @@ import type {
   TreeMeta,
   TreeNode,
   UpdateRuleInput,
+  WikiSettings,
   WikiSummary,
   WikiViews,
 } from "@wiki/shared";
@@ -161,6 +162,10 @@ export const api = {
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
+  /** wiki ごとの設定（Google Analytics の測定 ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
+  getSettings: () => request<WikiSettings>("GET", w("/settings")),
+  updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
+
   /** 閲覧数（ページごとの合計・直近30日） */
   listViews: () => request<WikiViews>("GET", w("/views")),
   /** 1ページの閲覧数（直近30日の日別を含む） */
@@ -237,7 +242,7 @@ export function errorMessage(err: unknown): string {
       case "wiki_not_found":
         return "この wiki は見つかりません。アーカイブされたか、URL が違います。";
       case "owner_only":
-        return "wiki の作成・アーカイブは、オーナーだけが行えます。";
+        return "wiki の作成・アーカイブと設定の変更は、オーナーだけが行えます。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
       case "exceeds_parent": {

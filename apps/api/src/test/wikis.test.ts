@@ -4,6 +4,7 @@ import { requestBuild } from "../publishing/builds";
 import { runDueActions } from "../publishing/scheduler";
 import { runRules } from "../rules/engine";
 import { ARCHIVED_REASON } from "../wikis/service";
+import { SESSION_COOKIE, signSession } from "../auth/session";
 import { setup, W, wikiManifest } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -352,5 +353,108 @@ describe("archiving a wiki", () => {
     await ctx.call("POST", "/admin/wikis/notes/unarchive");
     expect((await build()).trigger).toBe(true);
     expect(await build()).toEqual({ trigger: false, reason: "no_changes" });
+  });
+});
+
+describe("wiki settings (Google Analytics and Search Console)", () => {
+  const GA = "G-TEST123456";
+  const VERIFICATION = "abc_DEF-123456";
+  const UNSET = { gaMeasurementId: null, searchConsoleVerification: null };
+  const events = async () => (await ctx.client.query(`select 1 from publish_events where kind = 'wiki_settings'`)).rows.length;
+
+  it("starts unset, and saves, trims and removes the values per wiki", async () => {
+    ctx = await setup();
+    await createNotes();
+    expect((await ctx.call("GET", `${N}/settings`)).body).toEqual(UNSET);
+
+    const saved = await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: ` ${GA} `, searchConsoleVerification: `${VERIFICATION}\n` });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
+    expect((await ctx.call("GET", `${N}/settings`)).body).toEqual(saved.body);
+    // wiki の一覧にも載る。ほかの wiki の設定は変わらない
+    const list = (await ctx.call("GET", "/admin/wikis")).body.wikis;
+    expect(list.map((w: any) => [w.key, w.gaMeasurementId, w.searchConsoleVerification])).toEqual([
+      ["wiki", null, null],
+      ["notes", GA, VERIFICATION],
+    ]);
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+
+    // 片方だけを送ると、もう片方は残る。null と空の文字列は、外すものとして受ける
+    expect((await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: null })).body).toEqual({ gaMeasurementId: null, searchConsoleVerification: VERIFICATION });
+    expect((await ctx.call("PATCH", `${N}/settings`, { searchConsoleVerification: "" })).body).toEqual(UNSET);
+  });
+
+  it("puts the values of each wiki only into its own manifest", async () => {
+    ctx = await setup();
+    await createNotes();
+    await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
+    expect(await wikiManifest(ctx.db, "notes")).toEqual(expect.objectContaining({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION }));
+    const first = await wikiManifest(ctx.db);
+    expect(first).toEqual(expect.objectContaining(UNSET));
+    expect(JSON.stringify(first)).not.toContain(GA);
+    expect(JSON.stringify(first)).not.toContain(VERIFICATION);
+  });
+
+  it("rejects values that are not a GA4 measurement id or a verification value, so nothing else reaches the public HTML", async () => {
+    ctx = await setup();
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
+    const badIds = ["UA-12345-1", "GTM-ABC123", "AW-123456789", "g-test123456", "G-ABC", `G-${"A".repeat(21)}`, "G-TEST 123", 'G-TEST"123', "G-TEST');alert(1)//", "<script>alert(1)</script>", "</script><script>alert(1)</script>", 1];
+    for (const gaMeasurementId of badIds) {
+      expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId })).status, String(gaMeasurementId)).toBe(400);
+    }
+    const badValues = ["A".repeat(101), "abc def", 'abc"def', '"><script>alert(1)</script>', "abc<def", '<meta name="google-site-verification" content="abc" />', 1];
+    for (const searchConsoleVerification of badValues) {
+      expect((await ctx.call("PATCH", `${W}/settings`, { searchConsoleVerification })).status, String(searchConsoleVerification)).toBe(400);
+    }
+    // 片方が正しくても、もう片方が正しくなければ、どちらも変えない
+    expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: "G-OTHER12345", searchConsoleVerification: "a b" })).status).toBe(400);
+    expect((await ctx.call("PATCH", `${W}/settings`, {})).status).toBe(400);
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
+    expect(await wikiManifest(ctx.db)).toEqual(expect.objectContaining({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION }));
+  });
+
+  it("rebuilds the site only when a value really changed", async () => {
+    ctx = await setup();
+    let now = Date.now();
+    const build = async () => {
+      now += 1000_000;
+      return requestBuild(ctx.db, { now: new Date(now) });
+    };
+    await ctx.client.query(`insert into publish_events (wiki_id, kind) select id, 'test' from wikis where key = 'wiki'`);
+    expect((await build()).trigger).toBe(true);
+
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA });
+    expect(await events()).toBe(1);
+    expect((await build()).trigger).toBe(true);
+    // 同じ値で保存し直しても、ビルドし直さない
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA, searchConsoleVerification: null });
+    expect(await events()).toBe(1);
+    expect(await build()).toEqual({ trigger: false, reason: "no_changes" });
+    // 外すと、次のビルドでタグが消える
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: null });
+    expect(await events()).toBe(2);
+    expect((await build()).trigger).toBe(true);
+    expect((await wikiManifest(ctx.db)).gaMeasurementId).toBeNull();
+  });
+
+  it("cannot be read or changed while the wiki is archived, and keeps the values when it is restored", async () => {
+    ctx = await setup();
+    await createNotes();
+    await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: GA });
+    await ctx.call("POST", "/admin/wikis/notes/archive");
+    expect((await ctx.call("GET", `${N}/settings`)).status).toBe(404);
+    expect((await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: null })).status).toBe(404);
+    await ctx.call("POST", "/admin/wikis/notes/unarchive");
+    expect((await ctx.call("GET", `${N}/settings`)).body.gaMeasurementId).toBe(GA);
+    expect((await ctx.call("PATCH", "/admin/w/nope/settings", { gaMeasurementId: GA })).status).toBe(404);
+  });
+
+  it("cannot be changed by someone who is not an owner", async () => {
+    ctx = await setup();
+    // いまは ADMIN_EMAILS の全員がオーナーで、それ以外の人は管理画面の API に入れない（#52 まで）
+    const stranger = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, "stranger@example.com")}` };
+    expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA }, stranger)).status).toBe(403);
+    expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA }, { cookie: "" })).status).toBe(401);
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
   });
 });

@@ -32,6 +32,10 @@ export const wikis = pgTable("wikis", {
   name: text("name").notNull(),
   /** 管理画面で wiki を見分けるための画像の URL（http(s)）。null なら表示名の頭文字を出す */
   iconUrl: text("icon_url"),
+  /** Google Analytics（GA4）の測定 ID（`G-` で始まる）。null なら公開サイトに Google タグを出さない */
+  gaMeasurementId: text("ga_measurement_id"),
+  /** Google サーチコンソールの確認用の値（meta タグの content の中身）。null なら出さない */
+  searchConsoleVerification: text("search_console_verification"),
   /** nullなら使用中 */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),

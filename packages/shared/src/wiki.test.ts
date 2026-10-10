@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { checkWikiKey, createWikiInput, isValidWikiKey, wikiKeyFromHost, wikiOrigin } from "./wiki";
+import {
+  checkWikiKey,
+  createWikiInput,
+  extractSearchConsoleVerification,
+  isGaMeasurementId,
+  isSearchConsoleVerification,
+  isValidWikiKey,
+  updateWikiSettingsInput,
+  wikiKeyFromHost,
+  wikiOrigin,
+} from "./wiki";
 
 describe("wiki key", () => {
   it("accepts lowercase letters, digits and hyphens, 3 to 32 characters", () => {
@@ -49,5 +59,39 @@ describe("wiki origin", () => {
     for (const host of ["hatchery-works.com", "wiki-admin.hatchery-works.com", "a.b.hatchery-works.com", "notes.example.com", "x.workers.dev"]) {
       expect(wikiKeyFromHost(host, "hatchery-works.com"), host).toBeNull();
     }
+  });
+});
+
+describe("wiki settings (Google Analytics and Search Console)", () => {
+  it("accepts only GA4 measurement ids", () => {
+    for (const id of ["G-ABCD", "G-1A2B3C4D5E", `G-${"A".repeat(20)}`]) expect(isGaMeasurementId(id), id).toBe(true);
+    const bad = ["", "G-", "G-ABC", `G-${"A".repeat(21)}`, "g-abcd1234", "G-abcd1234", "UA-12345-1", "GTM-ABC123", "AW-123456789", "G-ABCD 1234", " G-ABCD1234", "G-ABCD\n", 'G-ABCD"', "G-AB<CD", "G-ABCD');alert(1)//", "<script>alert(1)</script>"];
+    for (const id of bad) expect(isGaMeasurementId(id), id).toBe(false);
+  });
+
+  it("accepts only the content value of the verification tag", () => {
+    for (const v of ["a", "abcDEF123_-", "A".repeat(100)]) expect(isSearchConsoleVerification(v), v).toBe(true);
+    const bad = ["", "A".repeat(101), "abc def", 'abc"def', "abc<def", "abc>def", "abc'def", "abc=def", "abc\n", '"><script>alert(1)</script>', '<meta name="google-site-verification" content="abc" />'];
+    for (const v of bad) expect(isSearchConsoleVerification(v), v).toBe(false);
+  });
+
+  it("takes the content value out of a pasted meta tag", () => {
+    expect(extractSearchConsoleVerification('<meta name="google-site-verification" content="abc_DEF-123" />')).toBe("abc_DEF-123");
+    expect(extractSearchConsoleVerification(`  <META content='abc' name='google-site-verification'>  `)).toBe("abc");
+    expect(extractSearchConsoleVerification("<meta name=google-site-verification content=abc>")).toBe("abc");
+    expect(extractSearchConsoleVerification("  abc_DEF-123 ")).toBe("abc_DEF-123");
+    // 取り出せないものや、取り出しても形の合わないものは、そのあとの形の確かめで落ちる
+    expect(isSearchConsoleVerification(extractSearchConsoleVerification('<meta name="google-site-verification" />'))).toBe(false);
+    expect(isSearchConsoleVerification(extractSearchConsoleVerification('<meta content="a b" />'))).toBe(false);
+    expect(isSearchConsoleVerification(extractSearchConsoleVerification('<script content="abc"></script>'))).toBe(false);
+  });
+
+  it("trims the values, takes null or an empty string as removing, and needs at least one of them", () => {
+    expect(updateWikiSettingsInput.parse({ gaMeasurementId: " G-ABCD1234 " })).toEqual({ gaMeasurementId: "G-ABCD1234" });
+    expect(updateWikiSettingsInput.parse({ gaMeasurementId: null, searchConsoleVerification: " " })).toEqual({ gaMeasurementId: null, searchConsoleVerification: null });
+    expect(updateWikiSettingsInput.safeParse({}).success).toBe(false);
+    expect(updateWikiSettingsInput.safeParse({ gaMeasurementId: "UA-12345-1" }).success).toBe(false);
+    expect(updateWikiSettingsInput.safeParse({ gaMeasurementId: 1 }).success).toBe(false);
+    expect(updateWikiSettingsInput.safeParse({ searchConsoleVerification: '<meta name="google-site-verification" content="abc" />' }).success).toBe(false);
   });
 });

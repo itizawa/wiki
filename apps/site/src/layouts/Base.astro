@@ -1,4 +1,5 @@
 ---
+import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import "../styles/global.css";
 import s from "./Base.module.css";
@@ -12,13 +13,17 @@ interface Props {
   canonical?: string;
   /** 限定公開ページ */
   noindex?: boolean;
+  /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す */
+  notFound?: boolean;
 }
 
-const { wiki, title, description, canonical, noindex = false } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
+// wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
+const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = googleTags(site.wiki, { noindex, notFound });
 ---
 
 <!doctype html>
@@ -38,6 +43,33 @@ const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
         </>
       ) : (
         <link rel="alternate" type="application/rss+xml" title={SITE_NAME} href="/feed.xml" />
+      )
+    }
+    {searchConsoleVerification && <meta name="google-site-verification" content={searchConsoleVerification} />}
+    {
+      gaMeasurementId && !skipUnlistedPaths && (
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`} />
+      )
+    }
+    {
+      gaMeasurementId && (
+        <script is:inline define:vars={{ gaMeasurementId, skipUnlistedPaths }}>
+          // 404 のページは、無くなった限定公開の URL（/u/...）でも返る。その URL は Google へ送らない
+          if (!(skipUnlistedPaths && location.pathname.startsWith("/u/"))) {
+            window.dataLayer = window.dataLayer || [];
+            window.gtag = function () {
+              window.dataLayer.push(arguments);
+            };
+            window.gtag("js", new Date());
+            window.gtag("config", gaMeasurementId);
+            if (skipUnlistedPaths) {
+              const tag = document.createElement("script");
+              tag.async = true;
+              tag.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(gaMeasurementId);
+              document.head.appendChild(tag);
+            }
+          }
+        </script>
       )
     }
   </head>
