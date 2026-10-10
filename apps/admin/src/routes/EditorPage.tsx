@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
 import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
@@ -108,7 +109,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
 
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <Box
           component="header"
           sx={{
@@ -134,7 +135,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <PageMenu title={draft.title} bodyMd={draft.bodyMd} />
         </Box>
 
-        <Box sx={{ maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
+        <Box sx={{ width: "100%", maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
           {save.error && (
             <Alert
               severity="error"
@@ -168,6 +169,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           />
           <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
+        <EditingStats bodyMd={draft.bodyMd} />
       </Box>
 
       {panelOpen && (
@@ -224,6 +226,21 @@ export function EditorPage({ pageId }: { pageId: string }) {
           </Section>
         </Stack>
       )}
+    </Box>
+  );
+}
+
+/** 本文の文字数と読む時間の目安。書いている間、画面の右下に出し続ける。 */
+function EditingStats({ bodyMd }: { bodyMd: string }) {
+  const stats = useMemo(() => textStats(bodyMd), [bodyMd]);
+  return (
+    <Box sx={{ position: "sticky", bottom: 0, mt: "auto", display: "flex", justifyContent: "flex-end", p: 1, pointerEvents: "none" }}>
+      <Muted
+        aria-live="off"
+        sx={{ px: 1, py: 0.25, borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}
+      >
+        {stats.chars.toLocaleString("ja-JP")}文字・読むのに約{stats.minutes}分
+      </Muted>
     </Box>
   );
 }
