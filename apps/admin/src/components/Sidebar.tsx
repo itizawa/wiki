@@ -52,6 +52,7 @@ import { useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
+import { WikiIcon } from "./WikiIcon";
 import { Muted, RouterLink } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
@@ -283,23 +284,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             "&:hover": { bgcolor: "action.hover" },
           }}
         >
-          <Box
-            aria-hidden
-            sx={{
-              width: 28,
-              height: 28,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              borderRadius: 1,
-              bgcolor: "primary.main",
-              color: "primary.contrastText",
-              fontWeight: 700,
-              fontSize: "0.9rem",
-            }}
-          >
-            {wiki.name.slice(0, 1).toUpperCase()}
-          </Box>
+          <WikiIcon wiki={wiki} />
           <Box sx={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
             <Box component="strong" sx={{ ...ellipsis, display: "block", fontWeight: 600 }}>
               {wiki.name}
@@ -319,6 +304,9 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
             {/* いまの wiki は、色だけでなくチェックの印でも示す */}
             <ListItemIcon>{w.key === wiki.key && <CheckIcon fontSize="small" />}</ListItemIcon>
+            <Box sx={{ mr: 1.25, display: "flex" }}>
+              <WikiIcon wiki={w} size={24} />
+            </Box>
             <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
           </MenuItemLink>
         ))}
