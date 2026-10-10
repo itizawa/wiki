@@ -16,7 +16,6 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
@@ -28,6 +27,7 @@ import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Checkbox from "@mui/material/Checkbox";
+import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -40,6 +40,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useNavigate, useParams } from "@tanstack/react-router";
 import { childrenByParent, type StructureOpInput, type TreeNode } from "@wiki/shared";
@@ -50,6 +51,7 @@ import { useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
+import { WikiIcon } from "./WikiIcon";
 import { Muted, RouterLink } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
@@ -124,13 +126,6 @@ export function Sidebar(props: {
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 1, pr: 1.5, pt: 1.5, pb: 1 }}>
         <WikiSwitcher onNavigate={props.onNavigate} />
-        <Tooltip title="新しいページ">
-          <span>
-            <IconButton size="small" aria-label="新しいページ" disabled={create.isPending} onClick={() => create.mutate(null)}>
-              <EditNoteIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
         {props.onCollapse && (
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
@@ -287,23 +282,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             "&:hover": { bgcolor: "action.hover" },
           }}
         >
-          <Box
-            aria-hidden
-            sx={{
-              width: 28,
-              height: 28,
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              borderRadius: 1,
-              bgcolor: "primary.main",
-              color: "primary.contrastText",
-              fontWeight: 700,
-              fontSize: "0.9rem",
-            }}
-          >
-            {wiki.name.slice(0, 1).toUpperCase()}
-          </Box>
+          <WikiIcon wiki={wiki} />
           <Box sx={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
             <Box component="strong" sx={{ ...ellipsis, display: "block", fontWeight: 600 }}>
               {wiki.name}
@@ -323,6 +302,9 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
             {/* いまの wiki は、色だけでなくチェックの印でも示す */}
             <ListItemIcon>{w.key === wiki.key && <CheckIcon fontSize="small" />}</ListItemIcon>
+            <Box sx={{ mr: 1.25, display: "flex" }}>
+              <WikiIcon wiki={w} size={24} />
+            </Box>
             <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
           </MenuItemLink>
         ))}
@@ -401,7 +383,12 @@ type TreeContext = {
   expand: (nodeId: string) => void;
   onCreatePage: (parentNodeId: string) => void;
   onNavigate?: () => void;
+  /** 折りたたみの動きの長さ。OS の「視差効果を減らす」が有効なら 0 */
+  motionMs: number;
 };
+
+/** ツリーの折りたたみの動きの長さ（ms）。 */
+const TREE_MOTION_MS = 160;
 
 function DocumentTree(props: {
   tree: StructureTree;
@@ -419,6 +406,7 @@ function DocumentTree(props: {
   const [dragging, setDragging] = useState<string | null>(null);
   const childrenOf = useMemo(() => childrenByParent(tree.nodes), [tree.nodes]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const label = (n: TreeNode) => data.pages[n.pageId]?.title ?? n.pageId;
   const expand = (nodeId: string) => {
@@ -449,6 +437,7 @@ function DocumentTree(props: {
       props.onCreatePage(parentNodeId);
     },
     onNavigate: props.onNavigate,
+    motionMs: reducedMotion ? 0 : TREE_MOTION_MS,
   };
 
   return (
@@ -538,12 +527,13 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
           </Tooltip>
         </Box>
       </Box>
-      {isOpen && kids.length > 0 && (
-        <Box role="group">
+      {kids.length > 0 && (
+        // 子ページの行は、高さを動かして出し入れする。畳んでいる間は描画しない
+        <Collapse in={isOpen} timeout={ctx.motionMs} unmountOnExit role="group">
           {kids.map((kid) => (
             <TreeRow key={kid.nodeId} node={kid} depth={depth + 1} ctx={ctx} />
           ))}
-        </Box>
+        </Collapse>
       )}
     </Box>
   );

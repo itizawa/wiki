@@ -29,6 +29,8 @@ export const wikis = pgTable("wikis", {
   key: text("key").notNull().unique(),
   /** 表示名（公開サイトの名前） */
   name: text("name").notNull(),
+  /** 管理画面で wiki を見分けるための画像の URL（http(s)）。null なら表示名の頭文字を出す */
+  iconUrl: text("icon_url"),
   /** nullなら使用中 */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),

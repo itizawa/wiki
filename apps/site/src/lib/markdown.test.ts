@@ -32,6 +32,31 @@ describe("renderMarkdown", () => {
   });
 });
 
+describe("コードブロックの色分け", () => {
+  it("言語が付いていれば、ライト・ダーク両方の色を持たせて色分けする", () => {
+    const html = renderMarkdown("```ts\nconst a: number = 1;\n```", { publicPaths });
+    expect(html).toContain('<pre class="shiki');
+    expect(html).toContain("--shiki-light:");
+    expect(html).toContain("--shiki-dark:");
+    // 中身の文字は変えない
+    expect(html.replace(/<[^>]+>/g, "")).toContain("const a: number = 1;");
+  });
+
+  it("別名（js・sh・yml）でも色分けする", () => {
+    for (const lang of ["js", "sh", "yml"]) expect(renderMarkdown(`\`\`\`${lang}\na\n\`\`\``, { publicPaths })).toContain("shiki");
+  });
+
+  it("言語が無い・知らない言語のときは、そのまま出す（中身はエスケープする）", () => {
+    expect(renderMarkdown("```\n<b>x</b>\n```", { publicPaths })).toContain("<pre><code>&lt;b&gt;x&lt;/b&gt;");
+    expect(renderMarkdown("```kotlin\nval a = 1\n```", { publicPaths })).toContain('<pre><code class="language-kotlin">val a = 1');
+  });
+
+  it("コードの中の HTML は、色分けしてもエスケープされる", () => {
+    const html = renderMarkdown("```html\n<script>alert(1)</script>\n```", { publicPaths });
+    expect(html).not.toContain("<script>");
+  });
+});
+
 describe("renderArticle", () => {
   it("gives headings ids and lists them in order, up to depth 4", () => {
     const { html, headings } = renderArticle("# はじめに\n\n## 使い *方*\n\n##### 深い\n\n## 使い方", { publicPaths });

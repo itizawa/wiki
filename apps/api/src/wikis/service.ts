@@ -1,4 +1,4 @@
-import { newWikiId, wikiOrigin, type CreateWikiInput, type Wiki, type WikiSummary } from "@wiki/shared";
+import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type Wiki, type WikiSummary } from "@wiki/shared";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -17,6 +17,7 @@ export function toWiki(row: WikiRow, config: Pick<AppConfig, "siteBaseDomain">):
     id: row.id,
     key: row.key,
     name: row.name,
+    iconUrl: row.iconUrl,
     origin: wikiOrigin(row.key, config.siteBaseDomain),
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -58,7 +59,7 @@ export async function createWiki(db: Db, input: CreateWikiInput, createdBy: stri
   return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(wikis)
-      .values({ id: newWikiId(), key: input.key, name: input.name, createdBy })
+      .values({ id: newWikiId(), key: input.key, name: input.name, iconUrl: input.iconUrl ?? null, createdBy })
       .onConflictDoNothing({ target: wikis.key })
       .returning();
     if (!row) throw new HttpError(409, "wiki_key_taken", `the key ${input.key} is already used`);
@@ -69,13 +70,20 @@ export async function createWiki(db: Db, input: CreateWikiInput, createdBy: stri
   });
 }
 
-export async function renameWiki(db: Db, key: string, name: string): Promise<WikiRow> {
+/** 表示名と画像の変更。画像は管理画面でだけ使うので、変えても公開サイトはビルドし直さない。 */
+export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
-    if (wiki.name === name) return wiki;
-    const [row] = await tx.update(wikis).set({ name }).where(eq(wikis.id, wiki.id)).returning();
+    const renamed = input.name !== undefined && input.name !== wiki.name;
+    const iconChanged = input.iconUrl !== undefined && input.iconUrl !== wiki.iconUrl;
+    if (!renamed && !iconChanged) return wiki;
+    const [row] = await tx
+      .update(wikis)
+      .set({ ...(renamed && { name: input.name }), ...(iconChanged && { iconUrl: input.iconUrl }) })
+      .where(eq(wikis.id, wiki.id))
+      .returning();
     // 公開サイトの名前が変わる
-    if (!wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_rename");
+    if (renamed && !wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_rename");
     return row!;
   });
 }

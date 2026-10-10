@@ -1,5 +1,5 @@
 {
-  "id": "1a96326d-067b-47f1-bf2c-22c725c8c207",
+  "id": "086bb7de-03b4-412f-99a1-a57da4ee4330",
   "prevId": "9c3c72d1-0c68-432e-9c17-689475071f24",
   "version": "7",
   "dialect": "postgresql",
@@ -32,41 +32,41 @@
         "commit_trees_commit_id_structure_commits_id_fk": {
           "name": "commit_trees_commit_id_structure_commits_id_fk",
           "tableFrom": "commit_trees",
+          "tableTo": "structure_commits",
           "columnsFrom": [
             "commit_id"
           ],
-          "tableTo": "structure_commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "commit_trees_tree_id_trees_id_fk": {
           "name": "commit_trees_tree_id_trees_id_fk",
           "tableFrom": "commit_trees",
+          "tableTo": "trees",
           "columnsFrom": [
             "tree_id"
           ],
-          "tableTo": "trees",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "commit_trees_snapshot_id_tree_snapshots_id_fk": {
           "name": "commit_trees_snapshot_id_tree_snapshots_id_fk",
           "tableFrom": "commit_trees",
+          "tableTo": "tree_snapshots",
           "columnsFrom": [
             "snapshot_id"
           ],
-          "tableTo": "tree_snapshots",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -112,24 +112,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "page_links_from_page_id_pages_id_fk": {
           "name": "page_links_from_page_id_pages_id_fk",
           "tableFrom": "page_links",
+          "tableTo": "pages",
           "columnsFrom": [
             "from_page_id"
           ],
-          "tableTo": "pages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -225,24 +225,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "page_versions_page_id_pages_id_fk": {
           "name": "page_versions_page_id_pages_id_fk",
           "tableFrom": "page_versions",
+          "tableTo": "pages",
           "columnsFrom": [
             "page_id"
           ],
-          "tableTo": "pages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -399,34 +399,34 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "pages_wiki_id_wikis_id_fk": {
           "name": "pages_wiki_id_wikis_id_fk",
           "tableFrom": "pages",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "pages_unlisted_key_unique": {
           "name": "pages_unlisted_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "unlisted_key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -497,15 +497,15 @@
         "publish_events_wiki_id_wikis_id_fk": {
           "name": "publish_events_wiki_id_wikis_id_fk",
           "tableFrom": "publish_events",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -588,39 +588,39 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "rule_runs_wiki_id_wikis_id_fk": {
           "name": "rule_runs_wiki_id_wikis_id_fk",
           "tableFrom": "rule_runs",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "rule_runs_rule_fk": {
           "name": "rule_runs_rule_fk",
           "tableFrom": "rule_runs",
+          "tableTo": "rules",
           "columnsFrom": [
             "wiki_id",
             "rule_id"
           ],
-          "tableTo": "rules",
           "columnsTo": [
             "wiki_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -689,15 +689,15 @@
         "rules_wiki_id_wikis_id_fk": {
           "name": "rules_wiki_id_wikis_id_fk",
           "tableFrom": "rules",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -825,10 +825,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"scheduled_actions\".\"status\" = 'scheduled'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "scheduled_actions_page_idx": {
           "name": "scheduled_actions_page_idx",
@@ -841,63 +841,63 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "scheduled_actions_wiki_id_wikis_id_fk": {
           "name": "scheduled_actions_wiki_id_wikis_id_fk",
           "tableFrom": "scheduled_actions",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "scheduled_actions_page_id_pages_id_fk": {
           "name": "scheduled_actions_page_id_pages_id_fk",
           "tableFrom": "scheduled_actions",
+          "tableTo": "pages",
           "columnsFrom": [
             "page_id"
           ],
-          "tableTo": "pages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "scheduled_actions_version_id_page_versions_id_fk": {
           "name": "scheduled_actions_version_id_page_versions_id_fk",
           "tableFrom": "scheduled_actions",
+          "tableTo": "page_versions",
           "columnsFrom": [
             "version_id"
           ],
-          "tableTo": "page_versions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "scheduled_actions_rule_run_id_rule_runs_id_fk": {
           "name": "scheduled_actions_rule_run_id_rule_runs_id_fk",
           "tableFrom": "scheduled_actions",
+          "tableTo": "rule_runs",
           "columnsFrom": [
             "rule_run_id"
           ],
-          "tableTo": "rule_runs",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1001,28 +1001,28 @@
         "structure_branches_wiki_id_wikis_id_fk": {
           "name": "structure_branches_wiki_id_wikis_id_fk",
           "tableFrom": "structure_branches",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "structure_branches_head_commit_id_structure_commits_id_fk": {
           "name": "structure_branches_head_commit_id_structure_commits_id_fk",
           "tableFrom": "structure_branches",
+          "tableTo": "structure_commits",
           "columnsFrom": [
             "head_commit_id"
           ],
-          "tableTo": "structure_commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1073,28 +1073,28 @@
         "structure_commit_parents_commit_id_structure_commits_id_fk": {
           "name": "structure_commit_parents_commit_id_structure_commits_id_fk",
           "tableFrom": "structure_commit_parents",
+          "tableTo": "structure_commits",
           "columnsFrom": [
             "commit_id"
           ],
-          "tableTo": "structure_commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "structure_commit_parents_parent_fk": {
           "name": "structure_commit_parents_parent_fk",
           "tableFrom": "structure_commit_parents",
+          "tableTo": "structure_commits",
           "columnsFrom": [
             "parent_commit_id"
           ],
-          "tableTo": "structure_commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1160,15 +1160,15 @@
         "structure_commits_wiki_id_wikis_id_fk": {
           "name": "structure_commits_wiki_id_wikis_id_fk",
           "tableFrom": "structure_commits",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1224,37 +1224,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "tree_nodes_snapshot_id_tree_snapshots_id_fk": {
           "name": "tree_nodes_snapshot_id_tree_snapshots_id_fk",
           "tableFrom": "tree_nodes",
+          "tableTo": "tree_snapshots",
           "columnsFrom": [
             "snapshot_id"
           ],
-          "tableTo": "tree_snapshots",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "tree_nodes_page_id_pages_id_fk": {
           "name": "tree_nodes_page_id_pages_id_fk",
           "tableFrom": "tree_nodes",
+          "tableTo": "pages",
           "columnsFrom": [
             "page_id"
           ],
-          "tableTo": "pages",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1269,11 +1269,11 @@
       "uniqueConstraints": {
         "tree_nodes_snapshot_page_unique": {
           "name": "tree_nodes_snapshot_page_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "snapshot_id",
             "page_id"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1315,15 +1315,15 @@
         "tree_snapshots_tree_id_trees_id_fk": {
           "name": "tree_snapshots_tree_id_trees_id_fk",
           "tableFrom": "tree_snapshots",
+          "tableTo": "trees",
           "columnsFrom": [
             "tree_id"
           ],
-          "tableTo": "trees",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1387,36 +1387,36 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"trees\".\"is_primary\"",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "trees_wiki_id_wikis_id_fk": {
           "name": "trees_wiki_id_wikis_id_fk",
           "tableFrom": "trees",
+          "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
           ],
-          "tableTo": "wikis",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "trees_wiki_key_unique": {
           "name": "trees_wiki_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "wiki_id",
             "key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1445,6 +1445,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "archived_at": {
           "name": "archived_at",
           "type": "timestamp with time zone",
@@ -1471,10 +1477,10 @@
       "uniqueConstraints": {
         "wikis_key_unique": {
           "name": "wikis_key_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "key"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1484,10 +1490,10 @@
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

@@ -35,6 +35,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
+import { highlightSx } from "./highlight";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
 
@@ -112,6 +113,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               borderRadius: 1,
               overflow: "auto",
               "& code": { bgcolor: "transparent", p: 0, fontSize: "0.875rem" },
+              ...highlightSx,
             },
             "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
             "& img": { maxWidth: "100%", borderRadius: 1 },

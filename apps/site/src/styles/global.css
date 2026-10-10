@@ -9,6 +9,8 @@
   --ok: #1a7f37;
   --warn: #8a5a00;
   --danger: #c0362c;
+  /* スクロールバーなどブラウザが描く部品も、ライト・ダークに合わせる */
+  color-scheme: light dark;
   font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   color: var(--text);
   background: var(--bg);

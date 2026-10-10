@@ -135,20 +135,20 @@ describe("0005_multi_wiki", () => {
   });
 });
 
-describe("0006_tree_always_public", () => {
-  const before = ["0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_multi_wiki"];
+describe("0007_tree_always_public", () => {
+  const before = ["0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_multi_wiki", "0006_wiki_icon"];
 
   it("passes when every tree is already public", async () => {
     const db = (client = new PGlite());
     for (const tag of before) await runMigration(db, tag);
     await db.exec(`insert into trees (id, wiki_id, key, name, is_public, is_primary) select 't_main', id, 'main', 'メイン', true, true from wikis`);
-    await runMigration(db, "0006_tree_always_public");
+    await runMigration(db, "0007_tree_always_public");
   });
 
   it("stops instead of silently making a hidden tree public", async () => {
     const db = (client = new PGlite());
     for (const tag of before) await runMigration(db, tag);
     await db.exec(`insert into trees (id, wiki_id, key, name, is_public, is_primary) select 't_main', id, 'main', 'メイン', false, true from wikis`);
-    await expect(runMigration(db, "0006_tree_always_public")).rejects.toThrow(/ツリーを公開サイトに出していない wiki があります: wiki/);
+    await expect(runMigration(db, "0007_tree_always_public")).rejects.toThrow(/ツリーを公開サイトに出していない wiki があります: wiki/);
   });
 });
