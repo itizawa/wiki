@@ -28,6 +28,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
+import { TableMenu } from "./TableMenu";
 import { editorExtensions } from "./extensions";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
@@ -123,6 +124,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
         }}
       >
         <EditorContent editor={editor} />
+        <TableMenu editor={editor} />
       </Box>
     </Box>
   );
