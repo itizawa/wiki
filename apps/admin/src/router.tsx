@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { Home, Root } from "./routes/Layout";
@@ -37,13 +37,14 @@ const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis"
 const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
 // すべての wiki と全体にかかわる監査ログ（オーナーだけ）
 const auditAllRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit", component: padded(() => <AuditLogPage scope="all" />) });
-// 招待リンク。ログインしていなくても開ける（Root がログインの確認を飛ばす）
+// 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
+// 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/invite/$token",
+  path: "/invite",
   component: function Invite() {
-    const { token } = inviteRoute.useParams();
-    return <InvitePage token={token} />;
+    const hash = useRouterState({ select: (s) => s.location.hash });
+    return <InvitePage token={decodeURIComponent(hash.replace(/^#/, ""))} />;
   },
 });
 

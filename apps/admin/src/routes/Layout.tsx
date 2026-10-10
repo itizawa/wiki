@@ -31,7 +31,7 @@ export function useWikis() {
 /** すべての画面の入口：ログインを確かめ、済んでいれば中の画面を出す。招待リンクの画面だけは、ログインしていなくても開ける。 */
 export function Root() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  if (pathname.startsWith("/invite/")) return <Outlet />;
+  if (pathname === "/invite") return <Outlet />;
   return <LoginGate />;
 }
 

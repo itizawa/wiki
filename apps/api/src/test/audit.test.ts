@@ -87,7 +87,7 @@ describe("audit log: what is recorded", () => {
 
     const invite = (await admin.call("POST", `${W}/invites`, { role: "editor" })).body;
     const joiner = await ctx.addUser("joiner@example.com");
-    expect((await joiner.call("POST", `/invites/${invite.token}/accept`)).status).toBe(200);
+    expect((await joiner.call("POST", "/invites/accept", { token: invite.token })).status).toBe(200);
     const revoked = (await admin.call("POST", `${W}/invites`, { role: "admin" })).body;
     await admin.call("POST", `${W}/invites/${revoked.invite.id}/revoke`);
     await admin.call("PATCH", `${W}/members/${editor.user.id}`, { role: "admin" });
