@@ -13,6 +13,7 @@ import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { pagePath, type PageDetail } from "@wiki/shared";
 import { diffLines } from "diff";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { openFindBar } from "../editor/FindBar";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -36,7 +37,6 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
-  const [findOpen, setFindOpen] = useState(false);
 
   // 初回読み込み時だけサーバーの内容で下書きを作る（以降はローカルの編集を優先）
   useEffect(() => {
@@ -129,7 +129,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <Breadcrumb pageId={pageId} title={draft.title} />
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
           <Tooltip title="本文を検索・置換 (⌘F)">
-            <IconButton size="small" aria-label="本文を検索・置換" aria-pressed={findOpen} onClick={() => setFindOpen(!findOpen)}>
+            <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
               <SearchIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -173,12 +173,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
             inputProps={{ "aria-label": "タイトル" }}
             sx={{ mb: 2, p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
           />
-          <MarkdownEditor
-            value={draft.bodyMd}
-            onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))}
-            findOpen={findOpen}
-            onFindOpenChange={setFindOpen}
-          />
+          <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
       </Box>
 

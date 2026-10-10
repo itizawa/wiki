@@ -37,13 +37,7 @@ const extensions = [...editorExtensions, Placeholder.configure({ placeholder: "�
  * 本文のWYSIWYGエディタ。値はMarkdownでやり取りする。
  * 読み込んだだけでは onChange を呼ばない（記法の正規化だけで「未保存」にならないように）。
  */
-export function MarkdownEditor(props: {
-  value: string;
-  onChange: (md: string) => void;
-  /** 本文の検索と置換のバーを開いているか */
-  findOpen: boolean;
-  onFindOpenChange: (open: boolean) => void;
-}) {
+export function MarkdownEditor(props: { value: string; onChange: (md: string) => void }) {
   // エディタが最後に出した（または受け取った）Markdown。外からの差し替えと自分の編集を区別する
   const current = useRef(props.value);
   const onChange = useRef(props.onChange);
@@ -68,7 +62,7 @@ export function MarkdownEditor(props: {
 
   return (
     <Box>
-      <FindBar editor={editor} open={props.findOpen} onOpenChange={props.onFindOpenChange} />
+      <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
       <InsertMenu editor={editor} />
       <Box

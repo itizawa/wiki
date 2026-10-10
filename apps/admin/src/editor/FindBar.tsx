@@ -8,19 +8,37 @@ import InputBase from "@mui/material/InputBase";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { useEditorState, type Editor } from "@tiptap/react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Tooltip } from "../components/Tooltip";
 import { Muted } from "../components/ui";
 import { createFindPlugin, findKey, replaceAll, replaceCurrent, selectCurrent, setQuery, step } from "./findPlugin";
 
 const inputSx = { flex: 1, minWidth: 0, px: 1, height: 30, fontSize: "0.9rem", borderRadius: 1, border: 1, borderColor: "divider" } as const;
 
+// 開いているかどうか。ヘッダーのボタン（エディタの外）からも開けるよう、部品の外に持つ
+const listeners = new Set<() => void>();
+let isOpen = false;
+const onOpenChange = (next: boolean) => {
+  isOpen = next;
+  listeners.forEach((l) => l());
+};
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => void listeners.delete(l);
+};
+
+/** 検索バーを開く（すでに開いていれば、検索欄にフォーカスを戻す）。 */
+export function openFindBar() {
+  onOpenChange(true);
+  requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[role="search"] input')?.focus());
+}
+
 /**
- * 本文の検索と置換。⌘F（Ctrl+F）で開く。
+ * 本文の検索と置換。⌘F（Ctrl+F）か、ヘッダーの虫めがねボタンで開く。
  * 開いている間にもう一度 ⌘F を押すと、ブラウザ標準の検索に譲る。
  */
-export function FindBar(props: { editor: Editor; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { editor, open, onOpenChange } = props;
+export function FindBar({ editor }: { editor: Editor }) {
+  const open = useSyncExternalStore(subscribe, () => isOpen);
   const [query, setQueryText] = useState("");
   const [replacement, setReplacement] = useState("");
   const queryRef = useRef<HTMLInputElement>(null);
@@ -44,7 +62,10 @@ export function FindBar(props: { editor: Editor; open: boolean; onOpenChange: (o
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onOpenChange]);
+  }, [open]);
+
+  // 別のページへ移ったら閉じる
+  useEffect(() => () => onOpenChange(false), []);
 
   // 開いている間だけ、一致した箇所に印をつけるプラグインを足す
   useEffect(() => {
