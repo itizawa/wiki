@@ -13,9 +13,10 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
+import { checkWikiKey, isWikiIconUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
 import { useState, type ReactNode } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
+import { ImageUploader } from "../components/ImageUploader";
 import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
@@ -272,12 +273,12 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
   );
 }
 
-/** 画像の URL の入力欄の確かめ。空なら「画像なし」。 */
+/** 画像の URL の入力欄の確かめ。空なら「画像なし」。アップロードした画像のパス（`/images/{name}`）も通す。 */
 export function iconUrlProblem(value: string): string | null {
   const v = value.trim();
   if (v === "") return null;
   if (v.length > WIKI_ICON_URL_MAX) return `URL が長すぎます（${WIKI_ICON_URL_MAX}文字まで）`;
-  if (!isHttpUrl(v)) return "http:// か https:// で始まる URL を入れてください";
+  if (!isWikiIconUrl(v)) return "http:// か https:// で始まる URL を入れてください";
   return null;
 }
 
@@ -285,6 +286,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
   const qc = useQueryClient();
   const [name, setName] = useState(wiki.name);
   const [iconUrl, setIconUrl] = useState(wiki.iconUrl ?? "");
+  const [uploading, setUploading] = useState(false);
   const nextIcon = iconUrl.trim() === "" ? null : iconUrl.trim();
   const problem = iconUrlProblem(iconUrl);
   const changed = name.trim() !== wiki.name || nextIcon !== wiki.iconUrl;
@@ -301,7 +303,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim() && !problem && changed && !save.isPending) save.mutate();
+          if (name.trim() && !problem && changed && !uploading && !save.isPending) save.mutate();
         }}
       >
         <DialogTitle>表示名と画像</DialogTitle>
@@ -316,18 +318,14 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
               helperText={`公開サイトの名前になります。key（${wiki.key}）と公開 URL は変わりません。`}
               slotProps={{ htmlInput: { maxLength: 100 } }}
             />
-            <Box>
-              <TextField
-                label="画像の URL（任意）"
-                value={iconUrl}
-                onChange={(e) => setIconUrl(e.target.value)}
-                fullWidth
-                placeholder="https://example.com/icon.png"
-                error={problem !== null}
-                helperText={problem ?? "サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。空にすると頭文字に戻ります。"}
-                slotProps={{ htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false }, inputLabel: { shrink: true } }}
-              />
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1.5 }}>
+            <Stack component="fieldset" spacing={1.5} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
+              <Box component="legend" sx={{ p: 0, mb: 0.5 }}>
+                <Typography component="span" sx={{ fontWeight: 600 }}>
+                  画像（任意）
+                </Typography>
+                <Muted component="span" sx={{ display: "block" }}>サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。</Muted>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minHeight: 40 }}>
                 <Muted>見え方</Muted>
                 {/* 入力中の URL で、実際に出る形を見せる（読み込めなければ頭文字になる） */}
                 <WikiIcon key={nextIcon ?? ""} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
@@ -338,7 +336,21 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
                   </Button>
                 )}
               </Box>
-            </Box>
+              <ImageUploader wikiKey={wiki.key} onUploaded={setIconUrl} onUploadingChange={setUploading} />
+              <TextField
+                label="画像の URL"
+                value={iconUrl}
+                onChange={(e) => setIconUrl(e.target.value)}
+                fullWidth
+                placeholder="https://example.com/icon.png"
+                error={problem !== null}
+                helperText={
+                  problem ??
+                  "アップロードすると自動で入ります。ほかのサイトで公開されている画像の URL を入れることもできます。空にすると頭文字に戻ります。アップロードした画像は、URL を知っていればだれでも見られます。"
+                }
+                slotProps={{ htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false }, inputLabel: { shrink: true } }}
+              />
+            </Stack>
             {save.error && <Alert severity="error">{errorMessage(save.error)}</Alert>}
           </Stack>
         </DialogContent>
@@ -346,7 +358,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
           <Button variant="text" onClick={onClose}>
             変更しない
           </Button>
-          <Button type="submit" variant="contained" disabled={!name.trim() || problem !== null || !changed || save.isPending}>
+          <Button type="submit" variant="contained" disabled={!name.trim() || problem !== null || !changed || uploading || save.isPending}>
             保存する
           </Button>
         </DialogActions>
