@@ -23,7 +23,6 @@ import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
 import KeyboardDoubleArrowLeftIcon from "@mui/icons-material/KeyboardDoubleArrowLeft";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import SearchIcon from "@mui/icons-material/Search";
 import StarIcon from "@mui/icons-material/Star";
 import Alert from "@mui/material/Alert";
@@ -190,7 +189,6 @@ export function Sidebar(props: {
               <Typography variant="caption" sx={{ flex: 1, color: "text.secondary", fontWeight: 600, letterSpacing: "0.04em" }}>
                 ドキュメント
               </Typography>
-              {tree && <TreeSettings tree={tree} />}
               <Tooltip title="最上位に新しいページ">
                 <span>
                   <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
@@ -390,40 +388,6 @@ function SearchResults({ q, onNavigate }: { q: string; onNavigate?: () => void }
           </Box>
         </RouterLink>
       ))}
-    </>
-  );
-}
-
-/** ツリーそのものの設定（表示名と、公開サイトに出すか）。 */
-function TreeSettings({ tree }: { tree: StructureTree }) {
-  const qc = useQueryClient();
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const update = useMutation({
-    mutationFn: (input: Parameters<typeof api.updateTree>[1]) => api.updateTree(tree.id, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["structure"] }),
-  });
-  return (
-    <>
-      <Tooltip title={update.error ? errorMessage(update.error) : "ツリーの設定"}>
-        <IconButton size="small" aria-label="ツリーの設定" color={update.error ? "error" : "default"} onClick={(e) => setAnchor(e.currentTarget)}>
-          <MoreHorizIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Tooltip>
-      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
-        <MenuItem
-          onClick={() => {
-            setAnchor(null);
-            const name = prompt("表示名", tree.name);
-            if (name && name !== tree.name) update.mutate({ name });
-          }}
-        >
-          名前を変更
-        </MenuItem>
-        <MenuItem disabled={update.isPending} onClick={() => update.mutate({ isPublic: !tree.isPublic })}>
-          <Checkbox size="small" edge="start" checked={tree.isPublic} tabIndex={-1} disableRipple sx={{ p: 0, mr: 1 }} />
-          公開サイトに表示
-        </MenuItem>
-      </Menu>
     </>
   );
 }

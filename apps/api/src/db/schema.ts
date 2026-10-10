@@ -132,7 +132,9 @@ export const trees = pgTable("trees", {
   wikiId: wikiId(),
   /** URLに使用（'by-project' 'by-theme'）。wiki の中で重ならない */
   key: text("key").notNull(),
+  /** 使っていない（#55）。公開サイトでのツリーの名前は wiki の表示名 */
   name: text("name").notNull(),
+  /** 使っていない（#55）。ツリーは常に公開サイトに出す */
   isPublic: boolean("is_public").notNull().default(true),
   /** パンくず・既定ナビ用（1つだけ） */
   isPrimary: boolean("is_primary").notNull().default(false),

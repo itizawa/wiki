@@ -122,8 +122,6 @@ export const api = {
   history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
   commitDetail: (id: string) =>
     request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
-  updateTree: (id: string, input: { name?: string; isPublic?: boolean }) =>
-    request<TreeMeta>("PATCH", w(`/trees/${id}`), input),
 };
 
 export function errorMessage(err: unknown): string {

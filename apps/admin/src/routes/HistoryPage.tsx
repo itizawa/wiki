@@ -59,7 +59,6 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
   if (detail.isPending) return <Muted>読み込み中…</Muted>;
   if (detail.error) return <Alert severity="error">{errorMessage(detail.error)}</Alert>;
 
-  const treeName = (treeId: string) => structure?.trees.find((t) => t.id === treeId)?.name ?? treeId;
   const nodeName = (nodeId: string | null) => {
     if (nodeId === null) return "最上位";
     return structure?.pages[nodeId]?.title ?? nodeId;
@@ -81,40 +80,36 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
     }
   };
 
-  const byTree = new Map<string, StructureChange[]>();
-  for (const c of detail.data.changes) byTree.set(c.treeId, [...(byTree.get(c.treeId) ?? []), c]);
+  // ツリーは1本だけなので、ツリーごとに分けずに並べる
+  const changes = detail.data.changes;
 
   return (
     <Stack spacing={1.5}>
       <Typography variant="subtitle1" component="h3">
         {detail.data.commit.message}
       </Typography>
-      {byTree.size === 0 && <Muted>構造の変更はありません。</Muted>}
-      {[...byTree].map(([treeId, changes]) => (
-        <div key={treeId}>
-          <Typography variant="subtitle2" component="h4">
-            {treeName(treeId)}
-          </Typography>
-          <Box component="ul" sx={{ m: 0, pl: 2.25 }}>
-            {changes.map((c, i) => (
-              <Box
-                component="li"
-                key={i}
-                sx={{
-                  color:
-                    c.kind === "node_added" || c.kind === "tree_added"
-                      ? "success.main"
-                      : c.kind === "node_removed" || c.kind === "tree_removed"
-                        ? "error.main"
-                        : undefined,
-                }}
-              >
-                {describe(c)}
-              </Box>
-            ))}
-          </Box>
-        </div>
-      ))}
+      {changes.length === 0 ? (
+        <Muted>構造の変更はありません。</Muted>
+      ) : (
+        <Box component="ul" sx={{ m: 0, pl: 2.25 }}>
+          {changes.map((c, i) => (
+            <Box
+              component="li"
+              key={i}
+              sx={{
+                color:
+                  c.kind === "node_added" || c.kind === "tree_added"
+                    ? "success.main"
+                    : c.kind === "node_removed" || c.kind === "tree_removed"
+                      ? "error.main"
+                      : undefined,
+              }}
+            >
+              {describe(c)}
+            </Box>
+          ))}
+        </Box>
+      )}
     </Stack>
   );
 }

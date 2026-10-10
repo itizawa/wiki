@@ -71,7 +71,7 @@ function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
 /** 1つの wiki にツリーは1本（primary）だけを扱う。複数ツリー時代の行が残っていても参照しない。 */
 export async function getPrimaryTree(db: Db, wikiId: string): Promise<TreeMeta> {
   const [tree] = await db
-    .select({ id: trees.id, key: trees.key, name: trees.name, isPublic: trees.isPublic, isPrimary: trees.isPrimary })
+    .select({ id: trees.id, key: trees.key, isPrimary: trees.isPrimary })
     .from(trees)
     .where(and(eq(trees.wikiId, wikiId), eq(trees.isPrimary, true)));
   if (!tree) throw new Error("primary tree is missing; run bootstrapStructure first");

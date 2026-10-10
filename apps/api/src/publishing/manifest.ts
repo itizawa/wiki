@@ -68,16 +68,15 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
   const main = await getBranch(db, wiki.id, MAIN_BRANCH);
   const { state } = await loadCommit(db, main.headCommitId);
   const tree = await getPrimaryTree(db, wiki.id);
-  const trees: ManifestTree[] = tree.isPublic
-    ? [
-        {
-          key: tree.key,
-          name: tree.name,
-          isPrimary: true,
-          nodes: publicTreeNodes(state.trees[tree.id]?.nodes ?? [], publicIds),
-        },
-      ]
-    : [];
+  // ツリーは常に公開サイトに出す。ツリーの名前は wiki の表示名
+  const trees: ManifestTree[] = [
+    {
+      key: tree.key,
+      name: wiki.name,
+      isPrimary: true,
+      nodes: publicTreeNodes(state.trees[tree.id]?.nodes ?? [], publicIds),
+    },
+  ];
 
   const goneRows = await db
     .select({ id: pages.id })

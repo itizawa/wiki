@@ -43,6 +43,13 @@
       "when": 1791619141705,
       "tag": "0005_multi_wiki",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791628484020,
+      "tag": "0006_tree_always_public",
+      "breakpoints": true
     }
   ]
 }
