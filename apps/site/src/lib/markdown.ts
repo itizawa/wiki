@@ -1,4 +1,4 @@
-import { CALLOUT_LABELS, parseCalloutMarker } from "@wiki/shared";
+import { CALLOUT_LABELS, matchToggle, parseCalloutMarker, toggleStart } from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
 import { createHighlighter } from "shiki";
 
@@ -68,6 +68,7 @@ function plainText(tokens: Tokens.Generic[] | undefined): string {
  * - 内部リンク（/p/{id}...）は公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
  * - 本文中の生HTMLはエスケープする
  * - 見出しには id を振る
+ * - `+++` のトグルは <details> にする（中身も検索の索引と目次に入る）
  * - 言語の付いたコードブロックは色分けする（ライト・ダーク両方の色を持たせ、CSS で切り替える）
  */
 export function renderMarkdown(md: string, opts: RenderOptions): string {
@@ -80,6 +81,25 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
   const used = new Set<string>();
   const marked = new Marked({ gfm: true });
   marked.use({
+    // `+++ 見出し` 〜 `+++` のトグルを <details> として出す（packages/shared/src/toggle.ts）
+    extensions: [
+      {
+        name: "toggle",
+        level: "block",
+        start: (src: string) => {
+          const i = toggleStart(src);
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = matchToggle(src);
+          if (!m) return undefined;
+          return { type: "toggle", raw: m.raw, summary: m.summary, tokens: this.lexer.blockTokens(m.body, []) };
+        },
+        renderer(token) {
+          return `<details class="toggle"><summary>${escapeHtml(String(token.summary))}</summary>\n${this.parser.parse(token.tokens ?? [])}</details>\n`;
+        },
+      },
+    ],
     renderer: {
       heading(token: Tokens.Heading) {
         const id = headingId(plainText(token.tokens), used);
@@ -129,6 +149,7 @@ export function excerpt(md: string, length = 120): string {
   const text = md
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
+    .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/[#>*_`~-]/g, "")

@@ -1,17 +1,9 @@
-import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
-import ChecklistIcon from "@mui/icons-material/Checklist";
-import DataObjectIcon from "@mui/icons-material/DataObject";
-import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
-import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
-import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
-import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
-import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
-import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
-import TitleIcon from "@mui/icons-material/Title";
+import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, Minus, Quote, Table } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
 import { useState, type ReactNode } from "react";
+import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage } from "./LinkForm";
 import { createTrigger, TriggerMenu, useTriggerMatch, type FindTrigger } from "./trigger";
 
@@ -32,6 +24,12 @@ type Block = {
   run: (editor: Editor, ui: { openImageDialog: () => void }) => void;
 };
 
+const headingIcons = { 1: Heading1, 2: Heading2, 3: Heading3 } as const;
+const headingIcon = (level: 1 | 2 | 3) => {
+  const Icon = headingIcons[level];
+  return <Icon size={18} />;
+};
+
 const chain = (editor: Editor) => editor.chain().focus();
 
 const blocks: Block[] = [
@@ -40,25 +38,32 @@ const blocks: Block[] = [
       id: `h${level}`,
       label: `見出し${level}`,
       keywords: [`h${level}`, "heading", "midashi", "#".repeat(level)],
-      icon: <TitleIcon fontSize="small" />,
+      icon: headingIcon(level),
       run: (e) => chain(e).setHeading({ level }).run(),
     }),
   ),
-  { id: "bullet", label: "箇条書き", keywords: ["list", "ul", "bullet", "-"], icon: <FormatListBulletedIcon fontSize="small" />, run: (e) => chain(e).toggleBulletList().run() },
-  { id: "ordered", label: "番号つきリスト", keywords: ["list", "ol", "ordered", "number", "1."], icon: <FormatListNumberedIcon fontSize="small" />, run: (e) => chain(e).toggleOrderedList().run() },
-  { id: "task", label: "チェックリスト", keywords: ["todo", "task", "check", "[]"], icon: <ChecklistIcon fontSize="small" />, run: (e) => chain(e).toggleTaskList().run() },
-  { id: "quote", label: "引用", keywords: ["quote", "blockquote", ">"], icon: <FormatQuoteIcon fontSize="small" />, run: (e) => chain(e).setBlockquote().run() },
-  { id: "code", label: "コードブロック", keywords: ["code", "pre", "```"], icon: <DataObjectIcon fontSize="small" />, run: (e) => chain(e).setCodeBlock().run() },
-  { id: "table", label: "表", keywords: ["table", "hyou"], icon: <TableChartOutlinedIcon fontSize="small" />, run: (e) => chain(e).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-  { id: "image", label: "画像…", keywords: ["image", "img", "picture", "gazou"], icon: <ImageOutlinedIcon fontSize="small" />, run: (_e, ui) => ui.openImageDialog() },
+  { id: "bullet", label: "箇条書き", keywords: ["list", "ul", "bullet", "-"], icon: <List size={18} />, run: (e) => chain(e).toggleBulletList().run() },
+  { id: "ordered", label: "番号つきリスト", keywords: ["list", "ol", "ordered", "number", "1."], icon: <ListOrdered size={18} />, run: (e) => chain(e).toggleOrderedList().run() },
+  { id: "task", label: "チェックリスト", keywords: ["todo", "task", "check", "[]"], icon: <ListChecks size={18} />, run: (e) => chain(e).toggleTaskList().run() },
+  { id: "quote", label: "引用", keywords: ["quote", "blockquote", ">"], icon: <Quote size={18} />, run: (e) => chain(e).setBlockquote().run() },
+  { id: "code", label: "コードブロック", keywords: ["code", "pre", "```"], icon: <Braces size={18} />, run: (e) => chain(e).setCodeBlock().run() },
+  { id: "table", label: "表", keywords: ["table", "hyou"], icon: <Table size={18} />, run: (e) => chain(e).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+  { id: "image", label: "画像…", keywords: ["image", "img", "picture", "gazou"], icon: <Image size={18} />, run: (_e, ui) => ui.openImageDialog() },
   {
     id: "callout",
     label: "コールアウト（目立たせる注意書き）",
     keywords: ["callout", "note", "tip", "warning", "memo", "chuui"],
-    icon: <CampaignOutlinedIcon fontSize="small" />,
+    icon: <Megaphone size={18} />,
     run: (e) => chain(e).setBlockquote().setCalloutType("note").run(),
   },
-  { id: "hr", label: "区切り線", keywords: ["hr", "divider", "line", "---"], icon: <HorizontalRuleIcon fontSize="small" />, run: (e) => chain(e).setHorizontalRule().run() },
+  {
+    id: "toggle",
+    label: "トグル（クリックで開閉する折りたたみ）",
+    keywords: ["toggle", "details", "fold", "accordion", "oritatami", "+++"],
+    icon: <ChevronRight size={18} />,
+    run: (e) => insertToggle(e),
+  },
+  { id: "hr", label: "区切り線", keywords: ["hr", "divider", "line", "---"], icon: <Minus size={18} />, run: (e) => chain(e).setHorizontalRule().run() },
 ];
 
 /** 絞り込みの文字に当たるブロックの id を、メニューに出す順で返す。 */

@@ -1,18 +1,4 @@
-import AddIcon from "@mui/icons-material/Add";
-import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
-import ChecklistIcon from "@mui/icons-material/Checklist";
-import CodeIcon from "@mui/icons-material/Code";
-import DataObjectIcon from "@mui/icons-material/DataObject";
-import FormatBoldIcon from "@mui/icons-material/FormatBold";
-import FormatItalicIcon from "@mui/icons-material/FormatItalic";
-import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
-import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
-import FormatQuoteIcon from "@mui/icons-material/FormatQuote";
-import HorizontalRuleIcon from "@mui/icons-material/HorizontalRule";
-import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
-import LinkIcon from "@mui/icons-material/Link";
-import StrikethroughSIcon from "@mui/icons-material/StrikethroughS";
-import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
+import { Bold, Braces, ChevronRight, Code, Image, Italic, Link, List, ListChecks, ListOrdered, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -21,15 +7,20 @@ import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
+import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import { CodeBlockMenu } from "./CodeBlockMenu";
+import { ImageMenu } from "./ImageMenu";
+import { ImageUpload } from "./imageUpload";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { monoFont } from "../theme";
@@ -51,8 +42,12 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
   const onChange = useRef(props.onChange);
   onChange.current = props.onChange;
 
+  // 画像のアップロードに失敗したときの知らせ（貼り付け・ドロップは本文の外に結果を出す場所が無いので、ここに出す）
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [allExtensions] = useState(() => [...extensions, ImageUpload.configure({ onError: setUploadError })]);
+
   const editor = useEditor({
-    extensions,
+    extensions: allExtensions,
     content: props.value,
     contentType: "markdown",
     onUpdate: ({ editor }) => {
@@ -72,6 +67,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
     <Box>
       <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
+      <ImageMenu editor={editor} />
       <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
@@ -115,9 +111,40 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
               "& code": { bgcolor: "transparent", p: 0, fontSize: "0.875rem" },
               ...highlightSx,
             },
+            // トグル（@tiptap/extension-details の部品）。左の三角で開閉する
+            "& [data-type='details']": { display: "flex", alignItems: "flex-start", gap: 0.5, my: 1 },
+            "& [data-type='details'] > button": {
+              flexShrink: 0,
+              width: 24,
+              height: 24,
+              mt: "3px",
+              p: 0,
+              border: 0,
+              borderRadius: 0.5,
+              bgcolor: "transparent",
+              color: "text.secondary",
+              cursor: "pointer",
+              "&::before": { content: '"▶"', display: "inline-block", fontSize: "0.7rem", transition: "transform 120ms" },
+              "&:hover": { bgcolor: "action.hover" },
+            },
+            "& [data-type='details'].is-open > button::before": { transform: "rotate(90deg)" },
+            "& [data-type='details'] > div": { flex: 1, minWidth: 0 },
+            "& [data-type='details'] summary": { display: "block", fontWeight: 600, listStyle: "none" },
+            "& [data-type='details'] summary:empty::before": { content: '"トグルの見出し"', color: "text.disabled" },
+            "& [data-type='detailsContent'] > :first-of-type": { mt: 0.5 },
             "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
             "& img": { maxWidth: "100%", borderRadius: 1 },
             "& img.ProseMirror-selectednode": { outline: "2px solid", outlineColor: "primary.main" },
+            "& .image-uploading": {
+              display: "inline-block",
+              px: 1,
+              py: 0.25,
+              borderRadius: 1,
+              border: "1px dashed",
+              borderColor: "divider",
+              color: "text.secondary",
+              fontSize: "0.85rem",
+            },
             "& table": { borderCollapse: "collapse", my: 1.5, width: "100%", tableLayout: "fixed" },
             "& th, & td": { border: "1px solid", borderColor: "divider", px: 1, py: 0.5, verticalAlign: "top", textAlign: "left" },
             "& th": { bgcolor: "action.hover", fontWeight: 600 },
@@ -140,6 +167,11 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
         <TableMenu editor={editor} />
       </Box>
       <CodeBlockMenu editor={editor} />
+      <Snackbar open={uploadError !== null} autoHideDuration={8000} onClose={() => setUploadError(null)} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity="error" variant="filled" onClose={() => setUploadError(null)}>
+          {uploadError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
@@ -204,19 +236,19 @@ function SelectionMenu({ editor }: { editor: Editor }) {
         )}
         <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", gap: 0.25, p: 0.5 }}>
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
-            <FormatBoldIcon fontSize="small" />
+            <Bold size={18} />
           </Tool>
           <Tool label="斜体 (⌘I)" active={state.italic} onClick={() => chain().toggleItalic().run()}>
-            <FormatItalicIcon fontSize="small" />
+            <Italic size={18} />
           </Tool>
           <Tool label="取り消し線" active={state.strike} onClick={() => chain().toggleStrike().run()}>
-            <StrikethroughSIcon fontSize="small" />
+            <Strikethrough size={18} />
           </Tool>
           <Tool label="インラインコード" active={state.code} onClick={() => chain().toggleCode().run()}>
-            <CodeIcon fontSize="small" />
+            <Code size={18} />
           </Tool>
           <Tool label={state.link ? "リンクを編集" : "リンク"} active={state.link} onClick={() => setLinkEditing(true)}>
-            <LinkIcon fontSize="small" />
+            <Link size={18} />
           </Tool>
           <Sep />
           {([1, 2, 3] as const).map((level) => (
@@ -227,17 +259,17 @@ function SelectionMenu({ editor }: { editor: Editor }) {
             </Tool>
           ))}
           <Tool label="引用" active={state.blockquote} onClick={() => chain().toggleBlockquote().run()}>
-            <FormatQuoteIcon fontSize="small" />
+            <Quote size={18} />
           </Tool>
           <Sep />
           <Tool label="箇条書き" active={state.bulletList} onClick={() => chain().toggleBulletList().run()}>
-            <FormatListBulletedIcon fontSize="small" />
+            <List size={18} />
           </Tool>
           <Tool label="番号つきリスト" active={state.orderedList} onClick={() => chain().toggleOrderedList().run()}>
-            <FormatListNumberedIcon fontSize="small" />
+            <ListOrdered size={18} />
           </Tool>
           <Tool label="チェックリスト" active={state.taskList} onClick={() => chain().toggleTaskList().run()}>
-            <ChecklistIcon fontSize="small" />
+            <ListChecks size={18} />
           </Tool>
         </Stack>
       </Paper>
@@ -271,7 +303,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
           onClick={(e) => setAnchor(e.currentTarget)}
           sx={{ borderRadius: 1, width: 24, height: 24, color: "text.secondary" }}
         >
-          <AddIcon fontSize="small" />
+          <Plus size={18} />
         </IconButton>
       </Tooltip>
       <Menu
@@ -292,31 +324,37 @@ function InsertMenu({ editor }: { editor: Editor }) {
       >
         <MenuItem onClick={insert(() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
           <ListItemIcon>
-            <TableChartOutlinedIcon fontSize="small" />
+            <Table size={18} />
           </ListItemIcon>
           <ListItemText>表</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => setImageOpen(true))}>
           <ListItemIcon>
-            <ImageOutlinedIcon fontSize="small" />
+            <Image size={18} />
           </ListItemIcon>
           <ListItemText>画像…</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
-            <DataObjectIcon fontSize="small" />
+            <Braces size={18} />
           </ListItemIcon>
           <ListItemText>コードブロック</ListItemText>
         </MenuItem>
         <MenuItem onClick={insert(() => chain().setBlockquote().setCalloutType("note").run())}>
           <ListItemIcon>
-            <CampaignOutlinedIcon fontSize="small" />
+            <Megaphone size={18} />
           </ListItemIcon>
           <ListItemText>コールアウト（目立たせる注意書き）</ListItemText>
         </MenuItem>
+        <MenuItem onClick={insert(() => insertToggle(editor))}>
+          <ListItemIcon>
+            <ChevronRight size={18} />
+          </ListItemIcon>
+          <ListItemText>トグル（クリックで開閉する折りたたみ）</ListItemText>
+        </MenuItem>
         <MenuItem onClick={insert(() => chain().setHorizontalRule().run())}>
           <ListItemIcon>
-            <HorizontalRuleIcon fontSize="small" />
+            <Minus size={18} />
           </ListItemIcon>
           <ListItemText>区切り線</ListItemText>
         </MenuItem>
