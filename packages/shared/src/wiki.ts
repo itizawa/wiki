@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isGaPropertyId } from "./analytics";
+import { imageNameFromPath } from "./images";
 
 /**
  * wiki = ページ・ツリー（1本）・ルール・予約・設定のまとまり。wiki どうしは内容を共有しない。
@@ -10,7 +11,7 @@ export type Wiki = {
   key: string;
   /** 表示名。公開サイトの名前として使う。あとから変えられる */
   name: string;
-  /** 管理画面で wiki を見分けるための画像（アイコン）の URL。null なら表示名の頭文字を出す */
+  /** 管理画面で wiki を見分けるための画像（アイコン）。http(s) の URL か、アップロードした画像のパス（`/images/{name}`）。null なら表示名の頭文字を出す */
   iconUrl: string | null;
   /** 公開サイトのオリジン（末尾のスラッシュなし） */
   origin: string;
@@ -89,8 +90,21 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * wiki の画像として使える値か。http(s) の URL か、アップロードした画像のパス（`/images/{name}`）。
+ * それ以外の相対パスは通さない。
+ */
+export function isWikiIconUrl(value: string): boolean {
+  return isHttpUrl(value) || imageNameFromPath(value) !== null;
+}
+
 /** wiki の画像の URL。外すときは null。 */
-export const wikiIconUrl = z.string().trim().max(WIKI_ICON_URL_MAX).refine(isHttpUrl, { message: "icon url must be http(s)" }).nullable();
+export const wikiIconUrl = z
+  .string()
+  .trim()
+  .max(WIKI_ICON_URL_MAX)
+  .refine(isWikiIconUrl, { message: "icon url must be http(s) or an uploaded image path" })
+  .nullable();
 
 export const createWikiInput = z.object({ key: wikiKeySchema, name: wikiName, iconUrl: wikiIconUrl.optional() });
 export type CreateWikiInput = z.infer<typeof createWikiInput>;

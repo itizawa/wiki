@@ -146,9 +146,12 @@ export const api = {
   saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<SavePageDraftResult>("PUT", w(`/pages/${id}/draft`), input),
   discardDraft: (id: string) => request<{ draft: null }>("DELETE", w(`/pages/${id}/draft`)),
-  /** 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る */
-  uploadImage: async (file: Blob): Promise<{ url: string }> => {
-    const res = await fetch(`/api${w("/images")}`, {
+  /**
+   * 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る。
+   * wiki の外の画面（wiki の管理）から使うときは、どの wiki の経路で送るかを key で渡す
+   */
+  uploadImage: async (file: Blob, key: string = wikiKey): Promise<{ url: string }> => {
+    const res = await fetch(`/api/admin/w/${encodeURIComponent(key)}/images`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": file.type || "application/octet-stream" },
