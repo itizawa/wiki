@@ -14,6 +14,7 @@ import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { screenLink } from "../lib/wiki";
+import { FULL_HEIGHT } from "./WikiLayout";
 import { formatDateTime, formatTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
@@ -167,7 +168,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
       {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
-      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column" }}>
         <Box
           component="header"
           sx={{
