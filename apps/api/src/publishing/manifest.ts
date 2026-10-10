@@ -1,6 +1,7 @@
 import {
   childrenByParent,
   pagePath,
+  resolveTheme,
   unlistedPath,
   type ManifestPage,
   type ManifestTree,
@@ -77,7 +78,7 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
     .where(and(eq(pages.wikiId, wiki.id), isNotNull(pages.deletedAt), isNotNull(pages.firstPublishedAt)));
   const gone = goneRows.map((r) => r.id).sort();
 
-  return { key: wiki.key, name: wiki.name, headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
+  return { key: wiki.key, name: wiki.name, theme: resolveTheme(wiki.theme), headCommitId: main.headCommitId, pages: publicPages, unlisted, trees, gone };
 }
 
 /**

@@ -5,6 +5,12 @@
     {
       "key": "notes",
       "name": "開発ノート",
+      "theme": {
+        "accentLight": "#00716b",
+        "accentDark": "#4fd1c5",
+        "logo": "/images/notes0logo0sample0000000.png",
+        "favicon": "/images/notes0favicon0sample0000.webp"
+      },
       "headCommitId": "00000000-0000-0000-0000-000000000001",
       "pages": [
         {

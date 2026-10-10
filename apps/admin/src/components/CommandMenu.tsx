@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Replace, Search, Users, Workflow } from "lucide-react";
+import { ArrowLeftRight, Calendar, Palette, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Replace, Search, Users, Workflow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -59,7 +59,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const templates = useQuery({ queryKey: ["templates"], queryFn: api.listTemplates, enabled: open });
   const fromTemplate = useCreateFromTemplate();
 
-  const { wiki, wikis } = useWiki();
+  const { wiki, wikis, role } = useWiki();
   // メニューを閉じてから実行する操作
   const closing = (run: () => void) => () => {
     onClose();
@@ -105,6 +105,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
     { id: "members", label: "「メンバー」を開く", keywords: ["members", "invite", "users"], icon: <Users size={18} />, run: go("/w/$wikiKey/members") },
+    // 外観は管理者だけが開ける
+    ...(role === "admin"
+      ? [{ id: "appearance", label: "「外観」を開く", keywords: ["appearance", "theme", "color", "logo", "favicon"], icon: <Palette size={18} />, run: go("/w/$wikiKey/appearance") }]
+      : []),
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis
       .filter((w) => w.key !== wiki.key)

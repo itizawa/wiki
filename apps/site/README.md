@@ -20,9 +20,9 @@ dist/
 
 `worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404 になる。
 
-検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。
+検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。アクセント色（`--accent`）・ロゴ・ファビコンも wiki ごとのテーマ（マニフェストの `theme`）から出し分ける（`src/layouts/Base.astro`）。
 
-`build:sample` の検査は、限定公開の漏れに加えて、ある wiki の内容が別の wiki の出力に混ざっていないことも確かめる。
+`build:sample` の検査は、限定公開の漏れに加えて、ある wiki の内容（テーマを含む）が別の wiki の出力に混ざっていないことも確かめる。
 
 ## URL
 

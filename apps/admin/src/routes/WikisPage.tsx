@@ -18,7 +18,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { checkWikiKey, isHttpUrl, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
+import { checkWikiKey, isHttpUrl, SITE_NAME_MAX, WIKI_ICON_URL_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
 import { useState } from "react";
 import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
@@ -204,7 +204,7 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
           onChange={(e) => setName(e.target.value)}
           placeholder="例：開発ノート"
           helperText="公開サイトの名前になります。あとから変えられます。"
-          slotProps={{ htmlInput: { maxLength: 100 }, inputLabel: { shrink: true } }}
+          slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX }, inputLabel: { shrink: true } }}
           sx={{ maxWidth: 360 }}
         />
         <Box>
@@ -307,7 +307,7 @@ function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () 
               autoFocus
               fullWidth
               helperText={`公開サイトの名前になります。key（${wiki.key}）と公開 URL は変わりません。`}
-              slotProps={{ htmlInput: { maxLength: 100 } }}
+              slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX } }}
             />
             <Box>
               <TextField

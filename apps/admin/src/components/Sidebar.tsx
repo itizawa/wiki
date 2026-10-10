@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Search, Settings, ShieldUser, Star, Users, Workflow } from "lucide-react";
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Palette, Plus, Search, Settings, ShieldUser, Star, Users, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -77,6 +77,7 @@ export function Sidebar(props: {
   const navigate = useNavigate();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
+  const { role } = useWiki();
 
   const refreshStructure = () => {
     void qc.invalidateQueries({ queryKey: ["structure"] });
@@ -154,6 +155,11 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/members" icon={<Users size={18} />} onClick={props.onNavigate}>
           メンバー
         </NavItem>
+        {role === "admin" && (
+          <NavItem to="/w/$wikiKey/appearance" icon={<Palette size={18} />} onClick={props.onNavigate}>
+            外観
+          </NavItem>
+        )}
 
         {structure.data && <StarredPages pages={structure.data.pages} onNavigate={props.onNavigate} />}
 

@@ -20,7 +20,7 @@ if (!process.env.MANIFEST_PATH) {
   // API より先に公開サイトがビルドされたとき（デプロイの順番、古い API を見るプレビュー）に失敗させないため
   if (!Array.isArray(manifest.wikis)) {
     const { generatedAt, contentHash, ...content } = manifest;
-    manifest = { generatedAt, contentHash, wikis: [{ key: "wiki", name: process.env.SITE_NAME ?? "wiki", ...content }] };
+    manifest = { generatedAt, contentHash, wikis: [{ key: "wiki", name: "wiki", ...content }] };
     console.log("manifest: the API returned the single-wiki format; building it as the first wiki");
   }
   await writeFile(".manifest.json", JSON.stringify(manifest));

@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
+import { AppearancePage } from "./routes/AppearancePage";
 import { Home, Root } from "./routes/Layout";
 import { CalendarPage } from "./routes/CalendarPage";
 import { EditorPage } from "./routes/EditorPage";
@@ -94,6 +95,8 @@ const templateEditorRoute = createRoute({
 });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
+// 公開サイトの外観（管理者だけ）
+const appearanceRoute = createRoute({ getParentRoute: () => wikiRoute, path: "appearance", component: padded(AppearancePage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -118,7 +121,7 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   ownersRoute,
   inviteRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, membersRoute, appearanceRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
   legacyScreen("/rules", "/w/$wikiKey/rules"),

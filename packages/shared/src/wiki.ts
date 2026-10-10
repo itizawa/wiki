@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SITE_NAME_MAX } from "./theme";
 import type { WikiRole } from "./users";
 
 /**
@@ -62,7 +63,8 @@ export function isValidWikiKey(key: string): boolean {
 
 export const wikiKeySchema = z.string().refine(isValidWikiKey, { message: "invalid wiki key" });
 
-const wikiName = z.string().trim().min(1).max(100);
+/** 表示名は公開サイトの名前（ヘッダー・タイトル・RSS・フッター）になる */
+const wikiName = z.string().trim().min(1).max(SITE_NAME_MAX);
 
 export const WIKI_ICON_URL_MAX = 2048;
 

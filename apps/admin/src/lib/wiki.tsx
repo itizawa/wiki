@@ -60,8 +60,16 @@ export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・検索・カレンダー・ルール・テンプレート・履歴・メンバー）へのリンク。 */
-export type WikiScreen = "/w/$wikiKey" | "/w/$wikiKey/search" | "/w/$wikiKey/calendar" | "/w/$wikiKey/rules" | "/w/$wikiKey/templates" | "/w/$wikiKey/history" | "/w/$wikiKey/members";
+/** 開いている wiki の画面（一覧・検索・カレンダー・ルール・テンプレート・履歴・メンバー・外観）へのリンク。 */
+export type WikiScreen =
+  | "/w/$wikiKey"
+  | "/w/$wikiKey/search"
+  | "/w/$wikiKey/calendar"
+  | "/w/$wikiKey/rules"
+  | "/w/$wikiKey/templates"
+  | "/w/$wikiKey/history"
+  | "/w/$wikiKey/members"
+  | "/w/$wikiKey/appearance";
 export function screenLink<T extends WikiScreen>(to: T) {
   return { to, params: { wikiKey: currentWikiKey() } } as const;
 }
