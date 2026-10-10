@@ -1,6 +1,4 @@
-import { ChartColumn } from "lucide-react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Popover from "@mui/material/Popover";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -10,50 +8,39 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import type { PageViews as PageViewsData } from "@wiki/shared";
-import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { formatDay } from "../lib/format";
 import { measuredSinceLabel, viewCountLabel, VIEWS_NOTE } from "../lib/views";
 import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
 
-const PANEL_ID = "page-views";
-
 /**
- * 記事の画面の「閲覧」。タイトルの下（「版履歴を見る」の隣）に合計を出し、押すと直近30日の数と日別の推移を開く。
+ * 記事の「閲覧数」。編集画面の「…」メニューに合計を出し、押すと直近30日の数と日別の推移を開く。
  * 数えていない（公開していない）記事は「—」。
  */
-export function PageViewsButton({ pageId, counted }: { pageId: string; counted: boolean }) {
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+export function usePageViews(pageId: string, counted: boolean) {
   const views = useQuery({ queryKey: ["views", pageId], queryFn: () => api.pageViews(pageId) });
-  const open = anchor !== null;
   const total = views.data && (views.data.total > 0 || counted) ? views.data.total : undefined;
+  /** 「171回」「—」。読み込み中は「…」 */
+  const totalLabel = views.data ? `${viewCountLabel(total, counted)}${total !== undefined ? "回" : ""}` : "…";
+  return { views, totalLabel };
+}
 
+/** 「閲覧数」を押して開く中身。`anchorEl` の下に出す */
+export function PageViewsPopover(props: { views: ReturnType<typeof usePageViews>["views"]; counted: boolean; anchorEl: HTMLElement | null; open: boolean; onClose: () => void }) {
+  const { views } = props;
   return (
-    <>
-      <Button
-        color="inherit"
-        startIcon={<ChartColumn size={18} />}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? PANEL_ID : undefined}
-        onClick={(e) => setAnchor(open ? null : e.currentTarget)}
-        sx={{ color: "text.secondary" }}
-      >
-        閲覧 {views.data ? viewCountLabel(total, counted) : "…"}
-        {total !== undefined && "回"}
-      </Button>
-      <Popover
-        open={open}
-        anchorEl={anchor}
-        onClose={() => setAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        slotProps={{ paper: { id: PANEL_ID, "aria-label": "閲覧数", sx: { width: 360, maxWidth: "calc(100vw - 32px)", p: 2, mt: 0.5 } } }}
-      >
-        {views.error && <Muted color="error">{errorMessage(views.error)}</Muted>}
-        {views.data && <PageViewsPanel data={views.data} counted={counted} />}
-      </Popover>
-    </>
+    <Popover
+      open={props.open}
+      anchorEl={props.anchorEl}
+      onClose={props.onClose}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      transformOrigin={{ vertical: "top", horizontal: "right" }}
+      slotProps={{ paper: { "aria-label": "閲覧数", sx: { width: 360, maxWidth: "calc(100vw - 32px)", p: 2, mt: 0.5 } } }}
+    >
+      {views.error && <Muted color="error">{errorMessage(views.error)}</Muted>}
+      {views.data && <PageViewsPanel data={views.data} counted={props.counted} />}
+    </Popover>
   );
 }
 

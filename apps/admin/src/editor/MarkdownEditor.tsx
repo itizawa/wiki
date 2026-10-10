@@ -30,6 +30,7 @@ import { highlightSx } from "./highlight";
 import { OUTLINE_SCROLL_MARGIN } from "./Outline";
 import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
+import { TitleBridge } from "./titleBridge";
 
 const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
 
@@ -37,15 +38,32 @@ const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.
  * 本文のWYSIWYGエディタ。値はMarkdownでやり取りする。
  * 読み込んだだけでは onChange を呼ばない（記法の正規化だけで「未保存」にならないように）。
  */
-export function MarkdownEditor(props: { value: string; onChange: (md: string) => void; onEditor?: (editor: Editor) => void }) {
+export function MarkdownEditor(props: {
+  value: string;
+  onChange: (md: string) => void;
+  onEditor?: (editor: Editor) => void;
+  /** 本文の先頭から上へ出ようとした（先頭の行の ↑、いちばん先頭の Backspace）。上にタイトルがある画面が、そこへフォーカスを移す */
+  onLeaveTop?: () => void;
+}) {
   // エディタが最後に出した（または受け取った）Markdown。外からの差し替えと自分の編集を区別する
   const current = useRef(props.value);
   const onChange = useRef(props.onChange);
   onChange.current = props.onChange;
+  const onLeaveTop = useRef(props.onLeaveTop);
+  onLeaveTop.current = props.onLeaveTop;
 
   // 画像のアップロードに失敗したときの知らせ（貼り付け・ドロップは本文の外に結果を出す場所が無いので、ここに出す）
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [allExtensions] = useState(() => [...extensions, ImageUpload.configure({ onError: setUploadError })]);
+  const [allExtensions] = useState(() => [
+    ...extensions,
+    ImageUpload.configure({ onError: setUploadError }),
+    TitleBridge.configure({
+      onLeaveTop: () => {
+        onLeaveTop.current?.();
+        return !!onLeaveTop.current;
+      },
+    }),
+  ]);
 
   const editor = useEditor({
     extensions: allExtensions,
