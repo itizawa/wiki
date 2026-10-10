@@ -9,6 +9,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { StarButton } from "../components/StarButton";
 import { Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { workflowLabel } from "../components/WorkflowPanel";
 import { api, errorMessage } from "../lib/api";
@@ -39,6 +40,7 @@ export function PagesPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell padding="none" sx={{ width: 36 }} />
                 <TableCell>タイトル</TableCell>
                 <TableCell>ID</TableCell>
                 <TableCell>状態</TableCell>
@@ -48,6 +50,9 @@ export function PagesPage() {
             <TableBody>
               {pages.data.pages.map((p) => (
                 <TableRow key={p.id} hover>
+                  <TableCell padding="none" sx={{ width: 36, pl: 0.5 }}>
+                    <StarButton pageId={p.id} title={p.title} />
+                  </TableCell>
                   <TableCell>
                     <RouterLink {...pageLink(p.id)}>
                       {p.title}

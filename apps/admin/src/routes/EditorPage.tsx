@@ -1,4 +1,4 @@
-import { History, Search, Star } from "lucide-react";
+import { History, Search } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -17,13 +17,13 @@ import { openFindBar } from "../editor/FindBar";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { screenLink } from "../lib/wiki";
-import { useStars } from "../lib/stars";
 import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
+import { StarButton } from "../components/StarButton";
 import { Tooltip } from "../components/Tooltip";
 import { WorkflowPanel } from "../components/WorkflowPanel";
 import { Mono, Muted, Section, StatusChip } from "../components/ui";
@@ -402,19 +402,5 @@ function Diff({ before, after }: { before: string; after: string }) {
         </Box>
       ))}
     </Box>
-  );
-}
-
-/** スターの付け外し。付いているときは塗りつぶした星にし、ラベルでも状態を伝える。 */
-function StarButton({ pageId }: { pageId: string }) {
-  const { ids, toggle } = useStars();
-  const starred = ids.includes(pageId);
-  const label = starred ? "スターを外す" : "スターを付ける（サイドバーの上に出す）";
-  return (
-    <Tooltip title={label}>
-      <IconButton size="small" aria-label={label} aria-pressed={starred} onClick={() => toggle(pageId)}>
-        {starred ? <Box component={Star} size={18} fill="currentColor" sx={{ color: "warning.main" }} /> : <Star size={18} />}
-      </IconButton>
-    </Tooltip>
   );
 }

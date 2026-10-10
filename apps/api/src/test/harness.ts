@@ -71,7 +71,7 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
 export async function addLegacyTree(client: PGlite, key = "by-theme") {
   const id = `t_${key}`;
   await client.query(
-    `insert into trees (id, wiki_id, key, name, is_public, is_primary) select $1, id, $2, $3, true, false from wikis where key = 'wiki'`,
+    `insert into trees (id, wiki_id, key, name, is_primary) select $1, id, $2, $3, false from wikis where key = 'wiki'`,
     [id, key, key],
   );
   const snap = await client.query<{ id: string }>(`insert into tree_snapshots (tree_id) values ($1) returning id`, [id]);

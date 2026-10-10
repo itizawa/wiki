@@ -6,6 +6,7 @@ import { CalendarPage } from "./routes/CalendarPage";
 import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { PagesPage } from "./routes/PagesPage";
+import { FIRST_WIKI } from "./lib/wiki";
 import { RulesPage } from "./routes/RulesPage";
 import { SearchPage } from "./routes/SearchPage";
 import { WikiLayout } from "./routes/WikiLayout";
@@ -66,7 +67,6 @@ const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules",
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
-const FIRST_WIKI = "wiki";
 const legacyEditorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/pages/$pageId",

@@ -31,6 +31,9 @@ export type SiteData = {
   primaryTree: ManifestTree | undefined;
 };
 
+/** ツリー（ページの階層）の一覧ページの呼び名。ツリーは1本なので、名前は固定にしている。 */
+export const TREE_LABEL = "ページ一覧";
+
 export async function allWikis(): Promise<WikiManifest[]> {
   return (await loadManifest()).wikis;
 }
