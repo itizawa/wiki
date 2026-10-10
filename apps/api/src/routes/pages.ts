@@ -7,14 +7,16 @@ import {
   type PageDetail,
   type PageDraft,
   type PageSummary,
+  type SavePageDraftResult,
   type PageVersion,
   type SavePageInput,
   type SetWorkflowInput,
 } from "@wiki/shared";
-import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageVersions, scheduledActions } from "../db/schema";
+import { oauthClients, oauthGrants, pageDrafts, pages, pageVersions, scheduledActions } from "../db/schema";
+import { createVersion, isOwnAutoVersion, keepVersion, ownDraft, replaceLinks } from "../pages/versions";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
@@ -48,6 +50,7 @@ const toVersion = (v: VersionRow): PageVersion => ({
   title: v.title,
   bodyMd: v.bodyMd,
   authorType: v.authorType,
+  keep: v.keep,
   createdAt: v.createdAt.toISOString(),
 });
 
@@ -57,8 +60,6 @@ const toDraft = (d: DraftRow): PageDraft => ({
   bodyMd: d.bodyMd,
   updatedAt: d.updatedAt.toISOString(),
 });
-
-const ownDraft = (pageId: string, email: string) => and(eq(pageDrafts.pageId, pageId), eq(pageDrafts.authorEmail, email));
 
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
 export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
@@ -75,28 +76,6 @@ export async function getDetail(db: Db, wikiId: string, id: string): Promise<Pag
   const page = await findLivePage(db, wikiId, id);
   const [head] = await db.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
   return { ...toSummary(page), head: toVersion(head!) };
-}
-
-/** 本文中の `/p/{id}` 形式の内部リンクを抽出する。 */
-export function extractPageLinks(bodyMd: string): string[] {
-  const ids = new Set<string>();
-  for (const m of bodyMd.matchAll(/\/p\/([0-9a-z]{10})(?![0-9a-z])/g)) ids.add(m[1]!);
-  return [...ids];
-}
-
-/** 別の wiki のページへのリンクは外部リンクと同じ扱いにし、ここには残さない。 */
-async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyMd: string) {
-  await db.delete(pageLinks).where(eq(pageLinks.fromPageId, pageId));
-  const linked = extractPageLinks(bodyMd).filter((id) => id !== pageId);
-  const foreign = new Set(
-    linked.length === 0
-      ? []
-      : (await db.select({ id: pages.id }).from(pages).where(and(inArray(pages.id, linked), ne(pages.wikiId, wikiId)))).map((p) => p.id),
-  );
-  const targets = linked.filter((id) => !foreign.has(id));
-  if (targets.length > 0) {
-    await db.insert(pageLinks).values(targets.map((toPageId) => ({ fromPageId: pageId, toPageId })));
-  }
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
@@ -127,8 +106,8 @@ export async function createPage(
 }
 
 /**
- * 本文の保存（楽観ロック：baseVersionId が head と一致する場合のみ）。トランザクション内で呼ぶ。
- * `canEdit` はページを行ロックしたあとに呼び、false ならそのページは無いものとして扱う。
+ * 本文の保存（楽観ロック：baseVersionId が head と一致する場合のみ）。人（か外部のアプリ）が操作して作る、残す版になる。
+ * トランザクション内で呼ぶ。
  */
 export async function savePage(
   tx: Db,
@@ -137,38 +116,26 @@ export async function savePage(
   input: SavePageInput,
   opts: {
     oauthGrantId?: string;
-    /** 版として残したら要らなくなる下書きの持ち主（管理画面から保存した人） */
-    draftOwner?: string;
+    /** 管理画面から保存した人。版の作者になり、版になったらこの人の下書きを消す */
+    authorEmail?: string;
   } = {},
 ): Promise<void> {
   const page = await findLivePage(tx, wikiId, id, true);
-  // 楽観ロック：別タブ等で先に保存されていたら保存しない
+  // 楽観ロック：別タブ等で先に保存されていたら保存しない。自分の下書きからワーカーが作った版は、先に保存されたうちに入れない
   if (page.headVersionId !== input.baseVersionId) {
-    throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
-      headVersionId: page.headVersionId,
-    });
+    const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+    if (!opts.authorEmail || !isOwnAutoVersion(head!, opts.authorEmail, input.baseVersionId)) {
+      throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
+        headVersionId: page.headVersionId,
+      });
+    }
   }
-  // 版として残したら、自分の下書きは要らない（変更が無く版を作らないときも、下書きは head と同じなので消す）
-  if (opts.draftOwner) await tx.delete(pageDrafts).where(ownDraft(id, opts.draftOwner));
-  const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
-  if (head!.title === input.title && head!.bodyMd === input.bodyMd) return;
-
-  const [version] = await tx
-    .insert(pageVersions)
-    .values({
-      pageId: id,
-      baseVersionId: input.baseVersionId,
-      title: input.title,
-      bodyMd: input.bodyMd,
-      authorType: "human",
-      oauthGrantId: opts.oauthGrantId ?? null,
-    })
-    .returning();
-  await tx
-    .update(pages)
-    .set({ title: input.title, headVersionId: version!.id, updatedAt: new Date() })
-    .where(eq(pages.id, id));
-  await replaceLinks(tx, wikiId, id, input.bodyMd);
+  await createVersion(tx, page, input, {
+    keep: true,
+    authorEmail: opts.authorEmail ?? null,
+    oauthGrantId: opts.oauthGrantId,
+    draftOwner: opts.authorEmail,
+  });
 }
 
 /** ページの削除（ツリーから外し、予約を取り消す）。トランザクション内で呼ぶ。 */
@@ -203,6 +170,8 @@ export async function setWorkflow(tx: Db, wikiId: string, id: string, input: Set
       .from(pageVersions)
       .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, id)));
     if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
+    // 承認した版は、ルールが予約枠に入れる。自動でできた版でも間引かない
+    await keepVersion(tx, input.versionId);
   }
   // 一覧の並び（updated_at）は変えない。approved_at は予約の created_at と比べるので、同じDBの時計で入れる
   await tx
@@ -245,7 +214,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, savePageInput);
-    await db.transaction((tx) => savePage(tx, wikiId, id, input, { draftOwner: c.get("adminEmail") }));
+    await db.transaction((tx) => savePage(tx, wikiId, id, input, { authorEmail: c.get("adminEmail") }));
     return c.json(await getDetail(db, wikiId, id));
   })
   .get("/:id/draft", async (c) => {
@@ -260,29 +229,33 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const email = c.get("adminEmail");
     const input = await parseJson(c, savePageDraftInput);
-    const draft = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const page = await findLivePage(tx, c.get("wiki").id, id, true);
-      // 別のタブや人が先に版を作っていたら、その版を知らないまま書いた下書きでは上書きしない
-      if (page.headVersionId !== input.baseVersionId) {
+      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
+      // 別のタブや人が先に版を作っていたら、その版を知らないまま書いた下書きでは上書きしない。
+      // 自分の下書きからワーカーが作った版は別で、開いたままの画面で続きを打てるよう、head をもとにした下書きとして受け取る
+      if (page.headVersionId !== input.baseVersionId && !isOwnAutoVersion(head!, email, input.baseVersionId)) {
         throw new HttpError(409, "version_conflict", "this page was saved elsewhere; reload to continue", {
           headVersionId: page.headVersionId,
         });
       }
       // head と同じ内容に戻したら、下書きは無いのと同じ
-      const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
       if (head!.title === input.title && head!.bodyMd === input.bodyMd) {
         await tx.delete(pageDrafts).where(ownDraft(id, email));
-        return null;
+        return { draft: null, headVersionId: page.headVersionId };
       }
-      const values = { baseVersionId: input.baseVersionId, title: input.title, bodyMd: input.bodyMd, updatedAt: new Date() };
+      const now = new Date();
+      const values = { baseVersionId: page.headVersionId, title: input.title, bodyMd: input.bodyMd, updatedAt: now };
+      // 始めた時刻（created_at）は、行を新しく作るときだけ入れる。上書きでは変えない
       const [row] = await tx
         .insert(pageDrafts)
-        .values({ pageId: id, authorEmail: email, ...values })
+        .values({ pageId: id, authorEmail: email, createdAt: now, ...values })
         .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.authorEmail], set: values })
         .returning();
-      return toDraft(row!);
+      return { draft: toDraft(row!), headVersionId: page.headVersionId };
     });
-    return c.json({ draft });
+    // いまの head も返す。ワーカーが版を作っていたら、画面はここで気づいて追いかける
+    return c.json(result satisfies SavePageDraftResult);
   })
   .delete("/:id/draft", async (c) => {
     const { db } = c.get("deps");
@@ -324,6 +297,7 @@ export const pageRoutes = new Hono<AppEnv>()
         baseVersionId: pageVersions.baseVersionId,
         title: pageVersions.title,
         authorType: pageVersions.authorType,
+        keep: pageVersions.keep,
         createdAt: pageVersions.createdAt,
         // 外部のアプリ（MCP）から保存した版なら、そのアプリの名前
         via: oauthClients.name,

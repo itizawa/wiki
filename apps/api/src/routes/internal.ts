@@ -3,6 +3,7 @@ import { recordViewInput } from "@wiki/shared";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
+import { promoteDrafts } from "../pages/versions";
 import { requestBuild } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
@@ -41,6 +42,10 @@ export const exportRoutes = new Hono<AppEnv>().use("*", requireInternalToken).ge
 /** /internal/*：Cron Triggers のワーカーと、公開サイトの Worker（閲覧数）から呼ぶ */
 export const internalRoutes = new Hono<AppEnv>()
   .use("*", requireInternalToken)
+  // 編集が一段落した下書きを版にする
+  .post("/drafts/promote", async (c) => {
+    return c.json(await promoteDrafts(c.get("deps").db));
+  })
   .post("/scheduled/run", async (c) => {
     return c.json(await runDueActions(c.get("deps").db));
   })

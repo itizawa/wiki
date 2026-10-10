@@ -165,3 +165,69 @@ describe("0008_drop_tree_is_public", () => {
     expect(rows.rows.map((r) => r.name)).toEqual(["ブログ", "テーマ別"]);
   });
 });
+
+describe("0013_auto_version", () => {
+  const before = [
+    "0000_phase1_foundation",
+    "0001_phase2_publishing",
+    "0002_pages_only",
+    "0003_drop_slug",
+    "0004_rule_engine",
+    "0005_multi_wiki",
+    "0006_wiki_icon",
+    "0007_page_stars",
+    "0008_drop_tree_is_public",
+    "0009_page_drafts",
+    "0010_page_templates",
+    "0011_oauth",
+    "0012_page_views",
+  ];
+
+  it("keeps every existing version, and starts existing drafts at their last autosave", async () => {
+    const db = (client = new PGlite());
+    for (const tag of before) await runMigration(db, tag);
+    // すでにある版は、すべて人がボタンを押して作ったもの。下書きは、最後に保存した時刻しか分からない
+    await db.exec(`
+      insert into pages (id, wiki_id, title, head_version_id)
+        select 'pageaaaaa1', id, 'one', '00000000-0000-0000-0000-0000000000a2' from wikis where key = 'wiki';
+      insert into page_versions (id, page_id, base_version_id, title, body_md, author_type, created_at) values
+        ('00000000-0000-0000-0000-0000000000a1', 'pageaaaaa1', null, 'one', 'v1', 'human', '2026-01-01T00:00:00Z'),
+        ('00000000-0000-0000-0000-0000000000a2', 'pageaaaaa1', '00000000-0000-0000-0000-0000000000a1', 'one', 'v2', 'ai', '2026-01-02T00:00:00Z');
+      insert into page_drafts (page_id, author_email, base_version_id, title, body_md, updated_at) values
+        ('pageaaaaa1', 'a@example.com', '00000000-0000-0000-0000-0000000000a2', 'one', 'draft a', '2026-02-03T04:05:06Z'),
+        ('pageaaaaa1', 'b@example.com', '00000000-0000-0000-0000-0000000000a1', '', 'draft b', '2026-03-04T05:06:07Z');
+    `);
+
+    await runMigration(db, "0013_auto_version");
+
+    const versions = await db.query<{ keep: boolean; author_email: string | null; body_md: string; base_version_id: string | null; created_at: Date }>(
+      `select keep, author_email, body_md, base_version_id, created_at from page_versions order by created_at`,
+    );
+    expect(versions.rows.map((v) => [v.body_md, v.keep, v.author_email, v.base_version_id, v.created_at.toISOString()])).toEqual([
+      ["v1", true, null, null, "2026-01-01T00:00:00.000Z"],
+      ["v2", true, null, "00000000-0000-0000-0000-0000000000a1", "2026-01-02T00:00:00.000Z"],
+    ]);
+    const drafts = await db.query<{ author_email: string; title: string; body_md: string; created_at: Date; updated_at: Date }>(
+      `select author_email, title, body_md, created_at, updated_at from page_drafts order by author_email`,
+    );
+    expect(drafts.rows.map((d) => [d.author_email, d.title, d.body_md, d.created_at.toISOString(), d.updated_at.toISOString()])).toEqual([
+      ["a@example.com", "one", "draft a", "2026-02-03T04:05:06.000Z", "2026-02-03T04:05:06.000Z"],
+      ["b@example.com", "", "draft b", "2026-03-04T05:06:07.000Z", "2026-03-04T05:06:07.000Z"],
+    ]);
+
+    // これから作る行：版は指定しなければ残す版、下書きの始めた時刻はいま
+    await db.exec(`
+      insert into page_versions (page_id, title, body_md, author_type) values ('pageaaaaa1', 'one', 'v3', 'human');
+      insert into page_drafts (page_id, author_email, base_version_id, title, body_md) values ('pageaaaaa1', 'c@example.com', '00000000-0000-0000-0000-0000000000a2', 'one', 'draft c');
+    `);
+    expect((await db.query<{ keep: boolean }>(`select keep from page_versions where body_md = 'v3'`)).rows[0]!.keep).toBe(true);
+    const fresh = await db.query<{ recent: boolean }>(`select created_at > now() - interval '1 minute' as recent from page_drafts where author_email = 'c@example.com'`);
+    expect(fresh.rows[0]!.recent).toBe(true);
+  });
+
+  it("runs on an empty database", async () => {
+    const db = (client = new PGlite());
+    for (const tag of [...before, "0013_auto_version"]) await runMigration(db, tag);
+    expect((await db.query(`select 1 from page_drafts`)).rows).toEqual([]);
+  });
+});

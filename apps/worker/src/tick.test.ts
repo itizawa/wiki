@@ -31,6 +31,7 @@ describe("tick", () => {
     const r = await tick(env, impl);
     expect(r.deployed).toBe(true);
     expect(calls.map((c) => c.url)).toEqual([
+      "https://api.test/internal/drafts/promote",
       "https://api.test/internal/scheduled/run",
       "https://api.test/internal/rules/run",
       "https://api.test/internal/builds/request",
@@ -79,5 +80,34 @@ describe("tick", () => {
     const r = await tick(env, impl);
     expect(r.rules).toBeNull();
     expect(r.deployed).toBe(true);
+  });
+
+  it("turns settled drafts into versions before running due actions", async () => {
+    const { impl, calls } = fakeFetch({
+      "https://api.test/internal/drafts/promote": { promoted: ["page1"], skipped: 1, failed: [] },
+      "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
+      "https://api.test/internal/rules/run": noRules,
+      "https://api.test/internal/builds/request": { trigger: false, reason: "no_changes" },
+    });
+    const r = await tick(env, impl);
+    expect(r.drafts).toEqual({ promoted: ["page1"], skipped: 1, failed: [] });
+    expect(calls.slice(0, 2).map((c) => c.url)).toEqual(["https://api.test/internal/drafts/promote", "https://api.test/internal/scheduled/run"]);
+    expect(calls[0]!.auth).toBe("Bearer t");
+  });
+
+  it("still runs due actions and requests the build when turning drafts into versions fails", async () => {
+    const { impl, calls } = fakeFetch(
+      {
+        "https://api.test/internal/scheduled/run": { done: ["a"], retrying: [], failed: [] },
+        "https://api.test/internal/rules/run": noRules,
+        "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h" },
+      },
+      ["https://api.test/internal/drafts/promote"],
+    );
+    const r = await tick(env, impl);
+    expect(r.drafts).toBeNull();
+    expect(r.run.done).toEqual(["a"]);
+    expect(r.deployed).toBe(true);
+    expect(calls.map((c) => c.url)).toContain("https://api.test/internal/rules/run");
   });
 });

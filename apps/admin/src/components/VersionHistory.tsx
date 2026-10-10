@@ -80,6 +80,7 @@ export function VersionHistory(props: {
                 <Typography variant="h6" component="h3" sx={{ mr: "auto" }}>
                   {formatDateTime(version.data.createdAt)} の版
                   {version.data.id === props.headVersionId && <StatusChip label="最新の版" size="small" sx={{ ml: 1 }} />}
+                  {!version.data.keep && <StatusChip label="自動" size="small" sx={{ ml: 1 }} />}
                   {version.data.authorType === "ai" && <StatusChip label="AI" size="small" sx={{ ml: 1 }} />}
                 </Typography>
                 <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)} aria-label="表示">
@@ -91,7 +92,7 @@ export function VersionHistory(props: {
                 </Button>
               </Stack>
               <Muted>
-                「この版に戻す」は、この版の内容をエディタに入れて閉じます。版として残すまで、公開中の内容や版履歴は変わりません。
+                「この版に戻す」は、この版の内容をエディタに入れて閉じます。戻した内容は、ほかの編集と同じく自動で保存され、新しい版になります。公開中の内容は、公開し直すまで変わりません。
               </Muted>
               {view === "diff" ? (
                 <Diff before={asDocument(version.data)} after={asDocument(props.current)} />
@@ -125,6 +126,8 @@ export function VersionHistory(props: {
               >
                 {formatDateTime(v.createdAt)}
                 {v.id === props.headVersionId && <StatusChip label="最新" size="small" />}
+                {/* 下書きから自動でできた版。人が「版として残す」を選ぶか、公開・予約・承認に使うと外れる */}
+                {!v.keep && <StatusChip label="自動" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
                 {v.via && <StatusChip label={`${v.via} 経由`} size="small" />}
               </ListItemButton>

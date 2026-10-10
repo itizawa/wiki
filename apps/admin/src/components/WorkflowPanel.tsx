@@ -9,14 +9,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PageDetail, WorkflowState } from "@wiki/shared";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { Tooltip } from "./Tooltip";
+import type { EnsureVersion } from "./PublishPanel";
 import { Muted } from "./ui";
 
 export const workflowLabel: Record<WorkflowState, string> = { idea: "ネタ", draft: "下書き", approved: "承認済み" };
 
 /** 「記事の状態」：承認（ルールが予約枠に入れてよい版を決める）と、見直しキュー。 */
 /** 編集画面の「公開」ポップオーバーの上段に出す。 */
-export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolean }) {
+export function WorkflowPanel({ page, dirty, ensureVersion }: { page: PageDetail; dirty: boolean; ensureVersion: EnsureVersion }) {
   const qc = useQueryClient();
   const action = useMutation({
     mutationFn: (fn: () => Promise<PageDetail>) => fn(),
@@ -25,9 +25,8 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
       void qc.invalidateQueries({ queryKey: ["pages"] });
     },
   });
-  const approve = () => api.setWorkflow(page.id, { state: "approved", versionId: page.headVersionId });
-  // 承認は保存済みの版に付けるので、未保存の編集があるあいだは選べない
-  const needsSave = dirty ? "先に版として残してください" : "";
+  // 承認は版に付ける。まだ版になっていない変更があれば、先にいまの内容を版にする（版を作れなかったら承認しない）
+  const approve = async () => api.setWorkflow(page.id, { state: "approved", versionId: (await ensureVersion()).headVersionId });
 
   return (
     <Box component="section" aria-label="記事の状態">
@@ -47,11 +46,9 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
         >
           <MenuItem value="idea">{workflowLabel.idea}</MenuItem>
           <MenuItem value="draft">{workflowLabel.draft}</MenuItem>
-          <MenuItem value="approved" disabled={dirty}>
-            {workflowLabel.approved}
-            {dirty && "（先に版として残してください）"}
-          </MenuItem>
+          <MenuItem value="approved">{workflowLabel.approved}</MenuItem>
         </TextField>
+        {dirty && <Muted>承認すると、いまの内容を版として残し、その版を承認します。</Muted>}
         {page.workflowState === "approved" && page.approvedVersionId === page.headVersionId && (
           <Muted>この版は、ルールが空いている予約枠に入れます。公開されるのは予約の時刻です。</Muted>
         )}
@@ -60,13 +57,9 @@ export function WorkflowPanel({ page, dirty }: { page: PageDetail; dirty: boolea
             <Typography variant="body2" color="warning.main">
               承認後に編集があります。予約枠に入るのは承認した版です。
             </Typography>
-            <Tooltip title={needsSave}>
-              <span>
-                <Button variant="outlined" disabled={dirty || action.isPending} onClick={() => action.mutate(approve)}>
-                  最新版で承認し直す
-                </Button>
-              </span>
-            </Tooltip>
+            <Button variant="outlined" disabled={action.isPending} onClick={() => action.mutate(approve)}>
+              {dirty ? "いまの内容で承認し直す" : "最新版で承認し直す"}
+            </Button>
           </>
         )}
         {page.reviewRequestedAt && (

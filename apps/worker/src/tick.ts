@@ -11,17 +11,26 @@ type RulesRunResult = {
   runs: { wikiKey: string; ruleId: string; status: "done" | "failed"; summary: string }[];
   notifications: { wikiKey: string; ruleId: string; text: string }[];
 };
+type PromoteDraftsResult = { promoted: string[]; skipped: number; failed: { pageId: string; error: string }[] };
 type BuildDecision = { trigger: true; buildId: string; contentHash: string } | { trigger: false; reason: string };
 
-export type TickResult = { run: RunSummary; rules: RulesRunResult | null; build: BuildDecision; deployed: boolean };
+export type TickResult = {
+  /** 下書きを版にした結果。この段が失敗したら null */
+  drafts: PromoteDraftsResult | null;
+  run: RunSummary;
+  rules: RulesRunResult | null;
+  build: BuildDecision;
+  deployed: boolean;
+};
 
 /**
  * Cron Triggers の1回分。全 wiki のぶんをまとめて行う（アーカイブ中の wiki は API 側で飛ばす）。
  * 通知先は全体で1つなので、文面に wiki の名前を入れる。
- * 1) 期限の来た予約を実行（API側で FOR UPDATE SKIP LOCKED）
- * 2) 最終失敗があれば通知
- * 3) ルールを評価し、ルールからの通知を送る（失敗しても公開ビルドは止めない）
- * 4) 公開イベントをデバウンスし、必要ならビルド（公開サイトのデプロイフック）を起動
+ * 1) 編集が一段落した下書きを版にする（失敗しても、予約の実行と公開ビルドは止めない）
+ * 2) 期限の来た予約を実行（API側で FOR UPDATE SKIP LOCKED）
+ * 3) 最終失敗があれば通知
+ * 4) ルールを評価し、ルールからの通知を送る（失敗しても公開ビルドは止めない）
+ * 5) 公開イベントをデバウンスし、必要ならビルド（公開サイトのデプロイフック）を起動
  */
 export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<TickResult> {
   const call = async <T>(path: string, body?: unknown): Promise<T> => {
@@ -42,6 +51,14 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<T
       body: JSON.stringify({ text }),
     });
   };
+
+  // 予約は版を指しているので順番で結果は変わらないが、版を先に作っておく
+  let drafts: PromoteDraftsResult | null = null;
+  try {
+    drafts = await call<PromoteDraftsResult>("/internal/drafts/promote");
+  } catch (err) {
+    console.error("drafts promote failed", err);
+  }
 
   const run = await call<RunSummary>("/internal/scheduled/run");
   if (run.failed.length > 0) {
@@ -67,5 +84,5 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<T
     if (!res.ok) throw new Error(`deploy hook failed: ${res.status}`);
     deployed = true;
   }
-  return { run, rules, build, deployed };
+  return { drafts, run, rules, build, deployed };
 }
