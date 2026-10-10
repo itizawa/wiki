@@ -97,14 +97,24 @@ export type ManifestTree = {
   nodes: ManifestTreeNode[];
 };
 
-export type PublicManifest = {
-  generatedAt: string;
-  /** generatedAt を除いた内容のハッシュ。変わらなければビルドを省略できる */
-  contentHash: string;
+/** 1つの wiki の公開内容。公開サイトでは wiki ごとのディレクトリに出力する。 */
+export type WikiManifest = {
+  /** サブドメイン（`{key}.{baseDomain}`） */
+  key: string;
+  /** 公開サイトの名前 */
+  name: string;
   headCommitId: string;
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];
   trees: ManifestTree[];
   /** 公開後に削除された記事の id（410） */
   gone: string[];
+};
+
+export type PublicManifest = {
+  generatedAt: string;
+  /** generatedAt を除いた、全 wiki の内容のハッシュ。変わらなければビルドを省略できる */
+  contentHash: string;
+  /** アーカイブ中の wiki は含めない */
+  wikis: WikiManifest[];
 };

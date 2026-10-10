@@ -37,6 +37,19 @@
 .toc { margin: 0 0 24px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
 .toc summary { cursor: pointer; font-weight: 600; }
 .toc ol { list-style: none; margin: 4px 0; padding: 0; }
-.toc li { padding-left: calc(var(--indent) * 1.25em); line-height: 1.9; }
+.toc li { padding-left: calc(var(--indent) * 1.25em); }
+.toc a { display: block; padding: 3px 0 3px 10px; border-left: 2px solid transparent; line-height: 1.5; text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+/* いま読んでいる節。色だけでなく、太字と左の線でも示す */
+.toc a[aria-current] { font-weight: 700; color: var(--text); border-left-color: var(--accent); }
+/* 広い画面では、目次を本文の右に置いて、スクロール中も見えるようにする */
+@media (min-width: 1100px) {
+  .article { display: grid; grid-template-columns: minmax(0, 1fr) 200px; column-gap: 32px; align-items: start; }
+  .article > * { grid-column: 1; }
+  .article > .toc {
+    grid-column: 2; grid-row: 1 / span 3; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto;
+    margin: 0; padding: 0 0 0 16px; border: 0; border-left: 1px solid var(--border); border-radius: 0; font-size: 0.85rem;
+  }
+}
 /* ページ内リンクで飛んだとき、見出しが画面の上端に張りつかないようにする */
 .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: 16px; }

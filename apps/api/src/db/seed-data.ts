@@ -4,9 +4,10 @@ import { PgTable } from "drizzle-orm/pg-core";
 import { publishPage } from "../publishing/service";
 import { createPage } from "../routes/pages";
 import { bootstrapStructure } from "../structure/repo";
+import { createWiki, DEFAULT_WIKI_KEY } from "../wikis/service";
 import type { Db } from "./client";
 import * as schema from "./schema";
-import { pages, pageVersions, scheduledActions } from "./schema";
+import { pages, pageVersions, scheduledActions, wikis } from "./schema";
 
 const DAY = 24 * 3600_000;
 
@@ -120,15 +121,53 @@ const SEED: SeedPage[] = [
   },
 ];
 
+/** 2つめの wiki。wiki を切り替えても内容が混ざらないことを確かめるためのもの。 */
+export const SECOND_WIKI = { key: "notes", name: "開発ノート" };
+
+const SECOND_SEED: SeedPage[] = [
+  {
+    key: "about",
+    title: "このノートについて",
+    state: "public",
+    daysAgo: 10,
+    body: "# 開発ノート\n\n開発中に調べたことを置く、2つめの wiki です。最初の wiki とは、ページもツリーもルールも別です。",
+    children: [
+      {
+        title: "Cloudflare Workers のメモ",
+        state: "public",
+        daysAgo: 5,
+        body: "## 静的アセット\n\n`run_worker_first` で、アセットより先に Worker を通せる。\n\n[このノートについて]({{about}}) に戻る。",
+      },
+      { title: "共有前のメモ", state: "unlisted", body: "URL を知っている人だけが読めるメモ。" },
+    ],
+  },
+  { title: "あとで書く", workflow: "idea", body: "ビルド時間を測る。" },
+];
+
 /**
  * テスト用のデータを投入する。ページが1件でもあれば何もせずに失敗する（先に resetDatabase を呼ぶ）。
+ * 最初の wiki と、2つめの wiki（SECOND_WIKI）に入れる。
  */
 export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: number }> {
   await bootstrapStructure(db);
-  return db.transaction(async (tx) => {
-    const [existing] = await tx.select({ id: pages.id }).from(pages).limit(1);
-    if (existing) throw new Error("the database already has pages; reset it first (pnpm db:seed --reset)");
+  const [existing] = await db.select({ id: pages.id }).from(pages).limit(1);
+  if (existing) throw new Error("the database already has pages; reset it first (pnpm db:seed --reset)");
 
+  const first = await ensureDefaultWiki(db);
+  const [second] = await db.select().from(wikis).where(eq(wikis.key, SECOND_WIKI.key));
+  const secondId = (second ?? (await createWiki(db, SECOND_WIKI, null))).id;
+  const count = (await seedWiki(db, first, SEED, now)) + (await seedWiki(db, secondId, SECOND_SEED, now));
+  return { pages: count };
+}
+
+/** 最初の wiki（マイグレーションが作る）の id を返す。無ければ作る。 */
+async function ensureDefaultWiki(db: Db): Promise<string> {
+  const [wiki] = await db.select().from(wikis).where(eq(wikis.key, DEFAULT_WIKI_KEY));
+  return (wiki ?? (await createWiki(db, { key: DEFAULT_WIKI_KEY, name: "メイン" }, null))).id;
+}
+
+async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Promise<number> {
+  return db.transaction(async (tx) => {
     const paths = new Map<string, string>();
     const fill = (body: string) =>
       body.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => {
@@ -139,7 +178,7 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
     let count = 0;
 
     const add = async (page: SeedPage, parentPageId: string | null) => {
-      const id = await createPage(tx, { title: page.title, bodyMd: fill(page.body), parentPageId });
+      const id = await createPage(tx, wikiId, { title: page.title, bodyMd: fill(page.body), parentPageId });
       count++;
       if (page.key) paths.set(page.key, pagePath(id));
       const [row] = await tx.select().from(pages).where(eq(pages.id, id));
@@ -147,6 +186,7 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
 
       if (page.state === "public" || page.state === "unlisted") {
         await publishPage(tx, {
+          wikiId,
           pageId: id,
           versionId,
           visibility: page.state,
@@ -154,6 +194,7 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
         });
       } else if (page.state === "scheduled") {
         await tx.insert(scheduledActions).values({
+          wikiId,
           actionType: "publish_page",
           pageId: id,
           versionId,
@@ -178,15 +219,15 @@ export async function seedDatabase(db: Db, now = new Date()): Promise<{ pages: n
 
       for (const child of page.children ?? []) await add(child, id);
     };
-    for (const page of SEED) await add(page, null);
-    return { pages: count };
+    for (const page of seed) await add(page, null);
+    return count;
   });
 }
 
-/** すべてのテーブルを空にして、空のツリーだけがある初期状態に戻す。 */
+/** すべてのテーブルを空にして、最初の wiki と空のツリーだけがある初期状態に戻す。 */
 export async function resetDatabase(db: Db): Promise<void> {
   const tables = Object.values(schema)
     .flatMap((t) => (is(t, PgTable) ? [`"${getTableName(t)}"`] : []));
   await db.execute(sql.raw(`truncate table ${tables.join(", ")} restart identity cascade`));
-  await bootstrapStructure(db);
+  await ensureDefaultWiki(db);
 }

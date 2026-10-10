@@ -8,6 +8,7 @@ import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import type { Editor } from "@tiptap/react";
 import { useState } from "react";
 import { Tooltip } from "../components/Tooltip";
 
@@ -63,6 +64,12 @@ export function LinkForm(props: { initial: string; onSubmit: (href: string) => v
       )}
     </Stack>
   );
+}
+
+/** カーソルの位置に画像を入れる。 */
+export function insertImage(editor: Editor, image: { src: string; alt: string }) {
+  // 画像の下に空行を足してカーソルを置く（画像が選択されたままだと、次に打った文字で画像が置き換わるため）
+  editor.chain().focus().insertContent([{ type: "image", attrs: image }, { type: "paragraph" }]).run();
 }
 
 /** 画像のURLと説明を入れるダイアログ。 */

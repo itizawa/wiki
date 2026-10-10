@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { requestBuild } from "../publishing/builds";
-import { buildManifest, publicTreeNodes } from "../publishing/manifest";
+import { publicTreeNodes } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
-import { addLegacyTree, setup } from "./harness";
+import { addLegacyTree, setup, W, wikiManifest } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 async function newPage(title: string, bodyMd = "") {
-  const res = await ctx.call("POST", "/admin/pages", { title, bodyMd });
+  const res = await ctx.call("POST", `${W}/pages`, { title, bodyMd });
   expect(res.status).toBe(201);
   return res.body;
 }
@@ -24,44 +24,44 @@ describe("publish / unpublish", () => {
   it("publishes the chosen version only and keeps later edits out of the manifest", async () => {
     ctx = await setup();
     const page = await newPage("記事", "v1");
-    expect((await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" })).status).toBe(200);
-    await ctx.call("PUT", `/admin/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "記事", bodyMd: "v2 draft" });
+    expect((await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" })).status).toBe(200);
+    await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "記事", bodyMd: "v2 draft" });
 
-    const manifest = await buildManifest(ctx.db);
+    const manifest = await wikiManifest(ctx.db);
     expect(manifest.pages).toHaveLength(1);
     expect(manifest.pages[0]!.bodyMd).toBe("v1");
     expect(manifest.pages[0]!.path).toBe(`/p/${page.id}`);
 
-    const detail = (await ctx.call("GET", `/admin/pages/${page.id}`)).body;
+    const detail = (await ctx.call("GET", `${W}/pages/${page.id}`)).body;
     expect(detail.visibility).toBe("public");
     expect(detail.firstPublishedAt).not.toBeNull();
 
-    await ctx.call("POST", `/admin/pages/${page.id}/unpublish`);
-    expect((await buildManifest(ctx.db)).pages).toHaveLength(0);
+    await ctx.call("POST", `${W}/pages/${page.id}/unpublish`);
+    expect((await wikiManifest(ctx.db)).pages).toHaveLength(0);
   });
 
   it("serves unlisted pages only under their key and can rotate it", async () => {
     ctx = await setup();
     const page = await newPage("限定", "secret-ish");
-    await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "unlisted" });
-    const key1 = (await ctx.call("GET", `/admin/pages/${page.id}`)).body.unlistedKey;
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "unlisted" });
+    const key1 = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.unlistedKey;
     expect(key1).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
-    const m1 = await buildManifest(ctx.db);
+    const m1 = await wikiManifest(ctx.db);
     expect(m1.pages).toHaveLength(0);
     expect(m1.unlisted).toEqual([expect.objectContaining({ key: key1, path: `/u/${key1}/` })]);
     expect(JSON.stringify(m1)).not.toContain(page.id);
 
-    const rotated = await ctx.call("POST", `/admin/pages/${page.id}/unlisted-key`);
+    const rotated = await ctx.call("POST", `${W}/pages/${page.id}/unlisted-key`);
     expect(rotated.body.unlistedKey).not.toBe(key1);
-    expect((await buildManifest(ctx.db)).unlisted[0]!.key).toBe(rotated.body.unlistedKey);
+    expect((await wikiManifest(ctx.db)).unlisted[0]!.key).toBe(rotated.body.unlistedKey);
   });
 
   it("rejects a version from another page", async () => {
     ctx = await setup();
     const a = await newPage("a");
     const b = await newPage("b");
-    const res = await ctx.call("POST", `/admin/pages/${a.id}/publish`, { versionId: b.headVersionId, visibility: "public" });
+    const res = await ctx.call("POST", `${W}/pages/${a.id}/publish`, { versionId: b.headVersionId, visibility: "public" });
     expect(res.status).toBe(400);
   });
 });
@@ -70,12 +70,12 @@ describe("manifest", () => {
   it("serves pages at /p/{id} and lists deleted articles as gone", async () => {
     ctx = await setup();
     const page = await newPage("Hello");
-    await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     const gone = await newPage("Gone");
-    await ctx.call("POST", `/admin/pages/${gone.id}/publish`, { versionId: gone.headVersionId, visibility: "public" });
-    await ctx.call("DELETE", `/admin/pages/${gone.id}`);
+    await ctx.call("POST", `${W}/pages/${gone.id}/publish`, { versionId: gone.headVersionId, visibility: "public" });
+    await ctx.call("DELETE", `${W}/pages/${gone.id}`);
 
-    const m = await buildManifest(ctx.db);
+    const m = await wikiManifest(ctx.db);
     expect(m.pages.map((p) => p.path)).toEqual([`/p/${page.id}`]);
     expect(m.pages[0]).not.toHaveProperty("slug");
     expect(m).not.toHaveProperty("redirects");
@@ -89,11 +89,11 @@ describe("manifest", () => {
     const priv = await newPage("priv");
     const child = await newPage("child");
     for (const p of [docs, pub, child]) {
-      await ctx.call("POST", `/admin/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
+      await ctx.call("POST", `${W}/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
     }
-    const s = (await ctx.call("GET", "/admin/structure")).body;
+    const s = (await ctx.call("GET", `${W}/structure`)).body;
     const treeId = s.trees[0].id;
-    await ctx.call("POST", "/admin/structure/commits", {
+    await ctx.call("POST", `${W}/structure/commits`, {
       expectedHeadCommitId: s.headCommitId,
       ops: [
         { type: "move", treeId, nodeId: pub.id, newParentNodeId: docs.id },
@@ -101,7 +101,7 @@ describe("manifest", () => {
         { type: "move", treeId, nodeId: child.id, newParentNodeId: priv.id },
       ],
     });
-    const m = await buildManifest(ctx.db);
+    const m = await wikiManifest(ctx.db);
     const nodes = m.trees[0]!.nodes;
     // 非公開ページは出さず、その子は最も近い公開の祖先へ繰り上げる
     expect(nodes.map((n) => n.nodeId).sort()).toEqual([child.id, docs.id, pub.id].sort());
@@ -112,7 +112,7 @@ describe("manifest", () => {
   it("exports only the primary tree even when legacy trees remain", async () => {
     ctx = await setup();
     await addLegacyTree(ctx.client);
-    const m = await buildManifest(ctx.db);
+    const m = await wikiManifest(ctx.db);
     expect(m.trees.map((t) => t.key)).toEqual(["main"]);
   });
 
@@ -140,7 +140,7 @@ describe("publicTreeNodes", () => {
 
 describe("scheduled actions", () => {
   async function schedule(body: unknown) {
-    const res = await ctx.call("POST", "/admin/schedule", body);
+    const res = await ctx.call("POST", `${W}/schedule`, body);
     expect(res.status).toBe(201);
     return res.body;
   }
@@ -150,18 +150,18 @@ describe("scheduled actions", () => {
     const page = await newPage("予約記事", "fixed");
     const runAt = new Date(Date.now() + 60_000);
     const action = await schedule({ actionType: "publish_page", pageId: page.id, versionId: page.headVersionId, runAt: runAt.toISOString() });
-    await ctx.call("PUT", `/admin/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "予約記事", bodyMd: "edited later" });
+    await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "予約記事", bodyMd: "edited later" });
 
-    const listed = (await ctx.call("GET", `/admin/schedule?pageId=${page.id}`)).body.actions;
+    const listed = (await ctx.call("GET", `${W}/schedule?pageId=${page.id}`)).body.actions;
     expect(listed[0].editedAfterSchedule).toBe(true);
     // 予約しただけでは公開されない
-    expect((await buildManifest(ctx.db)).pages).toHaveLength(0);
+    expect((await wikiManifest(ctx.db)).pages).toHaveLength(0);
 
     expect((await runDueActions(ctx.db, new Date())).done).toEqual([]);
     const summary = await runDueActions(ctx.db, new Date(runAt.getTime() + 1000));
     expect(summary.done).toEqual([action.id]);
 
-    const m = await buildManifest(ctx.db);
+    const m = await wikiManifest(ctx.db);
     expect(m.pages[0]!.bodyMd).toBe("fixed");
     expect(m.pages[0]!.firstPublishedAt).toBe(runAt.toISOString());
     // 二重実行されない
@@ -177,7 +177,7 @@ describe("scheduled actions", () => {
     await schedule({ actionType: "publish_page", pageId: a.id, versionId: a.headVersionId, runAt, batchId });
     await schedule({ actionType: "publish_page", pageId: b.id, versionId: b.headVersionId, runAt, batchId });
     // b を削除すると、予約もキャンセルされる
-    await ctx.call("DELETE", `/admin/pages/${b.id}`);
+    await ctx.call("DELETE", `${W}/pages/${b.id}`);
     const later = new Date(Date.now() + 120_000);
     expect((await runDueActions(ctx.db, later)).done).toHaveLength(1);
 
@@ -194,9 +194,9 @@ describe("scheduled actions", () => {
       if (attempt < 3) expect(r.retrying).toHaveLength(2);
       else expect(r.failed).toHaveLength(2);
     }
-    const ids = (await buildManifest(ctx.db)).pages.map((p) => p.id);
+    const ids = (await wikiManifest(ctx.db)).pages.map((p) => p.id);
     expect(ids).toEqual([a.id]);
-    const failed = (await ctx.call("GET", "/admin/schedule?status=failed")).body.actions;
+    const failed = (await ctx.call("GET", `${W}/schedule?status=failed`)).body.actions;
     expect(failed).toHaveLength(2);
     expect(failed[0].lastError).toMatch(/version/);
   });
@@ -204,21 +204,21 @@ describe("scheduled actions", () => {
   it("unpublishes on schedule and allows changing or canceling only before running", async () => {
     ctx = await setup();
     const page = await newPage("p");
-    await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     const runAt = new Date(Date.now() + 60_000);
     const action = await schedule({ actionType: "unpublish_page", pageId: page.id, runAt: runAt.toISOString() });
 
     const moved = new Date(Date.now() + 120_000).toISOString();
-    expect((await ctx.call("PATCH", `/admin/schedule/${action.id}`, { runAt: moved })).body.runAt).toBe(moved);
+    expect((await ctx.call("PATCH", `${W}/schedule/${action.id}`, { runAt: moved })).body.runAt).toBe(moved);
     await runDueActions(ctx.db, new Date(Date.now() + 180_000));
-    expect((await buildManifest(ctx.db)).pages).toHaveLength(0);
-    expect((await ctx.call("POST", `/admin/schedule/${action.id}/cancel`)).status).toBe(409);
+    expect((await wikiManifest(ctx.db)).pages).toHaveLength(0);
+    expect((await ctx.call("POST", `${W}/schedule/${action.id}/cancel`)).status).toBe(409);
   });
 
   it("rejects schedules in the past", async () => {
     ctx = await setup();
     const page = await newPage("p");
-    const res = await ctx.call("POST", "/admin/schedule", {
+    const res = await ctx.call("POST", `${W}/schedule`, {
       actionType: "publish_page",
       pageId: page.id,
       versionId: page.headVersionId,
@@ -235,14 +235,14 @@ describe("build requests", () => {
     expect(await requestBuild(ctx.db, { now: new Date(now) })).toEqual({ trigger: false, reason: "no_changes" });
 
     const page = await newPage("p");
-    await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     expect(await requestBuild(ctx.db, { now: new Date(now + 1000) })).toEqual({ trigger: false, reason: "debouncing" });
     const first = await requestBuild(ctx.db, { now: new Date(now + 200_000) });
     expect(first.trigger).toBe(true);
     expect(await requestBuild(ctx.db, { now: new Date(now + 400_000) })).toEqual({ trigger: false, reason: "no_changes" });
 
     // 内容が変わらない操作（同じ版を公開し直す）はビルドしない
-    await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     expect(await requestBuild(ctx.db, { now: new Date(now + 600_000) })).toEqual({ trigger: false, reason: "unchanged" });
   });
 

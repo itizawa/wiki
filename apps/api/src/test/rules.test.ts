@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildManifest } from "../publishing/manifest";
 import { runRules } from "../rules/engine";
-import { setup } from "./harness";
+import { setup, W, wikiManifest } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -12,27 +11,27 @@ afterEach(async () => {
 const DAY = 24 * 3600_000;
 
 async function newPage(title: string, bodyMd = "") {
-  const res = await ctx.call("POST", "/admin/pages", { title, bodyMd });
+  const res = await ctx.call("POST", `${W}/pages`, { title, bodyMd });
   expect(res.status).toBe(201);
   return res.body;
 }
 
 async function approve(page: { id: string; headVersionId: string }) {
-  const res = await ctx.call("POST", `/admin/pages/${page.id}/workflow`, { state: "approved", versionId: page.headVersionId });
+  const res = await ctx.call("POST", `${W}/pages/${page.id}/workflow`, { state: "approved", versionId: page.headVersionId });
   expect(res.status).toBe(200);
   return res.body;
 }
 
 async function enable(id: string, change: (rule: any) => void = () => {}) {
-  const rule = (await ctx.call("GET", "/admin/rules")).body.rules.find((r: any) => r.id === id);
+  const rule = (await ctx.call("GET", `${W}/rules`)).body.rules.find((r: any) => r.id === id);
   change(rule);
-  const res = await ctx.call("PUT", `/admin/rules/${id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
+  const res = await ctx.call("PUT", `${W}/rules/${id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
   expect(res.status).toBe(200);
   return res.body;
 }
 
 const scheduled = async () =>
-  ((await ctx.call("GET", "/admin/schedule?status=scheduled")).body.actions as any[]).filter((a) => a.actionType === "publish_page");
+  ((await ctx.call("GET", `${W}/schedule?status=scheduled`)).body.actions as any[]).filter((a) => a.actionType === "publish_page");
 
 describe("workflow state", () => {
   it("starts as draft and pins the approved version", async () => {
@@ -46,11 +45,11 @@ describe("workflow state", () => {
     expect(approved.approvedVersionId).toBe(page.headVersionId);
 
     // 承認後に編集しても、承認した版は変わらない
-    const edited = (await ctx.call("PUT", `/admin/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "記事", bodyMd: "v2" })).body;
+    const edited = (await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.headVersionId, title: "記事", bodyMd: "v2" })).body;
     expect(edited.headVersionId).not.toBe(page.headVersionId);
     expect(edited.approvedVersionId).toBe(page.headVersionId);
 
-    const back = (await ctx.call("POST", `/admin/pages/${page.id}/workflow`, { state: "idea" })).body;
+    const back = (await ctx.call("POST", `${W}/pages/${page.id}/workflow`, { state: "idea" })).body;
     expect(back.workflowState).toBe("idea");
     expect(back.approvedVersionId).toBeNull();
   });
@@ -59,7 +58,7 @@ describe("workflow state", () => {
     ctx = await setup();
     const a = await newPage("a");
     const b = await newPage("b");
-    const res = await ctx.call("POST", `/admin/pages/${a.id}/workflow`, { state: "approved", versionId: b.headVersionId });
+    const res = await ctx.call("POST", `${W}/pages/${a.id}/workflow`, { state: "approved", versionId: b.headVersionId });
     expect(res.status).toBe(400);
   });
 });
@@ -67,25 +66,25 @@ describe("workflow state", () => {
 describe("rule settings", () => {
   it("lists the presets disabled until they are saved", async () => {
     ctx = await setup();
-    const rules = (await ctx.call("GET", "/admin/rules")).body.rules;
+    const rules = (await ctx.call("GET", `${W}/rules`)).body.rules;
     expect(rules.map((r: any) => r.id)).toEqual(["fill-slots", "review-stale", "notify-low-stock"]);
     expect(rules.every((r: any) => r.enabled === false)).toBe(true);
 
     const saved = await enable("review-stale", (r) => (r.trigger.days = 90));
     expect(saved).toMatchObject({ enabled: true, trigger: { type: "stale", days: 90 } });
-    expect((await ctx.call("GET", "/admin/rules")).body.rules[1].trigger.days).toBe(90);
+    expect((await ctx.call("GET", `${W}/rules`)).body.rules[1].trigger.days).toBe(90);
   });
 
   it("does not let a preset change its trigger or action types", async () => {
     ctx = await setup();
-    const res = await ctx.call("PUT", "/admin/rules/review-stale", {
+    const res = await ctx.call("PUT", `${W}/rules/review-stale`, {
       enabled: true,
       trigger: { type: "stale", days: 30 },
       actions: [{ type: "schedule_approved", weekdays: [1], time: "08:00" }],
     });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("preset_mismatch");
-    expect((await ctx.call("PUT", "/admin/rules/nope", { enabled: true, trigger: { type: "stale", days: 30 }, actions: [{ type: "request_review" }] })).status).toBe(404);
+    expect((await ctx.call("PUT", `${W}/rules/nope`, { enabled: true, trigger: { type: "stale", days: 30 }, actions: [{ type: "request_review" }] })).status).toBe(404);
   });
 });
 
@@ -109,10 +108,10 @@ describe("fill-slots", () => {
     await approve(first);
     await approve(second);
     // 承認後の編集は予約に含めない
-    await ctx.call("PUT", `/admin/pages/${first.id}`, { baseVersionId: first.headVersionId, title: "1本目", bodyMd: "edited" });
+    await ctx.call("PUT", `${W}/pages/${first.id}`, { baseVersionId: first.headVersionId, title: "1本目", bodyMd: "edited" });
 
     const result = await runRules(ctx.db, now);
-    expect(result.runs).toEqual([{ ruleId: "fill-slots", status: "done", summary: "承認済みの記事 2件を予約枠に入れました" }]);
+    expect(result.runs).toEqual([{ wikiKey: "wiki", ruleId: "fill-slots", status: "done", summary: "承認済みの記事 2件を予約枠に入れました" }]);
 
     const actions = await scheduled();
     expect(actions.map((a) => [a.pageId, a.runAt, a.versionId])).toEqual([
@@ -122,9 +121,9 @@ describe("fill-slots", () => {
     expect(actions.every((a) => a.ruleRunId !== null && a.targetVisibility === "public")).toBe(true);
     expect(actions.some((a) => a.pageId === draft.id)).toBe(false);
     // ルールは予約するだけで、公開はしない
-    expect((await buildManifest(ctx.db)).pages).toHaveLength(0);
+    expect((await wikiManifest(ctx.db)).pages).toHaveLength(0);
 
-    const runs = (await ctx.call("GET", "/admin/rules/runs")).body.runs;
+    const runs = (await ctx.call("GET", `${W}/rules/runs`)).body.runs;
     expect(runs).toEqual([expect.objectContaining({ ruleId: "fill-slots", status: "done", pageIds: [first.id, second.id] })]);
     expect(actions[0].ruleRunId).toBe(runs[0].id);
 
@@ -139,7 +138,7 @@ describe("fill-slots", () => {
     const manual = await newPage("手動");
     // 火曜の枠は手動の予約で埋まっている
     await ctx.client.query(
-      `insert into scheduled_actions (action_type, page_id, version_id, target_visibility, run_at) values ('publish_page', $1, $2, 'public', $3)`,
+      `insert into scheduled_actions (wiki_id, action_type, page_id, version_id, target_visibility, run_at) select id, 'publish_page', $1, $2, 'public', $3 from wikis where key = 'wiki'`,
       [manual.id, manual.headVersionId, "2026-10-12T23:00:00.000Z"],
     );
     const a = await newPage("a");
@@ -159,7 +158,7 @@ describe("fill-slots", () => {
     await approve(page);
     await runRules(ctx.db, now);
     const [action] = await scheduled();
-    await ctx.call("POST", `/admin/schedule/${action.id}/cancel`);
+    await ctx.call("POST", `${W}/schedule/${action.id}/cancel`);
 
     expect((await runRules(ctx.db, now)).runs).toEqual([]);
     await new Promise((r) => setTimeout(r, 5));
@@ -173,7 +172,7 @@ describe("fill-slots", () => {
     await enable("fill-slots");
     const page = await newPage("a");
     await approve(page);
-    await ctx.call("POST", `/admin/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     expect((await runRules(ctx.db, now)).runs).toEqual([]);
   });
 });
@@ -186,17 +185,17 @@ describe("review-stale", () => {
     const fresh = await newPage("新しい記事");
     const draft = await newPage("古い下書き");
     for (const p of [old, fresh]) {
-      await ctx.call("POST", `/admin/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
+      await ctx.call("POST", `${W}/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
     }
     await ctx.client.query(`update pages set updated_at = now() - interval '40 days' where id in ($1, $2)`, [old.id, draft.id]);
 
     const result = await runRules(ctx.db);
-    expect(result.runs).toEqual([{ ruleId: "review-stale", status: "done", summary: "30日更新の無い記事 1件を見直しキューに入れました" }]);
-    const queued = ((await ctx.call("GET", "/admin/pages")).body.pages as any[]).filter((p) => p.reviewRequestedAt);
+    expect(result.runs).toEqual([{ wikiKey: "wiki", ruleId: "review-stale", status: "done", summary: "30日更新の無い記事 1件を見直しキューに入れました" }]);
+    const queued = ((await ctx.call("GET", `${W}/pages`)).body.pages as any[]).filter((p) => p.reviewRequestedAt);
     expect(queued.map((p) => p.id)).toEqual([old.id]);
     expect((await runRules(ctx.db)).runs).toEqual([]);
 
-    const done = await ctx.call("POST", `/admin/pages/${old.id}/review-done`);
+    const done = await ctx.call("POST", `${W}/pages/${old.id}/review-done`);
     expect(done.body.reviewRequestedAt).toBeNull();
     // 見直した直後は入れ直さない。さらに30日経てばまた入る
     expect((await runRules(ctx.db)).runs).toEqual([]);
@@ -210,7 +209,7 @@ describe("notify-low-stock", () => {
     await enable("notify-low-stock");
     const now = new Date("2026-10-10T09:00:00+09:00");
     const first = await runRules(ctx.db, now);
-    expect(first.notifications).toEqual([{ ruleId: "notify-low-stock", text: "予約ストックが減っています（今後7日の公開予約：0件、目安：3件）" }]);
+    expect(first.notifications).toEqual([{ wikiKey: "wiki", ruleId: "notify-low-stock", text: "【wiki】予約ストックが減っています（今後7日の公開予約：0件、目安：3件）" }]);
     expect((await runRules(ctx.db, new Date(now.getTime() + 3600_000))).notifications).toEqual([]);
     expect((await runRules(ctx.db, new Date(now.getTime() + 25 * 3600_000))).notifications).toHaveLength(1);
   });
@@ -230,7 +229,7 @@ describe("rule runs", () => {
       ["notify-low-stock", "done"],
     ]);
     await runRules(ctx.db, new Date(now.getTime() + 300_000));
-    const runs = (await ctx.call("GET", "/admin/rules/runs")).body.runs;
+    const runs = (await ctx.call("GET", `${W}/rules/runs`)).body.runs;
     expect(runs.filter((r: any) => r.status === "failed")).toHaveLength(1);
   });
 

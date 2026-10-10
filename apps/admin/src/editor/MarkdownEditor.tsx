@@ -23,8 +23,9 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { Tooltip } from "../components/Tooltip";
+import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
-import { ImageDialog, LinkForm } from "./LinkForm";
+import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -69,6 +70,7 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
 
   return (
     <Box>
+      <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
       <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
@@ -121,6 +123,9 @@ export function MarkdownEditor(props: { value: string; onChange: (md: string) =>
             "& th": { bgcolor: "action.hover", fontWeight: 600 },
             "& th p, & td p": { my: 0 },
             "& .selectedCell": { bgcolor: "action.selected" },
+            // 検索で一致した箇所。いま見ている1つは、色に加えて枠でも区別する
+            "& .find-match": { bgcolor: "find.match", borderRadius: "2px" },
+            "& .find-current": { bgcolor: "find.current", outline: "2px solid", outlineColor: "warning.main" },
             "& p.is-editor-empty:first-of-type::before": {
               content: "attr(data-placeholder)",
               color: "text.disabled",
@@ -320,8 +325,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
         open={imageOpen}
         onSubmit={(image) => {
           setImageOpen(false);
-          // 画像の下に空行を足してカーソルを置く（画像が選択されたままだと、次に打った文字で画像が置き換わるため）
-          chain().insertContent([{ type: "image", attrs: image }, { type: "paragraph" }]).run();
+          insertImage(editor, image);
         }}
         onClose={() => {
           setImageOpen(false);

@@ -11,6 +11,15 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("zzzzzzzzzz");
   });
 
+  it("treats an absolute link as internal only when it points to this wiki", () => {
+    const opts = { publicPaths, origin: "https://wiki.example.com" };
+    expect(renderMarkdown("[自分](https://wiki.example.com/p/abcdefghij)", opts)).toContain('<a href="/p/abcdefghij">自分</a>');
+    // 別の wiki のページは、外部リンクと同じ扱い
+    expect(renderMarkdown("[別の wiki](https://notes.example.com/p/abcdefghij)", opts)).toContain(
+      '<a href="https://notes.example.com/p/abcdefghij" rel="noopener">別の wiki</a>',
+    );
+  });
+
   it("escapes raw HTML and unsafe link schemes", () => {
     const html = renderMarkdown('<script>alert(1)</script>\n\n[x](javascript:alert(1))', { publicPaths });
     expect(html).not.toContain("<script>");

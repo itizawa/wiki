@@ -41,14 +41,15 @@ describe("tick", () => {
 
   it("notifies final failures and does not deploy while debouncing", async () => {
     const { impl, calls } = fakeFetch({
-      "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [{ id: "x", error: "boom" }] },
+      "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [{ id: "x", error: "boom", wikiName: "開発ノート" }] },
       "https://api.test/internal/rules/run": noRules,
       "https://api.test/internal/builds/request": { trigger: false, reason: "debouncing" },
     });
     const r = await tick(env, impl);
     expect(r.deployed).toBe(false);
     const notify = calls.find((c) => c.url === "https://hooks.test/notify")!;
-    expect(JSON.parse(notify.body!).text).toContain("boom");
+    // 通知先は全体で1つなので、どの wiki の予約かが分かる
+    expect(JSON.parse(notify.body!).text).toContain("【開発ノート】x: boom");
     expect(calls.some((c) => c.url === "https://hooks.test/deploy")).toBe(false);
   });
 
@@ -56,15 +57,15 @@ describe("tick", () => {
     const { impl, calls } = fakeFetch({
       "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
       "https://api.test/internal/rules/run": {
-        runs: [{ ruleId: "notify-low-stock", status: "done", summary: "通知" }],
-        notifications: [{ ruleId: "notify-low-stock", text: "予約ストックが減っています" }],
+        runs: [{ wikiKey: "notes", ruleId: "notify-low-stock", status: "done", summary: "通知" }],
+        notifications: [{ wikiKey: "notes", ruleId: "notify-low-stock", text: "【開発ノート】予約ストックが減っています" }],
       },
       "https://api.test/internal/builds/request": { trigger: false, reason: "no_changes" },
     });
     const r = await tick(env, impl);
     expect(r.rules!.runs).toHaveLength(1);
     const notify = calls.filter((c) => c.url === "https://hooks.test/notify");
-    expect(notify.map((c) => JSON.parse(c.body!).text)).toEqual(["予約ストックが減っています"]);
+    expect(notify.map((c) => JSON.parse(c.body!).text)).toEqual(["【開発ノート】予約ストックが減っています"]);
   });
 
   it("still requests the build when the rules fail", async () => {
