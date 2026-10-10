@@ -11,7 +11,6 @@ import { EditorPage } from "./routes/EditorPage";
 import { HistoryPage } from "./routes/HistoryPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
-import { RulesPage } from "./routes/RulesPage";
 import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
@@ -95,7 +94,6 @@ const analyticsRoute = createRoute({
     );
   },
 });
-const rulesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "rules", component: padded(RulesPage) });
 const templatesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "templates", component: padded(TemplatesPage) });
 const templateEditorRoute = createRoute({
   getParentRoute: () => wikiRoute,
@@ -118,7 +116,7 @@ const legacyEditorRoute = createRoute({
     throw redirect({ to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: FIRST_WIKI, pageId: params.pageId }, replace: true });
   },
 });
-const legacyScreen = (path: "/calendar" | "/rules" | "/history", to: `/w/$wikiKey${typeof path}`) =>
+const legacyScreen = (path: "/calendar" | "/history", to: `/w/$wikiKey${typeof path}`) =>
   createRoute({
     getParentRoute: () => rootRoute,
     path,
@@ -133,10 +131,9 @@ const routeTree = rootRoute.addChildren([
   wikisRoute,
   consentRoute,
   connectionsRoute,
-  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, analyticsRoute, rulesRoute, templatesRoute, templateEditorRoute, historyRoute, trashRoute, settingsRoute]),
+  wikiRoute.addChildren([pagesRoute, editorRoute, searchRoute, calendarRoute, analyticsRoute, templatesRoute, templateEditorRoute, historyRoute, trashRoute, settingsRoute]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
-  legacyScreen("/rules", "/w/$wikiKey/rules"),
   legacyScreen("/history", "/w/$wikiKey/history"),
 ]);
 

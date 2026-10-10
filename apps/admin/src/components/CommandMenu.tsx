@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Workflow } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -108,7 +108,6 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       icon: <ChartColumn size={18} />,
       run: go("/w/$wikiKey/analytics"),
     },
-    { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/rules") },
     { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
     { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },

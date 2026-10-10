@@ -57,7 +57,7 @@ export async function findWiki(db: Db, key: string, forUpdate = false): Promise<
 }
 
 /**
- * wiki を作り、空のツリーを1本用意する。ルールは行を作らないので、どれも無効で始まる。
+ * wiki を作り、空のツリーを1本用意する。
  * key はアーカイブ中のものも含めて重ねられない。
  */
 export async function createWiki(db: Db, input: CreateWikiInput, createdBy: string | null): Promise<WikiRow> {
@@ -121,7 +121,7 @@ export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiS
   });
 }
 
-/** アーカイブ。データは残す。公開サイトは次のビルドで止まり、予約とルールは実行されなくなる。 */
+/** アーカイブ。データは残す。公開サイトは次のビルドで止まり、予約は実行されなくなる。 */
 export async function archiveWiki(db: Db, key: string, now = new Date()): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);

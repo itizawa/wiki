@@ -36,7 +36,7 @@ const noMotion = { "@media (prefers-reduced-motion: reduce)": { transition: "non
 
 /**
  * `/w/{key}/...`：1つの wiki を開いている画面。サイドバーと、その wiki の内容を出す。
- * 読み込んだデータ（ページ・ツリー・予約・ルール）は wiki ごとの入れ物に持ち、切り替えても別の wiki のものが出ないようにする。
+ * 読み込んだデータ（ページ・ツリー・予約）は wiki ごとの入れ物に持ち、切り替えても別の wiki のものが出ないようにする。
  */
 export function WikiLayout({ wikiKey }: { wikiKey: string }) {
   // 子の画面が API を呼ぶ前に、どの wiki の経路を使うかを決める

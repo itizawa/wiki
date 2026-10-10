@@ -96,7 +96,7 @@ export async function createVersion(
   return { versionId: version!.id, created: true };
 }
 
-/** 公開・予約・承認に使った版は、間引かずに残す。 */
+/** 公開・予約に使った版は、間引かずに残す。 */
 export async function keepVersion(db: Db, versionId: string): Promise<void> {
   await db
     .update(pageVersions)

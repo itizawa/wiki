@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Workflow } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -206,9 +206,6 @@ export function Sidebar(props: {
         {/* Google Analytics とサーチコンソールの数字。その wiki を開ける人ならだれでも見られる */}
         <NavItem to="/w/$wikiKey/analytics" icon={<ChartColumn size={18} />} onClick={props.onNavigate}>
           アクセス解析
-        </NavItem>
-        <NavItem to="/w/$wikiKey/rules" icon={<Workflow size={18} />} onClick={props.onNavigate}>
-          ルール
         </NavItem>
         <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
           テンプレート

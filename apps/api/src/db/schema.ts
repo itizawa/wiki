@@ -21,7 +21,7 @@ import {
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 // ---------------------------------------------------------------------------
-// wiki：ページ・ツリー（1本）・ルール・予約のまとまり
+// wiki：ページ・ツリー（1本）・予約のまとまり
 // ---------------------------------------------------------------------------
 
 export const wikis = pgTable("wikis", {
@@ -76,15 +76,6 @@ export const pages = pgTable(
     firstPublishedAt: timestamp("first_published_at", { withTimezone: true }),
     /** 12.3 収益化の受け口。例: { "affiliate": true } */
     monetization: jsonb("monetization"),
-    /** 公開までの進み具合。approved は人が付ける */
-    workflowState: text("workflow_state", { enum: ["idea", "draft", "approved"] }).notNull().default("draft"),
-    /** 承認した版（承認後の編集は含めない）。approved のときだけ入る */
-    approvedVersionId: uuid("approved_version_id"),
-    approvedAt: timestamp("approved_at", { withTimezone: true }),
-    /** 見直しキューに入った日時。nullなら入っていない */
-    reviewRequestedAt: timestamp("review_requested_at", { withTimezone: true }),
-    /** 最後に「見直し済み」にした日時 */
-    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     /** ゴミ箱に入れた日時。nullならゴミ箱に入っていない */
@@ -106,8 +97,6 @@ export const pages = pgTable(
   (t) => [
     check("pages_visibility_check", sql`${t.visibility} in ('public', 'unlisted', 'private')`),
     check("pages_origin_check", sql`${t.origin} in ('human', 'ai_draft')`),
-    check("pages_workflow_state_check", sql`${t.workflowState} in ('idea', 'draft', 'approved')`),
-    check("pages_approved_version_check", sql`(${t.workflowState} = 'approved') = (${t.approvedVersionId} is not null)`),
     index("pages_wiki_updated_at_idx").on(t.wikiId, t.updatedAt),
   ],
 );
@@ -132,7 +121,7 @@ export const pageVersions = pgTable(
     /** 作った人のメールアドレス。外部のアプリ（MCP）から保存した版と、この列を足す前の版は null */
     authorEmail: text("author_email"),
     /**
-     * 間引かずに残す版か。人が操作して作った版と、公開・予約・承認に使った版は true。
+     * 間引かずに残す版か。人が操作して作った版と、公開・予約に使った版は true。
      * ワーカーが下書きから自動で作った版は false（あとで間引いてよい）
      */
     keep: boolean("keep").notNull().default(true),
@@ -348,50 +337,6 @@ export const structureBranches = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// ルール（トリガー → アクション）と実行ログ
-// ---------------------------------------------------------------------------
-
-/**
- * ルールの設定。定型ルール（shared の RULE_PRESETS）は id が定型ルールの id と同じで、
- * 設定を保存するまでは行が無い（無効として扱う）。wiki ごとに持つ。
- */
-export const rules = pgTable(
-  "rules",
-  {
-    wikiId: wikiId(),
-    id: text("id").notNull(),
-    enabled: boolean("enabled").notNull().default(false),
-    /** RuleTrigger */
-    trigger: jsonb("trigger").notNull(),
-    /** RuleAction[] */
-    actions: jsonb("actions").notNull(),
-    createdAt: createdAt(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [primaryKey({ columns: [t.wikiId, t.id] })],
-);
-
-/** ルールが何かをした（または失敗した）記録。何も起きなかった回は残さない。 */
-export const ruleRuns = pgTable(
-  "rule_runs",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    wikiId: wikiId(),
-    ruleId: text("rule_id").notNull(),
-    status: text("status", { enum: ["done", "failed"] }).notNull(),
-    summary: text("summary").notNull(),
-    /** 対象になったページ */
-    pageIds: jsonb("page_ids").$type<string[]>().notNull().default([]),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    check("rule_runs_status_check", sql`${t.status} in ('done', 'failed')`),
-    foreignKey({ name: "rule_runs_rule_fk", columns: [t.wikiId, t.ruleId], foreignColumns: [rules.wikiId, rules.id] }),
-    index("rule_runs_rule_idx").on(t.wikiId, t.ruleId, t.createdAt),
-  ],
-);
-
-// ---------------------------------------------------------------------------
 // 4.6 予約公開 ／ 7 公開パイプライン
 // ---------------------------------------------------------------------------
 
@@ -411,8 +356,6 @@ export const scheduledActions = pgTable(
     branchName: text("branch_name"),
     /** 同時公開グループ（シリーズ記事など）。同じ batch_id は1トランザクションで実行する */
     batchId: uuid("batch_id"),
-    /** ルールが入れた予約なら、その実行ログ */
-    ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
     /** 外部のアプリ（MCP）が入れた予約なら、その許可 */
     oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
     /** UTC保存。入出力はJST */

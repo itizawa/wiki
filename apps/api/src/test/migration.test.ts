@@ -1,6 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
+import type { Db } from "../db/client";
+import * as schema from "../db/schema";
+import { runDueActions } from "../publishing/scheduler";
+import { createPage } from "../routes/pages";
+import { bootstrapStructure } from "../structure/repo";
+import { wikiManifest } from "./harness";
 
 let client: PGlite | undefined;
 afterEach(async () => {
@@ -274,5 +281,98 @@ describe("0014_page_trash", () => {
       { id: "pagelive01", trash_root_id: null, trashed_parent_id: null, trashed_position: null, purged_at: null },
       { id: "pagelive02", trash_root_id: null, trashed_parent_id: null, trashed_position: null, purged_at: null },
     ]);
+  });
+});
+
+describe("0018_remove_rules", () => {
+  const before = [
+    "0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine", "0005_multi_wiki", "0006_wiki_icon",
+    "0007_page_stars", "0008_drop_tree_is_public", "0009_page_drafts", "0010_page_templates", "0011_oauth", "0012_page_views", "0013_auto_version",
+    "0014_page_trash", "0015_wiki_integrations", "0016_page_icon", "0017_analytics",
+  ];
+  const DROPPED_TABLES = ["rules", "rule_runs"];
+  const DROPPED_COLUMNS = [
+    ["scheduled_actions", "rule_run_id"],
+    ["pages", "workflow_state"],
+    ["pages", "approved_version_id"],
+    ["pages", "approved_at"],
+    ["pages", "review_requested_at"],
+    ["pages", "reviewed_at"],
+  ];
+  const tables = async (db: PGlite) =>
+    (await db.query<{ table_name: string }>(`select table_name from information_schema.tables where table_schema = 'public'`)).rows.map((r) => r.table_name);
+  const columns = async (db: PGlite) =>
+    (await db.query<{ c: string }>(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'public'`)).rows.map((r) => r.c);
+
+  it("drops the rules, the article states and the review queue, and still publishes what a rule had scheduled", async () => {
+    const pg = (client = new PGlite());
+    for (const tag of before) await runMigration(pg, tag);
+    const db = drizzle(pg, { schema }) as unknown as Db;
+    await bootstrapStructure(db);
+    const wikiId = (await pg.query<{ id: string }>(`select id from wikis where key = 'wiki'`)).rows[0]!.id;
+    const newPage = (title: string) => db.transaction((tx) => createPage(tx, wikiId, { title, bodyMd: `${title} の本文` }));
+    const approved = await newPage("承認済みで、ルールが予約した");
+    const idea = await newPage("ネタ");
+    const stale = await newPage("見直し待ち");
+    const byHand = await newPage("人が予約した");
+    const runAt = new Date(Date.now() + 3600_000);
+
+    // ルールの設定・実行ログ・ルールが入れた予約・承認済みのページ・見直しキューが入った状態
+    await pg.exec(`
+      insert into rules (wiki_id, id, enabled, trigger, actions) values
+        ('${wikiId}', 'fill-slots', true, '{"type":"stock_below","days":14,"min":3}', '[{"type":"schedule_approved","weekdays":[2,5],"time":"08:00"}]'),
+        ('${wikiId}', 'review-stale', true, '{"type":"stale","days":180}', '[{"type":"request_review"}]');
+      insert into rule_runs (id, wiki_id, rule_id, status, summary, page_ids) values
+        ('00000000-0000-0000-0000-0000000000d1', '${wikiId}', 'fill-slots', 'done', '1件を予約枠に入れました', '["${approved}"]'),
+        ('00000000-0000-0000-0000-0000000000d2', '${wikiId}', 'review-stale', 'done', '1件を見直しキューに入れました', '["${stale}"]');
+      update pages set workflow_state = 'approved', approved_version_id = head_version_id, approved_at = now() where id = '${approved}';
+      update pages set workflow_state = 'idea' where id = '${idea}';
+      update pages set review_requested_at = now(), reviewed_at = now() - interval '1 year' where id = '${stale}';
+      insert into scheduled_actions (wiki_id, action_type, page_id, version_id, target_visibility, run_at, rule_run_id)
+        select wiki_id, 'publish_page', id, head_version_id, 'public', '${runAt.toISOString()}', '00000000-0000-0000-0000-0000000000d1' from pages where id = '${approved}';
+      insert into scheduled_actions (wiki_id, action_type, page_id, version_id, target_visibility, run_at)
+        select wiki_id, 'publish_page', id, head_version_id, 'public', '${runAt.toISOString()}' from pages where id = '${byHand}';
+    `);
+    expect(await tables(pg)).toEqual(expect.arrayContaining(DROPPED_TABLES));
+    expect(await columns(pg)).toEqual(expect.arrayContaining(DROPPED_COLUMNS.map(([t, c]) => `${t}.${c}`)));
+    const snapshot = async (table: string, cols: string) => (await pg.query(`select ${cols} from ${table} order by id`)).rows;
+    const pageCols = "id, wiki_id, title, icon, head_version_id, published_version_id, visibility, origin, unlisted_key, first_published_at, created_at, updated_at, deleted_at";
+    const actionCols = "id, wiki_id, action_type, page_id, version_id, target_visibility, run_at, status, attempts, last_error, created_at, executed_at";
+    const pagesBefore = await snapshot("pages", pageCols);
+    const actionsBefore = await snapshot("scheduled_actions", actionCols);
+    const versionsBefore = await snapshot("page_versions", "*");
+
+    await runMigration(pg, "0018_remove_rules");
+
+    // テーブルと列が無い
+    for (const table of DROPPED_TABLES) expect(await tables(pg), table).not.toContain(table);
+    for (const [table, column] of DROPPED_COLUMNS) expect(await columns(pg), `${table}.${column}`).not.toContain(`${table}.${column}`);
+    const constraints = (await pg.query<{ conname: string }>(`select conname from pg_constraint`)).rows.map((r) => r.conname);
+    for (const name of ["pages_workflow_state_check", "pages_approved_version_check", "scheduled_actions_rule_run_id_rule_runs_id_fk"]) {
+      expect(constraints, name).not.toContain(name);
+    }
+    // ページ・版・予約の行は、残る列がどれも変わらない。ルールが入れた予約も scheduled のまま
+    expect(await snapshot("pages", pageCols)).toEqual(pagesBefore);
+    expect(await snapshot("page_versions", "*")).toEqual(versionsBefore);
+    expect(await snapshot("scheduled_actions", actionCols)).toEqual(actionsBefore);
+    expect(actionsBefore.map((a: any) => a.status)).toEqual(["scheduled", "scheduled"]);
+
+    // 時刻が来る前は実行されず、来ると、ルールが入れた予約も人が入れた予約も公開される
+    expect((await runDueActions(db, new Date(runAt.getTime() - 60_000))).done).toEqual([]);
+    const run = await runDueActions(db, new Date(runAt.getTime() + 60_000));
+    expect(run.failed).toEqual([]);
+    expect(run.done).toHaveLength(2);
+    const published = (await pg.query<{ id: string; visibility: string; ok: boolean }>(
+      `select id, visibility, published_version_id = head_version_id as ok from pages where published_version_id is not null order by id`,
+    )).rows;
+    expect(published).toEqual([approved, byHand].sort().map((id) => ({ id, visibility: "public", ok: true })));
+    expect((await wikiManifest(db)).pages.map((p) => p.title).sort()).toEqual(["人が予約した", "承認済みで、ルールが予約した"]);
+  });
+
+  it("runs on an empty database", async () => {
+    const pg = (client = new PGlite());
+    for (const tag of [...before, "0018_remove_rules"]) await runMigration(pg, tag);
+    expect(await tables(pg)).not.toContain("rules");
+    expect((await pg.query(`select 1 from pages`)).rows).toEqual([]);
   });
 });

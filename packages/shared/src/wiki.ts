@@ -3,7 +3,7 @@ import { isGaPropertyId } from "./analytics";
 import { imageNameFromPath } from "./images";
 
 /**
- * wiki = ページ・ツリー（1本）・ルール・予約・設定のまとまり。wiki どうしは内容を共有しない。
+ * wiki = ページ・ツリー（1本）・予約・設定のまとまり。wiki どうしは内容を共有しない。
  * key は公開サイトのサブドメイン（`{key}.{baseDomain}`）になり、作成後は変えられない。
  */
 export type Wiki = {

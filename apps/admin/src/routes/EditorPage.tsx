@@ -43,7 +43,7 @@ const WIDE_HEADER = "@container (min-width: 600px)";
 /** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
 const UNTITLED = "無題";
 
-/** タイトルが空のまま、版を作ろうとしたとき（⌘S・公開・予約・承認）に伝えること */
+/** タイトルが空のまま、版を作ろうとしたとき（⌘S・公開・予約）に伝えること */
 const TITLE_REQUIRED = "タイトルが空のため、版として残せません。タイトルを入れてください。";
 
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
@@ -132,7 +132,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
 
   /**
    * いまの内容の版を用意する。まだ版になっていない変更があれば版を作り、無ければいまの head をそのまま使う
-   * （head が自動でできた版なら、残す版にする）。公開・予約・承認の前にも呼ぶ。
+   * （head が自動でできた版なら、残す版にする）。公開・予約の前にも呼ぶ。
    */
   const ensureVersion: EnsureVersion = async () => {
     if (!draft || !page.data) throw new Error("page is not loaded");

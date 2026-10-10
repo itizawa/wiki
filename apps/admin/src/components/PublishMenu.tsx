@@ -1,7 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import Popover from "@mui/material/Popover";
 import { useTheme } from "@mui/material/styles";
@@ -9,7 +8,6 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import type { PageDetail } from "@wiki/shared";
 import { useState } from "react";
 import { PublishPanel, type EnsureVersion } from "./PublishPanel";
-import { WorkflowPanel } from "./WorkflowPanel";
 
 const PANEL_ID = "publish-menu";
 
@@ -20,9 +18,8 @@ export function publishState(page: PageDetail): { label: string; color: "success
 }
 
 /**
- * 編集画面の右上の「公開」。押すとボタンの下に小さな枠（狭い画面では下から出るシート）を開き、
- * 上に記事の状態（承認・見直し）、下に公開・予約を並べる。承認してから公開する順に上から進める。
- * `dirty`（まだ版になっていない変更がある）のあいだは、公開・予約・承認の前に `ensureVersion` でいまの内容を版にする。
+ * 編集画面の右上の「公開」。押すとボタンの下に小さな枠（狭い画面では下から出るシート）を開き、公開・予約を並べる。
+ * `dirty`（まだ版になっていない変更がある）のあいだは、公開・予約の前に `ensureVersion` でいまの内容を版にする。
  */
 export function PublishMenu(props: { page: PageDetail; dirty: boolean; ensureVersion: EnsureVersion }) {
   const { page } = props;
@@ -35,8 +32,6 @@ export function PublishMenu(props: { page: PageDetail; dirty: boolean; ensureVer
 
   const content = (
     <Box id={PANEL_ID} sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
-      <WorkflowPanel {...props} />
-      <Divider />
       <PublishPanel {...props} />
     </Box>
   );

@@ -14,7 +14,7 @@ export const PRUNE_BATCH_SIZE = 1000;
  * - 自動の版を、ページごとに区切り（30日以内は JST の1日、それより前は JST の1か月）に分け、新しい順に順位を付ける
  * - 区切りの中でいちばん新しい版は残す。2番目以降のうち、できてから24時間より前のものを消す
  * - 順位は、24時間以内の版と下の「消さない版」も入れて付ける。残す版（`keep = true`）は入れない
- * - 2番目以降でも消さない版：どれかのページの head・公開中・承認した版、予約（状態は問わない）が指す版、
+ * - 2番目以降でも消さない版：どれかのページの head・公開中の版、予約（状態は問わない）が指す版、
  *   下書きがもとにしている版、外部のアプリ（MCP）が作った版の派生元
  * - 消した版を派生元（`base_version_id`）にしていた版は、派生元を null にする
  *
@@ -27,7 +27,7 @@ export async function pruneVersions(db: Db, now = new Date()): Promise<{ deleted
   return db.transaction(async (tx) => {
     // JST は夏時間が無いので、UTC に9時間を足して日と月を切る（DB のタイムゾーンの設定に左右されない）。
     // 1日の区切りと1か月の区切りが同じ値（月の1日）になっても混ざらないよう、どちらの区切りかも分け方に入れる。
-    // `d.keep = false` を消す行そのものの条件に置く：選んだあとに公開・承認で残す版になった行は、ここで外れる。
+    // `d.keep = false` を消す行そのものの条件に置く：選んだあとに公開・予約で残す版になった行は、ここで外れる。
     const deleted = rowsOf<{ id: string }>(
       await tx.execute(sql`
         delete from "page_versions" d
@@ -56,7 +56,7 @@ export async function pruneVersions(db: Db, now = new Date()): Promise<{ deleted
               and r."created_at" < ${keepAllSince}::timestamptz
               and not exists (
                 select 1 from "pages" p
-                where p."head_version_id" = r."id" or p."published_version_id" = r."id" or p."approved_version_id" = r."id"
+                where p."head_version_id" = r."id" or p."published_version_id" = r."id"
               )
               and not exists (select 1 from "scheduled_actions" a where a."version_id" = r."id")
               and not exists (select 1 from "page_drafts" dr where dr."base_version_id" = r."id")

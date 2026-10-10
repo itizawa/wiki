@@ -4,14 +4,12 @@ import {
   savePageDraftInput,
   savePageInput,
   setPageIconInput,
-  setWorkflowInput,
   type PageDetail,
   type PageDraft,
   type PageSummary,
   type SavePageDraftResult,
   type PageVersion,
   type SavePageInput,
-  type SetWorkflowInput,
   type StructureOp,
   type TrashedPage,
 } from "@wiki/shared";
@@ -19,7 +17,7 @@ import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } f
 import { Hono } from "hono";
 import type { Db } from "../db/client";
 import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions } from "../db/schema";
-import { createVersion, isOwnAutoVersion, keepVersion, ownDraft, replaceLinks } from "../pages/versions";
+import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks } from "../pages/versions";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent } from "../publishing/service";
 import type { AppEnv } from "../env";
@@ -42,9 +40,6 @@ const toSummary = (p: PageRow): PageSummary => ({
   origin: p.origin,
   unlistedKey: p.unlistedKey,
   firstPublishedAt: p.firstPublishedAt?.toISOString() ?? null,
-  workflowState: p.workflowState,
-  approvedVersionId: p.approvedVersionId,
-  reviewRequestedAt: p.reviewRequestedAt?.toISOString() ?? null,
   updatedAt: p.updatedAt.toISOString(),
 });
 
@@ -293,7 +288,7 @@ export async function lockTrashGroup(tx: Db, wikiId: string, id: string): Promis
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと元に戻す。親子関係と並びは削除前のまま。
  * 置き場所は、元の親がツリーに残っていればその下の末尾、無ければ最上位の末尾。
- * 公開と予約は戻さない（非公開のまま）。承認済みだったページは下書きに戻す（戻しただけで、ルールが予約枠に入れないように）。
+ * 公開と予約は戻さない（非公開のまま）。
  * トランザクション内で呼ぶ。
  */
 export async function restorePage(
@@ -315,10 +310,6 @@ export async function restorePage(
     .update(pages)
     .set({ deletedAt: null, trashRootId: null, trashedParentId: null, trashedPosition: null, updatedAt: new Date() })
     .where(inArray(pages.id, ids));
-  await tx
-    .update(pages)
-    .set({ workflowState: "draft", approvedVersionId: null, approvedAt: null })
-    .where(and(inArray(pages.id, ids), eq(pages.workflowState, "approved")));
 
   const tree = await getPrimaryTree(tx, wikiId);
   const main = await getBranch(tx, wikiId, MAIN_BRANCH);
@@ -381,35 +372,9 @@ export async function purgePage(tx: Db, wikiId: string, id: string): Promise<{ p
       trashedParentId: null,
       trashedPosition: null,
       unlistedKey: null,
-      workflowState: "draft",
-      approvedVersionId: null,
-      approvedAt: null,
     })
     .where(inArray(pages.id, ids));
   return { purgedPageIds: ids };
-}
-
-/** 記事の状態（ネタ・下書き・承認済み）を変える。承認はその版を固定する。トランザクション内で呼ぶ。 */
-export async function setWorkflow(tx: Db, wikiId: string, id: string, input: SetWorkflowInput): Promise<void> {
-  await findLivePage(tx, wikiId, id, true);
-  if (input.state === "approved") {
-    const [v] = await tx
-      .select({ id: pageVersions.id })
-      .from(pageVersions)
-      .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, id)));
-    if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
-    // 承認した版は、ルールが予約枠に入れる。自動でできた版でも間引かない
-    await keepVersion(tx, input.versionId);
-  }
-  // 一覧の並び（updated_at）は変えない。approved_at は予約の created_at と比べるので、同じDBの時計で入れる
-  await tx
-    .update(pages)
-    .set(
-      input.state === "approved"
-        ? { workflowState: "approved", approvedVersionId: input.versionId, approvedAt: sql`clock_timestamp()` }
-        : { workflowState: input.state, approvedVersionId: null, approvedAt: null },
-    )
-    .where(eq(pages.id, id));
 }
 
 export const pageRoutes = new Hono<AppEnv>()
@@ -550,22 +515,6 @@ export const pageRoutes = new Hono<AppEnv>()
     const wikiId = c.get("wiki").id;
     const { purgedPageIds } = await db.transaction((tx) => purgePage(tx, wikiId, c.req.param("id")));
     return c.json({ ok: true, purgedPages: purgedPageIds.length });
-  })
-  .post("/:id/workflow", async (c) => {
-    const { db } = c.get("deps");
-    const id = c.req.param("id");
-    const wikiId = c.get("wiki").id;
-    const input = await parseJson(c, setWorkflowInput);
-    await db.transaction((tx) => setWorkflow(tx, wikiId, id, input));
-    return c.json(await getDetail(db, wikiId, id));
-  })
-  .post("/:id/review-done", async (c) => {
-    const { db } = c.get("deps");
-    const id = c.req.param("id");
-    const wikiId = c.get("wiki").id;
-    await findLivePage(db, wikiId, id);
-    await db.update(pages).set({ reviewRequestedAt: null, reviewedAt: new Date() }).where(eq(pages.id, id));
-    return c.json(await getDetail(db, wikiId, id));
   })
   .get("/:id/versions", async (c) => {
     const { db } = c.get("deps");

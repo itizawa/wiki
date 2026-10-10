@@ -3,7 +3,7 @@ import { filterCommands } from "./CommandMenu";
 
 const commands = [
   { label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"] },
-  { label: "「ルール」を開く", keywords: ["rules", "workflow"] },
+  { label: "「構造の履歴」を開く", keywords: ["history", "commits"] },
   { label: "ログアウトする", keywords: ["logout"] },
   { label: "いまの内容を版として残す", keywords: ["save", "version", "keep", "hozon"] },
 ];

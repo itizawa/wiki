@@ -174,12 +174,6 @@ export function CalendarPage() {
                         <StatusChip status={e.action.status} label={actionLabel(e.action)} />
                         <Box sx={titleCellSx}>
                           <PageLink action={e.action} />
-                          {e.action.ruleRunId && (
-                            <Box component="span" sx={{ color: "text.secondary" }}>
-                              {" "}
-                              ルールが予約
-                            </Box>
-                          )}
                           {e.action.editedAfterSchedule && (
                             <Box component="span" sx={{ color: "warning.main" }}>
                               {" "}

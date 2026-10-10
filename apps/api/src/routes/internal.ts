@@ -8,7 +8,6 @@ import { promoteDrafts } from "../pages/versions";
 import { requestBuild } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
-import { runRules } from "../rules/engine";
 import { parseJson } from "../validation";
 import { recordView } from "./views";
 
@@ -53,9 +52,6 @@ export const internalRoutes = new Hono<AppEnv>()
   })
   .post("/scheduled/run", async (c) => {
     return c.json(await runDueActions(c.get("deps").db));
-  })
-  .post("/rules/run", async (c) => {
-    return c.json(await runRules(c.get("deps").db));
   })
   .post("/builds/request", async (c) => {
     const body = buildRequestInput.parse(await c.req.json().catch(() => ({})));

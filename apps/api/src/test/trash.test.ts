@@ -113,7 +113,6 @@ describe("trash", () => {
     const f = await family();
     await publish(f.top);
     await publish(f.parent);
-    await ctx.call("POST", `${W}/pages/${f.child2.id}/workflow`, { state: "approved", versionId: f.child2.headVersionId });
     const before = await outline(f.titles);
     expect(before).toEqual(["top", "  親", "    子1", "      孫", "    子2", "  隣"]);
     await ctx.call("DELETE", `${W}/pages/${f.parent.id}`);
@@ -127,8 +126,6 @@ describe("trash", () => {
     expect(await trash()).toEqual([]);
     const parent = (await ctx.call("GET", `${W}/pages/${f.parent.id}`)).body;
     expect(parent).toMatchObject({ visibility: "private", publishedVersionId: null, head: { bodyMd: "親 の本文" } });
-    // 承認済みだったページは下書きに戻る
-    expect((await ctx.call("GET", `${W}/pages/${f.child2.id}`)).body).toMatchObject({ workflowState: "draft", approvedVersionId: null });
     // 公開サイトには出ず、410 もやめる
     const m = await wikiManifest(ctx.db);
     expect(m.pages.map((p) => p.id)).toEqual([f.top.id]);
@@ -175,7 +172,6 @@ describe("trash", () => {
     await publish(parent);
     const runAt = new Date(Date.now() + 3600_000).toISOString();
     await ctx.call("POST", `${W}/schedule`, { actionType: "unpublish_page", pageId: parent.id, runAt });
-    await ctx.call("POST", `${W}/pages/${child.id}/workflow`, { state: "approved", versionId: child.headVersionId });
     await ctx.call("DELETE", `${W}/pages/${parent.id}`);
 
     const res = await ctx.call("DELETE", `${W}/pages/${parent.id}/trash`);

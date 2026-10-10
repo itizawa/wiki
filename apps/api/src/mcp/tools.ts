@@ -6,7 +6,7 @@ import type { Db } from "../db/client";
 import { pages, pageVersions, scheduledActions } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import type { AgentContext } from "../oauth/service";
-import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage, setWorkflow } from "../routes/pages";
+import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage } from "../routes/pages";
 import { cancelSchedule, createSchedule, listActions } from "../routes/publishing";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { publishPage, unpublishPage } from "../publishing/service";
@@ -15,7 +15,7 @@ import { findOpenWiki, listWikis } from "../wikis/service";
 
 /**
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
- * 公開・予約・承認は wiki.publish、削除（ゴミ箱に入れる・一覧・元に戻す）は wiki.delete を許したアプリだけが使える。
+ * 公開・予約は wiki.publish、削除（ゴミ箱に入れる・一覧・元に戻す）は wiki.delete を許したアプリだけが使える。
  * ゴミ箱から完全に削除する道具は置かない（完全に消せるのは、管理画面の人だけ）。
  */
 type ToolContext = { db: Db; config: AppConfig; agent: AgentContext };
@@ -69,7 +69,7 @@ async function readableVersion(db: Db, agent: AgentContext, id: string): Promise
   return row!.versionId;
 }
 
-/** 指定の版を公開・承認してよいか。wiki.private が無いと、読める版しか扱えない（見ていない書きかけを公開させない） */
+/** 指定の版を公開・予約してよいか。wiki.private が無いと、読める版しか扱えない（見ていない書きかけを公開させない） */
 async function usableVersion(db: Db, agent: AgentContext, id: string, versionId: string | undefined): Promise<string> {
   const readable = await readableVersion(db, agent, id);
   if (versionId === undefined || versionId === readable || agent.scopes.includes("wiki.private")) return versionId ?? readable;
@@ -136,7 +136,6 @@ export const TOOLS = [
           id: pages.id,
           title: pageVersions.title,
           visibility: pages.visibility,
-          workflowState: pages.workflowState,
           published: isNotNull(pages.publishedVersionId).mapWith(Boolean),
           updatedAt: pages.updatedAt,
         })
@@ -177,7 +176,6 @@ export const TOOLS = [
         hasHiddenEdits: versionId !== page.headVersionId,
         visibility: page.visibility,
         published: page.publishedVersionId !== null,
-        workflowState: page.workflowState,
         updatedAt: page.updatedAt.toISOString(),
       };
     },
@@ -474,32 +472,6 @@ export const TOOLS = [
       await visiblePage(db, agent, wiki.id, row.pageId);
       const action = await cancelSchedule(db, wiki.id, input.scheduleId);
       return { id: action.id, status: action.status };
-    },
-  }),
-  tool({
-    name: "set_workflow_state",
-    description:
-      "記事の状態を変える：idea（ネタ）／draft（下書き）／approved（承認済み）。承認はその版（versionId を省くと最新の版）を固定し、予約枠に入れるルールの対象になる。",
-    scope: "wiki.publish",
-    input: z.object({ wiki: wikiKey, pageId, state: z.enum(["idea", "draft", "approved"]), versionId: z.string().uuid().optional() }),
-    inputSchema: schema(
-      {
-        ...WIKI_PROP,
-        pageId: str("ページの ID"),
-        state: { type: "string", enum: ["idea", "draft", "approved"], description: "新しい状態" },
-        versionId: str("承認する版（approved のときだけ。省略すると get_page で返す版）"),
-      },
-      ["wiki", "pageId", "state"],
-    ),
-    async run({ db, agent }, input) {
-      const wiki = await findOpenWiki(db, input.wiki);
-      const page = await visiblePage(db, agent, wiki.id, input.pageId);
-      const versionId = input.state === "approved" ? await usableVersion(db, agent, page.id, input.versionId) : undefined;
-      await db.transaction((tx) =>
-        setWorkflow(tx, wiki.id, page.id, versionId ? { state: "approved", versionId } : { state: input.state as "idea" | "draft" }),
-      );
-      const after = await findLivePage(db, wiki.id, page.id);
-      return { id: page.id, workflowState: after.workflowState, approvedVersionId: after.approvedVersionId };
     },
   }),
   tool({
