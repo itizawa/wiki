@@ -1,3 +1,4 @@
+import HistoryIcon from "@mui/icons-material/History";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import StarIcon from "@mui/icons-material/Star";
@@ -18,7 +19,9 @@ import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { useStars } from "../lib/stars";
 import { formatDateTime } from "../lib/format";
+import { textStats } from "../lib/stats";
 import { usePersistentState } from "../lib/storage";
+import { PageMenu } from "../components/PageMenu";
 import { PublishPanel } from "../components/PublishPanel";
 import { Tooltip } from "../components/Tooltip";
 import { WorkflowPanel } from "../components/WorkflowPanel";
@@ -27,6 +30,8 @@ import { monoFont } from "../theme";
 import { visibilityLabel } from "./PagesPage";
 
 type Draft = { title: string; bodyMd: string };
+
+const VERSION_PANEL_ID = "version-history";
 
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
 
@@ -38,6 +43,14 @@ export function EditorPage({ pageId }: { pageId: string }) {
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = usePersistentState("wiki.editor.panel", false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+
+  // タイトルの下の「版履歴を見る」から：パネルを開き、版履歴の位置までスクロールする
+  const [showHistory, setShowHistory] = useState(false);
+  useEffect(() => {
+    if (!showHistory || !panelOpen) return;
+    document.getElementById(VERSION_PANEL_ID)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setShowHistory(false);
+  }, [showHistory, panelOpen]);
 
   // 初回読み込み時だけサーバーの内容で下書きを作る（以降はローカルの編集を優先）
   useEffect(() => {
@@ -112,7 +125,7 @@ export function EditorPage({ pageId }: { pageId: string }) {
 
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <Box
           component="header"
           sx={{
@@ -136,9 +149,10 @@ export function EditorPage({ pageId }: { pageId: string }) {
           <Button variant={panelOpen ? "outlined" : "text"} aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>
             公開・履歴
           </Button>
+          <PageMenu title={draft.title} bodyMd={draft.bodyMd} />
         </Box>
 
-        <Box sx={{ maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
+        <Box sx={{ width: "100%", maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4 }}>
           {save.error && (
             <Alert
               severity="error"
@@ -168,10 +182,28 @@ export function EditorPage({ pageId }: { pageId: string }) {
             onChange={(e) => setDraft({ ...draft, title: e.target.value.replace(/\n/g, "") })}
             placeholder="無題"
             inputProps={{ "aria-label": "タイトル" }}
-            sx={{ mb: 2, p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
+            sx={{ p: 0, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
           />
+          <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", columnGap: 1, mt: 0.5, mb: 2 }}>
+            <Muted>
+              最終保存 <time dateTime={p.head.createdAt}>{formatDateTime(p.head.createdAt)}</time>
+              {dirty && "（保存していない変更があります）"}
+            </Muted>
+            <Button
+              color="inherit"
+              startIcon={<HistoryIcon fontSize="small" />}
+              onClick={() => {
+                setPanelOpen(true);
+                setShowHistory(true);
+              }}
+              sx={{ color: "text.secondary" }}
+            >
+              版履歴を見る
+            </Button>
+          </Stack>
           <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} />
         </Box>
+        <EditingStats bodyMd={draft.bodyMd} />
       </Box>
 
       {panelOpen && (
@@ -232,6 +264,21 @@ export function EditorPage({ pageId }: { pageId: string }) {
   );
 }
 
+/** 本文の文字数と読む時間の目安。書いている間、画面の右下に出し続ける。 */
+function EditingStats({ bodyMd }: { bodyMd: string }) {
+  const stats = useMemo(() => textStats(bodyMd), [bodyMd]);
+  return (
+    <Box sx={{ position: "sticky", bottom: 0, mt: "auto", display: "flex", justifyContent: "flex-end", p: 1, pointerEvents: "none" }}>
+      <Muted
+        aria-live="off"
+        sx={{ px: 1, py: 0.25, borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}
+      >
+        {stats.chars.toLocaleString("ja-JP")}文字・読むのに約{stats.minutes}分
+      </Muted>
+    </Box>
+  );
+}
+
 /** ツリー上の置き場所（親ページの並び）とタイトル。 */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
@@ -279,7 +326,7 @@ function VersionPanel(props: {
   });
 
   return (
-    <Section>
+    <Section id={VERSION_PANEL_ID} sx={{ scrollMarginTop: 12 }}>
       <Typography variant="subtitle1" component="h3">
         版履歴
       </Typography>
