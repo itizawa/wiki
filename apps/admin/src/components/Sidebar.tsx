@@ -358,23 +358,33 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0, color: "text.secondary" }} />
         </Box>
       </Tooltip>
-      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true, sx: { minWidth: 240 } } }}>
-        <ListSubheader disableSticky sx={{ lineHeight: "28px", fontSize: "0.75rem", fontWeight: 600 }}>
-          wiki を切り替える
-        </ListSubheader>
+      {/* Slack のワークスペース一覧のように、大きめのアイコンと、表示名・key の2行を並べる。開くボタンが見出しの役をするので、一覧に見出しは置かない */}
+      <Menu open={anchor !== null} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { "aria-label": "wiki を切り替える", sx: { minWidth: 280, maxWidth: 360 } } }}>
         {wikis.map((w) => (
-          <MenuItemLink key={w.key} to="/w/$wikiKey" params={{ wikiKey: w.key }} selected={w.key === wiki.key} aria-current={w.key === wiki.key ? "true" : undefined} onClick={close}>
-            {/* いまの wiki は、色だけでなくチェックの印でも示す */}
-            <ListItemIcon>{w.key === wiki.key && <Check size={18} />}</ListItemIcon>
-            <Box sx={{ mr: 1.25, display: "flex" }}>
-              <WikiIcon wiki={w} size={24} />
-            </Box>
-            <ListItemText primary={w.name} secondary={w.key} slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }} />
+          <MenuItemLink
+            key={w.key}
+            to="/w/$wikiKey"
+            params={{ wikiKey: w.key }}
+            selected={w.key === wiki.key}
+            aria-current={w.key === wiki.key ? "true" : undefined}
+            onClick={close}
+            sx={{ gap: 1.5, minHeight: 52, py: 0.75 }}
+          >
+            <WikiIcon wiki={w} size={36} />
+            <ListItemText
+              primary={w.name}
+              secondary={w.key}
+              slotProps={{ primary: { noWrap: true, sx: { fontWeight: 600, lineHeight: 1.3 } }, secondary: { noWrap: true, sx: { fontSize: "0.75rem", lineHeight: 1.3 } } }}
+              sx={{ my: 0, minWidth: 0 }}
+            />
+            {/* いまの wiki は、背景の色だけでなくチェックの印でも示す */}
+            {w.key === wiki.key && <Box component={Check} size={18} sx={{ flexShrink: 0 }} />}
           </MenuItemLink>
         ))}
         <Divider />
-        <MenuItemLink to="/connections" onClick={close}>
-          <ListItemIcon>
+        {/* アイコンの列の幅を wiki の行（36px）に合わせ、文字の始まりを揃える */}
+        <MenuItemLink to="/connections" onClick={close} sx={{ gap: 1.5 }}>
+          <ListItemIcon sx={{ "&&": { minWidth: 36 }, justifyContent: "center" }}>
             <Puzzle size={18} />
           </ListItemIcon>
           <ListItemText>外部アプリ連携（MCP）</ListItemText>
