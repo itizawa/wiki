@@ -16,7 +16,6 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import EditNoteIcon from "@mui/icons-material/EditNote";
 import HistoryIcon from "@mui/icons-material/History";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyboardCommandKeyIcon from "@mui/icons-material/KeyboardCommandKey";
@@ -125,13 +124,6 @@ export function Sidebar(props: {
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 1, pr: 1.5, pt: 1.5, pb: 1 }}>
         <WikiSwitcher onNavigate={props.onNavigate} />
-        <Tooltip title="新しいページ">
-          <span>
-            <IconButton size="small" aria-label="新しいページ" disabled={create.isPending} onClick={() => create.mutate(null)}>
-              <EditNoteIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
         {props.onCollapse && (
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
