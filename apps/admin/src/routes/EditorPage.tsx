@@ -20,7 +20,7 @@ import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
 import { api, errorMessage } from "../lib/api";
 import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
-import { FULL_HEIGHT } from "./WikiLayout";
+import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
 import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { isCounted } from "../lib/views";
@@ -73,7 +73,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const titleRow = useRef<HTMLDivElement>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const headings = useOutline(editor);
-  // スマホ幅では、ヘッダーをページの名前と「…」だけにし、ほかの操作は「…」メニューにまとめる
+  // スマホ幅では、この画面の帯を置かず、操作を「…」メニューにまとめて上の帯に出す
   const narrow = useMediaQuery(useTheme().breakpoints.down("sm"));
 
   // 版履歴の開閉と選んだ版は URL に持つ。開くときだけ履歴に積み（ブラウザの「戻る」で閉じる）、版の選び直しと閉じるときは積まない
@@ -228,6 +228,26 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   // 版を作れなかった・下書きを保存できなかった（どちらも、別の画面で先に版ができたときは読み直すしかない）
   const saveError = save.error ?? autosave.error;
 
+  const pageMenu = (
+    <PageMenu
+      pageId={p.id}
+      counted={isCounted(p)}
+      title={draft.title}
+      bodyMd={draft.bodyMd}
+      hasIcon={p.icon !== null}
+      onPickIcon={() => setIconPickerOpen(true)}
+      onKeepVersion={() => void keepVersion()}
+      onOpenHistory={() => showVersion(p.headVersionId)}
+      onDelete={() => void confirmAndDelete({ id: p.id, title: p.title, publishedVersionId: p.publishedVersionId })}
+      narrow={narrow}
+      page={p}
+      dirty={dirty}
+      ensureVersion={ensureVersion}
+      editor={editor}
+      headings={headings}
+    />
+  );
+
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
       {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
@@ -235,57 +255,42 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         data-find-bar-bounds
         sx={{ flex: 1, minWidth: 0, minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column", containerType: "inline-size" }}
       >
-        <Box
-          component="header"
-          sx={{
-            position: "sticky",
-            top: 0,
-            zIndex: 2,
-            height: 48,
-            display: "flex",
-            alignItems: "center",
-            // 狭い画面ではパンくずを出さないので、ボタンを右に寄せる（広い画面ではパンくずが残りの幅を取る）
-            justifyContent: "flex-end",
-            gap: 1,
-            px: 2,
-            bgcolor: "background.paper",
-          }}
-        >
-          <Breadcrumb pageId={pageId} title={draft.title} />
-          {!narrow && (
-            <>
-              <StarButton pageId={pageId} />
-              <Tooltip title="本文を検索・置換 (⌘F)">
-                <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
-                  <Search size={18} />
-                </IconButton>
-              </Tooltip>
-              {editor && headings.length > 0 && (
-                <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
-                  <OutlineButton editor={editor} headings={headings} />
-                </Box>
-              )}
-              <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
-            </>
-          )}
-          <PageMenu
-            pageId={p.id}
-            counted={isCounted(p)}
-            title={draft.title}
-            bodyMd={draft.bodyMd}
-            hasIcon={p.icon !== null}
-            onPickIcon={() => setIconPickerOpen(true)}
-            onKeepVersion={() => void keepVersion()}
-            onOpenHistory={() => showVersion(p.headVersionId)}
-            onDelete={() => void confirmAndDelete({ id: p.id, title: p.title, publishedVersionId: p.publishedVersionId })}
-            narrow={narrow}
-            page={p}
-            dirty={dirty}
-            ensureVersion={ensureVersion}
-            editor={editor}
-            headings={headings}
-          />
-        </Box>
+        {narrow ? (
+          // スマホ幅では、この画面の帯を置かず、「…」を上の帯（サイドバーを開くボタンと wiki 名）の右端に出す
+          <NarrowBarActions>{pageMenu}</NarrowBarActions>
+        ) : (
+          <Box
+            component="header"
+            sx={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              height: 48,
+              display: "flex",
+              alignItems: "center",
+              // 狭い画面ではパンくずを出さないので、ボタンを右に寄せる（広い画面ではパンくずが残りの幅を取る）
+              justifyContent: "flex-end",
+              gap: 1,
+              px: 2,
+              bgcolor: "background.paper",
+            }}
+          >
+            <Breadcrumb pageId={pageId} title={draft.title} />
+            <StarButton pageId={pageId} />
+            <Tooltip title="本文を検索・置換 (⌘F)">
+              <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
+                <Search size={18} />
+              </IconButton>
+            </Tooltip>
+            {editor && headings.length > 0 && (
+              <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
+                <OutlineButton editor={editor} headings={headings} />
+              </Box>
+            )}
+            <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
+            {pageMenu}
+          </Box>
+        )}
 
         <Box sx={{ display: "flex", justifyContent: "center", columnGap: 4, [SIDE_OUTLINE]: { pr: 4 } }}>
           <Box sx={{ flex: "0 1 780px", minWidth: 0, px: { xs: 2, md: 4 }, pt: 4 }}>

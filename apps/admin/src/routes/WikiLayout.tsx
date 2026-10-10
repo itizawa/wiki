@@ -9,7 +9,8 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { CommandMenu } from "../components/CommandMenu";
 import { ConfirmHost } from "../components/ConfirmDialog";
 import { ShortcutGuide } from "../components/ShortcutGuide";
@@ -29,6 +30,15 @@ const COLLAPSED_WIDTH = 44;
 export const NARROW_BAR_HEIGHT = 44;
 /** 本文の枠いっぱいの高さ（狭い画面では、上の帯のぶんを引く）。画面いっぱいを使う編集系の画面が使う。 */
 export const FULL_HEIGHT = { xs: `calc(100vh - ${NARROW_BAR_HEIGHT}px)`, md: "100vh" } as const;
+/** 狭い画面の上の帯の右端（画面ごとの操作を置く場所）。帯が無い広い画面では null。 */
+const NarrowBarSlot = createContext<HTMLElement | null>(null);
+
+/** 狭い画面の上の帯の右端に、画面ごとの操作を出す。帯が無い（広い画面の）ときは何も出さない。 */
+export function NarrowBarActions({ children }: { children: ReactNode }) {
+  const slot = useContext(NarrowBarSlot);
+  return slot ? createPortal(children, slot) : null;
+}
+
 /** 開閉の動きの長さ。短くして、操作を待たせない。 */
 const MOTION_MS = 180;
 /** OS の「視差効果を減らす」が有効なら、動かさずにすぐ切り替える。 */
@@ -109,6 +119,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wide, open]);
   const [drawer, setDrawer] = useState(false);
+  const [barSlot, setBarSlot] = useState<HTMLElement | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
 
   // ⌘K / Ctrl+K でコマンドメニューを開閉する
@@ -181,6 +192,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
           <Typography variant="body2" noWrap sx={{ minWidth: 0, fontWeight: 600 }}>
             {wiki.name}
           </Typography>
+          <Box ref={setBarSlot} sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }} />
         </Box>
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す。「視差効果を減らす」が有効なら、滑らせずにすぐ出し入れする */}
@@ -205,7 +217,9 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
       <ConfirmHost />
       <StarsHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
-        <Outlet />
+        <NarrowBarSlot.Provider value={barSlot}>
+          <Outlet />
+        </NarrowBarSlot.Provider>
       </Box>
       <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} onToggleSidebar={wide ? () => setOpen(!open) : undefined} onLogout={onLogout} />
     </Box>
