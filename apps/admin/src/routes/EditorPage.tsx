@@ -168,7 +168,8 @@ export function EditorPage({ pageId }: { pageId: string }) {
 
   return (
     <Box sx={{ display: "flex", alignItems: "flex-start", minHeight: "100%" }}>
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* 検索バー（FindBar）をドラッグで動かせるのは、この列の中だけ */}
+      <Box data-find-bar-bounds sx={{ flex: 1, minWidth: 0, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <Box
           component="header"
           sx={{
