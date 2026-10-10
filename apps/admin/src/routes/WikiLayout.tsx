@@ -82,6 +82,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
   const { wiki } = useWiki();
   const [sidebarWidth, setSidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
   const wide = useMediaQuery((t) => t.breakpoints.up("md"));
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [open, setOpenState] = usePersistentState("wiki.sidebar.open", true);
   // 幅を動かすのは開閉のときだけ（つまみで幅を変えている間も動かすと、つまみに遅れて付いてくる）
   const [toggling, setToggling] = useState(false);
@@ -182,8 +183,8 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
           </Typography>
         </Box>
       )}
-      {/* 狭い画面では、サイドバーを本文に重ねて出す */}
-      <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
+      {/* 狭い画面では、サイドバーを本文に重ねて出す。「視差効果を減らす」が有効なら、滑らせずにすぐ出し入れする */}
+      <Drawer open={!wide && drawer} onClose={() => setDrawer(false)} transitionDuration={reducedMotion ? 0 : undefined}>
         <Sidebar
           email={email}
           onNavigate={() => setDrawer(false)}
