@@ -8,6 +8,7 @@ import {
   type PageSummary,
   type PageVersion,
   type SavePageInput,
+  type SetWorkflowInput,
 } from "@wiki/shared";
 import { and, desc, eq, ilike, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -153,6 +154,47 @@ export async function savePage(
   await replaceLinks(tx, wikiId, id, input.bodyMd);
 }
 
+/** ページの削除（ツリーから外し、予約を取り消す）。トランザクション内で呼ぶ。 */
+export async function deletePage(tx: Db, wikiId: string, id: string, opts: { oauthGrantId?: string } = {}): Promise<void> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  const main = await getBranch(tx, wikiId, MAIN_BRANCH);
+  const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
+  if (ops.length > 0) {
+    await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops, oauthGrantId: opts.oauthGrantId });
+  }
+  await tx
+    .update(pages)
+    .set({ deletedAt: new Date(), updatedAt: new Date(), publishedVersionId: null, visibility: "private" })
+    .where(eq(pages.id, id));
+  // 予約は無効にする。公開済みだった記事は再ビルドで410になる
+  await tx
+    .update(scheduledActions)
+    .set({ status: "canceled", lastError: "page deleted" })
+    .where(and(eq(scheduledActions.pageId, id), eq(scheduledActions.status, "scheduled")));
+  if (page.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: id, oauthGrantId: opts.oauthGrantId });
+}
+
+/** 記事の状態（ネタ・下書き・承認済み）を変える。承認はその版を固定する。トランザクション内で呼ぶ。 */
+export async function setWorkflow(tx: Db, wikiId: string, id: string, input: SetWorkflowInput): Promise<void> {
+  await findLivePage(tx, wikiId, id, true);
+  if (input.state === "approved") {
+    const [v] = await tx
+      .select({ id: pageVersions.id })
+      .from(pageVersions)
+      .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, id)));
+    if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
+  }
+  // 一覧の並び（updated_at）は変えない。approved_at は予約の created_at と比べるので、同じDBの時計で入れる
+  await tx
+    .update(pages)
+    .set(
+      input.state === "approved"
+        ? { workflowState: "approved", approvedVersionId: input.versionId, approvedAt: sql`clock_timestamp()` }
+        : { workflowState: input.state, approvedVersionId: null, approvedAt: null },
+    )
+    .where(eq(pages.id, id));
+}
+
 export const pageRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
@@ -183,26 +225,8 @@ export const pageRoutes = new Hono<AppEnv>()
   })
   .delete("/:id", async (c) => {
     const { db } = c.get("deps");
-    const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
-    await db.transaction(async (tx) => {
-      const page = await findLivePage(tx, wikiId, id, true);
-      const main = await getBranch(tx, wikiId, MAIN_BRANCH);
-      const ops = opsToRemovePage((await loadCommit(tx, main.headCommitId)).state, id);
-      if (ops.length > 0) {
-        await commitOps(tx, wikiId, { message: `「${page.title}」の削除に伴いツリーから外す`, ops });
-      }
-      await tx
-        .update(pages)
-        .set({ deletedAt: new Date(), updatedAt: new Date(), publishedVersionId: null, visibility: "private" })
-        .where(eq(pages.id, id));
-      // 予約は無効にする。公開済みだった記事は再ビルドで410になる
-      await tx
-        .update(scheduledActions)
-        .set({ status: "canceled", lastError: "page deleted" })
-        .where(and(eq(scheduledActions.pageId, id), eq(scheduledActions.status, "scheduled")));
-      if (page.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: id });
-    });
+    await db.transaction((tx) => deletePage(tx, wikiId, c.req.param("id")));
     return c.json({ ok: true });
   })
   .post("/:id/workflow", async (c) => {
@@ -210,25 +234,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     const input = await parseJson(c, setWorkflowInput);
-    await db.transaction(async (tx) => {
-      await findLivePage(tx, wikiId, id, true);
-      if (input.state === "approved") {
-        const [v] = await tx
-          .select({ id: pageVersions.id })
-          .from(pageVersions)
-          .where(and(eq(pageVersions.id, input.versionId), eq(pageVersions.pageId, id)));
-        if (!v) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
-      }
-      // 一覧の並び（updated_at）は変えない。approved_at は予約の created_at と比べるので、同じDBの時計で入れる
-      await tx
-        .update(pages)
-        .set(
-          input.state === "approved"
-            ? { workflowState: "approved", approvedVersionId: input.versionId, approvedAt: sql`clock_timestamp()` }
-            : { workflowState: input.state, approvedVersionId: null, approvedAt: null },
-        )
-        .where(eq(pages.id, id));
-    });
+    await db.transaction((tx) => setWorkflow(tx, wikiId, id, input));
     return c.json(await getDetail(db, wikiId, id));
   })
   .post("/:id/review-done", async (c) => {

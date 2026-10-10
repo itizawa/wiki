@@ -69,7 +69,7 @@ async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcReque
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "wiki", version: "1.0.0" },
         instructions:
-          "wiki のページを探して読み、下書きとして作成・更新・移動できる。公開・予約・承認はできない（人が管理画面で行う）。" +
+          "wiki のページを探して読み、作成・更新・移動できる。許可されていれば、公開・予約・承認・削除もできる（使える道具は tools/list のとおり）。" +
           "本文の更新は get_page の headVersionId を、移動は get_tree の headCommitId を渡す（楽観ロック）。",
       });
     }

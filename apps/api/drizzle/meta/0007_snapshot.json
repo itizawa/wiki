@@ -1,5 +1,5 @@
 {
-  "id": "20ff7426-f858-4cfb-a871-1d0e36145587",
+  "id": "a85b5bde-a969-4184-b831-d370f375c681",
   "prevId": "086bb7de-03b4-412f-99a1-a57da4ee4330",
   "version": "7",
   "dialect": "postgresql",
@@ -808,6 +808,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "oauth_grant_id": {
+          "name": "oauth_grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -824,6 +830,19 @@
           "tableTo": "wikis",
           "columnsFrom": [
             "wiki_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "publish_events_oauth_grant_id_oauth_grants_id_fk": {
+          "name": "publish_events_oauth_grant_id_oauth_grants_id_fk",
+          "tableFrom": "publish_events",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "oauth_grant_id"
           ],
           "columnsTo": [
             "id"
@@ -1097,6 +1116,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "oauth_grant_id": {
+          "name": "oauth_grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "run_at": {
           "name": "run_at",
           "type": "timestamp with time zone",
@@ -1216,6 +1241,19 @@
           "tableTo": "rule_runs",
           "columnsFrom": [
             "rule_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "scheduled_actions_oauth_grant_id_oauth_grants_id_fk": {
+          "name": "scheduled_actions_oauth_grant_id_oauth_grants_id_fk",
+          "tableFrom": "scheduled_actions",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "oauth_grant_id"
           ],
           "columnsTo": [
             "id"

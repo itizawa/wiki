@@ -400,11 +400,70 @@ describe("MCP", () => {
     expect((await callTool(full, "get_page", { wiki: "wiki", pageId: secret.body.id })).data.bodyMd).toBe("secret");
   });
 
-  it("has no tool to publish, schedule, approve or delete", async () => {
+  it("offers publishing and deleting only when the user allowed them", async () => {
     ctx = await setup();
     const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.private" });
     const names = (await mcp(tokens.access_token, "tools/list")).body.result.tools.map((t: { name: string }) => t.name);
-    expect(names.some((n: string) => /publish|schedule|approve|delete|visibility/.test(n))).toBe(false);
+    expect(names.some((n: string) => /publish|schedule|workflow|delete/.test(n))).toBe(false);
+    expect((await callTool(tokens.access_token, "publish_page", { wiki: "wiki", pageId: "x" })).data.error.code).toBe("insufficient_scope");
+
+    // 依頼されても、同意の画面で外せば使えない
+    const declined = await connect({ scope: "wiki.read wiki.publish wiki.delete", grant: ["wiki.read"] });
+    expect(declined.tokens.scope).toBe("wiki.read");
+  });
+
+  it("publishes, schedules, approves and unpublishes with wiki.publish, and records which app did it", async () => {
+    ctx = await setup();
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish" });
+    const t = tokens.access_token;
+    const created = await callTool(t, "create_page", { wiki: "wiki", title: "検索ボリュームから考えた記事", bodyMd: "本文" });
+
+    const approved = await callTool(t, "set_workflow_state", { wiki: "wiki", pageId: created.data.id, state: "approved" });
+    expect(approved.data).toMatchObject({ workflowState: "approved", approvedVersionId: created.data.headVersionId });
+
+    const runAt = new Date(Date.now() + 86_400_000).toISOString();
+    const scheduled = await callTool(t, "schedule_page", { wiki: "wiki", pageId: created.data.id, action: "publish_page", runAt });
+    expect(scheduled.data.versionId).toBe(created.data.headVersionId);
+    const list = await callTool(t, "list_schedule", { wiki: "wiki" });
+    expect(list.data.actions.map((a: { id: string }) => a.id)).toEqual([scheduled.data.id]);
+    expect((await callTool(t, "cancel_schedule", { wiki: "wiki", scheduleId: scheduled.data.id })).data.status).toBe("canceled");
+    const past = await callTool(t, "schedule_page", { wiki: "wiki", pageId: created.data.id, action: "publish_page", runAt: "2020-01-01T00:00:00Z" });
+    expect(past.data.error.code).toBe("run_at_in_past");
+
+    const published = await callTool(t, "publish_page", { wiki: "wiki", pageId: created.data.id });
+    expect(published.isError).toBe(false);
+    const page = await ctx.call("GET", `${W}/pages/${created.data.id}`);
+    expect(page.body).toMatchObject({ visibility: "public", publishedVersionId: created.data.headVersionId });
+
+    expect((await callTool(t, "unpublish_page", { wiki: "wiki", pageId: created.data.id })).isError).toBe(false);
+    expect((await ctx.call("GET", `${W}/pages/${created.data.id}`)).body.publishedVersionId).toBeNull();
+
+    const events = await ctx.client.query<{ kind: string; via: boolean }>(
+      `select kind, oauth_grant_id is not null as via from publish_events order by id`,
+    );
+    expect(events.rows).toEqual([
+      { kind: "publish", via: true },
+      { kind: "unpublish", via: true },
+    ]);
+    const actions = await ctx.client.query<{ n: number }>(`select count(*)::int as n from scheduled_actions where oauth_grant_id is not null`);
+    expect(actions.rows[0]!.n).toBe(1);
+  });
+
+  it("cannot publish or delete pages it cannot read", async () => {
+    ctx = await setup();
+    const secret = await ctx.call("POST", `${W}/pages`, { title: "社外秘", bodyMd: "secret" });
+    const { tokens } = await connect({ scope: "wiki.read wiki.publish wiki.delete" });
+    expect((await callTool(tokens.access_token, "publish_page", { wiki: "wiki", pageId: secret.body.id })).data.error.code).toBe("not_found");
+    expect((await callTool(tokens.access_token, "delete_page", { wiki: "wiki", pageId: secret.body.id })).data.error.code).toBe("not_found");
+    expect((await ctx.call("GET", `${W}/pages/${secret.body.id}`)).body.visibility).toBe("private");
+  });
+
+  it("deletes pages with wiki.delete", async () => {
+    ctx = await setup();
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.delete" });
+    const created = await callTool(tokens.access_token, "create_page", { wiki: "wiki", title: "消す" });
+    expect((await callTool(tokens.access_token, "delete_page", { wiki: "wiki", pageId: created.data.id })).data.deleted).toBe(true);
+    expect((await ctx.call("GET", `${W}/pages/${created.data.id}`)).status).toBe(404);
   });
 
   it("cannot use an access token on the cookie API", async () => {

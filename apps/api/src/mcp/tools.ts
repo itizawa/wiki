@@ -1,18 +1,20 @@
-import { createPageInput, savePageInput, type OAuthScope } from "@wiki/shared";
-import { and, desc, eq, ilike, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import { createPageInput, publishVisibilitySchema, savePageInput, type OAuthScope } from "@wiki/shared";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { pages, pageVersions } from "../db/schema";
+import { pages, pageVersions, scheduledActions } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import type { AgentContext } from "../oauth/service";
-import { createPage, findLivePage, savePage } from "../routes/pages";
+import { createPage, deletePage, findLivePage, savePage, setWorkflow } from "../routes/pages";
+import { cancelSchedule, createSchedule, listActions } from "../routes/publishing";
+import { publishPage, unpublishPage } from "../publishing/service";
 import { commitOps, getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
 import { findOpenWiki, listWikis } from "../wikis/service";
 
 /**
- * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット）を通る。
- * 公開・予約・承認・削除の道具は無い（外からの操作は下書きとして保存するところまで）。
+ * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
+ * 公開・予約・承認は wiki.publish、削除は wiki.delete を許したアプリだけが使える。
  */
 type ToolContext = { db: Db; config: AppConfig; agent: AgentContext };
 
@@ -252,6 +254,190 @@ export const TOOLS = [
         oauthGrantId: agent.grantId,
       });
       return { headCommitId: result.commitId };
+    },
+  }),
+  tool({
+    name: "publish_page",
+    description:
+      "ページを公開する（すぐに公開サイトへ反映する）。versionId を省くと最新の版を公開する。公開後の編集は、もう一度公開するまで公開側に出ない。",
+    scope: "wiki.publish",
+    input: z.object({ wiki: wikiKey, pageId, versionId: z.string().uuid().optional(), visibility: publishVisibilitySchema.default("public") }),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        versionId: str("公開する版（省略すると最新の版）"),
+        visibility: { type: "string", enum: ["public", "unlisted"], description: "public（公開）か unlisted（限定公開）。既定は public" },
+      },
+      ["wiki", "pageId"],
+    ),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const versionId = input.versionId ?? page.headVersionId;
+      await db.transaction((tx) =>
+        publishPage(tx, { wikiId: wiki.id, pageId: page.id, versionId, visibility: input.visibility, oauthGrantId: agent.grantId }),
+      );
+      return { id: page.id, publishedVersionId: versionId, visibility: input.visibility };
+    },
+  }),
+  tool({
+    name: "unpublish_page",
+    description: "ページの公開をやめ、非公開に戻す。",
+    scope: "wiki.publish",
+    input: z.object({ wiki: wikiKey, pageId }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      await db.transaction((tx) => unpublishPage(tx, wiki.id, page.id, undefined, agent.grantId));
+      return { id: page.id, visibility: "private" };
+    },
+  }),
+  tool({
+    name: "list_schedule",
+    description: "これからの公開・非公開化の予約を、時刻の早い順に返す。",
+    scope: "wiki.publish",
+    input: z.object({ wiki: wikiKey }),
+    inputSchema: schema(WIKI_PROP, ["wiki"]),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const actions = await listActions(
+        db,
+        wiki.id,
+        and(eq(scheduledActions.status, "scheduled"), gte(scheduledActions.runAt, new Date())),
+      );
+      const visible = new Set(
+        actions.length === 0
+          ? []
+          : (
+              await db
+                .select({ id: pages.id })
+                .from(pages)
+                .where(and(inArray(pages.id, actions.map((a) => a.pageId!).filter(Boolean)), visibleTo(agent)))
+            ).map((p) => p.id),
+      );
+      return {
+        actions: actions
+          .filter((a) => a.pageId && visible.has(a.pageId))
+          .map((a) => ({
+            id: a.id,
+            actionType: a.actionType,
+            pageId: a.pageId,
+            pageTitle: a.pageTitle,
+            versionId: a.versionId,
+            targetVisibility: a.targetVisibility,
+            runAt: a.runAt,
+            editedAfterSchedule: a.editedAfterSchedule,
+          })),
+      };
+    },
+  }),
+  tool({
+    name: "schedule_page",
+    description:
+      "公開（publish_page）または非公開化（unpublish_page）を予約する。公開の予約は、その時点の版（versionId を省くと最新の版）を固定し、予約後の編集は含めない。runAt は未来の日時（ISO 8601、例 2026-10-20T08:00:00+09:00）。",
+    scope: "wiki.publish",
+    input: z.object({
+      wiki: wikiKey,
+      pageId,
+      action: z.enum(["publish_page", "unpublish_page"]),
+      runAt: z.string().datetime({ offset: true }),
+      versionId: z.string().uuid().optional(),
+      visibility: publishVisibilitySchema.default("public"),
+    }),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        action: { type: "string", enum: ["publish_page", "unpublish_page"], description: "公開か非公開化か" },
+        runAt: str("実行する日時（ISO 8601、時差つき）"),
+        versionId: str("公開する版（公開のときだけ。省略すると最新の版）"),
+        visibility: { type: "string", enum: ["public", "unlisted"], description: "公開のときの公開範囲。既定は public" },
+      },
+      ["wiki", "pageId", "action", "runAt"],
+    ),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const runAt = new Date(input.runAt);
+      const action = await createSchedule(
+        db,
+        wiki.id,
+        input.action === "publish_page"
+          ? {
+              actionType: "publish_page",
+              pageId: page.id,
+              versionId: input.versionId ?? page.headVersionId,
+              targetVisibility: input.visibility,
+              runAt,
+            }
+          : { actionType: "unpublish_page", pageId: page.id, runAt },
+        { oauthGrantId: agent.grantId },
+      );
+      return { id: action.id, actionType: action.actionType, runAt: action.runAt, versionId: action.versionId };
+    },
+  }),
+  tool({
+    name: "cancel_schedule",
+    description: "予約を取り消す（list_schedule で返す id を渡す）。",
+    scope: "wiki.publish",
+    input: z.object({ wiki: wikiKey, scheduleId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, scheduleId: str("予約の ID") }, ["wiki", "scheduleId"]),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const [row] = await db
+        .select({ pageId: scheduledActions.pageId })
+        .from(scheduledActions)
+        .where(and(eq(scheduledActions.wikiId, wiki.id), eq(scheduledActions.id, input.scheduleId)));
+      if (!row?.pageId) throw notFound("scheduled action");
+      await visiblePage(db, agent, wiki.id, row.pageId);
+      const action = await cancelSchedule(db, wiki.id, input.scheduleId);
+      return { id: action.id, status: action.status };
+    },
+  }),
+  tool({
+    name: "set_workflow_state",
+    description:
+      "記事の状態を変える：idea（ネタ）／draft（下書き）／approved（承認済み）。承認はその版（versionId を省くと最新の版）を固定し、予約枠に入れるルールの対象になる。",
+    scope: "wiki.publish",
+    input: z.object({ wiki: wikiKey, pageId, state: z.enum(["idea", "draft", "approved"]), versionId: z.string().uuid().optional() }),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        state: { type: "string", enum: ["idea", "draft", "approved"], description: "新しい状態" },
+        versionId: str("承認する版（approved のときだけ。省略すると最新の版）"),
+      },
+      ["wiki", "pageId", "state"],
+    ),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      await db.transaction((tx) =>
+        setWorkflow(
+          tx,
+          wiki.id,
+          page.id,
+          input.state === "approved" ? { state: "approved", versionId: input.versionId ?? page.headVersionId } : { state: input.state },
+        ),
+      );
+      const after = await findLivePage(db, wiki.id, page.id);
+      return { id: page.id, workflowState: after.workflowState, approvedVersionId: after.approvedVersionId };
+    },
+  }),
+  tool({
+    name: "delete_page",
+    description:
+      "ページを削除する。子ページは1つ上の階層へ移る。公開中なら公開サイトからも消え（410）、予約は取り消される。元に戻す道具は無い。",
+    scope: "wiki.delete",
+    input: z.object({ wiki: wikiKey, pageId }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
+    async run({ db, agent }, input) {
+      const wiki = await findOpenWiki(db, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      await db.transaction((tx) => deletePage(tx, wiki.id, page.id, { oauthGrantId: agent.grantId }));
+      return { id: page.id, deleted: true };
     },
   }),
 ];

@@ -8,9 +8,15 @@ export async function recordPublishEvent(
   db: Db,
   wikiId: string,
   kind: string,
-  refs: { pageId?: string; scheduledActionId?: string } = {},
+  refs: { pageId?: string; scheduledActionId?: string; oauthGrantId?: string } = {},
 ): Promise<void> {
-  await db.insert(publishEvents).values({ wikiId, kind, pageId: refs.pageId, scheduledActionId: refs.scheduledActionId });
+  await db.insert(publishEvents).values({
+    wikiId,
+    kind,
+    pageId: refs.pageId,
+    scheduledActionId: refs.scheduledActionId,
+    oauthGrantId: refs.oauthGrantId,
+  });
 }
 
 /** 指定の wiki のページだけを返す（別の wiki のページ ID は、無いものとして扱う）。 */
@@ -37,6 +43,8 @@ export async function publishPage(
     visibility: PublishVisibility;
     publishedAt?: Date;
     scheduledActionId?: string;
+    /** 外部のアプリ（MCP）からの操作なら、その許可 */
+    oauthGrantId?: string;
   },
 ): Promise<void> {
   const page = await lockLivePage(db, input.wikiId, input.pageId);
@@ -55,17 +63,27 @@ export async function publishPage(
       updatedAt: new Date(),
     })
     .where(eq(pages.id, input.pageId));
-  await recordPublishEvent(db, input.wikiId, "publish", { pageId: input.pageId, scheduledActionId: input.scheduledActionId });
+  await recordPublishEvent(db, input.wikiId, "publish", {
+    pageId: input.pageId,
+    scheduledActionId: input.scheduledActionId,
+    oauthGrantId: input.oauthGrantId,
+  });
 }
 
 /** 非公開化。再ビルドで静的ファイルが消える。 */
-export async function unpublishPage(db: Db, wikiId: string, pageId: string, scheduledActionId?: string): Promise<void> {
+export async function unpublishPage(
+  db: Db,
+  wikiId: string,
+  pageId: string,
+  scheduledActionId?: string,
+  oauthGrantId?: string,
+): Promise<void> {
   await lockLivePage(db, wikiId, pageId);
   await db
     .update(pages)
     .set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() })
     .where(eq(pages.id, pageId));
-  await recordPublishEvent(db, wikiId, "unpublish", { pageId, scheduledActionId });
+  await recordPublishEvent(db, wikiId, "unpublish", { pageId, scheduledActionId, oauthGrantId });
 }
 
 /** 限定公開URLの失効：キーを再発行してリビルドすると旧URLは404になる。 */

@@ -311,6 +311,8 @@ export const scheduledActions = pgTable(
     batchId: uuid("batch_id"),
     /** ルールが入れた予約なら、その実行ログ */
     ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
+    /** 外部のアプリ（MCP）が入れた予約なら、その許可 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
     /** UTC保存。入出力はJST */
     runAt: timestamp("run_at", { withTimezone: true }).notNull(),
     status: text("status", { enum: ["scheduled", "running", "done", "failed", "canceled"] })
@@ -342,6 +344,8 @@ export const publishEvents = pgTable("publish_events", {
   kind: text("kind").notNull(),
   pageId: text("page_id"),
   scheduledActionId: uuid("scheduled_action_id"),
+  /** 外部のアプリ（MCP）からの操作なら、その許可 */
+  oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
   createdAt: createdAt(),
 });
 

@@ -16,7 +16,13 @@ import { Mono, Muted, RouterLink, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 
-const SHORT_LABEL: Record<string, string> = { "wiki.read": "読む", "wiki.write": "書く", "wiki.private": "非公開も" };
+const SHORT_LABEL: Record<string, string> = {
+  "wiki.read": "読む",
+  "wiki.write": "書く",
+  "wiki.private": "非公開も",
+  "wiki.publish": "公開・予約・承認",
+  "wiki.delete": "削除",
+};
 
 /** `/connections`：外部のアプリ（MCP クライアント）のつなぎ方と、自分が与えた許可の一覧・取り消し */
 export function ConnectionsPage() {
@@ -48,7 +54,7 @@ export function ConnectionsPage() {
         <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
           外部アプリ連携
         </Typography>
-        <Muted>Claude などの AI エージェントから、MCP でページを探す・読む・下書きを書くことができます。</Muted>
+        <Muted>Claude などの AI エージェントから、MCP でページを探す・読む・書く・公開することができます。</Muted>
       </Box>
 
       <Section>
@@ -63,7 +69,9 @@ export function ConnectionsPage() {
             Claude では「設定 → コネクタ → カスタムコネクタを追加」にこの URL を入れます。Claude Code では{" "}
             <Mono>claude mcp add --transport http wiki {mcpUrl}</Mono> を実行します。つなぐと、この管理画面で許可するかを聞かれます。
           </Muted>
-          <Muted>公開・予約・承認・削除は、外からはできません。作ったページは非公開の下書きになり、公開は人がこの管理画面で行います。</Muted>
+          <Muted>
+            何を許すかは、つなぐときに選びます。公開・予約・承認と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。
+          </Muted>
         </Stack>
       </Section>
 
