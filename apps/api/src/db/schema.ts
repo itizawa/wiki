@@ -114,6 +114,25 @@ export const pageVersions = pgTable(
   ],
 );
 
+/**
+ * 編集中の下書き（自動保存）。版にはせず、人ごとに1つだけ持つ。「版として残す」で版を作ったら消す。
+ * base_version_id は下書きを始めたときの head。head が先に進んでいたら、下書きは古い版をもとにしている。
+ */
+export const pageDrafts = pgTable(
+  "page_drafts",
+  {
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    authorEmail: text("author_email").notNull(),
+    baseVersionId: uuid("base_version_id").notNull(),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.authorEmail] })],
+);
+
 export const pageLinks = pgTable(
   "page_links",
   {
@@ -123,6 +142,21 @@ export const pageLinks = pgTable(
     toPageId: text("to_page_id").notNull(),
   },
   (t) => [primaryKey({ columns: [t.fromPageId, t.toPageId] }), index("page_links_to_idx").on(t.toPageId)],
+);
+
+/** スター（よく開くページの目印）。管理者ごとに持ち、別のブラウザや端末でも同じものが出る。どの wiki のものかは、ページで決まる。 */
+export const pageStars = pgTable(
+  "page_stars",
+  {
+    adminEmail: text("admin_email").notNull(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** 並び順（小さいほうが上）。付けたものは末尾に足す */
+    position: integer("position").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.adminEmail, t.pageId] })],
 );
 
 // ---------------------------------------------------------------------------
@@ -136,8 +170,8 @@ export const trees = pgTable("trees", {
   wikiId: wikiId(),
   /** URLに使用（'by-project' 'by-theme'）。wiki の中で重ならない */
   key: text("key").notNull(),
+  /** 以前は画面から変えられた表示名。いまはどこにも出していない（公開サイト・管理画面は固定の文言を使う） */
   name: text("name").notNull(),
-  isPublic: boolean("is_public").notNull().default(true),
   /** パンくず・既定ナビ用（1つだけ） */
   isPrimary: boolean("is_primary").notNull().default(false),
 }, (t) => [

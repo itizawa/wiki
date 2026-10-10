@@ -1,4 +1,4 @@
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { ArrowLeft } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -48,7 +48,7 @@ export function ConnectionsPage() {
     <Stack spacing={1.5}>
       <Box>
         <RouterLink to="/" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-          <ArrowBackIcon sx={{ fontSize: 18 }} />
+          <ArrowLeft size={18} />
           wiki の画面に戻る
         </RouterLink>
         <Typography variant="h5" component="h1" sx={{ mt: 1 }}>

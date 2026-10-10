@@ -20,6 +20,9 @@ export function useWiki(): WikiContextValue {
   return value;
 }
 
+/** 最初の wiki の key。wiki が1つだった頃の内容（ページ・その頃の URL・ブラウザに覚えさせたスター）は、ここにある。 */
+export const FIRST_WIKI = "wiki";
+
 const LAST_WIKI = "wiki.last";
 
 /** 最後に開いていた wiki の key（`/` を開いたときの行き先）。 */

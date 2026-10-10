@@ -3,12 +3,14 @@ import { Hono } from "hono";
 import { authRoutes, requireAdmin } from "./auth/routes";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
+import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { ruleRoutes } from "./routes/rules";
+import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { isOwner, resolveWiki, wikiRoutes } from "./routes/wikis";
 
@@ -41,6 +43,7 @@ export function createApp(deps: Deps) {
   app.route("/auth", authRoutes);
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
+  app.route("/images", imageServeRoutes);
   // 外部のアプリ（MCP クライアント）：OAuth 2.1 の認可サーバーと、MCP サーバー
   app.route("/.well-known", wellKnownRoutes);
   app.route("/oauth", oauthRoutes);
@@ -59,8 +62,10 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/rules", ruleRoutes);
+  wiki.route("/stars", starRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
+  wiki.route("/images", imageUploadRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

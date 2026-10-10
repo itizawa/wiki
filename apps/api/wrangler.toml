@@ -15,12 +15,17 @@ directory = "../admin/dist"
 not_found_handling = "single-page-application"
 # API の経路はアセットより先に Worker へ渡す（OAuth のコールバックは画面遷移なので、指定しないと index.html が返る）
 # /oauth/* /.well-known/* /mcp は MCP クライアント（外部のアプリ）が呼ぶ。同意の画面（/consent）は管理画面の側
-run_worker_first = ["/api/*", "/export/*", "/internal/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
+run_worker_first = ["/api/*", "/export/*", "/internal/*", "/images/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
 
 # DB（PostgreSQL）へは Hyperdrive 経由でつなぐ
 [[hyperdrive]]
 binding = "HYPERDRIVE"
 id = "24df08d8191143e5aae33847792525cc"
+
+# アップロードした画像。本文には `/images/{name}` と書き、管理画面と公開サイト（wiki-site）の両方がこのバケットから配る
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "wiki-images"
 
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする

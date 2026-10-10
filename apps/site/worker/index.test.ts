@@ -152,4 +152,26 @@ describe("site worker without a wiki host (preview, local)", () => {
     expect(await (await preview("/", {}, { cookie: "a=1; wiki=notes" })).text()).toBe("<h1>notes のトップ</h1>");
     expect((await preview("/?wiki=../x")).status).toBe(404);
   });
+
+  it("serves uploaded images from the bucket on every wiki's host", async () => {
+    const name = "abcdefghijklmnopqrstuvwx.png";
+    const IMAGES = {
+      get: async (key: string) => (key === name ? { body: new Response("png bytes").body!, httpMetadata: { contentType: "image/png" } } : null),
+    };
+    const e = env(files);
+    const withImages = { ...e, env: { ...e.env, IMAGES } };
+    for (const host of ["wiki", "notes"]) {
+      const res = await get(`https://${host}.site.test/images/${name}`, withImages);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await res.text()).toBe("png bytes");
+    }
+    expect((await get("https://wiki.site.test/images/zzzzzzzzzzzzzzzzzzzzzzzz.png", withImages)).status).toBe(404);
+    expect((await get("https://wiki.site.test/images/abc.svg", withImages)).status).toBe(404);
+    // バケットが無ければ 404（静的アセットは見にいかない）
+    const bare = env(files);
+    expect((await wiki(`/images/${name}`, bare)).status).toBe(404);
+    expect(bare.requested).toEqual([]);
+  });
 });
