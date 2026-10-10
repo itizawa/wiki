@@ -310,18 +310,20 @@ export function Sidebar(props: {
       )}
 
       <Box sx={{ display: "flex", px: 1, borderTop: 1, borderColor: "divider" }}>
-        <UserMenu email={props.email} onLogout={props.onLogout} />
+        <UserMenu email={props.email} onLogout={props.onLogout} onNavigate={props.onNavigate} />
       </Box>
     </Box>
   );
 }
 
+const MenuItemLink = createLink(MenuItem);
+
 /**
  * 左下のユーザーメニュー。ログイン中のメールアドレスを出し、押すとメニューが上に開く。
- * キーボードショートカットと記法のガイドと、ログアウトはここから行う。
+ * キーボードショートカットと記法のガイド、外部アプリ連携（wiki ごとではなく、ログインしている人の設定）への入口、ログアウトはここから行う。
  * 押せる範囲は、行の高さいっぱいに取る。
  */
-function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) {
+function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: () => void; onNavigate?: () => void }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
     <>
@@ -385,6 +387,18 @@ function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) 
             ?
           </Typography>
         </MenuItem>
+        <MenuItemLink
+          to="/connections"
+          onClick={() => {
+            setAnchor(null);
+            onNavigate?.();
+          }}
+        >
+          <ListItemIcon>
+            <Puzzle size={18} />
+          </ListItemIcon>
+          <ListItemText>外部アプリ連携（MCP）</ListItemText>
+        </MenuItemLink>
         <Divider />
         <MenuItem
           onClick={() => {
@@ -402,11 +416,9 @@ function UserMenu({ email, onLogout }: { email: string; onLogout: () => void }) 
   );
 }
 
-const MenuItemLink = createLink(MenuItem);
-
 /**
  * wiki の切り替え。いまどの wiki にいるかを、サイドバーの上に常に出す（表示名と、公開サイトのサブドメインになる key）。
- * 押すと、選べる wiki の一覧と、外部アプリ連携への入口を出す。
+ * 押すと、選べる wiki の一覧を出す。
  */
 function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const { wiki, wikis } = useWiki();
@@ -477,14 +489,6 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             {w.key === wiki.key && <Box component={Check} size={18} sx={{ flexShrink: 0 }} />}
           </MenuItemLink>
         ))}
-        <Divider />
-        {/* アイコンの列の幅を wiki の行（36px）に合わせ、文字の始まりを揃える */}
-        <MenuItemLink to="/connections" onClick={close} sx={{ gap: 1.5 }}>
-          <ListItemIcon sx={{ "&&": { minWidth: 36 }, justifyContent: "center" }}>
-            <Puzzle size={18} />
-          </ListItemIcon>
-          <ListItemText>外部アプリ連携（MCP）</ListItemText>
-        </MenuItemLink>
       </Menu>
     </>
   );
