@@ -15,7 +15,9 @@
 @media (prefers-reduced-motion: reduce) {
   .header { transition: none; }
 }
-.brand { font-weight: 700; color: var(--text); text-decoration: none; }
+.brand { display: flex; align-items: center; font-weight: 700; color: var(--text); text-decoration: none; }
+/* ロゴは高さ 32px にそろえ、横長の画像は幅を成り行きにする */
+.logo { display: block; height: 32px; width: auto; max-width: min(240px, 50vw); }
 .nav { display: flex; gap: 14px; margin-left: auto; font-size: 0.9rem; }
 .body { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
 .footer { max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }

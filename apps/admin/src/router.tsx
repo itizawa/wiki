@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, redirect, useRouterState } 
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
+import { AppearancePage } from "./routes/AppearancePage";
 import { Home, Root } from "./routes/Layout";
 import { AnalyticsPage } from "./routes/AnalyticsPage";
 import { AuditLogPage } from "./routes/AuditLogPage";
@@ -125,6 +126,8 @@ const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "histo
 const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
 // この wiki の監査ログ（管理者だけ）
 const auditRoute = createRoute({ getParentRoute: () => wikiRoute, path: "audit", component: padded(() => <AuditLogPage scope="wiki" />) });
+// 公開サイトの外観（管理者だけ）
+const appearanceRoute = createRoute({ getParentRoute: () => wikiRoute, path: "appearance", component: padded(AppearancePage) });
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 // wiki ごとの設定（公開サイトの連携）。読むのはだれでも、変えるのはオーナーだけ
 const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(SettingsPage) });
@@ -166,6 +169,7 @@ const routeTree = rootRoute.addChildren([
     historyRoute,
     membersRoute,
     auditRoute,
+    appearanceRoute,
     trashRoute,
     settingsRoute,
   ]),

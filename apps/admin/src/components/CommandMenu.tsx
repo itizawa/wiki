@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -114,6 +114,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // 監査ログは管理者だけ
     ...(role === "admin"
       ? [{ id: "audit", label: "「監査ログ」を開く", keywords: ["audit", "log", "kansa"], icon: <ClipboardList size={18} />, run: go("/w/$wikiKey/audit") }]
+      : []),
+    // 外観は管理者だけが開ける
+    ...(role === "admin"
+      ? [{ id: "appearance", label: "「外観」を開く", keywords: ["appearance", "theme", "color", "logo", "favicon"], icon: <Palette size={18} />, run: go("/w/$wikiKey/appearance") }]
       : []),
     { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },
     {

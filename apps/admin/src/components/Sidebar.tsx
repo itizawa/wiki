@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Palette, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -219,6 +219,11 @@ export function Sidebar(props: {
         {role === "admin" && (
           <NavItem to="/w/$wikiKey/audit" icon={<ClipboardList size={18} />} onClick={props.onNavigate}>
             監査ログ
+          </NavItem>
+        )}
+        {role === "admin" && (
+          <NavItem to="/w/$wikiKey/appearance" icon={<Palette size={18} />} onClick={props.onNavigate}>
+            外観
           </NavItem>
         )}
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>

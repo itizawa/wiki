@@ -20,6 +20,7 @@ export * from "./visibility";
 export * from "./images";
 export * from "./users";
 export * from "./audit";
+export * from "./theme";
 export * from "./oauth";
 export * from "./views";
 export * from "./analytics";
