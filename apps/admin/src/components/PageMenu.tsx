@@ -1,6 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Save, Trash2 } from "lucide-react";
+import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Presentation as PresentationIcon, Save, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -15,12 +15,13 @@ import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
 import { PageViewsPopover, usePageViews } from "./PageViews";
+import { Presentation } from "./Presentation";
 import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
 
 /**
- * 編集画面の「…」メニュー。いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * 編集画面の「…」メニュー。プレゼンモードで表示する・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
  * テンプレートにする・ページをゴミ箱に入れる。
  */
 export function PageMenu(props: {
@@ -44,6 +45,12 @@ export function PageMenu(props: {
   const [viewsOpen, setViewsOpen] = useState(false);
   const { views, totalLabel } = usePageViews(props.pageId, props.counted);
   const [createdTemplate, setCreatedTemplate] = useState<string | null>(null);
+  // プレゼンモード。いま画面にある内容（版になる前の変更も含む）を、そのままスライドにする
+  const [presenting, setPresenting] = useState(false);
+  const present = () => {
+    setAnchor(null);
+    setPresenting(true);
+  };
 
   const saveAsTemplate = useMutation({
     mutationFn: () => api.createTemplate({ title: title.trim() || "無題", bodyMd }),
@@ -80,13 +87,14 @@ export function PageMenu(props: {
   };
 
   // コマンドメニュー（⌘K）からも同じ操作を呼べるようにする。結果の知らせは、ここの Snackbar に出す
-  const actions = useRef({ copy, download, keepVersion: props.onKeepVersion });
-  actions.current = { copy, download, keepVersion: props.onKeepVersion };
+  const actions = useRef({ copy, download, keepVersion: props.onKeepVersion, present });
+  actions.current = { copy, download, keepVersion: props.onKeepVersion, present };
   useEffect(() => {
     setPageActions({
       copyMarkdown: () => void actions.current.copy(),
       downloadMarkdown: () => actions.current.download(),
       keepVersion: () => actions.current.keepVersion(),
+      present: () => actions.current.present(),
     });
     return () => setPageActions(null);
   }, []);
@@ -99,6 +107,13 @@ export function PageMenu(props: {
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        <MenuItem aria-haspopup="dialog" onClick={present}>
+          <ListItemIcon>
+            <PresentationIcon size={18} />
+          </ListItemIcon>
+          <ListItemText>プレゼンモードで表示</ListItemText>
+        </MenuItem>
+        <Divider />
         <MenuItem
           onClick={() => {
             setAnchor(null);
@@ -177,6 +192,8 @@ export function PageMenu(props: {
           <ListItemText>ゴミ箱に入れる…</ListItemText>
         </MenuItem>
       </Menu>
+      {/* 終了したら、フォーカスを「…」ボタンに戻す */}
+      <Presentation open={presenting} title={title} bodyMd={bodyMd} onClose={() => setPresenting(false)} onExited={() => menuButton.current?.focus({ preventScroll: true })} />
       <PageViewsPopover views={views} counted={props.counted} anchorEl={menuButton.current} open={viewsOpen} onClose={() => setViewsOpen(false)} />
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
