@@ -24,6 +24,15 @@ dist/
 
 `build:sample` の検査は、限定公開の漏れに加えて、ある wiki の内容が別の wiki の出力に混ざっていないことも確かめる。
 
+### Google Analytics とサーチコンソール
+
+wiki ごとの設定（マニフェストの `gaMeasurementId` / `searchConsoleVerification`。管理画面の「設定」で入れる）があれば、`src/layouts/Base.astro` がその wiki のページの `<head>` に Google タグ（gtag.js）と `<meta name="google-site-verification">` を出す。どのページに出すかは `src/lib/googleTags.ts` が決める。
+
+- 限定公開のページ（`noindex`）には、どちらも出さない。Google へ URL が送られると、限定公開の URL が外へ出てしまうため
+- 404 のページには出す（リンク切れを GA で見つけられる）。ただし 404 は無くなった限定公開の URL（`/u/...`）でも返るので、そのときはブラウザの側で Google タグを読み込まない
+- 値は HTML にそのまま出るので、形の合わないもの（`packages/shared/src/wiki.ts` の `isGaMeasurementId` / `isSearchConsoleVerification`）は出さない
+- `build:sample` の検査で、設定のある wiki の公開ページに入っていること、限定公開のページと未設定の wiki に入っていないことを確かめる
+
 ## URL
 
 wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下に、次の URL がある。
@@ -32,7 +41,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 |---|---|
 | `/p/{id}` | 記事（正規）。slug つきの旧URL（`/p/{id}-{slug}`）は301、削除済みは410（`worker/index.ts`） |
 | `/t/{treeKey}/` , `/t/{treeKey}/{nodeId}` | ツリー経由の閲覧。本文を再掲し、canonicalは `/p/` |
-| `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない |
+| `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（下の「Google Analytics とサーチコンソール」）も出さない |
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
 | `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから API の `/internal/views` へ渡す。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |

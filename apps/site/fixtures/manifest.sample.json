@@ -5,6 +5,8 @@
     {
       "key": "notes",
       "name": "開発ノート",
+      "gaMeasurementId": null,
+      "searchConsoleVerification": null,
       "headCommitId": "00000000-0000-0000-0000-000000000001",
       "pages": [
         {
@@ -47,6 +49,8 @@
     {
       "key": "wiki",
       "name": "サンプル wiki",
+      "gaMeasurementId": "G-SAMPLE1234",
+      "searchConsoleVerification": "sampleVerification_0123-abc",
       "headCommitId": "00000000-0000-0000-0000-000000000000",
       "pages": [
         {
