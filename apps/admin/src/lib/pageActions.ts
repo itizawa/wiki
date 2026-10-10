@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /** いま開いている編集画面でできる操作。編集画面の外（コマンドメニュー）から呼ぶために預かる。 */
-export type PageActions = { copyMarkdown: () => void; downloadMarkdown: () => void; keepVersion: () => void };
+export type PageActions = { copyMarkdown: () => void; downloadMarkdown: () => void; keepVersion: () => void; present: () => void };
 
 const listeners = new Set<() => void>();
 let current: PageActions | null = null;
