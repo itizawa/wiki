@@ -2,8 +2,10 @@
 import layout from "../../styles/page.module.css";
 import type { ManifestPage } from "@wiki/shared";
 import Article from "../../components/Article.astro";
+import Backlinks from "../../components/Backlinks.astro";
 import TreeNav from "../../components/TreeNav";
 import Base from "../../layouts/Base.astro";
+import { siteBacklinks } from "../../lib/backlinks";
 import { siteData } from "../../lib/manifest";
 import { excerpt } from "../../lib/markdown";
 import { ancestors, navItems } from "../../lib/tree";
@@ -17,6 +19,7 @@ const { page } = Astro.props as { page: ManifestPage };
 const { pagesById, primaryTree } = await siteData();
 const publicPaths = new Map([...pagesById].map(([id, p]) => [id, p.path]));
 const titleOf = (id: string) => pagesById.get(id)?.title;
+const backlinks = (await siteBacklinks()).get(page.id) ?? [];
 const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
 const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
 ---
@@ -44,6 +47,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
         monetization={page.monetization}
         publicPaths={publicPaths}
       />
+      <Backlinks pages={backlinks} />
     </main>
     {
       primaryTree && (

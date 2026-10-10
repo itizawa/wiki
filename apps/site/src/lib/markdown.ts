@@ -10,7 +10,7 @@ export type RenderOptions = {
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const INTERNAL = /^(?:https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
+export const INTERNAL = /^(?:https?:\/\/[^/]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/;
 
 /**
  * 公開用のMarkdown→HTML。
