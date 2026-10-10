@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { keyChecks } from "./WikisPage";
+import { iconUrlProblem, keyChecks } from "./WikisPage";
 
 const unmet = (key: string, taken: string[] = []) => keyChecks(key, taken).filter((c) => !c.ok).length;
 
@@ -16,5 +16,16 @@ describe("wiki の key の確認", () => {
   it("予約された名前と、ほかの wiki が使っている key（アーカイブ中を含む）は使えない", () => {
     expect(unmet("www")).toBe(1);
     expect(unmet("notes", ["wiki", "notes"])).toBe(1);
+  });
+});
+
+describe("wiki の画像の URL の入力", () => {
+  it("空なら画像なしとして通し、http(s) 以外と長すぎる URL は理由を返す", () => {
+    expect(iconUrlProblem("")).toBeNull();
+    expect(iconUrlProblem("  ")).toBeNull();
+    expect(iconUrlProblem("https://example.com/a.png")).toBeNull();
+    expect(iconUrlProblem("javascript:alert(1)")).toMatch(/http/);
+    expect(iconUrlProblem("example.com/a.png")).toMatch(/http/);
+    expect(iconUrlProblem(`https://example.com/${"a".repeat(2048)}`)).toMatch(/長すぎます/);
   });
 });

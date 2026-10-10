@@ -79,6 +79,26 @@ describe("wikis", () => {
     expect((await ctx.call("PATCH", "/admin/wikis/nope", { name: "x" })).status).toBe(404);
   });
 
+  it("sets, changes and removes a wiki's image URL, accepting only http(s) URLs", async () => {
+    ctx = await setup();
+    await createNotes();
+    const created = await ctx.call("POST", "/admin/wikis", { key: "blog", name: "ブログ", iconUrl: "https://example.com/blog.png" });
+    expect(created.body.iconUrl).toBe("https://example.com/blog.png");
+    expect((await ctx.call("GET", "/admin/wikis")).body.wikis.map((w: any) => [w.key, w.iconUrl])).toEqual([
+      ["wiki", null],
+      ["notes", null],
+      ["blog", "https://example.com/blog.png"],
+    ]);
+
+    const set = await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: " http://example.com/n.png " });
+    expect(set.body).toEqual(expect.objectContaining({ name: "開発ノート", iconUrl: "http://example.com/n.png" }));
+    for (const iconUrl of ["javascript:alert(1)", "data:image/png;base64,AAAA", "/relative.png", "example.com/a.png", `https://example.com/${"a".repeat(2048)}`]) {
+      expect((await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl })).status, iconUrl).toBe(400);
+    }
+    expect((await ctx.call("PATCH", "/admin/wikis/notes", {})).status).toBe(400);
+    expect((await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: null })).body.iconUrl).toBeNull();
+  });
+
   it("answers 404 for an unknown wiki", async () => {
     ctx = await setup();
     expect((await ctx.call("GET", "/admin/w/nope/pages")).status).toBe(404);
@@ -324,6 +344,9 @@ describe("archiving a wiki", () => {
     expect((await build()).trigger).toBe(true);
     await ctx.call("PATCH", "/admin/wikis/notes", { name: "メモ" });
     expect((await build()).trigger).toBe(true);
+    // 画像は管理画面でだけ使うので、変えてもビルドし直さない
+    await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: "https://example.com/n.png" });
+    expect(await build()).toEqual({ trigger: false, reason: "no_changes" });
     await ctx.call("POST", "/admin/wikis/notes/archive");
     expect((await build()).trigger).toBe(true);
     await ctx.call("POST", "/admin/wikis/notes/unarchive");
