@@ -146,10 +146,26 @@ export function OutlineSide({ editor, headings }: { editor: Editor; headings: Ou
   );
 }
 
-/** 狭い画面で、ヘッダーのボタンから開く目次。 */
+/** ボタンの下に開く目次。見出しを選ぶと閉じる。スマホ幅では「…」メニューから開く。 */
+export function OutlinePopover(props: { editor: Editor; headings: OutlineHeading[]; anchorEl: HTMLElement | null; open: boolean; onClose: () => void }) {
+  const current = useCurrentHeading(props.editor, props.headings);
+  return (
+    <Popover
+      open={props.open}
+      anchorEl={props.anchorEl}
+      onClose={props.onClose}
+      anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      transformOrigin={{ vertical: "top", horizontal: "right" }}
+      slotProps={{ paper: { component: "nav", "aria-label": "目次", sx: { width: 280, maxWidth: "calc(100vw - 32px)", maxHeight: "60vh", p: 1.5, fontSize: "0.875rem" } } as object }}
+    >
+      <OutlineList editor={props.editor} headings={props.headings} current={current} onJump={props.onClose} />
+    </Popover>
+  );
+}
+
+/** 本文の右に目次を置けない幅で、ヘッダーのボタンから開く目次。 */
 export function OutlineButton({ editor, headings }: { editor: Editor; headings: OutlineHeading[] }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const current = useCurrentHeading(editor, headings);
   return (
     <>
       <Tooltip title="目次">
@@ -157,16 +173,7 @@ export function OutlineButton({ editor, headings }: { editor: Editor; headings: 
           <TableOfContents size={18} />
         </IconButton>
       </Tooltip>
-      <Popover
-        open={!!anchor}
-        anchorEl={anchor}
-        onClose={() => setAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{ paper: { component: "nav", "aria-label": "目次", sx: { width: 280, maxWidth: "calc(100vw - 32px)", maxHeight: "60vh", p: 1.5, fontSize: "0.875rem" } } as object }}
-      >
-        <OutlineList editor={editor} headings={headings} current={current} onJump={() => setAnchor(null)} />
-      </Popover>
+      <OutlinePopover editor={editor} headings={headings} anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} />
     </>
   );
 }

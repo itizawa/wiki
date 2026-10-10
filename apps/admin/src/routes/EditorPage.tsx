@@ -5,6 +5,8 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Snackbar from "@mui/material/Snackbar";
+import { useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import type { PageDetail, PageDraft } from "@wiki/shared";
@@ -19,7 +21,7 @@ import { api, errorMessage } from "../lib/api";
 import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT } from "./WikiLayout";
-import { formatDateTime, formatTime } from "../lib/format";
+import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
 import { isCounted } from "../lib/views";
 import { confirmDialog } from "../components/ConfirmDialog";
@@ -36,9 +38,6 @@ type Draft = { title: string; bodyMd: string };
 
 /** 本文の右に目次を置ける、本文の列の幅。これより狭いときは、ヘッダーのボタンから目次を開く。 */
 const SIDE_OUTLINE = "@container (min-width: 1100px)";
-
-/** ヘッダーの保存の状況に、時刻なども出せる本文の列の幅。これより狭いときは、短い文言だけにする。 */
-const WIDE_HEADER = "@container (min-width: 600px)";
 
 /** タイトルを付けずに作ったページの名前。テンプレートを当てると、テンプレートのタイトルに置き換える */
 const UNTITLED = "無題";
@@ -74,6 +73,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const titleRow = useRef<HTMLDivElement>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const headings = useOutline(editor);
+  // スマホ幅では、ヘッダーをページの名前と「…」だけにし、ほかの操作は「…」メニューにまとめる
+  const narrow = useMediaQuery(useTheme().breakpoints.down("sm"));
 
   // 版履歴の開閉と選んだ版は URL に持つ。開くときだけ履歴に積み（ブラウザの「戻る」で閉じる）、版の選び直しと閉じるときは積まない
   const showVersion = (versionId: string | null, replace = false) =>
@@ -249,25 +250,22 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
           }}
         >
           <Breadcrumb pageId={pageId} title={draft.title} />
-          <SaveStatus
-            saving={autosave.pending || autosave.saving || save.isPending}
-            failed={autosave.error !== null}
-            retrying={!autosave.conflict}
-            // 版になっていない変更があるあいだは下書きを保存した時刻、無ければ最新の版の日時
-            savedAt={dirty && autosave.savedAt ? formatTime(autosave.savedAt) : formatDateTime(p.head.createdAt)}
-          />
-          <StarButton pageId={pageId} />
-          <Tooltip title="本文を検索・置換 (⌘F)">
-            <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
-              <Search size={18} />
-            </IconButton>
-          </Tooltip>
-          {editor && headings.length > 0 && (
-            <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
-              <OutlineButton editor={editor} headings={headings} />
-            </Box>
+          {!narrow && (
+            <>
+              <StarButton pageId={pageId} />
+              <Tooltip title="本文を検索・置換 (⌘F)">
+                <IconButton size="small" aria-label="本文を検索・置換" onClick={openFindBar}>
+                  <Search size={18} />
+                </IconButton>
+              </Tooltip>
+              {editor && headings.length > 0 && (
+                <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
+                  <OutlineButton editor={editor} headings={headings} />
+                </Box>
+              )}
+              <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
+            </>
           )}
-          <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
           <PageMenu
             pageId={p.id}
             counted={isCounted(p)}
@@ -278,6 +276,12 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             onKeepVersion={() => void keepVersion()}
             onOpenHistory={() => showVersion(p.headVersionId)}
             onDelete={() => void confirmAndDelete({ id: p.id, title: p.title, publishedVersionId: p.publishedVersionId })}
+            narrow={narrow}
+            page={p}
+            dirty={dirty}
+            ensureVersion={ensureVersion}
+            editor={editor}
+            headings={headings}
           />
         </Box>
 
@@ -396,26 +400,6 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         </Alert>
       )}
     </Box>
-  );
-}
-
-/**
- * 保存の状況。編集中の内容は下書きとして自動で保存され、編集が一段落すると自動で版になるので、
- * 下書きと版を分けずに「保存」として出す。ヘッダーの、ページの名前の隣に出し続ける（スクロールしても見える）。
- * 幅が狭いときは、時刻や補足を省いた短い文言にする。
- */
-function SaveStatus(props: { saving: boolean; failed: boolean; retrying: boolean; savedAt: string }) {
-  // 色だけに頼らず、文言でも失敗を伝える
-  const [text, detail] = props.failed
-    ? ["保存できませんでした", props.retrying ? "。もう一度試しています" : ""]
-    : props.saving
-      ? ["保存中…", ""]
-      : ["保存しました", `（${props.savedAt}）`];
-  return (
-    <Muted role="status" sx={{ flexShrink: 0, whiteSpace: "nowrap", color: props.failed ? "error.main" : undefined }}>
-      {text}
-      {detail && <Box component="span" sx={{ display: "none", [WIDE_HEADER]: { display: "inline" } }}>{detail}</Box>}
-    </Muted>
   );
 }
 

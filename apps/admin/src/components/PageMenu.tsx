@@ -1,6 +1,21 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Presentation as PresentationIcon, Save, SmilePlus, Trash2 } from "lucide-react";
+import {
+  ChartColumn,
+  Copy,
+  Download,
+  Ellipsis,
+  Globe,
+  History,
+  LayoutTemplate,
+  Presentation as PresentationIcon,
+  Save,
+  Search,
+  SmilePlus,
+  Star,
+  TableOfContents,
+  Trash2,
+} from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -9,13 +24,21 @@ import MenuItem from "@mui/material/MenuItem";
 import Snackbar from "@mui/material/Snackbar";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import type { Editor } from "@tiptap/react";
+import type { PageDetail } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
+import { openFindBar } from "../editor/FindBar";
+import { OutlinePopover } from "../editor/Outline";
+import type { OutlineHeading } from "../editor/outlineHeadings";
 import { api, errorMessage } from "../lib/api";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
+import { useStars } from "../lib/stars";
 import { templateLink } from "../lib/wiki";
 import { PageViewsPopover, usePageViews } from "./PageViews";
 import { Presentation } from "./Presentation";
+import { publishState, PublishSheet } from "./PublishMenu";
+import type { EnsureVersion } from "./PublishPanel";
 import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
@@ -23,6 +46,8 @@ import { Muted } from "./ui";
 /**
  * 編集画面の「…」メニュー。プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
  * テンプレートにする・ページをゴミ箱に入れる。
+ *
+ * スマホ幅（`narrow`）では、ヘッダーに置けない操作（公開・予約、スター、本文の検索・置換、目次）も、このメニューの先頭に並べる。
  */
 export function PageMenu(props: {
   pageId: string;
@@ -38,6 +63,15 @@ export function PageMenu(props: {
   onKeepVersion: () => void;
   onOpenHistory: () => void;
   onDelete: () => void;
+  /** スマホ幅か。ヘッダーの「…」以外のボタンの代わりを、このメニューに出す */
+  narrow: boolean;
+  page: PageDetail;
+  /** まだ版になっていない変更があるか（公開・予約の前に版にする） */
+  dirty: boolean;
+  ensureVersion: EnsureVersion;
+  editor: Editor | null;
+  /** 目次に出す見出し。無ければ「目次」は出さない */
+  headings: OutlineHeading[];
 }) {
   const { title, bodyMd } = props;
   const qc = useQueryClient();
@@ -49,6 +83,11 @@ export function PageMenu(props: {
   const [viewsOpen, setViewsOpen] = useState(false);
   const { views, totalLabel } = usePageViews(props.pageId, props.counted);
   const [createdTemplate, setCreatedTemplate] = useState<string | null>(null);
+  // スマホ幅でだけメニューから開くもの。開いたあとに幅が広がっても、閉じるまでは出しておく
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const stars = useStars();
+  const starred = stars.ids.includes(props.pageId);
   // プレゼンモード。いま画面にある内容（版になる前の変更も含む）を、そのままスライドにする
   const [presenting, setPresenting] = useState(false);
   const present = () => {
@@ -111,6 +150,65 @@ export function PageMenu(props: {
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        {props.narrow && [
+          <MenuItem
+            key="publish"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setAnchor(null);
+              setPublishOpen(true);
+            }}
+          >
+            <ListItemIcon>
+              <Globe size={18} />
+            </ListItemIcon>
+            <ListItemText>公開・予約</ListItemText>
+            {/* いまの公開範囲。ヘッダーのボタンに出していたもの */}
+            <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
+              {publishState(props.page).label}
+            </Muted>
+          </MenuItem>,
+          <MenuItem
+            key="star"
+            onClick={() => {
+              setAnchor(null);
+              stars.toggle(props.pageId);
+            }}
+          >
+            <ListItemIcon>
+              <Star size={18} fill={starred ? "currentColor" : "none"} />
+            </ListItemIcon>
+            <ListItemText>{starred ? "スターを外す" : "スターを付ける"}</ListItemText>
+          </MenuItem>,
+          <MenuItem
+            key="find"
+            onClick={() => {
+              setAnchor(null);
+              openFindBar();
+            }}
+          >
+            <ListItemIcon>
+              <Search size={18} />
+            </ListItemIcon>
+            <ListItemText>本文を検索・置換</ListItemText>
+          </MenuItem>,
+          props.headings.length > 0 && (
+            <MenuItem
+              key="outline"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setAnchor(null);
+                setOutlineOpen(true);
+              }}
+            >
+              <ListItemIcon>
+                <TableOfContents size={18} />
+              </ListItemIcon>
+              <ListItemText>目次</ListItemText>
+            </MenuItem>
+          ),
+          <Divider key="divider" />,
+        ]}
         <MenuItem aria-haspopup="dialog" onClick={present}>
           <ListItemIcon>
             <PresentationIcon size={18} />
@@ -210,6 +308,10 @@ export function PageMenu(props: {
       </Menu>
       {/* 終了したら、フォーカスを「…」ボタンに戻す */}
       <Presentation open={presenting} title={title} bodyMd={bodyMd} onClose={() => setPresenting(false)} onExited={() => menuButton.current?.focus({ preventScroll: true })} />
+      <PublishSheet page={props.page} dirty={props.dirty} ensureVersion={props.ensureVersion} open={publishOpen} onClose={() => setPublishOpen(false)} />
+      {props.editor && (
+        <OutlinePopover editor={props.editor} headings={props.headings} anchorEl={menuButton.current} open={outlineOpen} onClose={() => setOutlineOpen(false)} />
+      )}
       <PageViewsPopover views={views} counted={props.counted} anchorEl={menuButton.current} open={viewsOpen} onClose={() => setViewsOpen(false)} />
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
