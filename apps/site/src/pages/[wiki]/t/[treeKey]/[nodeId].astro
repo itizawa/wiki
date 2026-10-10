@@ -28,6 +28,7 @@ const { tree, page } = Astro.props as { tree: ManifestTree; page: ManifestPage }
 const { wiki } = Astro.params;
 const { pagesById, publicPaths, origin } = await siteData(wiki);
 const titleOf = (id: string) => pagesById.get(id)?.title;
+const iconOf = (id: string) => pagesById.get(id)?.icon;
 const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const crumbs = ancestors(tree, page.id).slice(0, -1);
 ---
@@ -48,6 +49,7 @@ const crumbs = ancestors(tree, page.id).slice(0, -1);
       </nav>
       <Article
         title={page.title}
+        icon={page.icon}
         bodyMd={page.bodyMd}
         firstPublishedAt={page.firstPublishedAt}
         revisedAt={page.revisedAt}
@@ -59,7 +61,7 @@ const crumbs = ancestors(tree, page.id).slice(0, -1);
       <ViewCounter pageId={page.id} />
     </main>
     <aside>
-      <TreeNav client:idle items={navItems(tree, titleOf)} current={page.id} />
+      <TreeNav client:idle items={navItems(tree, titleOf, iconOf)} current={page.id} />
     </aside>
   </div>
 </Base>

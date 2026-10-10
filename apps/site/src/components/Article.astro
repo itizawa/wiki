@@ -4,6 +4,8 @@ import { renderArticle } from "../lib/markdown";
 
 interface Props {
   title: string;
+  /** アイコン（絵文字1つ）。タイトルの前に出す */
+  icon?: string | null;
   bodyMd: string;
   firstPublishedAt?: string;
   revisedAt: string;
@@ -13,7 +15,7 @@ interface Props {
   origin: string;
 }
 
-const { title, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin } = Astro.props;
+const { title, icon, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
 const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin });
@@ -26,7 +28,10 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 ---
 
 <article class={s.article}>
-  <h1>{title}</h1>
+  <h1>
+    {/* 飾りなので読み上げず、検索の見出しにも入れない */}
+    {icon && <span class={s.icon} aria-hidden="true" data-pagefind-ignore>{icon}</span>}{title}
+  </h1>
   <div class={s.meta}>
     {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
@@ -219,7 +224,8 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 
     const startPresentation = () => {
       const titleSlide = document.createElement("h1");
-      titleSlide.textContent = article.querySelector("h1")?.textContent ?? "";
+      // アイコン（絵文字）が付いていれば、タイトルの前にそのまま出す
+      titleSlide.append(...(article.querySelector("h1")?.cloneNode(true).childNodes ?? []));
       const slides = [[titleSlide], ...bodySlides().map(cloneForSlide)];
       let index = 0;
       let fade: Animation | undefined;

@@ -5,3 +5,5 @@
 .current { composes: item; }
 .current > a { font-weight: 700; color: var(--text); }
 .twisty { width: 16px; flex: none; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; font: inherit; }
+/* ページのアイコン（絵文字）。タイトルとの間を少し空ける */
+.icon { margin-right: 4px; }

@@ -61,6 +61,8 @@ export const pages = pgTable(
     wikiId: wikiId(),
     /** head版タイトルのキャッシュ */
     title: text("title").notNull(),
+    /** アイコン（絵文字1つ）。nullなら付けていない。版には入れない */
+    icon: text("icon"),
     headVersionId: uuid("head_version_id").notNull(),
     /** nullなら未公開 */
     publishedVersionId: uuid("published_version_id"),

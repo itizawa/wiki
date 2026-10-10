@@ -1,98 +1,9 @@
 {
-  "id": "e698c080-babb-4b26-9291-de6625ad06de",
+  "id": "4d3f4cde-8868-41c4-a3e2-09dc077e5fba",
   "prevId": "1230763f-d7b9-4fde-81bd-01517c9964e7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.analytics_snapshots": {
-      "name": "analytics_snapshots",
-      "schema": "",
-      "columns": {
-        "wiki_id": {
-          "name": "wiki_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "days": {
-          "name": "days",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target": {
-          "name": "target",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "data": {
-          "name": "data",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempted_at": {
-          "name": "attempted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "error": {
-          "name": "error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "analytics_snapshots_wiki_id_wikis_id_fk": {
-          "name": "analytics_snapshots_wiki_id_wikis_id_fk",
-          "tableFrom": "analytics_snapshots",
-          "tableTo": "wikis",
-          "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "analytics_snapshots_wiki_id_kind_days_pk": {
-          "name": "analytics_snapshots_wiki_id_kind_days_pk",
-          "columns": [
-            "wiki_id",
-            "kind",
-            "days"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "analytics_snapshots_kind_check": {
-          "name": "analytics_snapshots_kind_check",
-          "value": "\"analytics_snapshots\".\"kind\" in ('ga', 'search_console')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.commit_trees": {
       "name": "commit_trees",
       "schema": "",
@@ -1031,6 +942,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "head_version_id": {
           "name": "head_version_id",
@@ -2287,12 +2204,6 @@
         },
         "search_console_verification": {
           "name": "search_console_verification",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ga_property_id": {
-          "name": "ga_property_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false

@@ -80,7 +80,13 @@ export function PagesPage() {
       width: "minmax(160px, 1fr)",
       stickyLeft: STAR_WIDTH,
       sx: { overflowWrap: "anywhere" },
-      render: (p) => <RouterLink {...pageLink(p.id)}>{p.title}</RouterLink>,
+      render: (p) => (
+        <RouterLink {...pageLink(p.id)}>
+          {/* ページのアイコン（絵文字）。飾りなので読み上げない */}
+          {p.icon && <span aria-hidden>{p.icon} </span>}
+          {p.title}
+        </RouterLink>
+      ),
     },
     {
       key: "status",

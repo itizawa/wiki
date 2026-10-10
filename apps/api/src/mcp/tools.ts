@@ -171,6 +171,7 @@ export const TOOLS = [
       return {
         id: page.id,
         title: version!.title,
+        icon: page.icon,
         bodyMd: version!.bodyMd,
         headVersionId: versionId,
         hasHiddenEdits: versionId !== page.headVersionId,
@@ -226,6 +227,7 @@ export const TOOLS = [
         title: str("タイトル", { maxLength: 200 }),
         bodyMd: str("本文（Markdown）"),
         parentPageId: str("この下に置く親ページの ID（省略可）"),
+        icon: str("アイコン。絵文字1つ（省略可）"),
       },
       ["wiki", "title"],
     ),

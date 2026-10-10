@@ -142,6 +142,8 @@ export const api = {
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
+  /** アイコン（絵文字1つ）を付ける・変える・外す（null）。版は作らず、すぐに反映される */
+  setPageIcon: (id: string, icon: string | null) => request<PageDetail>("PUT", w(`/pages/${id}/icon`), { icon }),
   getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
   saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<SavePageDraftResult>("PUT", w(`/pages/${id}/draft`), input),

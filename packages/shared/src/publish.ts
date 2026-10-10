@@ -76,6 +76,8 @@ export type ManifestPage = {
   id: string;
   path: string;
   title: string;
+  /** アイコン（絵文字1つ）。付けていなければ null */
+  icon: string | null;
   bodyMd: string;
   firstPublishedAt: string;
   /** 公開版の作成日時（改訂日） */
@@ -88,6 +90,7 @@ export type ManifestUnlistedPage = {
   key: string;
   path: string;
   title: string;
+  icon: string | null;
   bodyMd: string;
   revisedAt: string;
 };

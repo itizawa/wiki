@@ -13,6 +13,8 @@ const DAY = 24 * 3600_000;
 
 type SeedPage = {
   title: string;
+  /** アイコン（絵文字1つ）。省略時は付けない */
+  icon?: string;
   /** 本文。`{{キー}}` は先に作ったページの `/p/{id}` に置き換える */
   body: string;
   /** 本文中から参照するための名前 */
@@ -33,6 +35,7 @@ const SEED: SeedPage[] = [
   {
     key: "intro",
     title: "はじめに",
+    icon: "👋",
     state: "public",
     daysAgo: 30,
     body: "# ようこそ\n\nこの wiki は、書いたページをそのまま公開できる場所です。\n\n- ページの下にページを置いて階層を作ります\n- フォルダはありません。まとめ役が欲しければ、それもページとして書きます",
@@ -40,6 +43,7 @@ const SEED: SeedPage[] = [
       {
         key: "howto",
         title: "この wiki の使い方",
+        icon: "📖",
         state: "public",
         daysAgo: 28,
         body: "## 基本の流れ\n\n1. サイドバーの「＋」でページを作る\n2. 書く\n3. 公開する\n\nまずは [はじめに]({{intro}}) を読んでください。",
@@ -72,6 +76,7 @@ const SEED: SeedPage[] = [
   },
   {
     title: "開発メモ",
+    icon: "🛠️",
     state: "public",
     daysAgo: 15,
     body: "開発まわりのメモをこの下にまとめる。",
@@ -99,6 +104,7 @@ const SEED: SeedPage[] = [
       },
       {
         title: "議事録",
+        icon: "🗓️",
         body: "定例の記録。",
         children: [
           { title: "2026-10-01 定例", body: "- フォルダと Inbox をやめる\n- URL は `/p/{id}` だけにする" },
@@ -190,7 +196,7 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
     let count = 0;
 
     const add = async (page: SeedPage, parentPageId: string | null) => {
-      const id = await createPage(tx, wikiId, { title: page.title, bodyMd: fill(page.body), parentPageId });
+      const id = await createPage(tx, wikiId, { title: page.title, bodyMd: fill(page.body), parentPageId, icon: page.icon });
       count++;
       if (page.key) paths.set(page.key, pagePath(id));
       const [row] = await tx.select().from(pages).where(eq(pages.id, id));
