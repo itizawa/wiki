@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LogOut, PanelLeft, Plus, Replace, Search, Workflow } from "lucide-react";
+import { ArrowLeftRight, Calendar, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, PanelLeft, Plus, Replace, Search, Workflow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -15,6 +15,7 @@ import { api, errorMessage } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/FindBar";
 import { usePageActions } from "../lib/pageActions";
+import { useCreateFromTemplate } from "../routes/TemplatesPage";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
@@ -55,6 +56,9 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
   });
 
+  const templates = useQuery({ queryKey: ["templates"], queryFn: api.listTemplates, enabled: open });
+  const fromTemplate = useCreateFromTemplate();
+
   const { wiki, wikis } = useWiki();
   // メニューを閉じてから実行する操作
   const closing = (run: () => void) => () => {
@@ -73,6 +77,18 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       icon: <Plus size={18} />,
       run: () => !create.isPending && create.mutate(),
     },
+    // テンプレートの名前でも探せる。タイトルはテンプレートのもの（変数を置き換えたもの）になる
+    ...(templates.data?.templates ?? []).map((t) => ({
+      id: `template:${t.id}`,
+      label: `テンプレート「${t.title}」で新しいページを作る`,
+      keywords: ["template", "new", "create"],
+      icon: <LayoutTemplate size={18} />,
+      run: () => {
+        if (fromTemplate.isPending) return;
+        onClose();
+        fromTemplate.mutate({ templateId: t.id });
+      },
+    })),
     {
       id: "search",
       label: q ? `「${q}」の検索結果を、本文の一致した所と一緒に見る` : "「検索」を開く",
@@ -86,6 +102,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
     { id: "rules", label: "「ルール」を開く", keywords: ["rules", "workflow"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/rules") },
+    { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis

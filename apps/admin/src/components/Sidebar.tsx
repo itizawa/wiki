@@ -1,4 +1,4 @@
-import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, Link, Lock, LogOut, Plus, Search, Settings, Star, Workflow } from "lucide-react";
+import { Calendar, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Search, Settings, Star, Workflow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -144,6 +144,9 @@ export function Sidebar(props: {
         </NavItem>
         <NavItem to="/w/$wikiKey/rules" icon={<Workflow size={18} />} onClick={props.onNavigate}>
           ルール
+        </NavItem>
+        <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
+          テンプレート
         </NavItem>
         <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
           構造の履歴
