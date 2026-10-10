@@ -9,9 +9,9 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { OAUTH_SCOPES, type OAuthScope } from "@wiki/shared";
 import { useState } from "react";
-import { Mono, Muted, Section } from "../components/ui";
+import { Mono, Muted, Section, SkeletonSection } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
-import { Center, Loading, useSession } from "./Layout";
+import { Center, useSession } from "./Layout";
 
 /** 既定で許すスコープ。非公開のページを外へ送るかどうかは、毎回その人に選んでもらう */
 const DEFAULT_ON: OAuthScope[] = ["wiki.read", "wiki.write"];
@@ -33,7 +33,14 @@ export function ConsentPage() {
     onSuccess: ({ redirectTo }) => location.assign(redirectTo),
   });
 
-  if (info.isPending) return <Loading />;
+  if (info.isPending) {
+    // あとに出るのは中央のカードなので、同じ位置と幅のカードの形を出す
+    return (
+      <Center>
+        <SkeletonSection lines={5} sx={{ maxWidth: 520, width: "100%" }} />
+      </Center>
+    );
+  }
   if (info.error) {
     return (
       <Center>

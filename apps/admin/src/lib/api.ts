@@ -1,29 +1,32 @@
 import type {
+  AnalyticsDays,
+  ConnectionCheck,
+  GoogleConnection,
   Invite,
   InviteInfo,
   Me,
   Member,
   PageDetail,
   PageDraft,
+  SavePageDraftResult,
   PageViews,
   PageTemplate,
   PageSummary,
   PageVersion,
   PublishVisibility,
-  Rule,
-  RuleRun,
   SearchResult,
   ScheduledAction,
-  SetWorkflowInput,
   OAuthConsentRequest,
   OAuthGrantSummary,
   StructureChange,
   StructureOpInput,
+  TrashedPage,
   TreeMeta,
   TreeNode,
-  UpdateRuleInput,
   UserSummary,
+  WikiAnalytics,
   WikiRole,
+  WikiSettings,
   WikiSummary,
   WikiViews,
 } from "@wiki/shared";
@@ -41,7 +44,7 @@ export class ApiError extends Error {
 }
 
 /**
- * いま開いている wiki の key。wiki の内容を扱う API（ページ・ツリー・予約・ルール）は、すべてこの wiki の経路を呼ぶ。
+ * いま開いている wiki の key。wiki の内容を扱う API（ページ・ツリー・予約）は、すべてこの wiki の経路を呼ぶ。
  * `/w/{key}/...` の画面（WikiLayout）が、子の画面を描く前に設定する。
  */
 let wikiKey = "";
@@ -74,13 +77,25 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 /** via：外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
-export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdAt"> & { via: string | null };
+export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "keep" | "createdAt"> & { via: string | null };
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
   headCommitId: string;
   trees: StructureTree[];
-  pages: Record<string, { id: string; title: string; visibility: string; publishedVersionId: string | null }>;
+  pages: Record<
+    string,
+    {
+      id: string;
+      title: string;
+      visibility: string;
+      publishedVersionId: string | null;
+      /** 限定公開の URL に入るキー。限定公開にしたことが無ければ null */
+      unlistedKey: string | null;
+      /** 最後に版を作った・公開の状態を変えた日時 */
+      updatedAt: string;
+    }
+  >;
 };
 
 export type CommitListItem = {
@@ -122,6 +137,13 @@ export const api = {
 
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
+  /** ページの一覧を、続きから取る（「すべてのページ」の一覧）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
+  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number }) => {
+    const params = new URLSearchParams({ limit: String(input.limit) });
+    if (input.q) params.set("q", input.q);
+    if (input.cursor) params.set("cursor", input.cursor);
+    return request<{ pages: PageSummary[]; nextCursor: string | null }>("GET", w(`/pages?${params}`));
+  },
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
   search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
   /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */
@@ -130,13 +152,18 @@ export const api = {
   getPage: (id: string) => request<PageDetail>("GET", w(`/pages/${id}`)),
   savePage: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
+  /** アイコン（絵文字1つ）を付ける・変える・外す（null）。版は作らず、すぐに反映される */
+  setPageIcon: (id: string, icon: string | null) => request<PageDetail>("PUT", w(`/pages/${id}/icon`), { icon }),
   getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
   saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
-    request<{ draft: PageDraft | null }>("PUT", w(`/pages/${id}/draft`), input),
+    request<SavePageDraftResult>("PUT", w(`/pages/${id}/draft`), input),
   discardDraft: (id: string) => request<{ draft: null }>("DELETE", w(`/pages/${id}/draft`)),
-  /** 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る */
-  uploadImage: async (file: Blob): Promise<{ url: string }> => {
-    const res = await fetch(`/api${w("/images")}`, {
+  /**
+   * 画像をアップロードし、本文に書くパス（`/images/{name}`）を返す。中身はそのまま送る。
+   * wiki の外の画面（wiki の管理）から使うときは、どの wiki の経路で送るかを key で渡す
+   */
+  uploadImage: async (file: Blob, key: string = wikiKey): Promise<{ url: string }> => {
+    const res = await fetch(`/api/admin/w/${encodeURIComponent(key)}/images`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": file.type || "application/octet-stream" },
@@ -149,9 +176,30 @@ export const api = {
     }
     return data as { url: string };
   },
-  deletePage: (id: string) => request<{ ok: true }>("DELETE", w(`/pages/${id}`)),
+  /** ゴミ箱に入れる（配下のページもいっしょに入る） */
+  deletePage: (id: string) => request<{ ok: true; trashedPages: number }>("DELETE", w(`/pages/${id}`)),
+  /** ゴミ箱の一覧。削除で選んだページごとに1行、新しい順 */
+  listTrash: () => request<{ pages: TrashedPage[] }>("GET", w("/pages/trash")),
+  /** ゴミ箱から、配下ごと元に戻す。parentMissing：元の親ページが無く、最上位に戻した */
+  restorePage: (id: string) =>
+    request<{ id: string; restoredPages: number; parentPageId: string | null; parentMissing: boolean }>("POST", w(`/pages/${id}/restore`)),
+  /** ゴミ箱から、配下ごと完全に削除する（元に戻せない） */
+  purgePage: (id: string) => request<{ ok: true; purgedPages: number }>("DELETE", w(`/pages/${id}/trash`)),
   listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
+
+  /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
+  getSettings: () => request<WikiSettings>("GET", w("/settings")),
+  updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
+
+  /** 「アクセス解析」：Google Analytics とサーチコンソールの数字と、連携の状態。同じ期間は、API が1時間のあいだ使い回す */
+  analytics: (days: AnalyticsDays) => request<WikiAnalytics>("GET", w(`/analytics?days=${days}`)),
+  /** Google から取り直す（1分おきまで） */
+  refreshAnalytics: (days: AnalyticsDays) => request<WikiAnalytics>("POST", w("/analytics/refresh"), { days }),
+  /** Google へ足すサービスアカウントのメールアドレスと、鍵の状態 */
+  analyticsConnection: () => request<GoogleConnection>("GET", w("/analytics/connection")),
+  /** 「接続を確かめる」：保存してある設定で、Google へ問い合わせてみる */
+  checkAnalytics: (target: "ga" | "search_console") => request<ConnectionCheck>("POST", w("/analytics/check"), { target }),
 
   /** 閲覧数（ページごとの合計・直近30日） */
   listViews: () => request<WikiViews>("GET", w("/views")),
@@ -163,8 +211,6 @@ export const api = {
   removeStar: (pageId: string) => request<{ pageIds: string[] }>("DELETE", w(`/stars/${pageId}`)),
   reorderStars: (pageIds: string[]) => request<{ pageIds: string[] }>("PUT", w("/stars"), { pageIds }),
 
-  setWorkflow: (id: string, input: SetWorkflowInput) => request<PageDetail>("POST", w(`/pages/${id}/workflow`), input),
-  reviewDone: (id: string) => request<PageDetail>("POST", w(`/pages/${id}/review-done`)),
 
   publish: (id: string, input: { versionId: string; visibility: PublishVisibility; applyToDescendants?: boolean }) =>
     request<{ ok: true }>("POST", w(`/pages/${id}/publish`), input),
@@ -183,9 +229,6 @@ export const api = {
   reschedule: (id: string, runAt: string) => request<ScheduledAction>("PATCH", w(`/schedule/${id}`), { runAt }),
   cancelSchedule: (id: string) => request<ScheduledAction>("POST", w(`/schedule/${id}/cancel`)),
 
-  listRules: () => request<{ rules: Rule[] }>("GET", w("/rules")),
-  saveRule: (id: string, input: UpdateRuleInput) => request<Rule>("PUT", w(`/rules/${id}`), input),
-  listRuleRuns: () => request<{ runs: RuleRun[] }>("GET", w("/rules/runs")),
 
   listTemplates: () => request<{ templates: PageTemplate[] }>("GET", w("/templates")),
   getTemplate: (id: string) => request<PageTemplate>("GET", w(`/templates/${id}`)),

@@ -3,21 +3,24 @@ import Box from "@mui/material/Box";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import type { StructureChange } from "@wiki/shared";
 import { useState } from "react";
-import { Mono, Muted, Row, Section, StatusChip, WithSidebar } from "../components/ui";
+import { LoadingRegion, Mono, Muted, Row, Section, SkeletonRows, StatusChip, WithSidebar } from "../components/ui";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+
+/** コミットの行の高さ（メッセージ + 日時の2段）。 */
+const COMMIT_ROW_HEIGHT = 72;
 
 export function HistoryPage() {
   const history = useQuery({ queryKey: ["history"], queryFn: api.history });
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const [selected, setSelected] = useState<string | null>(null);
 
-  if (history.isPending) return <Muted>読み込み中…</Muted>;
   if (history.error) return <Alert severity="error">{errorMessage(history.error)}</Alert>;
 
   return (
@@ -27,8 +30,10 @@ export function HistoryPage() {
           構造の履歴（main）
         </Typography>
         <Muted>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</Muted>
-        <List disablePadding sx={{ mt: 1, mx: -1 }}>
-          {history.data.commits.map((c, i) => (
+        {/* コミットの行（メッセージ + 日時）と同じ高さ */}
+        {history.isPending && <SkeletonRows rows={5} height={COMMIT_ROW_HEIGHT} secondary sx={{ mt: 1, mx: -1 }} />}
+        <List disablePadding sx={{ mt: history.isPending ? 0 : 1, mx: -1 }}>
+          {history.data?.commits.map((c, i) => (
             <ListItemButton key={c.id} selected={selected === c.id} onClick={() => setSelected(c.id)} sx={{ px: 1, borderRadius: 1 }}>
               <ListItemText
                 primary={
@@ -57,7 +62,17 @@ export function HistoryPage() {
 
 function CommitDetail({ id, structure }: { id: string; structure?: StructureResponse }) {
   const detail = useQuery({ queryKey: ["commit", id], queryFn: () => api.commitDetail(id) });
-  if (detail.isPending) return <Muted>読み込み中…</Muted>;
+  if (detail.isPending) {
+    // 見出し（コミットのメッセージ）と、変更の行
+    return (
+      <LoadingRegion>
+        <Skeleton variant="text" width="50%" sx={{ fontSize: "1rem", mb: 1.5 }} />
+        <Skeleton variant="text" />
+        <Skeleton variant="text" />
+        <Skeleton variant="text" width="60%" />
+      </LoadingRegion>
+    );
+  }
   if (detail.error) return <Alert severity="error">{errorMessage(detail.error)}</Alert>;
 
   const treeName = (treeId: string) => structure?.trees.find((t) => t.id === treeId)?.name ?? treeId;

@@ -1,6 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import { Copy, Download, Ellipsis, History, LayoutTemplate, Trash2 } from "lucide-react";
+import { ChartColumn, Copy, Download, Ellipsis, History, LayoutTemplate, Presentation as PresentationIcon, Save, SmilePlus, Trash2 } from "lucide-react";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -14,20 +14,47 @@ import { api, errorMessage } from "../lib/api";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { templateLink } from "../lib/wiki";
+import { PageViewsPopover, usePageViews } from "./PageViews";
+import { Presentation } from "./Presentation";
+import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
-import { Mono, Muted } from "./ui";
+import { Muted } from "./ui";
 
 /**
- * 編集画面の「…」メニュー。版履歴を開く・いま画面にある内容（保存前の変更も含む）を Markdown で持ち出す・テンプレートにする・ページを削除する。
- * 下にページのパスを出す。
+ * 編集画面の「…」メニュー。プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * テンプレートにする・ページをゴミ箱に入れる。
  */
-export function PageMenu(props: { title: string; bodyMd: string; path: string; onOpenHistory: () => void; onDelete: () => void }) {
+export function PageMenu(props: {
+  pageId: string;
+  /** 閲覧を数えている記事か（公開していない記事の閲覧数は「—」） */
+  counted: boolean;
+  title: string;
+  bodyMd: string;
+  /** アイコン（絵文字）が付いているか */
+  hasIcon: boolean;
+  /** アイコンを選ぶ画面を開く（タイトルのそばのボタンと同じ） */
+  onPickIcon: () => void;
+  /** いまの内容を版として残す（⌘S と同じ）。結果の知らせは、呼ばれた側が出す */
+  onKeepVersion: () => void;
+  onOpenHistory: () => void;
+  onDelete: () => void;
+}) {
   const { title, bodyMd } = props;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 「閲覧数」の中身は、メニューを閉じたあと「…」ボタンの下に開く
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const { views, totalLabel } = usePageViews(props.pageId, props.counted);
   const [createdTemplate, setCreatedTemplate] = useState<string | null>(null);
+  // プレゼンモード。いま画面にある内容（版になる前の変更も含む）を、そのままスライドにする
+  const [presenting, setPresenting] = useState(false);
+  const present = () => {
+    setAnchor(null);
+    setPresenting(true);
+  };
 
   const saveAsTemplate = useMutation({
     mutationFn: () => api.createTemplate({ title: title.trim() || "無題", bodyMd }),
@@ -64,21 +91,59 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
   };
 
   // コマンドメニュー（⌘K）からも同じ操作を呼べるようにする。結果の知らせは、ここの Snackbar に出す
-  const actions = useRef({ copy, download });
-  actions.current = { copy, download };
+  const actions = useRef({ copy, download, keepVersion: props.onKeepVersion, present });
+  actions.current = { copy, download, keepVersion: props.onKeepVersion, present };
   useEffect(() => {
-    setPageActions({ copyMarkdown: () => void actions.current.copy(), downloadMarkdown: () => actions.current.download() });
+    setPageActions({
+      copyMarkdown: () => void actions.current.copy(),
+      downloadMarkdown: () => actions.current.download(),
+      keepVersion: () => actions.current.keepVersion(),
+      present: () => actions.current.present(),
+    });
     return () => setPageActions(null);
   }, []);
 
   return (
     <>
       <Tooltip title="その他の操作">
-        <IconButton size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
+        <IconButton ref={menuButton} size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
           <Ellipsis size={18} />
         </IconButton>
       </Tooltip>
       <Menu open={!!anchor} anchorEl={anchor} onClose={() => setAnchor(null)} slotProps={{ list: { dense: true } }}>
+        <MenuItem aria-haspopup="dialog" onClick={present}>
+          <ListItemIcon>
+            <PresentationIcon size={18} />
+          </ListItemIcon>
+          <ListItemText>プレゼンモードで表示</ListItemText>
+        </MenuItem>
+        <MenuItem
+          aria-haspopup="dialog"
+          onClick={() => {
+            setAnchor(null);
+            props.onPickIcon();
+          }}
+        >
+          <ListItemIcon>
+            <SmilePlus size={18} />
+          </ListItemIcon>
+          <ListItemText>{props.hasIcon ? "アイコンを変える…" : "アイコンを付ける…"}</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            props.onKeepVersion();
+          }}
+        >
+          <ListItemIcon>
+            <Save size={18} />
+          </ListItemIcon>
+          <ListItemText>いまの内容を版として残す</ListItemText>
+          <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
+            {modKey()}S
+          </Muted>
+        </MenuItem>
         <MenuItem
           onClick={() => {
             setAnchor(null);
@@ -89,6 +154,18 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
             <History size={18} />
           </ListItemIcon>
           <ListItemText>版履歴</ListItemText>
+        </MenuItem>
+        <MenuItem
+          aria-haspopup="dialog"
+          onClick={() => {
+            setAnchor(null);
+            setViewsOpen(true);
+          }}
+        >
+          <ListItemIcon>
+            <ChartColumn size={18} />
+          </ListItemIcon>
+          <ListItemText>閲覧数 {totalLabel}</ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem onClick={copy}>
@@ -123,17 +200,17 @@ export function PageMenu(props: { title: string; bodyMd: string; path: string; o
             setAnchor(null);
             props.onDelete();
           }}
-          sx={{ color: "error.main" }}
         >
-          <ListItemIcon sx={{ color: "inherit" }}>
+          {/* ゴミ箱から元に戻せるので、赤にはしない */}
+          <ListItemIcon>
             <Trash2 size={18} />
           </ListItemIcon>
-          <ListItemText>このページを削除…</ListItemText>
+          <ListItemText>ゴミ箱に入れる…</ListItemText>
         </MenuItem>
-        <Muted component="div" sx={{ px: 2, pt: 1, pb: 0.5, fontSize: "0.75rem", wordBreak: "break-all" }}>
-          <Mono>{props.path}</Mono>
-        </Muted>
       </Menu>
+      {/* 終了したら、フォーカスを「…」ボタンに戻す */}
+      <Presentation open={presenting} title={title} bodyMd={bodyMd} onClose={() => setPresenting(false)} onExited={() => menuButton.current?.focus({ preventScroll: true })} />
+      <PageViewsPopover views={views} counted={props.counted} anchorEl={menuButton.current} open={viewsOpen} onClose={() => setViewsOpen(false)} />
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
         open={notice !== null}

@@ -22,7 +22,7 @@ import {
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 // ---------------------------------------------------------------------------
-// wiki：ページ・ツリー（1本）・ルール・予約のまとまり
+// wiki：ページ・ツリー（1本）・予約のまとまり
 // ---------------------------------------------------------------------------
 
 export const wikis = pgTable("wikis", {
@@ -33,6 +33,12 @@ export const wikis = pgTable("wikis", {
   name: text("name").notNull(),
   /** 管理画面で wiki を見分けるための画像の URL（http(s)）。null なら表示名の頭文字を出す */
   iconUrl: text("icon_url"),
+  /** Google Analytics（GA4）の測定 ID（`G-` で始まる）。null なら公開サイトに Google タグを出さない */
+  gaMeasurementId: text("ga_measurement_id"),
+  /** Google サーチコンソールの確認用の値（meta タグの content の中身）。null なら出さない */
+  searchConsoleVerification: text("search_console_verification"),
+  /** GA4 のプロパティ ID（数字だけ）。「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
+  gaPropertyId: text("ga_property_id"),
   /** nullなら使用中 */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -56,6 +62,8 @@ export const pages = pgTable(
     wikiId: wikiId(),
     /** head版タイトルのキャッシュ */
     title: text("title").notNull(),
+    /** アイコン（絵文字1つ）。nullなら付けていない。版には入れない */
+    icon: text("icon"),
     headVersionId: uuid("head_version_id").notNull(),
     /** nullなら未公開 */
     publishedVersionId: uuid("published_version_id"),
@@ -69,24 +77,27 @@ export const pages = pgTable(
     firstPublishedAt: timestamp("first_published_at", { withTimezone: true }),
     /** 12.3 収益化の受け口。例: { "affiliate": true } */
     monetization: jsonb("monetization"),
-    /** 公開までの進み具合。approved は人が付ける */
-    workflowState: text("workflow_state", { enum: ["idea", "draft", "approved"] }).notNull().default("draft"),
-    /** 承認した版（承認後の編集は含めない）。approved のときだけ入る */
-    approvedVersionId: uuid("approved_version_id"),
-    approvedAt: timestamp("approved_at", { withTimezone: true }),
-    /** 見直しキューに入った日時。nullなら入っていない */
-    reviewRequestedAt: timestamp("review_requested_at", { withTimezone: true }),
-    /** 最後に「見直し済み」にした日時 */
-    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** ゴミ箱に入れた日時。nullならゴミ箱に入っていない */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    /**
+     * いっしょにゴミ箱に入れたページのまとまり。削除で選んだページ（まとまりの先頭）の ID が入り、先頭のページでは自分の ID。
+     * 元に戻す・完全に削除するのは、まとまりごと
+     */
+    trashRootId: text("trash_root_id"),
+    /** ゴミ箱に入れる前の親ページ（nullなら最上位）と、兄弟の中の並び。元に戻すときに使う */
+    trashedParentId: text("trashed_parent_id"),
+    trashedPosition: text("trashed_position"),
+    /**
+     * 完全に削除した日時。版・下書きなどは消し、行だけを残す
+     * （公開したことがあるページを公開サイトで 410 にし続けるためと、構造の履歴がこの行を指しているため）
+     */
+    purgedAt: timestamp("purged_at", { withTimezone: true }),
   },
   (t) => [
     check("pages_visibility_check", sql`${t.visibility} in ('public', 'unlisted', 'private')`),
     check("pages_origin_check", sql`${t.origin} in ('human', 'ai_draft')`),
-    check("pages_workflow_state_check", sql`${t.workflowState} in ('idea', 'draft', 'approved')`),
-    check("pages_approved_version_check", sql`(${t.workflowState} = 'approved') = (${t.approvedVersionId} is not null)`),
     index("pages_wiki_updated_at_idx").on(t.wikiId, t.updatedAt),
   ],
 );
@@ -108,6 +119,13 @@ export const pageVersions = pgTable(
     sourceProposalId: uuid("source_proposal_id"),
     /** 外部のアプリ（MCP）から保存した版なら、その連携 */
     oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
+    /** 作った人（自動でできた版は、もとの下書きを書いていた人）。外部のアプリ（MCP）から保存した版と、この列を足す前の版は null */
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
+    /**
+     * 間引かずに残す版か。人が操作して作った版と、公開・予約に使った版は true。
+     * ワーカーが下書きから自動で作った版は false（あとで間引いてよい）
+     */
+    keep: boolean("keep").notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [
@@ -117,7 +135,8 @@ export const pageVersions = pgTable(
 );
 
 /**
- * 編集中の下書き（自動保存）。版にはせず、人ごとに1つだけ持つ。「版として残す」で版を作ったら消す。
+ * 編集中の下書き（自動保存）。人ごとに1つだけ持つ。編集が一段落したらワーカーが版にし、版になったら消す
+ * （人が操作して版を作ったときも消す）。
  * base_version_id は下書きを始めたときの head。head が先に進んでいたら、下書きは古い版をもとにしている。
  */
 export const pageDrafts = pgTable(
@@ -133,6 +152,8 @@ export const pageDrafts = pgTable(
     baseVersionId: uuid("base_version_id").notNull(),
     title: text("title").notNull(),
     bodyMd: text("body_md").notNull(),
+    /** 下書きを始めた時刻。打ち続けているあいだも、ここから一定時間で版にする */
+    createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.pageId, t.userId] })],
@@ -322,50 +343,6 @@ export const structureBranches = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// ルール（トリガー → アクション）と実行ログ
-// ---------------------------------------------------------------------------
-
-/**
- * ルールの設定。定型ルール（shared の RULE_PRESETS）は id が定型ルールの id と同じで、
- * 設定を保存するまでは行が無い（無効として扱う）。wiki ごとに持つ。
- */
-export const rules = pgTable(
-  "rules",
-  {
-    wikiId: wikiId(),
-    id: text("id").notNull(),
-    enabled: boolean("enabled").notNull().default(false),
-    /** RuleTrigger */
-    trigger: jsonb("trigger").notNull(),
-    /** RuleAction[] */
-    actions: jsonb("actions").notNull(),
-    createdAt: createdAt(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [primaryKey({ columns: [t.wikiId, t.id] })],
-);
-
-/** ルールが何かをした（または失敗した）記録。何も起きなかった回は残さない。 */
-export const ruleRuns = pgTable(
-  "rule_runs",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    wikiId: wikiId(),
-    ruleId: text("rule_id").notNull(),
-    status: text("status", { enum: ["done", "failed"] }).notNull(),
-    summary: text("summary").notNull(),
-    /** 対象になったページ */
-    pageIds: jsonb("page_ids").$type<string[]>().notNull().default([]),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    check("rule_runs_status_check", sql`${t.status} in ('done', 'failed')`),
-    foreignKey({ name: "rule_runs_rule_fk", columns: [t.wikiId, t.ruleId], foreignColumns: [rules.wikiId, rules.id] }),
-    index("rule_runs_rule_idx").on(t.wikiId, t.ruleId, t.createdAt),
-  ],
-);
-
-// ---------------------------------------------------------------------------
 // 4.6 予約公開 ／ 7 公開パイプライン
 // ---------------------------------------------------------------------------
 
@@ -385,8 +362,6 @@ export const scheduledActions = pgTable(
     branchName: text("branch_name"),
     /** 同時公開グループ（シリーズ記事など）。同じ batch_id は1トランザクションで実行する */
     batchId: uuid("batch_id"),
-    /** ルールが入れた予約なら、その実行ログ */
-    ruleRunId: uuid("rule_run_id").references(() => ruleRuns.id),
     /** 外部のアプリ（MCP）が入れた予約なら、その許可 */
     oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
     /** UTC保存。入出力はJST */
@@ -573,4 +548,33 @@ export const oauthTokens = pgTable(
     check("oauth_tokens_kind_check", sql`${t.kind} in ('access', 'refresh')`),
     index("oauth_tokens_grant_idx").on(t.grantId),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// アクセス解析（Google Analytics・サーチコンソールの数字の控え）
+// ---------------------------------------------------------------------------
+
+/**
+ * Google へ問い合わせた結果の控え。wiki・種類・期間ごとに1行で、同じ期間は1時間のあいだ使い回す。
+ * 問い合わせが失敗したときは `data` と `fetched_at` を残し、`error` と `attempted_at` だけを書き換える（前に取れたぶんを「◯時点の数字」として出す）。
+ */
+export const analyticsSnapshots = pgTable(
+  "analytics_snapshots",
+  {
+    wikiId: wikiId(),
+    kind: text("kind", { enum: ["ga", "search_console"] }).notNull(),
+    /** 期間（日数） */
+    days: integer("days").notNull(),
+    /** 問い合わせた先（GA はプロパティ ID、サーチコンソールはサイトの URL）。設定が変わったら、この行は使わない */
+    target: text("target").notNull(),
+    /** 取れた数字。1回も取れていなければ null */
+    data: jsonb("data"),
+    /** data を取った日時 */
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** 最後に Google へ問い合わせた日時（失敗したときも入る）。取り直しの間隔に使う */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull(),
+    /** 最後の問い合わせが失敗した理由（GoogleFailure）。成功したら null */
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.wikiId, t.kind, t.days] }), check("analytics_snapshots_kind_check", sql`${t.kind} in ('ga', 'search_console')`)],
 );

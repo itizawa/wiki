@@ -1,7 +1,7 @@
 import { Editor } from "@tiptap/react";
 import { describe, expect, it } from "vitest";
 import { editorExtensions } from "./extensions";
-import { currentHeadingIndex, outlineOf } from "./outline";
+import { currentHeadingIndex, outlineOf } from "./outlineHeadings";
 
 const outline = (md: string) =>
   outlineOf(new Editor({ element: null, extensions: editorExtensions, content: md, contentType: "markdown" }).state.doc).map(({ level, text }) => ({ level, text }));

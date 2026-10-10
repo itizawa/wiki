@@ -36,7 +36,7 @@ const noMotion = { "@media (prefers-reduced-motion: reduce)": { transition: "non
 
 /**
  * `/w/{key}/...`：1つの wiki を開いている画面。サイドバーと、その wiki の内容を出す。
- * 読み込んだデータ（ページ・ツリー・予約・ルール）は wiki ごとの入れ物に持ち、切り替えても別の wiki のものが出ないようにする。
+ * 読み込んだデータ（ページ・ツリー・予約）は wiki ごとの入れ物に持ち、切り替えても別の wiki のものが出ないようにする。
  */
 export function WikiLayout({ wikiKey }: { wikiKey: string }) {
   // 子の画面が API を呼ぶ前に、どの wiki の経路を使うかを決める
@@ -82,6 +82,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
   const { wiki } = useWiki();
   const [sidebarWidth, setSidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
   const wide = useMediaQuery((t) => t.breakpoints.up("md"));
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [open, setOpenState] = usePersistentState("wiki.sidebar.open", true);
   // 幅を動かすのは開閉のときだけ（つまみで幅を変えている間も動かすと、つまみに遅れて付いてくる）
   const [toggling, setToggling] = useState(false);
@@ -182,8 +183,14 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
           </Typography>
         </Box>
       )}
-      {/* 狭い画面では、サイドバーを本文に重ねて出す */}
-      <Drawer open={!wide && drawer} onClose={() => setDrawer(false)}>
+      {/* 狭い画面では、サイドバーを本文に重ねて出す。「視差効果を減らす」が有効なら、滑らせずにすぐ出し入れする */}
+      {/* 幅は、列のとき（264px）より広げる。指で操作する端末では行のボタンが大きく、264px だと深い階層のタイトルが2〜3文字しか出ない。右には、押して閉じるための背景を 56px 残す */}
+      <Drawer
+        open={!wide && drawer}
+        onClose={() => setDrawer(false)}
+        transitionDuration={reducedMotion ? 0 : undefined}
+        slotProps={{ paper: { style: { "--sidebar-width": "min(320px, calc(100vw - 56px))" } as CSSProperties } }}
+      >
         <Sidebar
           email={email}
           onNavigate={() => setDrawer(false)}

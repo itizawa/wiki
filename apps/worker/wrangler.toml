@@ -5,8 +5,9 @@ compatibility_date = "2026-10-01"
 compatibility_flags = ["global_fetch_strictly_public"]
 
 # 予約公開の許容遅延 = Cron間隔 + デバウンス + ビルド時間（既定：5分 + 2分 + ビルド）
+# 1日1回（18:00 UTC = JST の午前3時）の方は、自動でできた版の間引きだけを行う（src/prune.ts の PRUNE_CRON と同じ文字列にする）
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 18 * * *"]
 
 [vars]
 # apps/api/wrangler.toml の ADMIN_ORIGIN と同じ値（/internal/* を呼ぶ）
@@ -16,4 +17,4 @@ BUILD_DEBOUNCE_SEC = "120"
 # secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
 # INTERNAL_TOKEN        API の /internal/* 用トークン
 # SITE_DEPLOY_HOOK_URL  公開サイト（wiki-site）の Workers Builds のデプロイフックURL
-# NOTIFY_WEBHOOK_URL    予約の最終失敗とルールからの通知を送る Slack 互換 Incoming Webhook（任意）
+# NOTIFY_WEBHOOK_URL    予約の最終失敗の通知を送る Slack 互換 Incoming Webhook（任意）

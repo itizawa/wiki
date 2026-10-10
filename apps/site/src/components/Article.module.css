@@ -1,6 +1,54 @@
 .article h1 { line-height: 1.4; margin: 0 0 4px; }
+/* ページのアイコン（絵文字）。タイトルとの間を少し空ける。プレゼンモードのタイトルのスライドでも同じ */
+.icon { margin-right: 0.25em; }
 .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .adNotice { font-size: 0.8rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; }
+/* 「プレゼンモードで表示」。hidden で出力し、スクリプトが見えるようにする（display は決めない。決めると hidden が効かなくなる） */
+.presentOpen {
+  min-height: 36px; padding: 2px 12px;
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.presentOpen:hover { border-color: var(--muted); }
+/* プレゼンモード。画面いっぱいに重ねる（モーダルの dialog なので、張り付くヘッダーよりも手前に出る）。
+   中身はスクリプトが作るので、data 属性で当てる。スライドには本文と同じ .body が付き、本文の見た目がそのまま当たる */
+.presentation {
+  width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+  color: var(--text); background: var(--bg); overflow: hidden; overscroll-behavior: contain;
+}
+.presentation[open] { display: flex; flex-direction: column; }
+.presentation::backdrop { background: var(--bg); }
+/* 操作部品は、いつも見える位置に置く。上に「全画面表示」「終了」、下にスライド送り */
+.presentation :global([data-presentation-bar]),
+.presentation :global([data-presentation-nav]) { flex: none; display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
+.presentation :global([data-presentation-bar]) { justify-content: flex-end; }
+.presentation :global([data-presentation-nav]) { justify-content: center; }
+.presentation :global(:is([data-presentation-bar], [data-presentation-nav]) button) {
+  min-width: 44px; min-height: 44px; padding: 4px 14px;
+  font: inherit; font-size: 0.9rem; line-height: 1.4; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.presentation :global(:is([data-presentation-bar], [data-presentation-nav]) button:hover:not(:disabled)) { border-color: var(--muted); }
+.presentation :global(:is([data-presentation-bar], [data-presentation-nav]) button:disabled) { opacity: 0.4; cursor: default; }
+.presentation :global([data-presentation-nav] button) { font-size: 1.1rem; }
+.presentation :global([data-presentation-exit]) { font-weight: 600; }
+.presentation :global([data-presentation-counter]) { min-width: 5em; text-align: center; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+/* スライドを置く場所。収まるスライドは中央に置き、収まらないスライドは上から読めるようにスクロールさせる（margin: auto） */
+.presentation :global([data-presentation-stage]) { flex: 1; min-height: 0; display: flex; overflow: auto; padding: 8px 24px; outline: none; }
+/* 文字は記事より大きくする。1枚に収まらないときは、スクリプトが zoom で全体を縮める（幅は、縮めたあとで場所いっぱいになるよう割り戻す） */
+.presentation :global([data-presentation-slide]) {
+  margin: auto; width: calc(100% / var(--presentation-scale, 1)); max-width: 34em;
+  font-size: clamp(1.15rem, 0.8rem + 1.5vw, 2rem); line-height: 1.7; overflow-wrap: anywhere;
+}
+.presentation :global([data-presentation-slide] > :first-child) { margin-top: 0; }
+.presentation :global([data-presentation-slide] > :last-child) { margin-bottom: 0; }
+.presentation :global([data-presentation-slide] img) { max-height: 60vh; }
+/* タイトルだけのスライド */
+.presentation :global([data-presentation-title]) { text-align: center; }
+.presentation :global([data-presentation-title] h1) { margin: 0; font-size: 2em; }
+@media (max-width: 600px) {
+  .presentation :global([data-presentation-stage]) { padding: 8px 16px; }
+}
 /* コールアウト（目立たせたい注意書き）。色に加えて、種類の名前と左の線で区別する */
 .body :global(.callout) { margin: 16px 0; padding: 8px 16px; border: 1px solid var(--border); border-left: 4px solid var(--callout, var(--muted)); border-radius: 6px; }
 .body :global(.callout > p) { margin: 4px 0; }
@@ -35,6 +83,51 @@
 .body :global([data-code-tools] button:hover) { border-color: var(--muted); }
 .body :global([data-code-tools] button[aria-pressed="true"]) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .body :global(img) { max-width: 100%; }
+/* 画像の拡大表示（スクリプトが足す要素なので data 属性で当てる）。画像を包むボタンは、見た目を画像だけにする */
+.body :global([data-image-zoom-open]) {
+  display: inline-block; max-width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0;
+  font: inherit; color: inherit; background: none; cursor: zoom-in;
+}
+.body :global([data-image-zoom-open]:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 重ねて出す側。画面いっぱいの透明な箱にして、下のページは半透明の背景ごしに見えるままにする */
+.article :global(dialog[data-image-zoom]) {
+  width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+  color: var(--text); background: transparent; overflow: hidden; overscroll-behavior: contain;
+}
+.article :global(dialog[data-image-zoom])::backdrop { background: rgb(0 0 0 / 0.7); }
+/* 開いている間は、下のページをスクロールさせない。スクロールバーの幅は空けたままにして、ページが横にずれないようにする */
+:global(html:has(dialog[data-image-zoom][open])),
+:global(html:has(dialog[data-presentation][open])) { overflow: hidden; scrollbar-gutter: stable; }
+.article :global([data-image-zoom-content]) {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; height: 100%; padding: 68px 16px 16px; cursor: zoom-out;
+}
+/* 「閉じる」は画像に重ならないよう、画像の上の余白（右上）に置く */
+.article :global([data-image-zoom-content] button) {
+  position: absolute; top: 12px; right: 16px; min-width: 88px; min-height: 44px; padding: 4px 16px;
+  font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.article :global([data-image-zoom-content] button:hover) { border-color: var(--muted); }
+/* 画面に収まる最大の大きさで、縦横比を保つ（元の大きさより引き伸ばさない）。透過画像の地は、本文と同じ色にする */
+.article :global([data-image-zoom-content] img) {
+  flex: 0 1 auto; width: auto; height: auto; min-height: 0; max-width: 100%; max-height: 100%;
+  object-fit: contain; background: var(--bg); border-radius: 4px;
+}
+/* 開く・閉じるを短くつなぐ（動きを減らす設定のときは付けない） */
+@media (prefers-reduced-motion: no-preference) {
+  .article :global(dialog[data-image-zoom]),
+  .article :global(dialog[data-image-zoom])::backdrop {
+    opacity: 0;
+    transition: opacity 0.15s ease-out, overlay 0.15s allow-discrete, display 0.15s allow-discrete;
+  }
+  .article :global(dialog[data-image-zoom][open]),
+  .article :global(dialog[data-image-zoom][open])::backdrop { opacity: 1; }
+  @starting-style {
+    .article :global(dialog[data-image-zoom][open]),
+    .article :global(dialog[data-image-zoom][open])::backdrop { opacity: 0; }
+  }
+}
 .body :global(table) { border-collapse: collapse; }
 .body :global(th),
 .body :global(td) { border: 1px solid var(--border); padding: 4px 8px; }
@@ -58,3 +151,7 @@
 }
 /* ページ内リンクで飛んだとき、見出しが画面の上端に張りつかないようにする */
 .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: 16px; }
+/* 狭い画面では上にヘッダーが張り付く（Base.module.css）ので、その高さぶん空ける */
+@media (max-width: 800px) {
+  .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: calc(var(--header-height) + 16px); }
+}

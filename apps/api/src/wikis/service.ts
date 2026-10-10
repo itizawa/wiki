@@ -1,4 +1,14 @@
-import { newWikiId, wikiOrigin, type CreateWikiInput, type UpdateWikiInput, type Wiki, type WikiRole, type WikiSummary } from "@wiki/shared";
+import {
+  newWikiId,
+  wikiOrigin,
+  type CreateWikiInput,
+  type UpdateWikiInput,
+  type UpdateWikiSettingsInput,
+  type Wiki,
+  type WikiRole,
+  type WikiSettings,
+  type WikiSummary,
+} from "@wiki/shared";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -21,7 +31,12 @@ export function toWiki(row: WikiRow, config: Pick<AppConfig, "siteBaseDomain">):
     origin: wikiOrigin(row.key, config.siteBaseDomain),
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
+    ...toWikiSettings(row),
   };
+}
+
+export function toWikiSettings(row: WikiRow): WikiSettings {
+  return { gaMeasurementId: row.gaMeasurementId, searchConsoleVerification: row.searchConsoleVerification, gaPropertyId: row.gaPropertyId };
 }
 
 /**
@@ -62,7 +77,7 @@ export async function findWiki(db: Db, key: string, forUpdate = false): Promise<
 }
 
 /**
- * wiki を作り、空のツリーを1本用意する。ルールは行を作らないので、どれも無効で始まる。
+ * wiki を作り、空のツリーを1本用意する。
  * 作った人（オーナー）は、その wiki の管理者としてメンバーに入る。
  * key はアーカイブ中のものも含めて重ねられない。
  */
@@ -100,7 +115,35 @@ export async function updateWiki(db: Db, key: string, input: UpdateWikiInput): P
   });
 }
 
-/** アーカイブ。データは残す。公開サイトは次のビルドで止まり、予約とルールは実行されなくなる。 */
+/**
+ * 連携の設定（GA の測定 ID・プロパティ ID、サーチコンソールの確認用の値）の変更。null で外す。
+ * 測定 ID と確認用の値は公開サイトの HTML に出るので、実際に変わったときだけビルドし直す。
+ * プロパティ ID は管理画面の「アクセス解析」だけが使うので、変えてもビルドし直さない。
+ */
+export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiSettingsInput): Promise<WikiRow> {
+  return db.transaction(async (tx) => {
+    const wiki = await findWiki(tx, key, true);
+    // 行を待っている間にアーカイブされたら、開けない wiki として扱う
+    if (wiki.archivedAt) throw notFound(`wiki ${key}`);
+    const gaChanged = input.gaMeasurementId !== undefined && input.gaMeasurementId !== wiki.gaMeasurementId;
+    const verificationChanged = input.searchConsoleVerification !== undefined && input.searchConsoleVerification !== wiki.searchConsoleVerification;
+    const propertyChanged = input.gaPropertyId !== undefined && input.gaPropertyId !== wiki.gaPropertyId;
+    if (!gaChanged && !verificationChanged && !propertyChanged) return wiki;
+    const [row] = await tx
+      .update(wikis)
+      .set({
+        ...(gaChanged && { gaMeasurementId: input.gaMeasurementId }),
+        ...(verificationChanged && { searchConsoleVerification: input.searchConsoleVerification }),
+        ...(propertyChanged && { gaPropertyId: input.gaPropertyId }),
+      })
+      .where(eq(wikis.id, wiki.id))
+      .returning();
+    if (gaChanged || verificationChanged) await recordPublishEvent(tx, wiki.id, "wiki_settings");
+    return row!;
+  });
+}
+
+/** アーカイブ。データは残す。公開サイトは次のビルドで止まり、予約は実行されなくなる。 */
 export async function archiveWiki(db: Db, key: string, now = new Date()): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);

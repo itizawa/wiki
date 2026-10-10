@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildManifest } from "../publishing/manifest";
 import { requestBuild } from "../publishing/builds";
 import { runDueActions } from "../publishing/scheduler";
-import { runRules } from "../rules/engine";
 import { ARCHIVED_REASON } from "../wikis/service";
+import { SESSION_COOKIE, signSession } from "../auth/session";
 import { setup, W, wikiManifest } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -43,7 +43,7 @@ describe("wikis", () => {
     ]);
   });
 
-  it("creates a wiki with an empty tree and every rule disabled", async () => {
+  it("creates a wiki with an empty tree", async () => {
     ctx = await setup();
     const wiki = await createNotes();
     expect(wiki).toEqual(expect.objectContaining({ key: "notes", name: "開発ノート", origin: "https://notes.site.test", archivedAt: null }));
@@ -52,9 +52,6 @@ describe("wikis", () => {
     const structure = (await ctx.call("GET", `${N}/structure`)).body;
     expect(structure.trees).toHaveLength(1);
     expect(structure.trees[0].nodes).toEqual([]);
-    const rules = (await ctx.call("GET", `${N}/rules`)).body.rules;
-    expect(rules.length).toBeGreaterThan(0);
-    expect(rules.every((r: any) => r.enabled === false)).toBe(true);
   });
 
   it("rejects keys that break the rules, reserved names and keys already in use", async () => {
@@ -79,7 +76,7 @@ describe("wikis", () => {
     expect((await ctx.call("PATCH", "/admin/wikis/nope", { name: "x" })).status).toBe(404);
   });
 
-  it("sets, changes and removes a wiki's image URL, accepting only http(s) URLs", async () => {
+  it("sets, changes and removes a wiki's image URL, accepting only http(s) URLs and uploaded image paths", async () => {
     ctx = await setup();
     await createNotes();
     const created = await ctx.call("POST", "/admin/wikis", { key: "blog", name: "ブログ", iconUrl: "https://example.com/blog.png" });
@@ -92,7 +89,19 @@ describe("wikis", () => {
 
     const set = await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: " http://example.com/n.png " });
     expect(set.body).toEqual(expect.objectContaining({ name: "開発ノート", iconUrl: "http://example.com/n.png" }));
-    for (const iconUrl of ["javascript:alert(1)", "data:image/png;base64,AAAA", "/relative.png", "example.com/a.png", `https://example.com/${"a".repeat(2048)}`]) {
+    // アップロードした画像（POST /admin/w/{key}/images が返すパス）は、そのまま設定できる
+    const uploaded = await ctx.call("POST", "/admin/w/notes/images", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]));
+    expect((await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl: uploaded.body.url })).body.iconUrl).toBe(uploaded.body.url);
+    for (const iconUrl of [
+      "javascript:alert(1)",
+      "data:image/png;base64,AAAA",
+      "/relative.png",
+      "/images/../secret.png",
+      "/images/aaaaaaaaaaaaaaaaaaaaaaaa.svg",
+      "//evil.example/images/aaaaaaaaaaaaaaaaaaaaaaaa.png",
+      "example.com/a.png",
+      `https://example.com/${"a".repeat(2048)}`,
+    ]) {
       expect((await ctx.call("PATCH", "/admin/wikis/notes", { iconUrl })).status, iconUrl).toBe(400);
     }
     expect((await ctx.call("PATCH", "/admin/wikis/notes", {})).status).toBe(400);
@@ -107,7 +116,7 @@ describe("wikis", () => {
 });
 
 describe("wiki isolation", () => {
-  it("lists only the pages, tree, schedule, rules and history of the open wiki", async () => {
+  it("lists only the pages, tree, schedule and history of the open wiki", async () => {
     ctx = await setup();
     await createNotes();
     const a = await newPage(W, "最初の wiki のページ");
@@ -127,11 +136,6 @@ describe("wiki isolation", () => {
     expect(scheduled.status).toBe(201);
     expect((await ctx.call("GET", `${W}/schedule`)).body.actions).toEqual([]);
     expect((await ctx.call("GET", `${N}/schedule`)).body.actions).toHaveLength(1);
-
-    const rule = (await ctx.call("GET", `${N}/rules`)).body.rules[0];
-    await ctx.call("PUT", `${N}/rules/${rule.id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
-    expect((await ctx.call("GET", `${N}/rules`)).body.rules[0].enabled).toBe(true);
-    expect((await ctx.call("GET", `${W}/rules`)).body.rules[0].enabled).toBe(false);
 
     const history = async (base: string) => (await ctx.call("GET", `${base}/structure/commits`)).body.commits;
     expect((await history(W)).map((c: any) => c.message)).toEqual(["「最初の wiki のページ」を追加", "初期コミット"]);
@@ -155,8 +159,6 @@ describe("wiki isolation", () => {
       ["DELETE", `${W}/pages/${b.id}`],
       ["GET", `${W}/pages/${b.id}/versions`],
       ["GET", `${W}/pages/${b.id}/versions/${b.headVersionId}`],
-      ["POST", `${W}/pages/${b.id}/workflow`, { state: "approved", versionId: b.headVersionId }],
-      ["POST", `${W}/pages/${b.id}/review-done`],
       ["POST", `${W}/pages/${b.id}/publish`, { versionId: b.headVersionId, visibility: "public" }],
       ["POST", `${W}/pages/${b.id}/unpublish`],
       ["POST", `${W}/pages/${b.id}/unlisted-key`],
@@ -172,7 +174,7 @@ describe("wiki isolation", () => {
 
     // ノートのページは何も変わっていない
     const page = (await ctx.call("GET", `${N}/pages/${b.id}`)).body;
-    expect(page).toEqual(expect.objectContaining({ title: "ノートのページ", visibility: "private", workflowState: "draft", headVersionId: b.headVersionId }));
+    expect(page).toEqual(expect.objectContaining({ title: "ノートのページ", visibility: "private", headVersionId: b.headVersionId }));
     expect((await ctx.call("GET", `${N}/schedule`)).body.actions[0].status).toBe("scheduled");
   });
 
@@ -235,32 +237,10 @@ describe("wiki isolation", () => {
     expect(JSON.stringify(first)).not.toContain("B の");
   });
 
-  it("runs the rules of each wiki on its own pages and names the wiki in notifications", async () => {
-    ctx = await setup();
-    await createNotes();
-    const enable = async (base: string, id: string) => {
-      const rule = (await ctx.call("GET", `${base}/rules`)).body.rules.find((r: any) => r.id === id);
-      await ctx.call("PUT", `${base}/rules/${id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
-    };
-    await enable(N, "notify-low-stock");
-    await enable(N, "fill-slots");
-    // 承認済みの記事は、最初の wiki にだけある
-    const a = await newPage(W, "承認済み");
-    await ctx.call("POST", `${W}/pages/${a.id}/workflow`, { state: "approved", versionId: a.headVersionId });
-
-    const result = await runRules(ctx.db, new Date("2026-10-10T09:00:00+09:00"));
-    expect(result.runs.map((r) => [r.wikiKey, r.ruleId])).toEqual([["notes", "notify-low-stock"]]);
-    expect(result.notifications).toEqual([
-      { wikiKey: "notes", ruleId: "notify-low-stock", text: "【開発ノート】予約ストックが減っています（今後7日の公開予約：0件、目安：3件）" },
-    ]);
-    expect((await ctx.call("GET", `${W}/schedule`)).body.actions).toEqual([]);
-    expect((await ctx.call("GET", `${W}/rules/runs`)).body.runs).toEqual([]);
-    expect((await ctx.call("GET", `${N}/rules/runs`)).body.runs).toHaveLength(1);
-  });
 });
 
 describe("archiving a wiki", () => {
-  it("hides the wiki, stops its site, schedule and rules, and keeps the key taken", async () => {
+  it("hides the wiki, stops its site and schedule, and keeps the key taken", async () => {
     ctx = await setup();
     await createNotes();
     const page = await newPage(N, "公開中", "本文");
@@ -268,8 +248,6 @@ describe("archiving a wiki", () => {
     const later = await newPage(N, "予約");
     const runAt = new Date(Date.now() + 60_000);
     await ctx.call("POST", `${N}/schedule`, { actionType: "publish_page", pageId: later.id, versionId: later.headVersionId, runAt: runAt.toISOString() });
-    const rule = (await ctx.call("GET", `${N}/rules`)).body.rules.find((r: any) => r.id === "notify-low-stock");
-    await ctx.call("PUT", `${N}/rules/${rule.id}`, { enabled: true, trigger: rule.trigger, actions: rule.actions });
 
     const listed = (await ctx.call("GET", "/admin/wikis")).body.wikis.find((w: any) => w.key === "notes");
     expect(listed.publishedPages).toBe(1);
@@ -283,10 +261,9 @@ describe("archiving a wiki", () => {
     expect((await ctx.call("POST", `${N}/pages`, { title: "x" })).status).toBe(404);
     // 公開用のデータに含めない
     expect((await buildManifest(ctx.db)).wikis.map((w) => w.key)).toEqual(["wiki"]);
-    // 予約とルールは実行しない
+    // 予約は実行しない
     const after = new Date(runAt.getTime() + 60_000);
     expect((await runDueActions(ctx.db, after)).done).toEqual([]);
-    expect((await runRules(ctx.db, after)).runs).toEqual([]);
     // key はほかの wiki で使えない
     expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "x" })).status).toBe(409);
     // データは残っている
@@ -352,5 +329,141 @@ describe("archiving a wiki", () => {
     await ctx.call("POST", "/admin/wikis/notes/unarchive");
     expect((await build()).trigger).toBe(true);
     expect(await build()).toEqual({ trigger: false, reason: "no_changes" });
+  });
+});
+
+describe("wiki settings (Google Analytics and Search Console)", () => {
+  const GA = "G-TEST123456";
+  const VERIFICATION = "abc_DEF-123456";
+  const UNSET = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null };
+  const events = async () => (await ctx.client.query(`select 1 from publish_events where kind = 'wiki_settings'`)).rows.length;
+
+  it("starts unset, and saves, trims and removes the values per wiki", async () => {
+    ctx = await setup();
+    await createNotes();
+    expect((await ctx.call("GET", `${N}/settings`)).body).toEqual(UNSET);
+
+    const saved = await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: ` ${GA} `, searchConsoleVerification: `${VERIFICATION}\n` });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION, gaPropertyId: null });
+    expect((await ctx.call("GET", `${N}/settings`)).body).toEqual(saved.body);
+    // wiki の一覧にも載る。ほかの wiki の設定は変わらない
+    const list = (await ctx.call("GET", "/admin/wikis")).body.wikis;
+    expect(list.map((w: any) => [w.key, w.gaMeasurementId, w.searchConsoleVerification])).toEqual([
+      ["wiki", null, null],
+      ["notes", GA, VERIFICATION],
+    ]);
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+
+    // 片方だけを送ると、もう片方は残る。null と空の文字列は、外すものとして受ける
+    expect((await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: null })).body).toEqual({ gaMeasurementId: null, searchConsoleVerification: VERIFICATION, gaPropertyId: null });
+    expect((await ctx.call("PATCH", `${N}/settings`, { searchConsoleVerification: "" })).body).toEqual(UNSET);
+  });
+
+  it("puts the values of each wiki only into its own manifest", async () => {
+    ctx = await setup();
+    await createNotes();
+    await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
+    expect(await wikiManifest(ctx.db, "notes")).toEqual(expect.objectContaining({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION }));
+    const first = await wikiManifest(ctx.db);
+    expect(first).toEqual(expect.objectContaining({ gaMeasurementId: null, searchConsoleVerification: null }));
+    expect(JSON.stringify(first)).not.toContain(GA);
+    expect(JSON.stringify(first)).not.toContain(VERIFICATION);
+  });
+
+  it("rejects values that are not a GA4 measurement id or a verification value, so nothing else reaches the public HTML", async () => {
+    ctx = await setup();
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
+    const badIds = ["UA-12345-1", "GTM-ABC123", "AW-123456789", "g-test123456", "G-ABC", `G-${"A".repeat(21)}`, "G-TEST 123", 'G-TEST"123', "G-TEST');alert(1)//", "<script>alert(1)</script>", "</script><script>alert(1)</script>", 1];
+    for (const gaMeasurementId of badIds) {
+      expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId })).status, String(gaMeasurementId)).toBe(400);
+    }
+    const badValues = ["A".repeat(101), "abc def", 'abc"def', '"><script>alert(1)</script>', "abc<def", '<meta name="google-site-verification" content="abc" />', 1];
+    for (const searchConsoleVerification of badValues) {
+      expect((await ctx.call("PATCH", `${W}/settings`, { searchConsoleVerification })).status, String(searchConsoleVerification)).toBe(400);
+    }
+    // 片方が正しくても、もう片方が正しくなければ、どちらも変えない
+    expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: "G-OTHER12345", searchConsoleVerification: "a b" })).status).toBe(400);
+    expect((await ctx.call("PATCH", `${W}/settings`, {})).status).toBe(400);
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION, gaPropertyId: null });
+    expect(await wikiManifest(ctx.db)).toEqual(expect.objectContaining({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION }));
+  });
+
+  it("rebuilds the site only when a value really changed", async () => {
+    ctx = await setup();
+    let now = Date.now();
+    const build = async () => {
+      now += 1000_000;
+      return requestBuild(ctx.db, { now: new Date(now) });
+    };
+    await ctx.client.query(`insert into publish_events (wiki_id, kind) select id, 'test' from wikis where key = 'wiki'`);
+    expect((await build()).trigger).toBe(true);
+
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA });
+    expect(await events()).toBe(1);
+    expect((await build()).trigger).toBe(true);
+    // 同じ値で保存し直しても、ビルドし直さない
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA, searchConsoleVerification: null });
+    expect(await events()).toBe(1);
+    expect(await build()).toEqual({ trigger: false, reason: "no_changes" });
+    // 外すと、次のビルドでタグが消える
+    await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: null });
+    expect(await events()).toBe(2);
+    expect((await build()).trigger).toBe(true);
+    expect((await wikiManifest(ctx.db)).gaMeasurementId).toBeNull();
+  });
+
+  it("keeps the GA property id per wiki, out of the public site, and does not rebuild the site when it changes", async () => {
+    ctx = await setup();
+    await createNotes();
+    const PROPERTY = "123456789";
+    const builds = async () => (await ctx.client.query(`select 1 from publish_events where kind = 'wiki_settings'`)).rows.length;
+
+    const saved = await ctx.call("PATCH", `${N}/settings`, { gaPropertyId: ` ${PROPERTY} ` });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ ...UNSET, gaPropertyId: PROPERTY });
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+    // 公開サイトには出さないので、マニフェストには入れず、ビルドもし直さない
+    expect(await builds()).toBe(0);
+    expect(JSON.stringify(await buildManifest(ctx.db))).not.toContain(PROPERTY);
+
+    // 測定 ID（G-...）など、数字だけでないものは通さない
+    for (const gaPropertyId of ["G-TEST123456", "properties/123456789", "123", "1".repeat(16), "12345a", "1234 5678", 123456789]) {
+      expect((await ctx.call("PATCH", `${N}/settings`, { gaPropertyId })).status, String(gaPropertyId)).toBe(400);
+    }
+    // 測定 ID といっしょに変えたときは、測定 ID のぶんだけビルドし直す
+    await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: GA, gaPropertyId: "987654321" });
+    expect(await builds()).toBe(1);
+    expect((await ctx.call("PATCH", `${N}/settings`, { gaPropertyId: "" })).body).toEqual({ ...UNSET, gaMeasurementId: GA });
+    expect(await builds()).toBe(1);
+
+    const admin = await ctx.addUser("notes-admin@example.com", { notes: "admin" });
+    expect((await admin.call("PATCH", `${N}/settings`, { gaPropertyId: PROPERTY })).status).toBe(403);
+  });
+
+  it("cannot be read or changed while the wiki is archived, and keeps the values when it is restored", async () => {
+    ctx = await setup();
+    await createNotes();
+    await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: GA });
+    await ctx.call("POST", "/admin/wikis/notes/archive");
+    expect((await ctx.call("GET", `${N}/settings`)).status).toBe(404);
+    expect((await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: null })).status).toBe(404);
+    await ctx.call("POST", "/admin/wikis/notes/unarchive");
+    expect((await ctx.call("GET", `${N}/settings`)).body.gaMeasurementId).toBe(GA);
+    expect((await ctx.call("PATCH", "/admin/w/nope/settings", { gaMeasurementId: GA })).status).toBe(404);
+  });
+
+  it("cannot be changed by someone who is not an owner", async () => {
+    ctx = await setup();
+    // wiki の管理者でも変えられない（読むことはできる）。どの wiki のメンバーでもない人は、管理画面の API に入れない
+    const admin = await ctx.addUser("wiki-admin@example.com", { wiki: "admin" });
+    const denied = await admin.call("PATCH", `${W}/settings`, { gaMeasurementId: GA });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe("owner_only");
+    expect((await admin.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+    const stranger = await ctx.addUser("stranger@example.com");
+    expect((await stranger.call("PATCH", `${W}/settings`, { gaMeasurementId: GA })).status).toBe(403);
+    expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA }, { cookie: "" })).status).toBe(401);
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
   });
 });

@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type { WikiRole } from "./users";
+import { isGaPropertyId } from "./analytics";
+import { imageNameFromPath } from "./images";
 
 /**
- * wiki = ページ・ツリー（1本）・ルール・予約・設定のまとまり。wiki どうしは内容を共有しない。
+ * wiki = ページ・ツリー（1本）・予約・設定のまとまり。wiki どうしは内容を共有しない。
  * key は公開サイトのサブドメイン（`{key}.{baseDomain}`）になり、作成後は変えられない。
  */
 export type Wiki = {
@@ -10,13 +12,26 @@ export type Wiki = {
   key: string;
   /** 表示名。公開サイトの名前として使う。あとから変えられる */
   name: string;
-  /** 管理画面で wiki を見分けるための画像（アイコン）の URL。null なら表示名の頭文字を出す */
+  /** 管理画面で wiki を見分けるための画像（アイコン）。http(s) の URL か、アップロードした画像のパス（`/images/{name}`）。null なら表示名の頭文字を出す */
   iconUrl: string | null;
   /** 公開サイトのオリジン（末尾のスラッシュなし） */
   origin: string;
   /** アーカイブした日時。null なら使用中 */
   archivedAt: string | null;
   createdAt: string;
+} & WikiSettings;
+
+/**
+ * wiki ごとの設定のうち、外部サービスとの連携。null なら未設定。
+ * 測定 ID と確認用の値は公開サイトの HTML にそのまま出るので、決まった形のものだけを持つ（どちらも null ならタグを出さない）。
+ */
+export type WikiSettings = {
+  /** Google Analytics（GA4）の測定 ID（`G-` で始まる） */
+  gaMeasurementId: string | null;
+  /** Google サーチコンソールの確認用の値（`<meta name="google-site-verification">` の `content` の中身） */
+  searchConsoleVerification: string | null;
+  /** GA4 のプロパティ ID（数字だけ）。管理画面の「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
+  gaPropertyId: string | null;
 };
 
 export const WIKI_KEY_MIN = 3;
@@ -76,8 +91,21 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * wiki の画像として使える値か。http(s) の URL か、アップロードした画像のパス（`/images/{name}`）。
+ * それ以外の相対パスは通さない。
+ */
+export function isWikiIconUrl(value: string): boolean {
+  return isHttpUrl(value) || imageNameFromPath(value) !== null;
+}
+
 /** wiki の画像の URL。外すときは null。 */
-export const wikiIconUrl = z.string().trim().max(WIKI_ICON_URL_MAX).refine(isHttpUrl, { message: "icon url must be http(s)" }).nullable();
+export const wikiIconUrl = z
+  .string()
+  .trim()
+  .max(WIKI_ICON_URL_MAX)
+  .refine(isWikiIconUrl, { message: "icon url must be http(s) or an uploaded image path" })
+  .nullable();
 
 export const createWikiInput = z.object({ key: wikiKeySchema, name: wikiName, iconUrl: wikiIconUrl.optional() });
 export type CreateWikiInput = z.infer<typeof createWikiInput>;
@@ -87,6 +115,50 @@ export const updateWikiInput = z
   .object({ name: wikiName.optional(), iconUrl: wikiIconUrl.optional() })
   .refine((v) => v.name !== undefined || v.iconUrl !== undefined, { message: "nothing to update" });
 export type UpdateWikiInput = z.infer<typeof updateWikiInput>;
+
+/** GA4 の測定 ID の形。`UA-`（ユニバーサルアナリティクス）・`GTM-`・`AW-` は通さない。 */
+const GA_MEASUREMENT_ID = /^G-[A-Z0-9]{4,20}$/;
+/** サーチコンソールの確認用の値の形（`content` の中身だけ）。`<`・`"`・空白などは通さない。 */
+const SEARCH_CONSOLE_VERIFICATION = /^[A-Za-z0-9_-]{1,100}$/;
+
+export function isGaMeasurementId(value: string): boolean {
+  return GA_MEASUREMENT_ID.test(value);
+}
+
+export function isSearchConsoleVerification(value: string): boolean {
+  return SEARCH_CONSOLE_VERIFICATION.test(value);
+}
+
+/**
+ * サーチコンソールの確認用の値を、貼られたものから取り出す。
+ * タグごと貼られたとき（`<meta name="google-site-verification" content="..." />`）は `content` の値を返し、
+ * それ以外は前後の空白を落としただけのものを返す（形の確かめは isSearchConsoleVerification で行う）。
+ */
+export function extractSearchConsoleVerification(pasted: string): string {
+  const text = pasted.trim();
+  if (!/^<meta\b/i.test(text)) return text;
+  const content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(text);
+  return content ? (content[1] ?? content[2] ?? content[3] ?? "").trim() : text;
+}
+
+/** 連携の値。前後の空白は落とす。外すときは null（空の文字列も、外すものとして受ける）。 */
+const settingValue = (ok: (value: string) => boolean, message: string) =>
+  z
+    .string()
+    .trim()
+    .nullable()
+    .transform((v) => (v === "" ? null : v))
+    .refine((v) => v === null || ok(v), { message });
+
+/** 連携の設定の変更。どれか1つだけでもよい。 */
+export const updateWikiSettingsInput = z
+  .object({
+    gaMeasurementId: settingValue(isGaMeasurementId, "measurement id must look like G-XXXXXXXXXX").optional(),
+    searchConsoleVerification: settingValue(isSearchConsoleVerification, "verification must be the content value of the meta tag").optional(),
+    gaPropertyId: settingValue(isGaPropertyId, "property id must be digits only").optional(),
+  })
+  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined || v.gaPropertyId !== undefined, { message: "nothing to update" });
+export type UpdateWikiSettingsInput = z.infer<typeof updateWikiSettingsInput>;
 
 /**
  * wiki の公開サイトのオリジン。`{key}.{baseDomain}`。

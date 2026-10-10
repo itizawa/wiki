@@ -62,8 +62,6 @@ export type ScheduledAction = {
   lastError: string | null;
   createdAt: string;
   executedAt: string | null;
-  /** ルールが入れた予約なら、その実行ログの id */
-  ruleRunId: string | null;
   /** 予約後にページが編集された（予約内容には反映されない） */
   editedAfterSchedule: boolean;
 };
@@ -76,6 +74,8 @@ export type ManifestPage = {
   id: string;
   path: string;
   title: string;
+  /** アイコン（絵文字1つ）。付けていなければ null */
+  icon: string | null;
   bodyMd: string;
   firstPublishedAt: string;
   /** 公開版の作成日時（改訂日） */
@@ -88,6 +88,7 @@ export type ManifestUnlistedPage = {
   key: string;
   path: string;
   title: string;
+  icon: string | null;
   bodyMd: string;
   revisedAt: string;
 };
@@ -111,6 +112,10 @@ export type WikiManifest = {
   key: string;
   /** 公開サイトの名前 */
   name: string;
+  /** Google Analytics（GA4）の測定 ID。null なら Google タグを出さない */
+  gaMeasurementId: string | null;
+  /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */
+  searchConsoleVerification: string | null;
   headCommitId: string;
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];

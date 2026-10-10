@@ -12,7 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { OAUTH_SCOPES, type OAuthGrantSummary } from "@wiki/shared";
 import { confirmDialog } from "../components/ConfirmDialog";
-import { Mono, Muted, RouterLink, Section } from "../components/ui";
+import { Mono, Muted, RouterLink, Section, SkeletonTableRows } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 
@@ -20,9 +20,12 @@ const SHORT_LABEL: Record<string, string> = {
   "wiki.read": "読む",
   "wiki.write": "書く",
   "wiki.private": "非公開も",
-  "wiki.publish": "公開・予約・承認",
+  "wiki.publish": "公開・予約",
   "wiki.delete": "削除",
 };
+
+/** 「許可しているアプリ」の行の高さ（読み込み中の行も、この高さで出す）。 */
+const GRANT_ROW_HEIGHT = 54;
 
 /** `/connections`：外部のアプリ（MCP クライアント）のつなぎ方と、自分が与えた許可の一覧・取り消し */
 export function ConnectionsPage() {
@@ -70,7 +73,7 @@ export function ConnectionsPage() {
             <Mono>claude mcp add --transport http wiki {mcpUrl}</Mono> を実行します。つなぐと、この管理画面で許可するかを聞かれます。
           </Muted>
           <Muted>
-            何を許すかは、つなぐときに選びます。公開・予約・承認と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。
+            何を許すかは、つなぐときに選びます。公開・予約と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。
           </Muted>
         </Stack>
       </Section>
@@ -81,9 +84,9 @@ export function ConnectionsPage() {
         </Typography>
         {revoke.error && <Alert severity="error">{errorMessage(revoke.error)}</Alert>}
         {grants.error && <Alert severity="error">{errorMessage(grants.error)}</Alert>}
-        {grants.isPending && <Muted>読み込み中…</Muted>}
         {grants.data && grants.data.grants.length === 0 && <Muted>許可しているアプリはありません。</Muted>}
-        {grants.data && grants.data.grants.length > 0 && (
+        {/* 表の見出しは読み込み中から出し、行だけを Skeleton にする */}
+        {(grants.isPending || (grants.data && grants.data.grants.length > 0)) && (
           <Box sx={{ overflowX: "auto" }}>
             <Table size="small">
               <TableHead>
@@ -97,7 +100,8 @@ export function ConnectionsPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {grants.data.grants.map((g) => (
+                {grants.isPending && <SkeletonTableRows columns={6} rows={3} height={GRANT_ROW_HEIGHT} />}
+                {grants.data?.grants.map((g) => (
                   <TableRow key={g.id}>
                     <TableCell>
                       {g.clientName}

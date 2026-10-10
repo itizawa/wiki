@@ -370,10 +370,12 @@ describe("MCP", () => {
     const t = tokens.access_token;
     const parent = await callTool(t, "create_page", { wiki: "wiki", title: "親", bodyMd: "a" });
     expect(parent.isError).toBe(false);
-    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子", bodyMd: "b" });
+    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子", bodyMd: "b", icon: "📝" });
+    // アイコンは絵文字1つだけ
+    expect((await callTool(t, "create_page", { wiki: "wiki", title: "x", icon: "<b>" })).isError).toBe(true);
 
     const page = await callTool(t, "get_page", { wiki: "wiki", pageId: child.data.id });
-    expect(page.data).toMatchObject({ title: "子", bodyMd: "b", visibility: "private", published: false, workflowState: "draft" });
+    expect(page.data).toMatchObject({ title: "子", icon: "📝", bodyMd: "b", visibility: "private", published: false });
 
     const updated = await callTool(t, "update_page", { wiki: "wiki", pageId: child.data.id, baseVersionId: page.data.headVersionId, bodyMd: "b2" });
     expect(updated.isError).toBe(false);
@@ -445,14 +447,15 @@ describe("MCP", () => {
     const tree = await callTool(t, "get_tree", { wiki: "wiki" });
     expect(tree.data.nodes.find((n: { pageId: string }) => n.pageId === page.id).title).toBe("公開した題");
 
-    // 見ていない書きかけを上書きしたり、公開・承認・予約したりはできない
+    // 見ていない書きかけを上書きしたり、公開・予約したりはできない
     const update = await callTool(t, "update_page", { wiki: "wiki", pageId: page.id, baseVersionId: got.headVersionId, bodyMd: "x" });
     expect(update.data.error.code).toBe("hidden_edits");
     const head = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId;
     const publish = await callTool(t, "publish_page", { wiki: "wiki", pageId: page.id, versionId: head });
     expect(publish.data.error.code).toBe("insufficient_scope");
-    const approve = await callTool(t, "set_workflow_state", { wiki: "wiki", pageId: page.id, state: "approved", versionId: head });
-    expect(approve.data.error.code).toBe("insufficient_scope");
+    const runAt = new Date(Date.now() + 86_400_000).toISOString();
+    const schedule = await callTool(t, "schedule_page", { wiki: "wiki", pageId: page.id, action: "publish_page", runAt, versionId: head });
+    expect(schedule.data.error.code).toBe("insufficient_scope");
     // 版を省くと、読める版（公開した版）を使う
     expect((await callTool(t, "publish_page", { wiki: "wiki", pageId: page.id })).data.publishedVersionId).toBe(page.headVersionId);
 
@@ -485,7 +488,10 @@ describe("MCP", () => {
     ctx = await setup();
     const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.private" });
     const names = (await mcp(tokens.access_token, "tools/list")).body.result.tools.map((t: { name: string }) => t.name);
-    expect(names.some((n: string) => /publish|schedule|workflow|delete/.test(n))).toBe(false);
+    expect(names.some((n: string) => /publish|schedule|delete|trash|restore/.test(n))).toBe(false);
+    for (const name of ["delete_page", "list_trash", "restore_page"]) {
+      expect((await callTool(tokens.access_token, name, { wiki: "wiki", pageId: "x" })).data.error.code, name).toBe("insufficient_scope");
+    }
     expect((await callTool(tokens.access_token, "publish_page", { wiki: "wiki", pageId: "x" })).data.error.code).toBe("insufficient_scope");
 
     // 依頼されても、同意の画面で外せば使えない
@@ -493,14 +499,16 @@ describe("MCP", () => {
     expect(declined.tokens.scope).toBe("wiki.read");
   });
 
-  it("publishes, schedules, approves and unpublishes with wiki.publish, and records which app did it", async () => {
+  it("publishes, schedules and unpublishes with wiki.publish, and records which app did it", async () => {
     ctx = await setup();
     const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish" });
     const t = tokens.access_token;
     const created = await callTool(t, "create_page", { wiki: "wiki", title: "検索ボリュームから考えた記事", bodyMd: "本文" });
 
-    const approved = await callTool(t, "set_workflow_state", { wiki: "wiki", pageId: created.data.id, state: "approved" });
-    expect(approved.data).toMatchObject({ workflowState: "approved", approvedVersionId: created.data.headVersionId });
+    // 記事の状態を変える道具は、もう無い（連携済みのアプリが呼んでも、エラーが返るだけ）
+    const names = (await mcp(t, "tools/list")).body.result.tools.map((x: { name: string }) => x.name);
+    expect(names).not.toContain("set_workflow_state");
+    expect((await callTool(t, "set_workflow_state", { wiki: "wiki", pageId: created.data.id, state: "approved" })).data.error.code).toBe("unknown_tool");
 
     const runAt = new Date(Date.now() + 86_400_000).toISOString();
     const scheduled = await callTool(t, "schedule_page", { wiki: "wiki", pageId: created.data.id, action: "publish_page", runAt });
@@ -545,6 +553,61 @@ describe("MCP", () => {
     const created = await callTool(tokens.access_token, "create_page", { wiki: "wiki", title: "消す" });
     expect((await callTool(tokens.access_token, "delete_page", { wiki: "wiki", pageId: created.data.id })).data.deleted).toBe(true);
     expect((await ctx.call("GET", `${W}/pages/${created.data.id}`)).status).toBe(404);
+  });
+
+  it("lists the trash and restores a deleted page with its children, and has no tool to delete permanently", async () => {
+    ctx = await setup();
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.private wiki.delete" });
+    const t = tokens.access_token;
+    const top = await callTool(t, "create_page", { wiki: "wiki", title: "まとめ" });
+    const parent = await callTool(t, "create_page", { wiki: "wiki", title: "親", parentPageId: top.data.id });
+    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子", bodyMd: "本文", parentPageId: parent.data.id });
+
+    expect((await callTool(t, "delete_page", { wiki: "wiki", pageId: parent.data.id })).data).toEqual({ id: parent.data.id, deleted: true, trashedPages: 2 });
+    const listed = await callTool(t, "list_trash", { wiki: "wiki" });
+    expect(listed.data.pages).toEqual([expect.objectContaining({ id: parent.data.id, title: "親", descendantCount: 1 })]);
+    // 配下としていっしょに入ったページは、親ごとにしか戻せない
+    expect((await callTool(t, "restore_page", { wiki: "wiki", pageId: child.data.id })).data.error.code).toBe("not_found");
+
+    const restored = await callTool(t, "restore_page", { wiki: "wiki", pageId: parent.data.id });
+    expect(restored.data).toEqual({ id: parent.data.id, restored: true, restoredPages: 2, parentPageId: top.data.id, parentMissing: false });
+    expect((await callTool(t, "list_trash", { wiki: "wiki" })).data.pages).toEqual([]);
+    expect((await callTool(t, "get_page", { wiki: "wiki", pageId: child.data.id })).data).toMatchObject({ bodyMd: "本文", visibility: "private", published: false });
+    const tree = (await callTool(t, "get_tree", { wiki: "wiki" })).data.nodes as { pageId: string; parentPageId: string | null }[];
+    expect(tree.find((n) => n.pageId === child.data.id)!.parentPageId).toBe(parent.data.id);
+    expect(tree.find((n) => n.pageId === parent.data.id)!.parentPageId).toBe(top.data.id);
+    // ゴミ箱に無いページは戻せない
+    expect((await callTool(t, "restore_page", { wiki: "wiki", pageId: parent.data.id })).data.error.code).toBe("not_found");
+
+    const names = (await mcp(t, "tools/list")).body.result.tools.map((x: { name: string }) => x.name);
+    expect(names).toEqual(expect.arrayContaining(["delete_page", "list_trash", "restore_page"]));
+    expect(names.some((n: string) => /purge|permanent|empty/.test(n))).toBe(false);
+    // 構造の履歴に、どのアプリが戻したかが残る
+    const commits = await ctx.client.query<{ message: string; via: boolean }>(
+      `select message, oauth_grant_id is not null as via from structure_commits order by created_at desc limit 1`,
+    );
+    expect(commits.rows).toEqual([{ message: "「親」と配下の 1 ページをゴミ箱から元に戻す", via: true }]);
+  });
+
+  it("cannot see or restore trashed pages it cannot read", async () => {
+    ctx = await setup();
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.delete" });
+    const t = tokens.access_token;
+    // 人が作ったページ（非公開）と、このアプリが作ったページの下に人が足したページ
+    const secret = (await ctx.call("POST", `${W}/pages`, { title: "社外秘", bodyMd: "secret" })).body;
+    const own = await callTool(t, "create_page", { wiki: "wiki", title: "自分の" });
+    const mixed = await callTool(t, "create_page", { wiki: "wiki", title: "混ざった親" });
+    await ctx.call("POST", `${W}/pages`, { title: "人が足した子", bodyMd: "", parentPageId: mixed.data.id });
+    for (const id of [secret.id, own.data.id, mixed.data.id]) expect((await ctx.call("DELETE", `${W}/pages/${id}`)).status).toBe(200);
+
+    // 読めないページは一覧に出ない
+    const listed = (await callTool(t, "list_trash", { wiki: "wiki" })).data.pages.map((p: { title: string }) => p.title).sort();
+    expect(listed).toEqual(["混ざった親", "自分の"].sort());
+    expect((await callTool(t, "restore_page", { wiki: "wiki", pageId: secret.id })).data.error.code).toBe("not_found");
+    // 配下に読めないページがあれば止める
+    expect((await callTool(t, "restore_page", { wiki: "wiki", pageId: mixed.data.id })).data.error.code).toBe("insufficient_scope");
+    expect((await callTool(t, "restore_page", { wiki: "wiki", pageId: own.data.id })).data.restored).toBe(true);
+    expect((await ctx.call("GET", `${W}/pages/trash`)).body.pages.map((p: { title: string }) => p.title).sort()).toEqual(["混ざった親", "社外秘"].sort());
   });
 
   it("cannot use an access token on the cookie API", async () => {

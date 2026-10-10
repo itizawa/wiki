@@ -6,20 +6,24 @@ import Dialog from "@mui/material/Dialog";
 import IconButton from "@mui/material/IconButton";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
+import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { diffLines } from "diff";
-import { useMemo, useState } from "react";
-import { api, errorMessage } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { monoFont } from "../theme";
 import { Tooltip } from "./Tooltip";
-import { Muted, StatusChip } from "./ui";
+import { LoadingRegion, Muted, SkeletonRows, StatusChip } from "./ui";
 
 type Content = { title: string; bodyMd: string };
+
+/** 版の一覧の行の高さ。 */
+const VERSION_ROW_HEIGHT = 32;
 
 const asDocument = (c: Content) => `# ${c.title}\n\n${c.bodyMd}`;
 
@@ -50,6 +54,22 @@ export function VersionHistory(props: {
   });
   const [view, setView] = useState<"diff" | "body">("diff");
 
+  // 選んでいた版が、もう無い（開いているあいだに間引かれた、古い URL を開いた）。最新の版に選び直し、一覧を読み直す
+  const qc = useQueryClient();
+  const [missing, setMissing] = useState(false);
+  const selectedIsGone = version.error instanceof ApiError && version.error.status === 404 && props.selected !== props.headVersionId;
+  const { pageId, headVersionId, onSelect } = props;
+  useEffect(() => {
+    if (!selectedIsGone) return;
+    setMissing(true);
+    void qc.invalidateQueries({ queryKey: ["versions", pageId] });
+    onSelect(headVersionId);
+    // onSelect は描くたびに作り直されるので、依存に入れない
+  },[selectedIsGone, pageId, headVersionId, qc]);
+  useEffect(() => {
+    if (!open) setMissing(false);
+  }, [open]);
+
   return (
     <Dialog fullScreen open={open} onClose={props.onClose} aria-labelledby="version-history-title">
       <Stack direction="row" sx={{ alignItems: "center", gap: 1, height: 48, px: 2, borderBottom: 1, borderColor: "divider", flexShrink: 0 }}>
@@ -73,13 +93,29 @@ export function VersionHistory(props: {
         }}
       >
         <Box component="section" aria-label="選んだ版" sx={{ order: { xs: 2, md: 1 }, overflow: "auto", p: { xs: 2, md: 3 } }}>
-          {version.error && <Alert severity="error">{errorMessage(version.error)}</Alert>}
+          {missing && (
+            <Alert severity="info" onClose={() => setMissing(false)} sx={{ maxWidth: 900, mx: "auto", mb: 2 }}>
+              選んでいた版は、もうありません（「自動」の版は、古くなると間引きます）。最新の版を開いています。
+            </Alert>
+          )}
+          {version.error && !selectedIsGone && <Alert severity="error">{errorMessage(version.error)}</Alert>}
+          {version.isPending && (
+            // 見出し（版の日時）と、差分の位置に文の行
+            <LoadingRegion sx={{ maxWidth: 900, mx: "auto" }}>
+              <Skeleton variant="text" width="40%" sx={{ fontSize: "1.1rem", mb: 2 }} />
+              <Skeleton variant="text" />
+              <Skeleton variant="text" />
+              <Skeleton variant="text" />
+              <Skeleton variant="text" width="60%" />
+            </LoadingRegion>
+          )}
           {version.data && (
             <Stack spacing={2} sx={{ maxWidth: 900, mx: "auto" }}>
               <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}>
                 <Typography variant="h6" component="h3" sx={{ mr: "auto" }}>
                   {formatDateTime(version.data.createdAt)} の版
                   {version.data.id === props.headVersionId && <StatusChip label="最新の版" size="small" sx={{ ml: 1 }} />}
+                  {!version.data.keep && <StatusChip label="自動" size="small" sx={{ ml: 1 }} />}
                   {version.data.authorType === "ai" && <StatusChip label="AI" size="small" sx={{ ml: 1 }} />}
                 </Typography>
                 <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)} aria-label="表示">
@@ -91,7 +127,7 @@ export function VersionHistory(props: {
                 </Button>
               </Stack>
               <Muted>
-                「この版に戻す」は、この版の内容をエディタに入れて閉じます。版として残すまで、公開中の内容や版履歴は変わりません。
+                「この版に戻す」は、この版の内容をエディタに入れて閉じます。戻した内容は、ほかの編集と同じく自動で保存され、新しい版になります。公開中の内容は、公開し直すまで変わりません。
               </Muted>
               {view === "diff" ? (
                 <Diff before={asDocument(version.data)} after={asDocument(props.current)} />
@@ -114,22 +150,33 @@ export function VersionHistory(props: {
             [t.breakpoints.down("md")]: { borderBottom: `1px solid ${t.palette.divider}` },
           })}
         >
+          {versions.isPending && <SkeletonRows rows={3} height={VERSION_ROW_HEIGHT} />}
           <List dense disablePadding>
             {versions.data?.versions.map((v) => (
               <ListItemButton
                 key={v.id}
                 selected={props.selected === v.id}
                 aria-current={props.selected === v.id ? "true" : undefined}
-                onClick={() => props.onSelect(v.id)}
+                onClick={() => {
+                  setMissing(false);
+                  props.onSelect(v.id);
+                }}
                 sx={{ px: 1, gap: 0.75, borderRadius: 1 }}
               >
                 {formatDateTime(v.createdAt)}
                 {v.id === props.headVersionId && <StatusChip label="最新" size="small" />}
+                {/* 下書きから自動でできた版。人が「版として残す」を選ぶか、公開・予約に使うと外れる */}
+                {!v.keep && <StatusChip label="自動" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
                 {v.via && <StatusChip label={`${v.via} 経由`} size="small" />}
               </ListItemButton>
             ))}
           </List>
+          {versions.data && (
+            <Muted variant="caption" component="p" sx={{ px: 1, pt: 1.5, pb: 1 }}>
+              「自動」の版は、1日たつと1日に1つ、30日たつと1か月に1つに間引きます。⌘S で残した版と、公開・予約した版は消しません。
+            </Muted>
+          )}
         </Box>
       </Box>
     </Dialog>

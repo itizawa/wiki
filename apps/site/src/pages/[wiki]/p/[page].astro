@@ -19,6 +19,7 @@ const { page } = Astro.props as { page: ManifestPage };
 const { wiki } = Astro.params;
 const { pagesById, publicPaths, primaryTree, origin } = await siteData(wiki);
 const titleOf = (id: string) => pagesById.get(id)?.title;
+const iconOf = (id: string) => pagesById.get(id)?.icon;
 const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
 const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
@@ -41,6 +42,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
       }
       <Article
         title={page.title}
+        icon={page.icon}
         bodyMd={page.bodyMd}
         firstPublishedAt={page.firstPublishedAt}
         revisedAt={page.revisedAt}
@@ -54,7 +56,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
     {
       primaryTree && (
         <aside data-pagefind-ignore>
-          <TreeNav client:idle items={navItems(primaryTree, titleOf)} current={inPrimary ? page.id : undefined} />
+          <TreeNav client:idle items={navItems(primaryTree, titleOf, iconOf)} current={inPrimary ? page.id : undefined} />
         </aside>
       )
     }

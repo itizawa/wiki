@@ -1,3 +1,6 @@
+/** Google のサービスアカウントの鍵のうち、使うものだけ */
+export type GoogleServiceAccount = { clientEmail: string; privateKey: string };
+
 export type AppConfig = {
   /** セッションCookieの署名鍵（32文字以上） */
   sessionSecret: string;
@@ -13,7 +16,28 @@ export type AppConfig = {
   siteBaseDomain: string;
   /** /export/public と /internal/* 用のトークン（ワーカー・サイトのビルドが使う）。未設定なら無効 */
   internalToken?: string;
+  /**
+   * 「アクセス解析」が Google Analytics とサーチコンソールの数字を読むためのサービスアカウント。
+   * null：未設定（この機能は無効）。"invalid"：登録してあるが、鍵の JSON として読めない
+   */
+  googleServiceAccount: GoogleServiceAccount | "invalid" | null;
 };
+
+/**
+ * `GOOGLE_SERVICE_ACCOUNT_JSON`（Google Cloud でダウンロードした鍵の JSON そのまま）を読む。
+ * 読めなくても投げない（設定はリクエストのたびに読むので、ここで投げると、ほかの画面まで止まる）。中身はログに出さない。
+ */
+export function parseServiceAccount(json: string | undefined): AppConfig["googleServiceAccount"] {
+  if (!json || json.trim() === "") return null;
+  try {
+    const key = JSON.parse(json) as { client_email?: unknown; private_key?: unknown };
+    if (typeof key.client_email !== "string" || !key.client_email.includes("@")) return "invalid";
+    if (typeof key.private_key !== "string" || !key.private_key.includes("PRIVATE KEY")) return "invalid";
+    return { clientEmail: key.client_email, privateKey: key.private_key };
+  } catch {
+    return "invalid";
+  }
+}
 
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const required = (key: string) => {
@@ -37,5 +61,6 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     secureCookies: isProduction || adminOrigin.startsWith("https://"),
     siteBaseDomain: env.SITE_BASE_DOMAIN ?? "localhost:4321",
     internalToken: env.INTERNAL_TOKEN || undefined,
+    googleServiceAccount: parseServiceAccount(env.GOOGLE_SERVICE_ACCOUNT_JSON),
   };
 }
