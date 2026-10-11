@@ -427,6 +427,47 @@ describe("MCP", () => {
     expect(search.data.pages.map((p: { id: string }) => p.id)).toEqual([child.data.id]);
   });
 
+  it("does not create a page under a parent it cannot read", async () => {
+    ctx = await setup();
+    const secret = (await ctx.call("POST", `${W}/pages`, { title: "社外秘", bodyMd: "secret" })).body;
+    const open = (await ctx.call("POST", `${W}/pages`, { title: "公開", bodyMd: "" })).body;
+    await ctx.call("POST", `${W}/pages/${open.id}/publish`, { versionId: open.headVersionId, visibility: "public" });
+    const t = (await connect()).tokens.access_token;
+    const parentOf = async (token: string, id: string) =>
+      (await callTool(token, "get_tree", { wiki: "wiki" })).data.nodes.find((n: { pageId: string }) => n.pageId === id)?.parentPageId;
+
+    // ツリーは非公開のページの ID も返すが、それを親には使えない。move_page と同じく、無いものとして断る
+    const before = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+    const denied = await callTool(t, "create_page", { wiki: "wiki", title: "下に足す", parentPageId: secret.id });
+    expect(denied.data.error.code).toBe("not_found");
+    const after = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+    expect(after.headCommitId).toBe(before.headCommitId);
+    expect(after.nodes).toHaveLength(before.nodes.length);
+    const top = await callTool(t, "create_page", { wiki: "wiki", title: "動かす" });
+    const move = await callTool(t, "move_page", {
+      wiki: "wiki",
+      pageId: top.data.id,
+      newParentPageId: secret.id,
+      expectedHeadCommitId: (await callTool(t, "get_tree", { wiki: "wiki" })).data.headCommitId,
+    });
+    expect(move.data.error).toEqual(denied.data.error);
+
+    // 公開中のページの下、自分で作ったページの下、最上位には、今までどおり作れる
+    const underOpen = await callTool(t, "create_page", { wiki: "wiki", title: "公開の下", parentPageId: open.id });
+    expect(underOpen.isError).toBe(false);
+    expect(await parentOf(t, underOpen.data.id)).toBe(open.id);
+    const underOwn = await callTool(t, "create_page", { wiki: "wiki", title: "自分の下", parentPageId: top.data.id });
+    expect(underOwn.isError).toBe(false);
+    expect(await parentOf(t, underOwn.data.id)).toBe(top.data.id);
+    expect(await parentOf(t, top.data.id)).toBeNull();
+
+    // 非公開のページも読める許可なら、その下に作れる
+    const full = (await connect({ scope: "wiki.read wiki.write wiki.private" })).tokens.access_token;
+    const allowed = await callTool(full, "create_page", { wiki: "wiki", title: "下に足す", parentPageId: secret.id });
+    expect(allowed.isError).toBe(false);
+    expect(await parentOf(full, allowed.data.id)).toBe(secret.id);
+  });
+
   it("hides private and unlisted pages unless wiki.private is granted", async () => {
     ctx = await setup();
     const secret = await ctx.call("POST", `${W}/pages`, { title: "社外秘", bodyMd: "secret" });
