@@ -6,6 +6,7 @@ import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
 import { createPostgresDb } from "./db/postgres";
 import { r2ImageStore, type R2BucketLike } from "./images/store";
+import type { RateLimiter } from "./rate-limit";
 
 /** wrangler.toml の [vars] と secrets（どちらも文字列）、および Hyperdrive のバインディング。 */
 export type WorkerEnv = {
@@ -14,6 +15,10 @@ export type WorkerEnv = {
   IMAGES?: R2BucketLike;
   /** Cron のワーカーへの印（Workers KV）。無ければ印を書かない（ワーカーは毎回 DB を見に行く） */
   CRON_MARKS?: CronMarkStore;
+  /** 接続元ごとの回数の制限（wrangler.toml の [[ratelimits]]）。無ければ、その経路は制限しない */
+  OAUTH_REGISTER_LIMITER?: RateLimiter;
+  OAUTH_LIMITER?: RateLimiter;
+  MCP_LIMITER?: RateLimiter;
   [key: string]: unknown;
 };
 
@@ -52,6 +57,7 @@ export function createWorker(connect: Connect) {
       const config = loadConfig(vars);
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const { db, close } = connect(env);
+      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER };
       try {
         return await createApp({
           db,
@@ -60,6 +66,7 @@ export function createWorker(connect: Connect) {
           images: env.IMAGES ? r2ImageStore(env.IMAGES) : null,
           reporting: reportingFromConfig(config),
           cronMarks: env.CRON_MARKS ?? null,
+          rateLimits,
         }).fetch(appRequest);
       } finally {
         ctx.waitUntil(close());

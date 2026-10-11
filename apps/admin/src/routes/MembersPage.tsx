@@ -21,7 +21,7 @@ import { Tooltip } from "../components/Tooltip";
 import { Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { useWiki } from "../lib/wiki";
+import { useRefreshWikis, useWiki } from "../lib/wiki";
 import { useSession } from "./Layout";
 
 const STATUS_LABELS: Record<InviteStatus, { label: string; color: "success" | "default" | "warning" }> = {
@@ -38,7 +38,7 @@ export function MembersPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h1">
+        <Typography variant="h6" component="h2">
           メンバー
         </Typography>
         <Muted>
@@ -55,19 +55,24 @@ export function MembersPage() {
 function Members({ isAdmin }: { isAdmin: boolean }) {
   const session = useSession();
   const qc = useQueryClient();
+  const refreshWikis = useRefreshWikis();
   const navigate = useNavigate();
   const members = useQuery({ queryKey: ["members"], queryFn: api.listMembers });
   const changeRole = useMutation({
     mutationFn: (input: { userId: string; role: WikiRole }) => api.changeRole(input.userId, input.role),
-    onSuccess: (res) => qc.setQueryData(["members"], res),
+    onSuccess: (res, input) => {
+      qc.setQueryData(["members"], res);
+      // 自分のロールは wiki の一覧から読んでいるので、読み直す
+      if (input.userId === session.id) void refreshWikis();
+    },
   });
   const remove = useMutation({
     mutationFn: (member: Member) => api.removeMember(member.userId),
     onSuccess: async (_res, member) => {
       if (member.userId === session.id) {
         // 自分で抜けたら、この wiki はもう開けない
-        await qc.invalidateQueries({ queryKey: ["wikis"] });
-        await qc.invalidateQueries({ queryKey: ["me"] });
+        // wiki の一覧は、wiki ごとの入れ物（qc）の外にある
+        await refreshWikis();
         await navigate({ to: "/" });
         return;
       }
@@ -103,7 +108,7 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <Section>
-      <Typography variant="h6" component="h2" gutterBottom>
+      <Typography variant="h6" component="h3" gutterBottom>
         メンバーの一覧
       </Typography>
       {members.isPending && <Muted>読み込み中…</Muted>}
@@ -226,7 +231,7 @@ function Invites() {
 
   return (
     <Section>
-      <Typography variant="h6" component="h2">
+      <Typography variant="h6" component="h3">
         招待リンク
       </Typography>
       <Muted sx={{ mb: 1.5 }}>
@@ -268,7 +273,7 @@ function Invites() {
         </Alert>
       )}
 
-      <Typography variant="subtitle2" component="h3" sx={{ mt: 2.5, mb: 0.5 }}>
+      <Typography variant="subtitle2" component="h4" sx={{ mt: 2.5, mb: 0.5 }}>
         発行したリンク
       </Typography>
       {invites.isPending && <Muted>読み込み中…</Muted>}

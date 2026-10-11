@@ -4,6 +4,7 @@ import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
 import type { GoogleReporting } from "./analytics/google";
 import type { ImageStore } from "./images/store";
+import type { RateLimiters } from "./rate-limit";
 import type { wikis } from "./db/schema";
 import type { WikiRole } from "@wiki/shared";
 import type { UserRow } from "./users/service";
@@ -21,6 +22,8 @@ export type Deps = {
    * （手元の開発とテスト。ワーカーの側も、バインディングが無ければ毎回 DB を見に行く）
    */
   cronMarks?: CronMarkStore | null;
+  /** ログインせずに叩ける経路（/oauth/*・/mcp）の、接続元ごとの回数の制限。無ければ制限しない */
+  rateLimits?: RateLimiters | null;
 };
 
 export type AppEnv = {

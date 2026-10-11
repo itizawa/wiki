@@ -11,9 +11,9 @@ import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { diffLines } from "diff";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { monoFont } from "../theme";
@@ -24,6 +24,10 @@ type Content = { title: string; bodyMd: string };
 
 /** 版の一覧の行の高さ。 */
 const VERSION_ROW_HEIGHT = 32;
+/** 版の一覧を1回に読み込む件数。 */
+const VERSION_PAGE_SIZE = 50;
+/** 一覧の末尾がこの距離まで近づいたら、続きを読み込む（px）。 */
+const LOAD_AHEAD = 200;
 
 const asDocument = (c: Content) => `# ${c.title}\n\n${c.bodyMd}`;
 
@@ -42,11 +46,40 @@ export function VersionHistory(props: {
   onRestore: (v: Content) => void;
 }) {
   const open = props.selected !== null;
-  const versions = useQuery({
+  // 人が残した版は間引かれず増え続けるので、新しい順に少しずつ読み込む
+  const versions = useInfiniteQuery({
     queryKey: ["versions", props.pageId, props.headVersionId],
-    queryFn: () => api.listVersions(props.pageId),
+    queryFn: ({ pageParam }) => api.listVersions(props.pageId, { cursor: pageParam, limit: VERSION_PAGE_SIZE }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
     enabled: open,
   });
+  const versionRows = useMemo(() => {
+    if (!versions.data) return undefined;
+    // 続きを読み込むあいだに版が増えても、同じ行を2度出さない
+    const seen = new Set<string>();
+    return versions.data.pages.flatMap((page) => page.versions).filter((v) => !seen.has(v.id) && seen.add(v.id));
+  }, [versions.data]);
+
+  // 一覧の末尾が見えたら（近づいたら）続きを読み込む。一覧は、この枠の中で縦に送る
+  const listEl = useRef<HTMLElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = versions;
+  const canLoadMore = hasNextPage && !isFetchingNextPage && !isFetchNextPageError;
+  const loaded = versionRows?.length ?? 0;
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!canLoadMore || !target || !listEl.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void fetchNextPage();
+      },
+      { root: listEl.current, rootMargin: `0px 0px ${LOAD_AHEAD}px 0px` },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+    // 件数が変わったら見張り直す（読み込んだあとも末尾が見えていれば、もう一度読み込む）
+  }, [canLoadMore, loaded, fetchNextPage]);
   const version = useQuery({
     queryKey: ["version", props.pageId, props.selected],
     queryFn: () => api.getVersion(props.pageId, props.selected!),
@@ -141,8 +174,10 @@ export function VersionHistory(props: {
           )}
         </Box>
         <Box
+          ref={listEl}
           component="nav"
           aria-label="版の一覧"
+          aria-busy={versions.isPending || isFetchingNextPage}
           sx={(t) => ({
             order: { xs: 1, md: 2 },
             overflow: "auto",
@@ -152,8 +187,9 @@ export function VersionHistory(props: {
           })}
         >
           {versions.isPending && <SkeletonRows rows={3} height={VERSION_ROW_HEIGHT} />}
+          {versionRows === undefined && versions.error && <Alert severity="error">{errorMessage(versions.error)}</Alert>}
           <List dense disablePadding>
-            {versions.data?.versions.map((v) => (
+            {versionRows?.map((v) => (
               <ListItemButton
                 key={v.id}
                 selected={props.selected === v.id}
@@ -179,7 +215,19 @@ export function VersionHistory(props: {
               </ListItemButton>
             ))}
           </List>
-          {versions.data && (
+          {/* 続きを読み込んでいるあいだは、末尾に行の形で出す */}
+          {isFetchingNextPage && <SkeletonRows rows={3} height={VERSION_ROW_HEIGHT} label="続きを読み込み中" />}
+          <Box ref={sentinel} aria-hidden sx={{ height: "1px" }} />
+          {versionRows !== undefined && isFetchNextPageError && !isFetchingNextPage && (
+            // 読み込めた分は消さず、末尾で知らせる。枠が狭いので、ボタンは文の下に置く（横に並べると文字が折れる）
+            <Alert severity="error" sx={{ mt: 1 }}>
+              続きを読み込めませんでした。{errorMessage(versions.error)}
+              <Button color="inherit" variant="outlined" size="small" onClick={() => void fetchNextPage()} sx={{ display: "flex", mt: 1 }}>
+                もう一度読み込む
+              </Button>
+            </Alert>
+          )}
+          {versions.data && !hasNextPage && (
             <Muted variant="caption" component="p" sx={{ px: 1, pt: 1.5, pb: 1 }}>
               「自動」の版は、1日たつと1日に1つ、30日たつと1か月に1つに間引きます。⌘S で残した版と、公開・予約した版は消しません。
             </Muted>

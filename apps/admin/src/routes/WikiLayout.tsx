@@ -80,7 +80,9 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
   }
 
   return (
-    <WikiContext.Provider value={{ wiki, wikis: active, isOwner: session.isOwner, role: wiki.role }}>
+    <WikiContext.Provider
+      value={{ wiki, wikis: active, isOwner: session.isOwner, role: wiki.role, refreshWikis: () => outer.invalidateQueries({ queryKey: ["wikis"] }) }}
+    >
       <QueryClientProvider client={queryClient}>
         <Shell email={session.email} onLogout={session.logout} />
       </QueryClientProvider>

@@ -4,9 +4,13 @@ import { z } from "zod";
 import type { AppEnv } from "../env";
 import { runTick } from "../cron/tick";
 import { HttpError } from "../errors";
+import { cleanupImages, type CleanupImagesResult } from "../images/cleanup";
+import { cleanupOAuth } from "../oauth/cleanup";
 import { pruneVersions } from "../pages/prune";
 import { markBuildTriggered } from "../publishing/builds";
+import { cleanupBuilds } from "../publishing/cleanup";
 import { buildManifest } from "../publishing/manifest";
+import { pruneStructure } from "../structure/prune";
 import { parseJson } from "../validation";
 import { applyViewTotals } from "./views";
 
@@ -40,6 +44,11 @@ const tickInput = z.object({
   maxWaitSec: z.number().int().min(0).max(86400).optional(),
 });
 
+const pruneInput = z.object({
+  /** 参照されていない画像の掃除もする（ワーカーが週1回 true にする） */
+  images: z.boolean().optional(),
+});
+
 /** /export/public：公開ビルド用マニフェスト（mainのみ）。限定公開の本文と key を含むので、`EXPORT_TOKEN` だけが通る */
 export const exportRoutes = new Hono<AppEnv>().use("*", requireToken("exportToken")).get("/public", async (c) => {
   return c.json(await buildManifest(c.get("deps").db));
@@ -54,9 +63,29 @@ export const internalRoutes = new Hono<AppEnv>()
     const body = tickInput.parse(await c.req.json().catch(() => ({})));
     return c.json(await runTick(c.get("deps").db, body));
   })
-  // 自動でできた版を、古いほど粗く間引く（1日1回）
+  // 1日1回の間引きと掃除。どれも消したものは戻せない。1回に消す数には上限があり、残りは次の回に回る
+  // - `deleted`：自動でできた版を、古いほど粗く間引いた数
+  // - `structure`：古いコミットの構造のスナップショットを消した数
+  // - `oauth`：役目を終えたトークンと認可コードを消した数
+  // - `builds`：反映済みの古い公開イベントと、古いビルドの行を消した数
+  // - `images`：参照されていない古い画像を消した数。本文で `images: true` を渡したときだけ行い、それ以外は null
   .post("/versions/prune", async (c) => {
-    return c.json(await pruneVersions(c.get("deps").db));
+    const { db, images: store } = c.get("deps");
+    const input = pruneInput.parse(await c.req.json().catch(() => ({})));
+    const versions = await pruneVersions(db);
+    const structure = await pruneStructure(db);
+    const oauth = await cleanupOAuth(db);
+    const builds = await cleanupBuilds(db);
+    let images: CleanupImagesResult | null = null;
+    if (input.images && store) {
+      // 置き場所の障害で、ここまでに消した数の応答まで失わないようにする。次の回にもう一度試す
+      try {
+        images = await cleanupImages(db, store);
+      } catch (err) {
+        console.error("image cleanup failed", err);
+      }
+    }
+    return c.json({ ...versions, structure, oauth, builds, images });
   })
   // ワーカーがデプロイフックを呼べたあとに呼ぶ。これが来ないビルドは、次の tick でもう一度頼む
   .post("/builds/:id/triggered", async (c) => {
