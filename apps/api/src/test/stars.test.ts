@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { SESSION_COOKIE, signSession } from "../auth/session";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
 import { ADMIN, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -67,7 +67,7 @@ describe("stars", () => {
     const a = await newPage("a");
     await ctx.call("PUT", `${W}/stars/${a}`);
 
-    const asOther = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const asOther = { cookie: `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, otherUser.id)}` };
     expect(await stars(asOther)).toEqual([]);
     // もう一人が外しても、自分のスターは残る
     await ctx.call("DELETE", `${W}/stars/${a}`, undefined, asOther);

@@ -442,6 +442,24 @@ export const users = pgTable(
   (t) => [index("users_email_idx").on(t.email)],
 );
 
+/**
+ * ログインしている端末ごとのセッション。Cookie の署名付きトークンにこの行の ID を入れ、リクエストのたびに行があるかを確かめる。
+ * ログアウトでその端末の行を、「ほかの端末からログアウト」でそれ以外の行を消すと、Cookie が残っていても次のリクエストから通らない。
+ */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    /** Cookie の期限と同じ。過ぎた行は通さず、その人が次にログインしたときに消す */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
+
 /** wiki ごとのメンバー。オーナーは行が無くても、すべての wiki に管理者として入れる。 */
 export const wikiMembers = pgTable(
   "wiki_members",

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGoogleReporting, googleFailure } from "../analytics/google";
 import { loadConfig, parseServiceAccount } from "../config";
 import { createWorker, type WorkerEnv } from "../worker";
-import { SESSION_COOKIE, signSession } from "../auth/session";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
 import { ADMIN, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -168,7 +168,7 @@ describe("the service account key (GOOGLE_SERVICE_ACCOUNT_JSON)", () => {
   it("leaves every other screen working on Workers when the secret is empty or broken", async () => {
     ctx = await setup();
     const handler = createWorker(() => ({ db: ctx.db, close: async () => {} }));
-    const cookie = `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, ctx.owner.id)}`;
+    const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
     for (const secret of [undefined, "", "{broken", KEY_JSON]) {
       const env = {
         HYPERDRIVE: { connectionString: "postgres://unused" },
