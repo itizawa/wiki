@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { requestBuild } from "../publishing/builds";
+import { markBuildTriggered, requestBuild } from "../publishing/builds";
 import { setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -37,9 +37,13 @@ const kinds = async () =>
 let clock = Date.now();
 const build = () => requestBuild(ctx.db, { now: new Date((clock += 1_000_000)) });
 
-/** これまでのイベントをビルド済みにして、ここから先の操作だけを見る。 */
+/**
+ * これまでのイベントをビルド済みにして、ここから先の操作だけを見る。
+ * 起動したビルドは、ワーカーがデプロイフックを呼べたものとして起動済みにする（しないと、次の build() が同じビルドを頼み直す）
+ */
 async function settle() {
-  await build();
+  const decision = await build();
+  if (decision.trigger) await markBuildTriggered(ctx.db, decision.buildId);
   await ctx.client.query(`delete from publish_events where id <= (select max(last_event_id) from site_builds)`);
 }
 
