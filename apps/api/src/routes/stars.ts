@@ -45,12 +45,18 @@ export const starRoutes = new Hono<AppEnv>()
       const head = [...new Set(input.pageIds)].filter((id) => starred.has(id));
       const rest = current.map((r) => r.pageId).filter((id) => !head.includes(id));
       // 並び順は wiki の中で振り直す（一覧は wiki ごとに出すので、ほかの wiki のスターとの前後は使わない）
-      for (const [position, pageId] of [...head, ...rest].entries()) {
-        await tx
-          .update(pageStars)
-          .set({ position })
-          .where(and(eq(pageStars.userId, userId), eq(pageStars.pageId, pageId)));
-      }
+      const order = [...head, ...rest];
+      if (order.length === 0) return;
+      // 1件ずつ更新せず、(ページ, 並び順) の組を渡して1回で振り直す
+      const values = sql.join(
+        order.map((pageId, position) => sql`(${pageId}::text, ${position}::int)`),
+        sql`, `,
+      );
+      await tx.execute(sql`
+        update "page_stars" s set "position" = v."position"
+        from (values ${values}) as v("page_id", "position")
+        where s."user_id" = ${userId}::uuid and s."page_id" = v."page_id"
+      `);
     });
     return c.json({ pageIds: await listStars(db, wikiId, userId) });
   })

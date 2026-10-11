@@ -176,6 +176,13 @@
       "when": 1791701444146,
       "tag": "0024_deploy_hook_retry",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791703153404,
+      "tag": "0025_indexes_for_scans",
+      "breakpoints": true
     }
   ]
 }
