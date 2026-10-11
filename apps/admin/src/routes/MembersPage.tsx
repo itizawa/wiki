@@ -17,6 +17,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { INVITE_TTL_DAYS, WIKI_ROLE_LABELS, WIKI_ROLES, type Invite, type InviteStatus, type Member, type WikiRole } from "@wiki/shared";
 import { useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Tooltip } from "../components/Tooltip";
 import { Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
@@ -38,13 +39,17 @@ export function MembersPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2">
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help={
+            <>
+              「{wiki.name}」に入れる人です。編集者はページの作成・編集・公開まで、管理者はそれに加えて招待・メンバーの管理ができます。オーナーは一覧に出なくても、すべての wiki に管理者として入れます。
+            </>
+          }
+        >
           メンバー
-        </Typography>
-        <Muted>
-          「{wiki.name}」に入れる人です。編集者はページの作成・編集・公開まで、管理者はそれに加えて招待・メンバーの管理ができます。
-          オーナーは一覧に出なくても、すべての wiki に管理者として入れます。
-        </Muted>
+        </HelpHeading>
       </Section>
       <Members isAdmin={isAdmin} />
       {isAdmin && <Invites />}
@@ -231,11 +236,12 @@ function Invites() {
 
   return (
     <Section>
-      <Typography variant="h6" component="h3">
+      <HelpHeading variant="h6" component="h3" help="メールは送りません。発行したリンクを、参加する人に自分で伝えてください。">
         招待リンク
-      </Typography>
+      </HelpHeading>
+      {/* 条件（人数と期限）は、発行する前から出しておく */}
       <Muted sx={{ mb: 1.5 }}>
-        1つのリンクで1人が参加できます。期限は{INVITE_TTL_DAYS}日です。メールは送らないので、発行したリンクを自分で伝えてください。
+        1つのリンクで1人が参加できます。期限は{INVITE_TTL_DAYS}日です。
       </Muted>
       <Row>
         <TextField select size="small" label="参加する人のロール" value={role} onChange={(e) => setRole(e.target.value as WikiRole)} sx={{ minWidth: 180 }}>

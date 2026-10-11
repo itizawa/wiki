@@ -1,6 +1,7 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import InputAdornment from "@mui/material/InputAdornment";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -9,6 +10,7 @@ import { isWikiIconUrl, SITE_NAME_MAX, WIKI_ICON_URL_MAX, type WikiSummary } fro
 import { useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis } from "../lib/wiki";
+import { HelpTip } from "./HelpTip";
 import { ImageUploader } from "./ImageUploader";
 import { Muted } from "./ui";
 import { WikiIcon } from "./WikiIcon";
@@ -53,15 +55,23 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { autoFocus?: bo
         onChange={(e) => setName(e.target.value)}
         autoFocus={opts.autoFocus}
         fullWidth
-        helperText={`公開サイトの名前になります。key（${wiki.key}）と公開 URL は変わりません。`}
-        slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX } }}
+        slotProps={{
+          htmlInput: { maxLength: SITE_NAME_MAX },
+          input: {
+            endAdornment: (
+              <InputAdornment position="end">
+                <HelpTip about="表示名">公開サイトの名前になります。変えても、key（{wiki.key}）と公開 URL は変わりません。</HelpTip>
+              </InputAdornment>
+            ),
+          },
+        }}
       />
       <Stack component="fieldset" spacing={1.5} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
-        <Box component="legend" sx={{ p: 0, mb: 0.5 }}>
+        <Box component="legend" sx={{ display: "flex", alignItems: "center", gap: 0.25, p: 0 }}>
           <Typography component="span" sx={{ fontWeight: 600 }}>
             画像（任意）
           </Typography>
-          <Muted component="span" sx={{ display: "block" }}>サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。</Muted>
+          <HelpTip about="画像">サイドバーと wiki の切り替えで、表示名の頭文字の代わりに出します。正方形の画像がきれいに収まります。</HelpTip>
         </Box>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minHeight: 40 }}>
           <Muted>見え方</Muted>
@@ -82,11 +92,19 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { autoFocus?: bo
           fullWidth
           placeholder="https://example.com/icon.png"
           error={problem !== null}
-          helperText={
-            problem ??
-            "アップロードすると自動で入ります。ほかのサイトで公開されている画像の URL を入れることもできます。空にすると頭文字に戻ります。アップロードした画像は、URL を知っていればだれでも見られます。"
-          }
-          slotProps={{ htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false }, inputLabel: { shrink: true } }}
+          // 条件（だれでも見られること）は、選ぶ前から出しておく
+          helperText={problem ?? "アップロードした画像は、URL を知っていればだれでも見られます。"}
+          slotProps={{
+            htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false },
+            inputLabel: { shrink: true },
+            input: {
+              endAdornment: (
+                <InputAdornment position="end">
+                  <HelpTip about="画像の URL">アップロードすると自動で入ります。ほかのサイトで公開されている画像の URL を入れることもできます。空にすると頭文字に戻ります。</HelpTip>
+                </InputAdornment>
+              ),
+            },
+          }}
         />
       </Stack>
       {save.error && <Alert severity="error">{errorMessage(save.error)}</Alert>}

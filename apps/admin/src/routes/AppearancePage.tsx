@@ -26,6 +26,7 @@ import {
 } from "@wiki/shared";
 import { useEffect, useId, useRef, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
@@ -43,12 +44,17 @@ export function AppearancePage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2">
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help={
+            <>
+              「{wiki.name}」の公開サイトの、サイト名・アクセント色・ロゴ・ファビコンを変えます。背景・文字・枠線の色とフォントは、読みやすさを保つため変えられません。管理画面の配色は変わりません。
+            </>
+          }
+        >
           外観
-        </Typography>
-        <Muted>
-          「{wiki.name}」の公開サイトの、サイト名・アクセント色・ロゴ・ファビコンを変えます。背景・文字・枠線の色とフォントは、読みやすさを保つため変えられません。管理画面の配色は変わりません。
-        </Muted>
+        </HelpHeading>
       </Section>
       {role !== "admin" ? (
         <Alert severity="info">外観は、この wiki の管理者だけが変えられます。</Alert>
@@ -114,9 +120,9 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1fr)" }, gap: 1.5, alignItems: "start" }}>
       <Stack spacing={1.5}>
         <Section>
-          <Typography variant="subtitle1" component="h3" gutterBottom>
+          <HelpHeading variant="subtitle1" component="h3" help="ヘッダー・タブのタイトル・RSS・フッターに出ます。wiki の表示名と同じものです。" sx={{ mb: 1 }}>
             サイト名
-          </Typography>
+          </HelpHeading>
           <TextField
             size="small"
             fullWidth
@@ -124,18 +130,25 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             error={!nameOk}
-            helperText={nameOk ? `ヘッダー・タブのタイトル・RSS・フッターに出ます（1〜${SITE_NAME_MAX}文字）。wiki の表示名と同じものです` : `1〜${SITE_NAME_MAX}文字で入力してください`}
+            helperText={nameOk ? `1〜${SITE_NAME_MAX}文字` : `1〜${SITE_NAME_MAX}文字で入力してください`}
             slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX } }}
           />
         </Section>
 
         <Section>
-          <Typography variant="subtitle1" component="h3">
+          {/* 基準を満たしたかは、下のそれぞれの欄が、入力のたびに出す */}
+          <HelpHeading
+            variant="subtitle1"
+            component="h3"
+            help={
+              <>
+                リンクと、強調のコールアウトの色です。背景とのコントラスト比が {MIN_CONTRAST} : 1 以上（読みやすさの基準。WCAG）の色だけ保存できます。ライト用はライトの背景、ダーク用はダークの背景に対して確かめます。
+              </>
+            }
+            sx={{ mb: 1 }}
+          >
             アクセント色
-          </Typography>
-          <Muted sx={{ mb: 1.5 }}>
-            リンクと、強調のコールアウトの色です。背景とのコントラスト比が {MIN_CONTRAST} : 1 以上（読みやすさの基準。WCAG）の色だけ保存できます。ライト用はライトの背景、ダーク用はダークの背景に対して確かめます。
-          </Muted>
+          </HelpHeading>
           <Typography variant="subtitle2" component="h4" sx={{ mb: 0.5 }}>
             色の見本
           </Typography>
@@ -188,13 +201,15 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <Stack spacing={2.5}>
             <ImageField
               label="ロゴ"
-              help={`ヘッダーのサイト名の位置に、高さ 32px で出します。横長の画像で、高さ 64px 以上をおすすめします。ライトとダークの両方の背景で見えるかを、プレビューで確かめてください。${THEME_IMAGE_LIMIT_LABEL}。`}
+              help="ヘッダーのサイト名の位置に、高さ 32px で出します。ライトとダークの両方の背景で見えるかを、プレビューで確かめてください。"
+              condition={`横長で、高さ 64px 以上がおすすめ。${THEME_IMAGE_LIMIT_LABEL}。`}
               value={theme.logo}
               onChange={(logo) => setTheme((t) => ({ ...t, logo }))}
             />
             <ImageField
               label="ファビコン"
-              help={`ブラウザのタブに出るアイコンです。正方形で 180px 以上をおすすめします。${THEME_IMAGE_LIMIT_LABEL}。`}
+              help="ブラウザのタブに出るアイコンです。"
+              condition={`正方形で、180px 以上がおすすめ。${THEME_IMAGE_LIMIT_LABEL}。`}
               value={theme.favicon}
               onChange={(favicon) => setTheme((t) => ({ ...t, favicon }))}
               square
@@ -213,9 +228,8 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
               </Button>
             )}
           </Row>
-          <Muted sx={{ mt: 1 }}>公開サイトへの反映には数分かかります。</Muted>
           {dirty && !(lightCheck.ok && darkCheck.ok) && (
-            <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
               読みやすさの基準を満たさない色があるため、保存できません。
             </Typography>
           )}
@@ -233,10 +247,9 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
       </Stack>
 
       <Section sx={{ position: { lg: "sticky" }, top: { lg: 16 } }}>
-        <Typography variant="subtitle1" component="h3">
+        <HelpHeading variant="subtitle1" component="h3" help="保存するまでは、ここだけが変わります。公開サイトは、保存してから数分で変わります。" sx={{ mb: 1 }}>
           プレビュー
-        </Typography>
-        <Muted sx={{ mb: 1.5 }}>保存するまでは、ここだけが変わります。</Muted>
+        </HelpHeading>
         <Stack spacing={1.5}>
           <Preview mode="light" name={name.trim() || saved.name} theme={theme} />
           <Preview mode="dark" name={name.trim() || saved.name} theme={theme} />
@@ -304,8 +317,8 @@ function AccentField({ mode, value, onChange }: { mode: AccentMode; value: strin
   );
 }
 
-/** ロゴ・ファビコンの選択。条件は選ぶ前に出し、合わないファイルは送る前に断る（API でも確かめる）。 */
-function ImageField(props: { label: string; help: string; value: string | null; onChange: (value: string | null) => void; square?: boolean }) {
+/** ロゴ・ファビコンの選択。条件（`condition`）は選ぶ前に出し、合わないファイルは送る前に断る（API でも確かめる）。使われ方の説明（`help`）は「i」に入れる。 */
+function ImageField(props: { label: string; help: string; condition: string; value: string | null; onChange: (value: string | null) => void; square?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const upload = useMutation({
@@ -334,10 +347,10 @@ function ImageField(props: { label: string; help: string; value: string | null; 
 
   return (
     <Box>
-      <Typography variant="subtitle2" component="h4">
+      <HelpHeading variant="subtitle2" component="h4" help={props.help}>
         {props.label}
-      </Typography>
-      <Muted sx={{ mb: 1 }}>{props.help}</Muted>
+      </HelpHeading>
+      <Muted sx={{ mb: 1 }}>{props.condition}</Muted>
       <Row>
         {props.value && (
           <Box

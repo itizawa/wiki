@@ -9,6 +9,7 @@ import Typography from "@mui/material/Typography";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { parseSearchQuery, searchTerms, splitByTerms } from "@wiki/shared";
 import { useEffect, useState } from "react";
+import { HelpTip } from "../components/HelpTip";
 import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -60,8 +61,11 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
           },
         }}
       />
-      <Muted id="search-syntax">
-        タイトルと本文を探します。空白で区切ると、すべてを含むページ。<Mono>"二つの 語"</Mono> でひと続きの語、<Mono>-語</Mono> で含まないページ、<Mono>A OR B</Mono> でどちらかを含むページ。
+      <Muted id="search-syntax" sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+        タイトルと本文を探します。
+        <HelpTip about="検索の書き方">
+          空白で区切ると、すべてを含むページ。<Mono>"二つの 語"</Mono> でひと続きの語、<Mono>-語</Mono> で含まないページ、<Mono>A OR B</Mono> でどちらかを含むページを探します。
+        </HelpTip>
       </Muted>
 
       {search.error && <Alert severity="error">{errorMessage(search.error)}</Alert>}
