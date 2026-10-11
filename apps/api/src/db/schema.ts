@@ -108,7 +108,14 @@ export const pages = pgTable(
   (t) => [
     check("pages_visibility_check", sql`${t.visibility} in ('public', 'unlisted', 'private')`),
     check("pages_origin_check", sql`${t.origin} in ('human', 'ai_draft')`),
-    index("pages_wiki_updated_at_idx").on(t.wikiId, t.updatedAt),
+    // 一覧の並び（更新日時の新しい順、同じ日時は id の大きい順）と、その続き `(updated_at, id) < (...)` に使う
+    // `desc` だけだと drizzle は NULLS LAST を付け、`order by ... desc`（NULLS FIRST）の並びと合わなくなる
+    index("pages_wiki_updated_at_id_idx").on(t.wikiId, t.updatedAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
+    // 版の間引きが「どれかのページの head・公開中の版か」を版ごとに引く
+    index("pages_head_version_idx").on(t.headVersionId),
+    index("pages_published_version_idx").on(t.publishedVersionId),
+    // ゴミ箱のまとまり（一覧の配下の数、元に戻す・完全に削除するときの行）
+    index("pages_trash_root_idx").on(t.trashRootId).where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),
   ],
 );
 
@@ -141,6 +148,8 @@ export const pageVersions = pgTable(
   (t) => [
     check("page_versions_author_type_check", sql`${t.authorType} in ('human', 'ai')`),
     index("page_versions_page_id_idx").on(t.pageId, t.createdAt),
+    // 版の間引きが、消した版を派生元にしている版を引く
+    index("page_versions_base_version_idx").on(t.baseVersionId),
   ],
 );
 
@@ -229,7 +238,12 @@ export const pageViewsDaily = pgTable(
     day: date("day", { mode: "string" }).notNull(),
     count: integer("count").notNull().default(0),
   },
-  (t) => [primaryKey({ columns: [t.pageId, t.day] }), index("page_views_daily_wiki_day_idx").on(t.wikiId, t.day)],
+  (t) => [
+    primaryKey({ columns: [t.pageId, t.day] }),
+    index("page_views_daily_wiki_day_idx").on(t.wikiId, t.day),
+    // 計測を始めた日（wiki をまたいだ、いちばん古い日）を、表全体を読まずに取る
+    index("page_views_daily_day_idx").on(t.day),
+  ],
 );
 
 // ---------------------------------------------------------------------------
@@ -282,7 +296,6 @@ export const treeNodes = pgTable(
     primaryKey({ columns: [t.snapshotId, t.nodeId] }),
     unique("tree_nodes_snapshot_page_unique").on(t.snapshotId, t.pageId),
     check("tree_nodes_page_check", sql`${t.nodeId} = ${t.pageId}`),
-    index("tree_nodes_page_id_idx").on(t.pageId),
   ],
 );
 
@@ -399,6 +412,10 @@ export const scheduledActions = pgTable(
     ),
     index("scheduled_actions_due_idx").on(t.runAt).where(sql`${t.status} = 'scheduled'`),
     index("scheduled_actions_page_idx").on(t.pageId),
+    // 版の間引きが「予約が指している版か」を版ごとに引く
+    index("scheduled_actions_version_idx").on(t.versionId),
+    // 編集カレンダー（wiki ごとの、期間の中の予約。状態は問わない）
+    index("scheduled_actions_wiki_run_at_idx").on(t.wikiId, t.runAt),
   ],
 );
 
@@ -414,12 +431,19 @@ export const publishEvents = pgTable("publish_events", {
   createdAt: createdAt(),
 });
 
-/** 起動したビルド。last_event_id までの publish_events を反映済み。 */
+/** 起動を決めたビルド。last_event_id までの publish_events を反映済み。 */
 export const siteBuilds = pgTable("site_builds", {
   id: uuid("id").primaryKey().defaultRandom(),
   lastEventId: bigint("last_event_id", { mode: "number" }).notNull(),
   contentHash: text("content_hash").notNull(),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * ワーカーがデプロイフックを呼べた時刻。空のあいだは、次の Cron で起動し直す。
+   * 内容が変わらずビルドしなかった行（unchanged）は、起動するものが無いので作った時刻を入れる
+   */
+  triggeredAt: timestamp("triggered_at", { withTimezone: true }),
+  /** ワーカーに起動を頼んだ回数（最初の1回を含む） */
+  attempts: integer("attempts").notNull().default(1),
 });
 
 // ---------------------------------------------------------------------------

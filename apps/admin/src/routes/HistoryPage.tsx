@@ -7,7 +7,7 @@ import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
-import type { StructureChange } from "@wiki/shared";
+import { STRUCTURE_SNAPSHOT_KEEP_DAYS, type StructureChange } from "@wiki/shared";
 import { useState } from "react";
 import { LoadingRegion, Mono, Muted, Row, Section, SkeletonRows, StatusChip, WithSidebar } from "../components/ui";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
@@ -30,6 +30,8 @@ export function HistoryPage() {
           構造の履歴（main）
         </Typography>
         <Muted>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</Muted>
+        {/* 選ぶ前に分かるよう、差分を見られる範囲を先に書く */}
+        <Muted>差分を見られるのは、最新のコミットと、直近{STRUCTURE_SNAPSHOT_KEEP_DAYS}日のコミットです。</Muted>
         {/* コミットの行（メッセージ + 日時）と同じ高さ */}
         {history.isPending && <SkeletonRows rows={5} height={COMMIT_ROW_HEIGHT} secondary sx={{ mt: 1, mx: -1 }} />}
         <List disablePadding sx={{ mt: history.isPending ? 0 : 1, mx: -1 }}>
@@ -43,6 +45,7 @@ export function HistoryPage() {
                     {c.authorType === "ai" && <StatusChip label="AI" />}
                     {c.via && <StatusChip label={`${c.via} 経由`} />}
                     {c.parentIds.length > 1 && <StatusChip label="merge" />}
+                    {!c.diffAvailable && <StatusChip label="差分は見られません" />}
                   </Row>
                 }
                 secondary={
@@ -106,7 +109,13 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
       <Typography variant="subtitle1" component="h3">
         {detail.data.commit.message}
       </Typography>
-      {byTree.size === 0 && <Muted>構造の変更はありません。</Muted>}
+      {!detail.data.diffAvailable && (
+        <Alert severity="info">
+          このコミットの差分は表示できません。{STRUCTURE_SNAPSHOT_KEEP_DAYS}
+          日より前のコミットは、その時点のツリーの記録を削除しています。誰が・いつ・何をしたかの記録は残ります。
+        </Alert>
+      )}
+      {detail.data.diffAvailable && byTree.size === 0 && <Muted>構造の変更はありません。</Muted>}
       {[...byTree].map(([treeId, changes]) => (
         <div key={treeId}>
           <Typography variant="subtitle2" component="h4">

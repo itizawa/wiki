@@ -38,7 +38,7 @@ export function MembersPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h1">
+        <Typography variant="h6" component="h2">
           メンバー
         </Typography>
         <Muted>
@@ -103,7 +103,7 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <Section>
-      <Typography variant="h6" component="h2" gutterBottom>
+      <Typography variant="h6" component="h3" gutterBottom>
         メンバーの一覧
       </Typography>
       {members.isPending && <Muted>読み込み中…</Muted>}
@@ -226,7 +226,7 @@ function Invites() {
 
   return (
     <Section>
-      <Typography variant="h6" component="h2">
+      <Typography variant="h6" component="h3">
         招待リンク
       </Typography>
       <Muted sx={{ mb: 1.5 }}>
@@ -268,7 +268,7 @@ function Invites() {
         </Alert>
       )}
 
-      <Typography variant="subtitle2" component="h3" sx={{ mt: 2.5, mb: 0.5 }}>
+      <Typography variant="subtitle2" component="h4" sx={{ mt: 2.5, mb: 0.5 }}>
         発行したリンク
       </Typography>
       {invites.isPending && <Muted>読み込み中…</Muted>}

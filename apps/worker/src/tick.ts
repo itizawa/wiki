@@ -8,7 +8,12 @@ export type Env = {
 
 type RunSummary = { done: string[]; retrying: string[]; failed: { id: string; error: string; wikiName: string }[] };
 type PromoteDraftsResult = { promoted: string[]; skipped: number; failed: { pageId: string; error: string }[] };
-type BuildDecision = { trigger: true; buildId: string; contentHash: string } | { trigger: false; reason: string };
+type BuildDecision =
+  | { trigger: true; buildId: string; contentHash: string; attempts: number }
+  | { trigger: false; reason: string };
+
+/** 同じビルドの起動がこの回数続けて失敗したら、一度だけ通知する（予約の再試行の回数と同じ） */
+export const DEPLOY_HOOK_NOTIFY_ATTEMPTS = 3;
 
 export type TickResult = {
   /** 下書きを版にした結果。この段が失敗したら null */
@@ -25,6 +30,7 @@ export type TickResult = {
  * 2) 期限の来た予約を実行（API側で FOR UPDATE SKIP LOCKED）
  * 3) 最終失敗があれば通知
  * 4) 公開イベントをデバウンスし、必要ならビルド（公開サイトのデプロイフック）を起動
+ * 5) フックを呼べたら、そのビルドを起動済みにする。呼べなかったビルドは、次の回に API がもう一度返す
  */
 export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<TickResult> {
   const call = async <T>(path: string, body?: unknown): Promise<T> => {
@@ -65,10 +71,22 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch): Promise<T
   });
   let deployed = false;
   if (build.trigger) {
-    if (!env.SITE_DEPLOY_HOOK_URL) throw new Error("SITE_DEPLOY_HOOK_URL is not set");
-    const res = await fetchImpl(env.SITE_DEPLOY_HOOK_URL, { method: "POST" });
-    if (!res.ok) throw new Error(`deploy hook failed: ${res.status}`);
+    try {
+      if (!env.SITE_DEPLOY_HOOK_URL) throw new Error("SITE_DEPLOY_HOOK_URL is not set");
+      const res = await fetchImpl(env.SITE_DEPLOY_HOOK_URL, { method: "POST" });
+      if (!res.ok) throw new Error(`deploy hook failed: ${res.status}`);
+    } catch (err) {
+      // 起動済みにしないので、次の回に同じビルドがもう一度返ってくる。続けて失敗したら一度だけ知らせる
+      if (build.attempts === DEPLOY_HOOK_NOTIFY_ATTEMPTS) {
+        const message = err instanceof Error ? err.message : String(err);
+        await notify(
+          `公開サイトのビルドを起動できませんでした（${build.attempts}回失敗。5分おきに再試行を続けます）\n• ${message}`,
+        );
+      }
+      throw err;
+    }
     deployed = true;
+    await call(`/internal/builds/${build.buildId}/triggered`);
   }
   return { drafts, run, build, deployed };
 }

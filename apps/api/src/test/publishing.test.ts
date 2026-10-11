@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { requestBuild } from "../publishing/builds";
+import { markBuildTriggered, requestBuild } from "../publishing/builds";
 import { publicTreeNodes } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
 import { addLegacyTree, setup, W, wikiManifest } from "./harness";
@@ -240,12 +240,61 @@ describe("build requests", () => {
     await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     expect(await requestBuild(ctx.db, { now: new Date(now + 1000) })).toEqual({ trigger: false, reason: "debouncing" });
     const first = await requestBuild(ctx.db, { now: new Date(now + 200_000) });
-    expect(first.trigger).toBe(true);
+    if (!first.trigger) throw new Error("expected a build");
+    expect(first.attempts).toBe(1);
+    // ワーカーがデプロイフックを呼べた
+    expect(await markBuildTriggered(ctx.db, first.buildId)).toBe(true);
     expect(await requestBuild(ctx.db, { now: new Date(now + 400_000) })).toEqual({ trigger: false, reason: "no_changes" });
 
     // 内容が変わらない操作（同じ版を公開し直す）はビルドしない
     await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
     expect(await requestBuild(ctx.db, { now: new Date(now + 600_000) })).toEqual({ trigger: false, reason: "unchanged" });
+    // ビルドしなかった行を、起動に失敗したものと取り違えて起動し直さない
+    expect(await requestBuild(ctx.db, { now: new Date(now + 800_000) })).toEqual({ trigger: false, reason: "no_changes" });
+  });
+
+  it("asks for the same build again until the worker reports that the deploy hook was called", async () => {
+    ctx = await setup();
+    const now = Date.now();
+    const page = await newPage("p");
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    const first = await requestBuild(ctx.db, { now: new Date(now + 200_000) });
+    if (!first.trigger) throw new Error("expected a build");
+
+    // フックが失敗した（起動済みの知らせが来ない）あいだは、新しいイベントが無くても同じビルドを返す
+    expect(await requestBuild(ctx.db, { now: new Date(now + 500_000) })).toEqual({ ...first, attempts: 2 });
+    expect(await requestBuild(ctx.db, { now: new Date(now + 800_000) })).toEqual({ ...first, attempts: 3 });
+
+    const marked = await internal("POST", `/internal/builds/${first.buildId}/triggered`);
+    expect(marked.status).toBe(200);
+    expect(await requestBuild(ctx.db, { now: new Date(now + 1_100_000) })).toEqual({ trigger: false, reason: "no_changes" });
+    // 同じ知らせがもう一度来ても壊れない
+    expect((await internal("POST", `/internal/builds/${first.buildId}/triggered`)).status).toBe(200);
+  });
+
+  it("builds when a failed build is followed by events that leave the same content", async () => {
+    ctx = await setup();
+    const now = Date.now();
+    const page = await newPage("p");
+    const publish = () => ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await publish();
+    const failed = await requestBuild(ctx.db, { now: new Date(now + 200_000) });
+    if (!failed.trigger) throw new Error("expected a build");
+
+    // 起動に失敗したビルドと同じ内容でも、公開サイトにはまだ出ていないのでビルドする
+    await publish();
+    const next = await requestBuild(ctx.db, { now: new Date(now + 1_000_000) });
+    if (!next.trigger) throw new Error("expected a build");
+    expect(next.contentHash).toBe(failed.contentHash);
+    expect(next.buildId).not.toBe(failed.buildId);
+    expect(next.attempts).toBe(1);
+  });
+
+  it("answers 404 when the worker reports a build that does not exist", async () => {
+    ctx = await setup();
+    expect((await internal("POST", "/internal/builds/00000000-0000-4000-8000-000000000000/triggered")).status).toBe(404);
+    expect((await internal("POST", "/internal/builds/nope/triggered")).status).toBe(404);
+    expect((await ctx.app.request("/internal/builds/nope/triggered", { method: "POST" })).status).toBe(401);
   });
 
   it("is exposed to the worker with the internal token", async () => {

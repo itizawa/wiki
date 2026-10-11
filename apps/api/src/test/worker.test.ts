@@ -55,6 +55,21 @@ describe("worker entry", () => {
     expect(await me.json()).toMatchObject({ email: ADMIN, isOwner: true });
   });
 
+  it("hands the rate limit bindings to the routes that anyone can call", async () => {
+    const refuse = { limit: async () => ({ success: false }) };
+    const w = await worker({ OAUTH_REGISTER_LIMITER: refuse, OAUTH_LIMITER: refuse, MCP_LIMITER: refuse });
+    const register = await w.fetch("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://client.example/callback"] }),
+    });
+    expect(register.status).toBe(429);
+    expect((await w.fetch("/oauth/token", { method: "POST", body: new URLSearchParams({ client_id: "nope" }) })).status).toBe(429);
+    expect((await w.fetch("/mcp", { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" })).status).toBe(429);
+    // バインディングの無い経路はそのまま
+    expect((await w.fetch("/api/health")).status).toBe(200);
+  });
+
   it("keeps the query string and the body when stripping /api", async () => {
     const w = await worker();
     const created = await w.fetch("/api/admin/w/wiki/pages", {
@@ -100,6 +115,12 @@ describe("worker entry", () => {
         const o = objects.get(key);
         return o ? { body: new Response(o.value as BodyInit).body!, httpMetadata: { contentType: o.contentType } } : null;
       },
+      async list() {
+        return { objects: [...objects.keys()].map((key) => ({ key, uploaded: new Date() })), truncated: false };
+      },
+      async delete(keys: string | string[]) {
+        for (const key of [keys].flat()) objects.delete(key);
+      },
     };
     const w = await worker({ IMAGES });
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -130,6 +151,10 @@ describe("worker entry", () => {
         reads.push(key);
         return key === name ? { body: new Response(png as BodyInit).body!, httpMetadata: { contentType: "image/png" } } : null;
       },
+      async list() {
+        return { objects: [], truncated: false };
+      },
+      async delete() {},
     };
     const w = await worker({ IMAGES });
 
@@ -168,6 +193,10 @@ describe("worker entry", () => {
       async get() {
         return { body: new Response("png").body!, httpMetadata: { contentType: "image/png" } };
       },
+      async list() {
+        return { objects: [], truncated: false };
+      },
+      async delete() {},
     };
     const w = await worker({ IMAGES });
     for (let i = 0; i < 2; i++) expect(await (await w.fetch(`/images/${name}`)).text()).toBe("png");

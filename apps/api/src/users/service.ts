@@ -10,9 +10,9 @@ import {
 } from "@wiki/shared";
 import { and, asc, count, eq, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { randomToken } from "../auth/session";
+import { randomToken, type SessionClaims } from "../auth/session";
 import type { Db } from "../db/client";
-import { invites, users, wikiMembers, wikis } from "../db/schema";
+import { invites, sessions, users, wikiMembers, wikis } from "../db/schema";
 import { HttpError } from "../errors";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
 import { userActor, writeAudit, type AuditActor } from "../audit/service";
@@ -86,6 +86,45 @@ export async function ensureOwnerByEmail(db: Db, email: string): Promise<UserRow
 export async function findUser(db: Db, id: string): Promise<UserRow | null> {
   const [row] = await db.select().from(users).where(eq(users.id, id));
   return row ?? null;
+}
+
+type WikiRow = typeof wikis.$inferSelect;
+
+/** セッションの行が生きているか（その人のもので、期限が来ていない）。行が無ければ、ログアウト済み。 */
+const liveSession = (claims: SessionClaims, now: Date) =>
+  and(eq(sessions.id, claims.sessionId), eq(sessions.userId, claims.userId), gt(sessions.expiresAt, now));
+
+/** セッションの人を1本で引く。セッションの行が無い（ログアウトした）・期限切れ・ユーザーの行が無いなら null。 */
+export async function findSessionUser(db: Db, claims: SessionClaims, now = new Date()): Promise<UserRow | null> {
+  const [row] = await db
+    .select({ user: users })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(liveSession(claims, now));
+  return row?.user ?? null;
+}
+
+/**
+ * セッションの人と、key の wiki、その wiki でのロールを1本で引く（`/admin/w/:wikiKey/*` の入口）。
+ * セッションが通らなければ null。wiki は、無ければ null（アーカイブ中のものは、そのまま返す）。
+ * ロールは `roleIn` と同じで、オーナーは管理者、メンバーでなければ null。
+ */
+export async function findSessionUserInWiki(
+  db: Db,
+  claims: SessionClaims,
+  wikiKey: string,
+  now = new Date(),
+): Promise<{ user: UserRow; wiki: WikiRow | null; role: WikiRole | null } | null> {
+  const [row] = await db
+    .select({ user: users, wiki: wikis, memberRole: wikiMembers.role })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .leftJoin(wikis, eq(wikis.key, wikiKey))
+    .leftJoin(wikiMembers, and(eq(wikiMembers.wikiId, wikis.id), eq(wikiMembers.userId, users.id)))
+    .where(liveSession(claims, now));
+  if (!row) return null;
+  const role = row.wiki ? (row.user.isOwner ? "admin" : row.memberRole) : null;
+  return { user: row.user, wiki: row.wiki, role };
 }
 
 /** オーナーか、どれかの wiki のメンバーか（どちらでもなければ、管理画面に入れない）。 */

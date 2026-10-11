@@ -5,12 +5,17 @@ import { loadConfig } from "./config";
 import type { Db } from "./db/client";
 import { createPostgresDb } from "./db/postgres";
 import { r2ImageStore, type R2BucketLike } from "./images/store";
+import type { RateLimiter } from "./rate-limit";
 
 /** wrangler.toml の [vars] と secrets（どちらも文字列）、および Hyperdrive のバインディング。 */
 export type WorkerEnv = {
   HYPERDRIVE: { connectionString: string };
   /** アップロードした画像（R2）。無ければアップロードできない */
   IMAGES?: R2BucketLike;
+  /** 接続元ごとの回数の制限（wrangler.toml の [[ratelimits]]）。無ければ、その経路は制限しない */
+  OAUTH_REGISTER_LIMITER?: RateLimiter;
+  OAUTH_LIMITER?: RateLimiter;
+  MCP_LIMITER?: RateLimiter;
   [key: string]: unknown;
 };
 
@@ -75,8 +80,9 @@ export function createWorker(connect: Connect) {
       const config = loadConfig(vars);
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const { db, close } = connect(env);
+      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER };
       try {
-        const res = await createApp({ db, config, google, images: env.IMAGES ? r2ImageStore(env.IMAGES) : null, reporting: reportingFromConfig(config) }).fetch(appRequest);
+        const res = await createApp({ db, config, google, images: env.IMAGES ? r2ImageStore(env.IMAGES) : null, reporting: reportingFromConfig(config), rateLimits }).fetch(appRequest);
         // 入れるのは見つかった画像だけ（404 は入れない）。Cookie を書く応答は、ほかの人に返さないよう入れない。
         // 入れ終わるのは応答を返したあと。失敗しても応答は返す
         if (cache && cacheKey && res.status === 200 && !res.headers.has("set-cookie")) {
