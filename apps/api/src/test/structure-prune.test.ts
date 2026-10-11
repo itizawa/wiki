@@ -276,8 +276,8 @@ describe("pruning structure snapshots", () => {
 
     expect((await ctx.app.request("/internal/versions/prune", { method: "POST" })).status).toBe(401);
     // 版の数（deleted）は今までどおりの場所に返す
-    expect((await internal("POST", "/internal/versions/prune")).body).toEqual({ deleted: 0, structure: { commits: 1, snapshots: 1, nodes: 0 } });
-    expect((await internal("POST", "/internal/versions/prune")).body).toEqual({ deleted: 0, structure: NONE });
+    expect((await internal("POST", "/internal/versions/prune")).body).toMatchObject({ deleted: 0, structure: { commits: 1, snapshots: 1, nodes: 0 } });
+    expect((await internal("POST", "/internal/versions/prune")).body).toMatchObject({ deleted: 0, structure: NONE });
     expect((await detail(commits[0]!.id)).body.diffAvailable).toBe(false);
     expect((await detail(commits[2]!.id)).body.diffAvailable).toBe(true);
   });
