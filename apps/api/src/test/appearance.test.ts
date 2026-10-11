@@ -1,4 +1,4 @@
-import { DEFAULT_THEME, THEME_IMAGE_MAX_BYTES } from "@wiki/shared";
+import { DEFAULT_THEME, THEME_IMAGE_MAX_BYTES, auditSentenceText, type AuditLogEntry } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { setup, W, wikiManifest } from "./harness";
 
@@ -15,6 +15,13 @@ const green = { accentLight: "#00716b", accentDark: "#4fd1c5", logo: null, favic
 async function events(kind = "wiki_theme") {
   const res = await ctx.client.query<{ wiki_id: string }>(`select wiki_id from publish_events where kind = $1`, [kind]);
   return res.rows;
+}
+
+/** その wiki の監査ログのうち、wiki の名前・画像の変更。 */
+async function wikiUpdates(): Promise<AuditLogEntry[]> {
+  const res = await ctx.call("GET", `${W}/audit-logs`);
+  expect(res.status).toBe(200);
+  return (res.body.entries as AuditLogEntry[]).filter((e) => e.action === "wiki_update");
 }
 
 describe("appearance", () => {
@@ -64,6 +71,33 @@ describe("appearance", () => {
     expect((await wikiManifest(ctx.db)).theme).toEqual(DEFAULT_THEME);
 
     expect((await admin.call("PUT", `${W}/appearance`, { name: "管理者", theme: green })).status).toBe(200);
+  });
+
+  it("records a name change in the wiki's audit log, with the names before and after", async () => {
+    ctx = await setup();
+    const before = (await ctx.call("GET", `${W}/appearance`)).body.name as string;
+    // オーナーでない wiki の管理者が変えても残る
+    const admin = await ctx.addUser("wiki-admin@example.com", { wiki: "admin" });
+    expect((await admin.call("PUT", `${W}/appearance`, { name: "わたしの wiki", theme: green })).status).toBe(200);
+
+    const renames = await wikiUpdates();
+    expect(renames).toHaveLength(1);
+    expect(renames[0]!.detail).toEqual({ name: { from: before, to: "わたしの wiki" } });
+    expect(renames[0]!.actor).toMatchObject({ type: "user", userId: admin.user.id });
+    expect(renames[0]!.target).toMatchObject({ type: "wiki", label: "わたしの wiki" });
+    expect(auditSentenceText(renames[0]!)).toBe(`wiki の名前を変更しました（${before} → わたしの wiki）`);
+
+    // 同じ内容の保存では増えない
+    await admin.call("PUT", `${W}/appearance`, { name: "わたしの wiki", theme: green });
+    expect(await wikiUpdates()).toHaveLength(1);
+  });
+
+  it("leaves a theme-only change out of the audit log", async () => {
+    ctx = await setup();
+    const name = (await ctx.call("GET", `${W}/appearance`)).body.name as string;
+    expect((await ctx.call("PUT", `${W}/appearance`, { name, theme: green })).status).toBe(200);
+    expect(await events()).toHaveLength(1);
+    expect(await wikiUpdates()).toHaveLength(0);
   });
 
   it("keeps one wiki's theme out of another wiki", async () => {

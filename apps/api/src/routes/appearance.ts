@@ -1,5 +1,6 @@
 import { THEME_IMAGE_LIMIT_LABEL, THEME_IMAGE_MAX_BYTES, THEME_IMAGE_TYPES, newImageName, sniffImageType, updateAppearanceInput } from "@wiki/shared";
 import { Hono } from "hono";
+import { auditActor } from "../audit/service";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { parseJson } from "../validation";
@@ -15,7 +16,7 @@ export const appearanceRoutes = new Hono<AppEnv>()
   .get("/", (c) => c.json(toAppearance(c.get("wiki"))))
   .put("/", async (c) => {
     const input = await parseJson(c, updateAppearanceInput);
-    return c.json(await updateAppearance(c.get("deps").db, c.get("wiki").id, input));
+    return c.json(await updateAppearance(c.get("deps").db, c.get("wiki").id, input, auditActor(c)));
   })
   /**
    * ロゴ・ファビコンのアップロード。本文の画像より狭く、PNG・WebP の 512KB まで。
