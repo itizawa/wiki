@@ -1,6 +1,7 @@
+import { positionBetween } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { markBuildTriggered, requestBuild } from "../publishing/builds";
-import { publicTreeNodes } from "../publishing/manifest";
+import { buildManifest, publicContentHash, publicTreeNodes } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
 import { addLegacyTree, setup, W, wikiManifest } from "./harness";
 
@@ -288,6 +289,98 @@ describe("build requests", () => {
     expect(next.contentHash).toBe(failed.contentHash);
     expect(next.buildId).not.toBe(failed.buildId);
     expect(next.attempts).toBe(1);
+  });
+
+  it("skips the build when a page is published and unpublished again before the build", async () => {
+    ctx = await setup();
+    let now = Date.now();
+    const build = async () => {
+      now += 1_000_000;
+      const decision = await requestBuild(ctx.db, { now: new Date(now) });
+      if (decision.trigger) await markBuildTriggered(ctx.db, decision.buildId);
+      return decision;
+    };
+    const kept = await newPage("残る記事", "本文");
+    await ctx.call("POST", `${W}/pages/${kept.id}/publish`, { versionId: kept.headVersionId, visibility: "public" });
+    expect((await build()).trigger).toBe(true);
+
+    // 新しいページを作って公開し、すぐ非公開に戻す。構造のコミットは進むが、公開サイトに出るものは元のまま
+    const page = await newPage("取り消す記事", "本文");
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${page.id}/unpublish`);
+    expect(await build()).toEqual({ trigger: false, reason: "unchanged" });
+
+    // 公開中のページを限定公開にして、また公開に戻したときも同じ
+    await ctx.call("POST", `${W}/pages/${kept.id}/publish`, { versionId: kept.headVersionId, visibility: "unlisted" });
+    await ctx.call("POST", `${W}/pages/${kept.id}/publish`, { versionId: kept.headVersionId, visibility: "public" });
+    expect(await build()).toEqual({ trigger: false, reason: "unchanged" });
+
+    // 本文を変えた版を公開したら、ビルドする（本文は読まないが、公開版の ID が変わる）
+    const saved = await ctx.call("PUT", `${W}/pages/${kept.id}`, { baseVersionId: kept.headVersionId, title: "残る記事", bodyMd: "本文を直した" });
+    await ctx.call("POST", `${W}/pages/${kept.id}/publish`, { versionId: saved.body.headVersionId, visibility: "public" });
+    expect((await build()).trigger).toBe(true);
+  });
+
+  it("stores the same contentHash as /export/public, per wiki and overall, without reading bodies", async () => {
+    ctx = await setup();
+    const page = await newPage("記事", "本文");
+    const unlisted = await newPage("限定", "ひみつ");
+    await ctx.call("POST", `${W}/pages/${page.id}/publish`, { versionId: page.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/pages/${unlisted.id}/publish`, { versionId: unlisted.headVersionId, visibility: "unlisted" });
+    const decision = await requestBuild(ctx.db, { now: new Date(Date.now() + 1_000_000) });
+    if (!decision.trigger) throw new Error("expected a build");
+
+    const manifest = (await internal("GET", "/export/public")).body;
+    expect(manifest.contentHash).toBe(decision.contentHash);
+    expect(await publicContentHash(ctx.db)).toBe(decision.contentHash);
+    expect(manifest.wikis).toHaveLength(1);
+    expect(manifest.wikis[0].contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(manifest.wikis[0].contentHash).not.toBe(manifest.contentHash);
+    expect(manifest.wikis[0]).not.toHaveProperty("headCommitId");
+    // 本文つきのマニフェストは今までどおり
+    expect(manifest.wikis[0].pages[0].bodyMd).toBe("本文");
+    expect(manifest.wikis[0].unlisted[0].bodyMd).toBe("ひみつ");
+  });
+
+  it("changes the contentHash when the public tree changes, and not for pages that are not public", async () => {
+    ctx = await setup();
+    const hash = async () => (await buildManifest(ctx.db)).wikis[0]!.contentHash;
+    const a = await newPage("a");
+    const b = await newPage("b");
+    for (const p of [a, b]) await ctx.call("POST", `${W}/pages/${p.id}/publish`, { versionId: p.headVersionId, visibility: "public" });
+    type Node = { nodeId: string; parentNodeId: string | null; position: string };
+    /** いまのツリーを見て操作を決め、コミットする */
+    const commit = async (ops: (treeId: string, positionOf: (id: string) => string) => unknown[]) => {
+      const s = (await ctx.call("GET", `${W}/structure`)).body;
+      const positionOf = (id: string) => (s.trees[0].nodes as Node[]).find((n) => n.nodeId === id)!.position;
+      const res = await ctx.call("POST", `${W}/structure/commits`, { expectedHeadCommitId: s.headCommitId, ops: ops(s.trees[0].id, positionOf) });
+      expect(res.status).toBe(201);
+    };
+    const before = await hash();
+
+    // 非公開のページを作る・公開ページの間へ動かす・非公開のページの下へ入れる：公開サイトのツリーは変わらない
+    const draft = await newPage("下書き");
+    const draftChild = await newPage("下書きの子");
+    expect(await hash()).toBe(before);
+    await commit((treeId, positionOf) => [
+      { type: "move", treeId, nodeId: draft.id, newParentNodeId: null, position: positionBetween(positionOf(a.id), positionOf(b.id)) },
+      { type: "move", treeId, nodeId: draftChild.id, newParentNodeId: draft.id },
+    ]);
+    expect(await hash()).toBe(before);
+    // 非公開のページの本文とアイコンを変えても同じ
+    await ctx.call("PUT", `${W}/pages/${draft.id}`, { baseVersionId: draft.headVersionId, title: "下書き", bodyMd: "書きかけ" });
+    expect((await ctx.call("PUT", `${W}/pages/${draft.id}/icon`, { icon: "🤫" })).status).toBe(200);
+    expect(await hash()).toBe(before);
+    // 本文を読まない側の計算も、同じ値のまま
+    expect(await publicContentHash(ctx.db)).toBe((await buildManifest(ctx.db)).contentHash);
+
+    // 公開ページの並びを入れ替えると変わる
+    await commit((treeId, positionOf) => [{ type: "move", treeId, nodeId: a.id, newParentNodeId: null, position: positionBetween(positionOf(b.id), null) }]);
+    const reordered = await hash();
+    expect(reordered).not.toBe(before);
+    // 公開ページの親子を変えると変わる
+    await commit((treeId) => [{ type: "move", treeId, nodeId: b.id, newParentNodeId: a.id }]);
+    expect(await hash()).not.toBe(reordered);
   });
 
   it("answers 404 when the worker reports a build that does not exist", async () => {

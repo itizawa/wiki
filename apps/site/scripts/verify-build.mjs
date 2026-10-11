@@ -52,6 +52,38 @@ check(
 );
 
 const unlisted = await read(`wiki/u/${key}/index.html`);
+
+// ---- ツリーナビ：記事の HTML には最初の表示の分だけを入れ、ツリー全体は wiki ごとの nav.json に出す
+/** ページに埋め込んだツリーナビのアイランドの props（`items` がツリー、`src` がツリー全体の URL） */
+const treeNavProps = (html) =>
+  [...html.matchAll(/<astro-island[^>]*\sprops="([^"]*)"/g)].map((m) => m[1].replaceAll("&quot;", '"')).filter((p) => p.includes('"items"'));
+const navIds = (items) => items.flatMap((i) => [i.nodeId, ...navIds(i.children)]);
+const navText = await read("wiki/nav.json");
+const navData = JSON.parse(navText);
+check(
+  Object.keys(navData.trees).sort().join() === "by-theme,main" && navIds(navData.trees.main).join() === "aaaaaaaaa1,aaaaaaaaa2" && navIds(navData.trees["by-theme"]).join() === "aaaaaaaaa2",
+  "nav.json holds every tree of the wiki, with the public pages only",
+);
+check(
+  navData.trees.main[0].title === "はじめに" && navData.trees.main[0].icon === "👋" && navData.trees.main[0].children[0].href === "/t/main/aaaaaaaaa2",
+  "nav.json has the title, icon and link of each node",
+);
+const navLeaks = [key, "限定公開のメモ", "ひみつのあいことば", "zzzzzzzzz9", "ggggggggg1"].filter((w) => navText.includes(w));
+check(navLeaks.length === 0, `nav.json has nothing of unlisted, private or deleted pages${navLeaks.length ? ` (${navLeaks.join(", ")})` : ""}`);
+check(navIds(JSON.parse(await read("notes/nav.json")).trees.main).join() === "bbbbbbbbb1", "each wiki has its own nav.json (the other wiki's pages are checked below, with the rest of the output)");
+const articleNav = treeNavProps(noIconPage);
+check(
+  articleNav.length === 1 && articleNav[0].includes('"src":[0,"/nav.json"]') && articleNav[0].includes('"treeKey":[0,"main"]'),
+  "an article page's tree nav loads the whole tree from /nav.json",
+);
+const tNav = treeNavProps(tPage);
+check(tNav.length === 1 && tNav[0].includes('"src":[0,"/nav.json"]') && tNav[0].includes('"treeKey":[0,"by-theme"]'), "a page viewed through a tree loads that tree from /nav.json");
+check(
+  /<a href="\/t\/main\/aaaaaaaaa2" aria-current="page">設計メモ<\/a>/.test(noIconPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(noIconPage),
+  "an article's HTML has the page's place in the tree (its parent and itself) before any script runs",
+);
+check(!unlisted.includes("nav.json") && !unlisted.includes('"items"'), "an unlisted page has no tree nav and does not load nav.json");
+
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 

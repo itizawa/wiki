@@ -51,7 +51,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - 値は公開サイトの HTML にそのまま出るので、決まった形のものだけを通す（測定 ID は `G-` + 英大文字と数字4〜20文字、確認用の値は英数字と `-` `_` で100文字まで。`packages/shared/src/wiki.ts`）。`UA-`・`GTM-`・`AW-` は使えない。API は形の合わない値を 400 にし、公開サイトのビルドも形の合わない値は出さない
   - Cookie の同意バナーは無い。GA は閲覧者のブラウザに Cookie を置く
   - つないだあとの数字は、管理画面の「アクセス解析」で見られる（下の「アクセス解析」）。同じ「設定」に、GA の**プロパティ ID**（数字だけ。測定 ID とは別の番号）を入れる。プロパティ ID は管理画面だけが使い、公開サイトには出さず、変えてもビルドし直さない
-- **公開サイト**は Worker もビルドも1つ。1回のビルドで全 wiki のぶんを wiki ごとのディレクトリに出力し、Worker が `Host` を見てその wiki のディレクトリから返す（`apps/site/README.md`）。どれか1つの wiki の内容が変わると全体をビルドし直す（`contentHash` は全 wiki の内容から作る）
+- **公開サイト**は Worker もビルドも1つ。1回のビルドで全 wiki のぶんを wiki ごとのディレクトリに出力し、Worker が `Host` を見てその wiki のディレクトリから返す（`apps/site/README.md`）。どれか1つの wiki の内容が変わると全体をビルドし直す。公開用のデータ（`/export/public`）には、全体の `contentHash` のほかに wiki ごとの `contentHash` も入れてある（変わった wiki だけを作り直すための準備。いまのビルドは使っていない）
 - データ：`wikis`（`id` / `key` / `name` / `archived_at` / `created_at` / `created_by`（作ったオーナーのメールアドレス））。`pages` `trees` `scheduled_actions` `publish_events` `structure_commits` `structure_branches` が `wiki_id` を持つ
 
 ## ユーザーとロール
@@ -155,6 +155,10 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
     - 管理画面では、親の設定のために選べない公開範囲を選べない状態で見せ、理由を添える。サイドバーのツリーでは、限定公開（リンクの印）・非公開（鍵の印）のページに印を付ける
 - 予約公開：`scheduled_actions`（公開・非公開化）。予約時点の版を固定し、予約後に編集があれば警告。同じ `batch_id` は1トランザクションで実行、失敗は3回まで再試行
 - 公開パイプライン：操作ごとに `publish_events` を記録 → ワーカーがデバウンスしてビルド起動（`contentHash` が同じなら省略）→ サイトが `/export/public` を取得して静的出力 → Pagefind
+  - `contentHash` は、公開サイトの出力に出るものだけから作る（`apps/api/src/publishing/manifest.ts` の `wikiContentHash`）。wiki ごとに、key・名前・テーマ・トップの自由記述・Google Analytics とサーチコンソールの値、公開ページの id・公開版の ID・アイコン・初回の公開日時・収益化の設定、限定公開のページの key・公開版の ID・アイコン、公開ツリーの親子と並び、公開後に削除した記事の id。全体の `contentHash` は、wiki の key と wiki ごとの `contentHash` から作る（wiki の作成・アーカイブ・復元でも変わる）
+  - 版の題名・本文・作成日時は作ったあと変わらないので、本文の代わりに公開版の ID を入れる。ビルドするか決めるとき（`requestBuild`）は本文を読まない。`/export/public` も同じ計算なので、同じ時点の2つの `contentHash` は必ず同じになる
+  - 構造のコミット ID や非公開のページは入れない。非公開のページの作成・並べ替えや、「公開してすぐ非公開に戻した」のように公開サイトに出るものが元に戻った操作では、ビルドしない
+  - **公開サイトが使う項目をマニフェストに足したら、`wikiContentHash` にも入るようにする**（wiki の設定は、マニフェストに足せばそのまま入る。ページの項目は、題名・本文・改訂日だけを除いて入る）。入らないと、変えてもビルドが省かれる
 - 公開サイト（`apps/site`）：記事・ツリー経由の閲覧（`/t/`、canonicalは `/p/`）・新着一覧・検索（Pagefind、遅延ロード）・RSS・サイトマップ
   - 内部リンクは公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
   - slug つきの旧URL（`/p/{id}-{slug}`）は `/p/{id}` へ 301（`apps/site/worker`）、削除記事は 410

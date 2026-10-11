@@ -1,6 +1,8 @@
 import { wikiOrigin, type ManifestPage, type ManifestTree, type PublicManifest, type WikiManifest } from "@wiki/shared";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { initialNavItems, type NavItem } from "./nav";
+import { ancestors, navItems } from "./tree";
 
 let cached: Promise<PublicManifest> | undefined;
 
@@ -38,7 +40,16 @@ export async function allWikis(): Promise<WikiManifest[]> {
   return (await loadManifest()).wikis;
 }
 
-export async function siteData(wikiKey: string): Promise<SiteData> {
+const siteDataByWiki = new Map<string, Promise<SiteData>>();
+
+/** ページごとに呼ばれるので、wiki ごとに1回だけ作って使い回す（ページ数ぶん作ると、ビルドがページ数の2乗で遅くなる）。 */
+export function siteData(wikiKey: string): Promise<SiteData> {
+  let data = siteDataByWiki.get(wikiKey);
+  if (!data) siteDataByWiki.set(wikiKey, (data = loadSiteData(wikiKey)));
+  return data;
+}
+
+async function loadSiteData(wikiKey: string): Promise<SiteData> {
   const wiki = (await allWikis()).find((w) => w.key === wikiKey);
   if (!wiki) throw new Error(`wiki ${wikiKey} is not in the manifest`);
   return {
@@ -48,4 +59,26 @@ export async function siteData(wikiKey: string): Promise<SiteData> {
     publicPaths: new Map(wiki.pages.map((p) => [p.id, p.path])),
     primaryTree: wiki.trees.find((t) => t.isPrimary) ?? wiki.trees[0],
   };
+}
+
+const fullNavByTree = new WeakMap<ManifestTree, NavItem[]>();
+
+/** ツリー全体のナビ。`/nav.json` と、一覧のページ（トップ、/t/{key}/）に出す。公開ページだけが入る（マニフェストのツリーがそうなっている）。 */
+export async function fullNav(wikiKey: string, tree: ManifestTree): Promise<NavItem[]> {
+  let items = fullNavByTree.get(tree);
+  if (!items) {
+    const { pagesById } = await siteData(wikiKey);
+    items = navItems(tree, (id) => pagesById.get(id)?.title, (id) => pagesById.get(id)?.icon);
+    fullNavByTree.set(tree, items);
+  }
+  return items;
+}
+
+/**
+ * 記事のページの HTML に入れるナビ。最初の表示に出る分だけ（最上位とその子、現在地までの祖先とその兄弟、現在地の子）。
+ * 残りは、ツリーナビが `/nav.json` から読む。current は、そのツリーに無いページなら渡さない。
+ */
+export async function pageNav(wikiKey: string, tree: ManifestTree, current?: string): Promise<NavItem[]> {
+  const openIds = new Set(current ? ancestors(tree, current).map((n) => n.nodeId) : []);
+  return initialNavItems(await fullNav(wikiKey, tree), openIds);
 }
