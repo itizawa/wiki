@@ -5,6 +5,7 @@ import { z } from "zod";
 import { oauthGrants } from "../db/schema";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
+import { RATE_LIMIT_PERIOD_SEC, withinRateLimit } from "../rate-limit";
 import { parseJson } from "../validation";
 import {
   approveAuthorization,
@@ -30,6 +31,12 @@ const DEFAULT_SCOPES: OAuthScope[] = ["wiki.read"];
 
 function oauthErrorResponse(c: Context, err: OAuthError) {
   return c.json({ error: err.error, error_description: err.message }, err.status, { "cache-control": "no-store" });
+}
+
+/** 接続元ごとの回数の制限を超えたときの応答。OAuth のエラーの形で、いつやり直せるかを付ける */
+function tooManyRequests(c: Context) {
+  c.header("retry-after", String(RATE_LIMIT_PERIOD_SEC));
+  return oauthErrorResponse(c, new OAuthError("temporarily_unavailable", "too many requests; try again later", 429));
 }
 
 /** RFC 8414（認可サーバー）と RFC 9728（保護されたリソース＝MCP サーバー）のメタデータ */
@@ -77,6 +84,7 @@ const registerInput = z.object({
 export const oauthRoutes = new Hono<AppEnv>()
   /** 動的クライアント登録（RFC 7591）。秘密鍵を持たない公開クライアントだけ。登録しただけでは何もできない */
   .post("/register", async (c) => {
+    if (!(await withinRateLimit(c, "oauthRegister"))) return tooManyRequests(c);
     const parsed = registerInput.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return oauthErrorResponse(c, new OAuthError("invalid_client_metadata", "invalid client metadata"));
@@ -113,6 +121,8 @@ export const oauthRoutes = new Hono<AppEnv>()
    * client_id と redirect_uri が正しくないときは、その redirect_uri へは戻さない（RFC 6749 4.1.2.1）。
    */
   .get("/authorize", async (c) => {
+    // 回数の制限は client_id を DB で確かめる前に見るので、超えたときも redirect_uri へは戻さない
+    if (!(await withinRateLimit(c, "oauth", "authorize"))) return tooManyRequests(c);
     const { db, config } = c.get("deps");
     const q = (k: string) => c.req.query(k);
     const client = await findClient(db, q("client_id") ?? "");
@@ -146,6 +156,7 @@ export const oauthRoutes = new Hono<AppEnv>()
     return c.redirect(`${config.adminOrigin}/consent?${new URLSearchParams({ request })}`);
   })
   .post("/token", async (c) => {
+    if (!(await withinRateLimit(c, "oauth", "token"))) return tooManyRequests(c);
     const { db, config } = c.get("deps");
     try {
       const body = await c.req.parseBody();
@@ -175,6 +186,7 @@ export const oauthRoutes = new Hono<AppEnv>()
   })
   /** RFC 7009。知らないトークンでも 200 を返す */
   .post("/revoke", async (c) => {
+    if (!(await withinRateLimit(c, "oauth", "revoke"))) return tooManyRequests(c);
     const body = await c.req.parseBody();
     if (typeof body.token === "string" && body.token) {
       await revokeToken(c.get("deps").db, body.token, typeof body.client_id === "string" ? body.client_id : undefined);

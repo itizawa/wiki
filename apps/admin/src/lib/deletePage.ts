@@ -4,7 +4,7 @@ import { childrenByParent, type TreeNode } from "@wiki/shared";
 import { useRef } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { api } from "./api";
-import { screenLink } from "./wiki";
+import { screenLink, useRefreshWikis } from "./wiki";
 
 /** ゴミ箱に入れたページ。編集画面が、消したあとの移動で「下書きを保存できていません」と確かめないための目印。 */
 const removed = new Set<string>();
@@ -37,6 +37,7 @@ export type PageToDelete = { id: string; title: string; publishedVersionId: stri
  */
 export function useDeletePage(options: { onLeave?: () => void; onError?: (err: Error) => void } = {}) {
   const qc = useQueryClient();
+  const refreshWikis = useRefreshWikis();
   const navigate = useNavigate();
   const { pageId: openPageId } = useParams({ strict: false });
   // 実行が終わった時点で開いているページを見る
@@ -47,6 +48,8 @@ export function useDeletePage(options: { onLeave?: () => void; onError?: (err: E
     mutationFn: ({ id }: { id: string; pageIds: string[] }) => api.deletePage(id),
     onSuccess: async (_result, { pageIds }) => {
       for (const id of pageIds) removed.add(id);
+      // 公開中のページを入れると、wiki の一覧に出す「公開中のページ」の件数が減る
+      void refreshWikis();
       const open = latest.current.openPageId;
       if (open && pageIds.includes(open)) {
         await qc.invalidateQueries();
@@ -67,7 +70,8 @@ export function useDeletePage(options: { onLeave?: () => void; onError?: (err: E
 
   const confirmAndDelete = async (page: PageToDelete) => {
     // 配下のページもいっしょにゴミ箱に入るので、何ページあるかを最新のツリーから数える
-    const structure = await qc.fetchQuery({ queryKey: ["structure"], queryFn: api.structure }).catch(() => null);
+    // 取ったばかりのツリーがあっても、取り直す（staleTime: 0）
+    const structure = await qc.fetchQuery({ queryKey: ["structure"], queryFn: api.structure, staleTime: 0 }).catch(() => null);
     const descendants = descendantPageIds(structure?.trees[0]?.nodes ?? [], page.id);
     const current = structure?.pages[page.id] ?? page;
     const published = (current.publishedVersionId ? 1 : 0) + descendants.filter((id) => structure?.pages[id]?.publishedVersionId).length;
