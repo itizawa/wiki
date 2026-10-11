@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Palette, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -125,7 +125,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { isOwner, role } = useWiki();
+  const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -233,31 +233,6 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
         </NavItem>
-        {/* wiki の管理・オーナーの管理・すべての wiki の監査ログは /w/ の外の画面なので、NavItem ではなくリンクを直接置く。オーナーにだけ出す */}
-        {isOwner && (
-          <RouterLink to="/wikis" onClick={props.onNavigate} underline="none" sx={rowSx}>
-            <Settings size={18} />
-            <Box component="span" sx={ellipsis}>
-              wiki の管理
-            </Box>
-          </RouterLink>
-        )}
-        {isOwner && (
-          <RouterLink to="/owners" onClick={props.onNavigate} underline="none" sx={rowSx}>
-            <ShieldUser size={18} />
-            <Box component="span" sx={ellipsis}>
-              オーナーの管理
-            </Box>
-          </RouterLink>
-        )}
-        {isOwner && (
-          <RouterLink to="/audit" onClick={props.onNavigate} underline="none" sx={rowSx}>
-            <ClipboardList size={18} />
-            <Box component="span" sx={ellipsis}>
-              監査ログ（すべての wiki）
-            </Box>
-          </RouterLink>
-        )}
 
         {structure.data && <StarredPages pages={structure.data.pages} openMenuKey={openMenuKey} onOpenMenu={openMenu} onNavigate={props.onNavigate} />}
 
@@ -418,10 +393,10 @@ function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: ()
 
 /**
  * wiki の切り替え。いまどの wiki にいるかを、サイドバーの上に常に出す（表示名と、公開サイトのサブドメインになる key）。
- * 押すと、選べる wiki の一覧を出す。
+ * 押すと、選べる wiki の一覧と、オーナーには wiki をまたぐ「全体の管理」（wiki・オーナー・すべての監査ログ）への入口を出す。
  */
 function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
-  const { wiki, wikis } = useWiki();
+  const { wiki, wikis, isOwner } = useWiki();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const close = () => {
     setAnchor(null);
@@ -489,6 +464,16 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             {w.key === wiki.key && <Box component={Check} size={18} sx={{ flexShrink: 0 }} />}
           </MenuItemLink>
         ))}
+        {isOwner && <Divider />}
+        {isOwner && (
+          <MenuItemLink to="/wikis" onClick={close} sx={{ gap: 1.5 }}>
+            {/* アイコンの列の幅は、wiki の行のアイコン（36px）に揃える */}
+            <Box sx={{ width: 36, display: "flex", justifyContent: "center", flexShrink: 0, color: "text.secondary" }}>
+              <Settings size={18} />
+            </Box>
+            <ListItemText>全体の管理</ListItemText>
+          </MenuItemLink>
+        )}
       </Menu>
     </>
   );
