@@ -129,8 +129,8 @@ const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "membe
 const auditRoute = createRoute({ getParentRoute: () => wikiRoute, path: "audit", component: padded(() => <AuditLogPage scope="wiki" />) });
 // 公開サイトの外観（管理者だけ）
 const appearanceRoute = createRoute({ getParentRoute: () => wikiRoute, path: "appearance", component: padded(AppearancePage) });
-// 公開サイトのトップに出す自由記述（管理者だけ）
-const siteHomeRoute = createRoute({ getParentRoute: () => wikiRoute, path: "home", component: padded(HomeSettingsPage) });
+// 公開サイトのトップに出す自由記述（管理者だけ）。ページと同じエディタで書くので、編集画面と同じく余白を付けない
+const siteHomeRoute = createRoute({ getParentRoute: () => wikiRoute, path: "home", component: HomeSettingsPage });
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 // wiki ごとの設定（公開サイトの連携）。読むのはだれでも、変えるのはオーナーだけ
 const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(SettingsPage) });
