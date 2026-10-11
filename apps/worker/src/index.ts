@@ -4,7 +4,7 @@ import { tick, type Env } from "./tick";
 /**
  * どの cron で起きたかで分ける。1日1回の方は版の間引きだけ、それ以外（5分おき）は今までどおりの1回分。
  * 2つの時刻が重なるとき（18:00 UTC）は、それぞれ別に呼ばれる。
- * `scheduledAt` は、この回が予定されていた時刻。5分おきの方が、1時間に1回の確認の回かを見分けるのに使う。
+ * `scheduledAt` は、この回が予定されていた時刻。5分おきの方が1時間に1回の確認の回かと、1日1回の方が画像の掃除をする曜日かを見分けるのに使う。
  */
 export async function handleScheduled(
   cron: string,
@@ -13,7 +13,8 @@ export async function handleScheduled(
   scheduledAt: Date = new Date(),
 ): Promise<void> {
   if (cron === PRUNE_CRON) {
-    await prune(env, fetchImpl);
+    // 画像の掃除をする曜日は、起きた時刻ではなく予定の時刻で決める
+    await prune(env, fetchImpl, scheduledAt);
     return;
   }
   const r = await tick(env, fetchImpl, scheduledAt);

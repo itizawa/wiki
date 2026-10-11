@@ -15,12 +15,13 @@ import type {
   PageTemplate,
   PageSummary,
   PageVersion,
+  PageVersionList,
   PublishVisibility,
   SearchResult,
   ScheduledAction,
   OAuthConsentRequest,
   OAuthGrantSummary,
-  StructureChange,
+  StructureCommitDiff,
   StructureOpInput,
   TrashedPage,
   TreeMeta,
@@ -99,7 +100,7 @@ async function upload(path: string, file: Blob): Promise<{ url: string }> {
 }
 
 /** via：外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
-export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdBy" | "keep" | "createdAt"> & { via: string | null };
+export type { PageVersionList, VersionListItem } from "@wiki/shared";
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
@@ -130,6 +131,8 @@ export type CommitListItem = {
   via?: string | null;
   /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
   createdBy?: { id: string; name: string } | null;
+  /** 差分を出せるか。古いコミットは構造のスナップショットを消しているので false */
+  diffAvailable: boolean;
 };
 
 /** 監査ログの絞り込み。from / to は JST の日付（YYYY-MM-DD）。wiki はオーナーの一覧だけ（"global" は全体にかかわるもの） */
@@ -205,7 +208,12 @@ export const api = {
     request<{ id: string; restoredPages: number; parentPageId: string | null; parentMissing: boolean }>("POST", w(`/pages/${id}/restore`)),
   /** ゴミ箱から、配下ごと完全に削除する（元に戻せない） */
   purgePage: (id: string) => request<{ ok: true; purgedPages: number }>("DELETE", w(`/pages/${id}/trash`)),
-  listVersions: (id: string) => request<{ versions: VersionListItem[] }>("GET", w(`/pages/${id}/versions`)),
+  /** 版履歴を、新しい順に続きから取る。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
+  listVersions: (id: string, input: { cursor?: string | null; limit: number }) => {
+    const params = new URLSearchParams({ limit: String(input.limit) });
+    if (input.cursor) params.set("cursor", input.cursor);
+    return request<PageVersionList>("GET", w(`/pages/${id}/versions?${params}`));
+  },
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
   /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
@@ -282,7 +290,7 @@ export const api = {
     request<{ commitId: string }>("POST", w("/structure/commits"), input),
   history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
   commitDetail: (id: string) =>
-    request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
+    request<{ commit: CommitListItem } & StructureCommitDiff>("GET", w(`/structure/commits/${id}`)),
 };
 
 const VISIBILITY_LABEL = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;

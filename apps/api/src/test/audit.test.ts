@@ -2,7 +2,7 @@ import { auditSentenceText, type AuditLogEntry } from "@wiki/shared";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE } from "../auth/session";
-import { auditLogs, scheduledActions, users } from "../db/schema";
+import { auditLogs, scheduledActions, users, wikiMembers } from "../db/schema";
 import { runDueActions } from "../publishing/scheduler";
 import { setup, W } from "./harness";
 
@@ -296,5 +296,28 @@ describe("audit log: guarantees", () => {
     const actors = (await ctx.call("GET", `${W}/audit-logs/actors`)).body.actors;
     expect(actors.map((a: any) => a.label)).toEqual(["sakura", "オーナー"]);
     expect((await ctx.call("GET", `${W}/audit-logs?category=nope`)).status).toBe(400);
+  });
+
+  it("offers the wiki's members and the owners as people to filter by, without reading the logs", async () => {
+    ctx = await setup();
+    await ctx.call("POST", "/admin/wikis", { key: "notes", name: "Notes" });
+    // まだ何も操作していないメンバーも、候補に出る。ほかの wiki のメンバーは出ない
+    const editor = await ctx.addUser("kaede@example.com", { wiki: "editor" });
+    await ctx.addUser("momiji@example.com", { notes: "admin" });
+    const actorsOf = async (path: string) => (await ctx.call("GET", path)).body.actors as { userId: string; label: string; email: string }[];
+    const labels = async (path: string) => (await actorsOf(path)).map((a) => a.label);
+    expect(await labels(`${W}/audit-logs/actors`)).toEqual(["kaede", "オーナー"]);
+    expect(await labels("/admin/w/notes/audit-logs/actors")).toEqual(["momiji", "オーナー"]);
+    expect(await labels("/admin/audit-logs/actors")).toEqual(["kaede", "momiji", "オーナー"]);
+    expect((await actorsOf(`${W}/audit-logs/actors`))[0]).toEqual({ userId: editor.user.id, label: "kaede", email: "kaede@example.com" });
+
+    // 名前は、ログに残った当時のものではなく、いまのもの。名前が無ければメールアドレス
+    await ctx.db.update(users).set({ name: null }).where(eq(users.id, editor.user.id));
+    expect(await labels(`${W}/audit-logs/actors`)).toEqual(["kaede@example.com", "オーナー"]);
+
+    // wiki から外した人は、その wiki の候補から外れる（全体の一覧の候補には残る）
+    await ctx.db.delete(wikiMembers).where(eq(wikiMembers.userId, editor.user.id));
+    expect(await labels(`${W}/audit-logs/actors`)).toEqual(["オーナー"]);
+    expect(await labels("/admin/audit-logs/actors")).toEqual(["kaede@example.com", "momiji", "オーナー"]);
   });
 });

@@ -4,7 +4,7 @@ import type { AuditScheduledBy } from "@wiki/shared";
 import { scheduledActions, users, wikis } from "../db/schema";
 import { SYSTEM_ACTOR, writeAudit } from "../audit/service";
 import { scheduleRef, scheduleTarget } from "../audit/schedule";
-import { depthOf, loadTreeIndex } from "./hierarchy";
+import { depthOf, loadTreeIndex, type TreeIndex } from "./hierarchy";
 import { publishPage, unpublishPage } from "./service";
 
 export const MAX_ATTEMPTS = 3;
@@ -35,8 +35,16 @@ export async function runDueActions(db: Db, now: Date = new Date(), limit = 50):
     if (claimed.length === 0) break;
     try {
       await db.transaction(async (tx) => {
-        for (const action of await orderForHierarchy(tx, claimed)) {
-          await execute(tx, action);
+        // 同じ wiki のツリーは、このトランザクションの中で1回だけ読む（公開・非公開化はツリーを変えない）。
+        // 次のまとまりは別のトランザクションなので、そこで読み直す（あいだにツリーが変わっていてもよいように）
+        const trees = new Map<string, Promise<TreeIndex>>();
+        const treeOf = (wikiId: string) => {
+          let index = trees.get(wikiId);
+          if (!index) trees.set(wikiId, (index = loadTreeIndex(tx, wikiId)));
+          return index;
+        };
+        for (const action of await orderForHierarchy(claimed, treeOf)) {
+          await execute(tx, action, treeOf);
           await writeAudit(tx, {
             wikiId: action.wikiId,
             actor: SYSTEM_ACTOR,
@@ -129,9 +137,9 @@ async function claimNext(db: Db, now: Date, skip: string[]): Promise<ActionRow[]
  * 同じ batch の中は、親子の決まりを途中で破らない順に並べる。
  * 非公開化は深いページから、公開は浅いページから。非公開化を先に行う。
  */
-async function orderForHierarchy(db: Db, actions: ActionRow[]): Promise<ActionRow[]> {
+async function orderForHierarchy(actions: ActionRow[], treeOf: (wikiId: string) => Promise<TreeIndex>): Promise<ActionRow[]> {
   if (actions.length < 2) return actions;
-  const index = await loadTreeIndex(db, actions[0]!.wikiId);
+  const index = await treeOf(actions[0]!.wikiId);
   const depth = (a: ActionRow) => (a.pageId ? depthOf(index, a.pageId) : 0);
   const unpublish = actions.filter((a) => a.actionType === "unpublish_page").sort((a, b) => depth(b) - depth(a));
   const publish = actions.filter((a) => a.actionType === "publish_page").sort((a, b) => depth(a) - depth(b));
@@ -139,7 +147,7 @@ async function orderForHierarchy(db: Db, actions: ActionRow[]): Promise<ActionRo
   return [...unpublish, ...publish, ...rest];
 }
 
-async function execute(db: Db, action: ActionRow): Promise<void> {
+async function execute(db: Db, action: ActionRow, treeOf: (wikiId: string) => Promise<TreeIndex>): Promise<void> {
   switch (action.actionType) {
     case "publish_page":
       await publishPage(db, {
@@ -149,10 +157,11 @@ async function execute(db: Db, action: ActionRow): Promise<void> {
         visibility: action.targetVisibility ?? "public",
         publishedAt: action.runAt,
         scheduledActionId: action.id,
+        treeIndex: await treeOf(action.wikiId),
       });
       return;
     case "unpublish_page":
-      await unpublishPage(db, action.wikiId, action.pageId!, { scheduledActionId: action.id });
+      await unpublishPage(db, action.wikiId, action.pageId!, { scheduledActionId: action.id, treeIndex: await treeOf(action.wikiId) });
       return;
     case "merge_branch":
       // フェーズ3で実装（実行時に3-wayマージと検証を再実施し、失敗ならmainを変えない）

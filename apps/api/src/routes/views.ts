@@ -33,7 +33,10 @@ export async function recordView(db: Db, input: RecordViewInput, now = new Date(
   return true;
 }
 
-/** 計測を始めた日。wiki をまたいで、いちばん古い記録の日（数え始めたのは、この機能を出した日） */
+/**
+ * 計測を始めた日。wiki をまたいで、いちばん古い記録の日（数え始めたのは、この機能を出した日）。
+ * エディタでページを開くたびに呼ばれるので、`day` の索引（`page_views_daily_day_idx`）の端の1行だけを読んで取る。
+ */
 async function measuredSince(db: Db): Promise<string | null> {
   const [row] = await db.select({ since: min(pageViewsDaily.day) }).from(pageViewsDaily);
   return row?.since ?? null;

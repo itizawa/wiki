@@ -1,4 +1,5 @@
 import type { WikiRole, WikiSummary } from "@wiki/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
 import { currentWikiKey } from "./api";
 
@@ -12,9 +13,24 @@ export type WikiContextValue = {
   isOwner: boolean;
   /** この wiki でのロール（オーナーは管理者）。できない操作は出さない */
   role: WikiRole;
+  /**
+   * wiki の一覧（表示名・画像・ロール）を読み直す。一覧は wiki ごとの入れ物の外（WikiLayout の外側の QueryClient）にあるので、
+   * wiki の画面の中から `invalidateQueries(["wikis"])` しても届かない。こちらを使う
+   */
+  refreshWikis: () => Promise<void>;
 };
 
 export const WikiContext = createContext<WikiContextValue | null>(null);
+
+/**
+ * wiki の一覧を読み直す関数。wiki の画面の中では外側の入れ物の一覧を、外（全体の管理など）ではいまの入れ物の一覧を読み直す。
+ * 表示名や画像を変えたあと、サイドバーの切り替えメニューにすぐ映すのに使う。
+ */
+export function useRefreshWikis(): () => Promise<void> {
+  const ctx = useContext(WikiContext);
+  const qc = useQueryClient();
+  return ctx ? ctx.refreshWikis : () => qc.invalidateQueries({ queryKey: ["wikis"] });
+}
 
 export function useWiki(): WikiContextValue {
   const value = useContext(WikiContext);
@@ -60,7 +76,7 @@ export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・履歴・メンバー・監査ログ・外観・トップページ・ゴミ箱・設定）へのリンク。 */
+/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・履歴・ゴミ箱・設定とそのタブ）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"
   | "/w/$wikiKey/search"
@@ -68,12 +84,13 @@ export type WikiScreen =
   | "/w/$wikiKey/analytics"
   | "/w/$wikiKey/templates"
   | "/w/$wikiKey/history"
-  | "/w/$wikiKey/members"
-  | "/w/$wikiKey/audit"
-  | "/w/$wikiKey/appearance"
-  | "/w/$wikiKey/home"
   | "/w/$wikiKey/trash"
-  | "/w/$wikiKey/settings";
+  | "/w/$wikiKey/settings"
+  | "/w/$wikiKey/settings/appearance"
+  | "/w/$wikiKey/settings/home"
+  | "/w/$wikiKey/settings/integrations"
+  | "/w/$wikiKey/settings/members"
+  | "/w/$wikiKey/settings/audit";
 export function screenLink<T extends WikiScreen>(to: T) {
   return { to, params: { wikiKey: currentWikiKey() } } as const;
 }
