@@ -171,7 +171,7 @@ function StatusChip({ item }: { item: EditRequestItem }) {
 }
 
 /** Markdown の行の差分。行の頭に - / + を付け、変わった語には背景色に加えて打消し線・下線を付ける（色だけに頼らない）。 */
-function DiffBlock({ lines }: { lines: DiffLine[] }) {
+export function DiffBlock({ lines }: { lines: DiffLine[] }) {
   return (
     <Box
       role="group"

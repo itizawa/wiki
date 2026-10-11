@@ -205,3 +205,126 @@ export function targetForLines(units: readonly BlockUnit[], startLine: number, e
 
 /** 本文の行数（`bodyLines` と同じ数え方）。 */
 export const bodyLineCount = (bodyMd: string) => bodyLines(bodyMd).length;
+
+// ---------------------------------------------------------------------------
+// 選べる単位（編集リクエストを出すとき、本文のどこを選べるか）
+// ---------------------------------------------------------------------------
+
+/**
+ * 本文で選んだ範囲。**同じ階層で隣り合うブロック**のまとまりで、行の範囲は、その最初の行から最後の行まで。
+ *
+ * - block: いちばん上の階層のブロック（段落・見出し・リスト全体・表全体・コードブロック・引用・コールアウト・トグル…）
+ * - listItem: 同じリストの、続いた項目（入れ子の項目は、親の項目といっしょに入る）
+ * - tableRow: 同じ表の、続いた行（見出しの行から選ぶと、区切りの行 `| --- |` も範囲に入る）
+ *
+ * リストの項目・表の行をすべて選んだら、リスト全体・表全体を選んだものとして扱う（`kind` は block になる）。
+ */
+export type UnitSelection = {
+  kind: BlockUnit["kind"];
+  startLine: number;
+  endLine: number;
+  /** 選んだブロック（上から順） */
+  units: BlockUnit[];
+  /** 選んだブロックの親（リストの項目なら、リストか親の項目。表の行なら、表）。いちばん上の階層なら null */
+  parent: BlockUnit | null;
+};
+
+const samePath = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+/** いちばん上の階層から、その場所のブロックまでの道すじ。無ければ null */
+function chainTo(units: readonly BlockUnit[], path: readonly number[]): BlockUnit[] | null {
+  for (const u of units) {
+    if (samePath(u.path, path)) return [u];
+    const inner = chainTo(u.children, path);
+    if (inner) return [u, ...inner];
+  }
+  return null;
+}
+
+/** 兄弟の `from`〜`to` 番目を選んだ範囲にする。親（リスト・表）の子をすべて選んだら、親を選んだことにする */
+function pick(units: readonly BlockUnit[], siblings: readonly BlockUnit[], from: number, to: number, parent: BlockUnit | null): UnitSelection {
+  if (parent && parent.kind === "block" && from === 0 && to === siblings.length - 1) {
+    const at = units.indexOf(parent);
+    if (at >= 0) return pick(units, units, at, at, null);
+  }
+  const chosen = siblings.slice(from, to + 1);
+  return { kind: chosen[0]!.kind, startLine: chosen[0]!.startLine, endLine: chosen[chosen.length - 1]!.endLine, units: chosen, parent };
+}
+
+/**
+ * 選べるブロック（上から順）。**何を1つとして選べるかは、ここで決まる**：
+ * 段落・見出し・コードブロック・引用・コールアウト・トグル・区切り線・画像は、ブロックまるごと。リストは項目ごと（入れ子の項目も。
+ * 入れ子を持つ項目を選ぶと、入れ子ごと選ぶ）、表は行ごと。リスト全体・表全体は、項目・行をすべて選ぶと選べる。
+ */
+export function selectableUnits(units: readonly BlockUnit[]): BlockUnit[] {
+  return units.flatMap((u) => {
+    if (u.children.length === 0) return [u];
+    return u.kind === "listItem" ? [u, ...selectableUnits(u.children)] : selectableUnits(u.children);
+  });
+}
+
+/**
+ * 2つのブロック（文書の中の場所）を両端にして選ぶ。同じ場所を渡せば、そのブロック1つ。
+ * 階層が違うときは、両方が入る階層まで上がって、そこで隣り合うブロックを選ぶ（リストの項目と、その下の段落なら、リスト全体から段落まで）。
+ */
+export function selectBetween(units: readonly BlockUnit[], a: readonly number[], b: readonly number[]): UnitSelection | null {
+  const chainA = chainTo(units, a);
+  const chainB = chainTo(units, b);
+  if (!chainA || !chainB) return null;
+  let depth = 0;
+  while (depth < chainA.length && depth < chainB.length && chainA[depth] === chainB[depth]) depth++;
+  // 片方が、もう片方を含んでいる（か、同じ）：含んでいるほうを1つ選ぶ
+  if (depth === chainA.length || depth === chainB.length) depth--;
+  const parent = depth > 0 ? chainA[depth - 1]! : null;
+  const siblings = parent ? parent.children : units;
+  const i = siblings.indexOf(chainA[depth]!);
+  const j = siblings.indexOf(chainB[depth]!);
+  return pick(units, siblings, Math.min(i, j), Math.max(i, j), parent);
+}
+
+/**
+ * 選んだ範囲を、上か下へ1つ広げる。同じ階層に隣のブロックが無ければ、親（リスト全体・表全体・親の項目）へ広げる。
+ * もう広げられなければ null。
+ */
+export function extendSelection(units: readonly BlockUnit[], selection: UnitSelection, direction: "up" | "down"): UnitSelection | null {
+  const siblings = selection.parent ? selection.parent.children : units;
+  const from = siblings.indexOf(selection.units[0]!);
+  const to = siblings.indexOf(selection.units[selection.units.length - 1]!);
+  if (from < 0 || to < 0) return null;
+  if (direction === "up" && from > 0) return pick(units, siblings, from - 1, to, selection.parent);
+  if (direction === "down" && to < siblings.length - 1) return pick(units, siblings, from, to + 1, selection.parent);
+  if (!selection.parent) return null;
+  return selectBetween(units, selection.parent.path, selection.parent.path);
+}
+
+/**
+ * 行の範囲から、選んだ範囲を作り直す（本文が新しい版になったあと、同じ文面を探し直した場所で使う）。
+ * その行の範囲が、同じ階層で隣り合うブロックにちょうど重ならなければ null。
+ */
+export function selectionForLines(units: readonly BlockUnit[], kind: BlockUnit["kind"], startLine: number, endLine: number): UnitSelection | null {
+  const find = (siblings: readonly BlockUnit[], parent: BlockUnit | null): UnitSelection | null => {
+    const hit = siblings.filter((u) => intersects(u, startLine, endLine));
+    if (hit.length === 0) return null;
+    const exact = hit[0]!.startLine === startLine && hit[hit.length - 1]!.endLine === endLine;
+    // 同じ行の範囲が、親と子の両方に当てはまることがある（入れ子の項目など）。種類が合うほうを選ぶ
+    const inner = hit.length === 1 && hit[0]!.children.length > 0 ? find(hit[0]!.children, hit[0]!) : null;
+    if (inner && (!exact || inner.kind === kind)) return inner;
+    if (!exact) return null;
+    return { kind: hit[0]!.kind, startLine, endLine, units: hit, parent };
+  };
+  const found = find(units, null);
+  return found && found.kind === kind ? found : null;
+}
+
+/**
+ * 選んだ範囲に付けて出すもの（入力欄、送信前の項目）の場所。印は選んだブロックそのものに付け、出す場所は、その最後のブロックのすぐ下。
+ * `targetForLines` は、いちばん細かいブロックに寄せる（入れ子を持つ項目を選んでも、入れ子の最後の項目の中に出る）ので、選んだ範囲には使わない。
+ */
+export function targetForSelection(selection: UnitSelection): LineTarget {
+  const last = selection.units[selection.units.length - 1]!;
+  return {
+    blocks: selection.units.map((u) => u.path),
+    // リストの項目は、項目の中の末尾（入れ子のリストのあと）。表の行の下には出せないので、表の下
+    anchor: last.kind === "listItem" ? { path: last.path, place: "inside" } : { path: [last.path[0]!], place: "after" },
+  };
+}

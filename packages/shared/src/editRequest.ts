@@ -261,6 +261,9 @@ export type PageEditRequests = {
   requests: EditRequest[];
 };
 
+/** `POST /pages/:id/edit-requests`：作ったリクエストと、項目の ID（渡した順）。 */
+export type CreatedEditRequest = { id: string; itemIds: string[] };
+
 /** `GET /pages/:id/edit-requests/count` */
 export type EditRequestCount = { open: number };
 

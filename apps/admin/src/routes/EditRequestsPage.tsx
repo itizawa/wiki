@@ -10,8 +10,10 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcceptEditRequestResult, EditRequest, EditRequestItem } from "@wiki/shared";
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, PenLine } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ComposeMode } from "../components/compose/ComposeMode";
+import { confirmDialog } from "../components/ConfirmDialog";
 import { EditRequestItemCard, requesterLabel, type ItemNotice } from "../components/EditRequestItemCard";
 import { ReviewBody, type ReviewSlot } from "../components/ReviewBody";
 import { LoadingRegion, Muted, RouterLink, Section, SkeletonLines } from "../components/ui";
@@ -21,21 +23,30 @@ import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
 
-type Decision = { kind: "accept" | "reject" | "reopen"; itemId: string } | { kind: "acceptAll"; requestId: string };
+type Decision = { kind: "accept" | "reject" | "reopen"; itemId: string } | { kind: "acceptAll"; requestId: string } | { kind: "withdraw"; requestId: string };
 type Range = { startLine: number; endLine: number };
 
-/** 「すべて採用」の結果。押したボタンのそばに出す */
-type AllResult = { applied: number; skipped: number };
+/** 「すべて採用」「取り下げる」の結果。押したボタンのそばに出す */
+type AllResult = { applied: number; skipped: number } | { withdrawn: number };
 
 /**
  * `/w/{key}/pages/{id}/requests`：ページの編集リクエストのレビュー画面。
  * 最新の版の本文を読み取り専用で出し、提案を、指している箇所のすぐ下に並べる。ここで1件ずつ（かリクエストごとにまとめて）採用・却下する。
  * 採用すると、その箇所を置き換えた新しい版ができる（公開はしない）。本文は書き換えられない。
+ *
+ * 「編集リクエストを出す」を押すと、出すモード（`components/compose/ComposeMode.tsx`）に入る。
+ * 本文のブロックを選んで提案を書き、まとめて送信する。モードのあいだは、この画面の中身をまるごと入れ替える。
  */
 export function EditRequestsPage({ pageId }: { pageId: string }) {
   const qc = useQueryClient();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
   const list = useQuery({ queryKey: editRequestKeys.list(pageId), queryFn: () => api.listEditRequests(pageId) });
+  // 自分が出したリクエストにだけ、「取り下げる」を出す
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me }).data;
+  /** 出すモードに入っているか */
+  const [composing, setComposing] = useState(false);
+  /** 送信できた提案の数。この画面に戻ったときに知らせる */
+  const [sent, setSent] = useState<number | null>(null);
 
   /** 項目の場所に出す、操作の結果 */
   const [notices, setNotices] = useState<Record<string, ItemNotice>>({});
@@ -64,20 +75,25 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
     mutationFn: async (d: Decision) => {
       if (d.kind === "accept") return api.acceptEditRequestItem(pageId, d.itemId);
       if (d.kind === "acceptAll") return api.acceptAllEditRequestItems(pageId, d.requestId);
+      if (d.kind === "withdraw") return api.withdrawEditRequest(pageId, d.requestId);
       if (d.kind === "reject") await api.rejectEditRequestItem(pageId, d.itemId);
       else await api.reopenEditRequestItem(pageId, d.itemId);
       return null;
     },
     onSuccess: (result, d) => {
-      if (result) noteAccepted(result);
-      if (d.kind === "acceptAll" && result) setAllResults((r) => ({ ...r, [d.requestId]: { applied: result.applied.length, skipped: result.skipped.length } }));
+      if (d.kind === "withdraw") {
+        if (result && "withdrawn" in result) setAllResults((r) => ({ ...r, [d.requestId]: { withdrawn: result.withdrawn } }));
+        return;
+      }
+      if (result && "applied" in result) noteAccepted(result);
+      if (d.kind === "acceptAll" && result && "applied" in result) setAllResults((r) => ({ ...r, [d.requestId]: { applied: result.applied.length, skipped: result.skipped.length } }));
       if (d.kind === "reject") setRecent((r) => ({ ...r, [d.itemId]: true }));
       if (d.kind === "reject" || d.kind === "reopen") {
         setNotices(({ [d.itemId]: _, ...rest }) => rest);
       }
     },
     onError: (err, d) => {
-      if (d.kind === "acceptAll") return;
+      if (d.kind === "acceptAll" || d.kind === "withdraw") return;
       const details = err instanceof ApiError ? (err.details as { editors?: { id: string; name: string }[] } | undefined) : undefined;
       // 古くなった項目は、読み直した一覧が理由を出すので、ここでは重ねて出さない
       if (err instanceof ApiError && err.code === "edit_request_stale") setNotices(({ [d.itemId]: _, ...rest }) => rest);
@@ -88,7 +104,19 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
     onSettled: () => invalidateEditRequests(qc, pageId),
   });
   const pending = decide.isPending ? decide.variables : null;
-  const busyOf = (itemId: string) => (pending && pending.kind !== "acceptAll" && pending.itemId === itemId ? pending.kind : null);
+  const busyOf = (itemId: string) => (pending && "itemId" in pending && pending.itemId === itemId ? pending.kind : null);
+
+  const withdraw = async (request: EditRequest) => {
+    const open = request.items.filter((i) => i.status === "open").length;
+    const ok = await confirmDialog({
+      title: `未対応の提案 ${open} 件を取り下げますか？`,
+      body: "取り下げた提案は、採用できなくなり、未対応には戻せません。もう一度提案するときは、出し直します。",
+      confirmLabel: "取り下げる",
+      cancelLabel: "取り下げない",
+      danger: true,
+    });
+    if (ok) decide.mutate({ kind: "withdraw", requestId: request.id });
+  };
 
   const data = list.data;
   const view = useMemo(() => {
@@ -148,6 +176,30 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
   const openCount = data?.openCount;
   const loadError = list.error ?? page.error;
 
+  if (composing && data && page.data) {
+    return (
+      <ComposeMode
+        pageId={pageId}
+        title={title}
+        icon={page.data.icon}
+        head={{ versionId: data.headVersionId, bodyMd: data.headBodyMd }}
+        reloadHead={async () => {
+          const fresh = (await list.refetch()).data;
+          return fresh ? { versionId: fresh.headVersionId, bodyMd: fresh.headBodyMd } : null;
+        }}
+        onQuit={() => setComposing(false)}
+        onSent={(count) => {
+          setSent(count);
+          setComposing(false);
+        }}
+      />
+    );
+  }
+  const compose = () => {
+    setSent(null);
+    setComposing(true);
+  };
+
   return (
     <Box sx={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <Box
@@ -176,9 +228,17 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
         <Typography component="h1" variant="subtitle1" sx={{ fontWeight: 700 }}>
           編集リクエスト
         </Typography>
-        {openCount !== undefined && (
-          <Chip size="small" variant={openCount > 0 ? "filled" : "outlined"} color={openCount > 0 ? "primary" : "default"} label={`未対応 ${openCount} 件`} sx={{ ml: "auto" }} />
-        )}
+        <Box sx={{ ml: "auto", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1.5 }}>
+          {openCount !== undefined && (
+            <Chip size="small" variant={openCount > 0 ? "filled" : "outlined"} color={openCount > 0 ? "primary" : "default"} label={`未対応 ${openCount} 件`} />
+          )}
+          {/* 本文が読めてから出す（出すモードは、最新の版の本文に提案を書く） */}
+          {data && page.data && !loadError && (
+            <Button variant="outlined" size="small" startIcon={<PenLine size={16} aria-hidden />} onClick={compose} sx={{ whiteSpace: "nowrap", [TOUCH]: { minHeight: 40 } }}>
+              編集リクエストを出す
+            </Button>
+          )}
+        </Box>
       </Box>
 
       <Box sx={{ width: "100%", maxWidth: 780 + 64, mx: "auto", px: { xs: 2, md: 4 }, pt: 3, pb: 12 }}>
@@ -212,16 +272,25 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
               最新の版の本文に、提案を、指している箇所のすぐ下に出しています。採用すると、その箇所を置き換えた新しい版ができます。公開中の内容は、公開し直すまで変わりません。
             </Muted>
 
+            {sent !== null && (
+              <Alert severity="success" onClose={() => setSent(null)}>
+                編集リクエストを送信しました（提案 {sent} 件）。下の本文の、指している箇所に並んでいます。
+              </Alert>
+            )}
+
             {data.requests.length === 0 ? (
               <Section>
                 <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
                   このページへの編集リクエストは、まだありません
                 </Typography>
                 <Muted sx={{ mt: 0.5 }}>
-                  編集リクエストは、本文の箇所ごとに「こう直す」を提案してもらい、1件ずつ採用・却下を決める仕組みです。いまは、外部のアプリ（MCP）でつないだ AI
-                  が出せます。出されると、下の本文の、指している箇所のすぐ下に並びます。
+                  編集リクエストは、本文の箇所ごとに「こう直す」を提案し、1件ずつ採用・却下を決める仕組みです。この wiki
+                  のメンバーと、外部のアプリ（MCP）でつないだ AI が出せます。出されると、下の本文の、指している箇所のすぐ下に並びます。
                 </Muted>
-                <Box sx={{ mt: 1 }}>
+                <Box sx={{ mt: 1.5, display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 2, rowGap: 1 }}>
+                  <Button variant="contained" size="small" startIcon={<PenLine size={16} aria-hidden />} onClick={compose} sx={{ [TOUCH]: { minHeight: 40 } }}>
+                    編集リクエストを出す
+                  </Button>
                   <RouterLink to="/connections">外部のアプリのつなぎ方を見る</RouterLink>
                 </Box>
               </Section>
@@ -236,10 +305,13 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
                     key={request.id}
                     request={request}
                     result={allResults[request.id]}
-                    error={decide.isError && decide.variables?.kind === "acceptAll" && decide.variables.requestId === request.id ? decide.error : null}
-                    busy={pending?.kind === "acceptAll" && pending.requestId === request.id}
+                    error={decide.isError && decide.variables && "requestId" in decide.variables && decide.variables.requestId === request.id ? decide.error : null}
+                    failed={decide.variables?.kind === "withdraw" ? "withdraw" : "acceptAll"}
+                    busy={pending && "requestId" in pending && pending.requestId === request.id ? pending.kind : null}
                     disabled={decide.isPending}
+                    mine={me !== undefined && request.createdBy.id === me.id}
                     onAcceptAll={() => decide.mutate({ kind: "acceptAll", requestId: request.id })}
+                    onWithdraw={() => void withdraw(request)}
                   />
                 ))}
               </Stack>
@@ -295,14 +367,19 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
   );
 }
 
-/** リクエスト1件のまとめ：出した人・日時・全体へのひとこと・未対応の件数と、「すべて採用する」。 */
+/** リクエスト1件のまとめ：出した人・日時・全体へのひとこと・未対応の件数と、「すべて採用する」。自分が出したものには「取り下げる」。 */
 function RequestSummary(props: {
   request: EditRequest;
   result: AllResult | undefined;
   error: unknown;
-  busy: boolean;
+  /** `error` が、どちらの操作のものか */
+  failed: "acceptAll" | "withdraw";
+  busy: "acceptAll" | "withdraw" | null;
   disabled: boolean;
+  /** 自分が出したリクエストか（外部のアプリから、自分の許可で出したものも含む） */
+  mine: boolean;
   onAcceptAll: () => void;
+  onWithdraw: () => void;
 }) {
   const { request, result } = props;
   const open = request.items.filter((i) => i.status === "open");
@@ -324,21 +401,35 @@ function RequestSummary(props: {
           未対応 {open.length} 件{stale > 0 && `（うち ${stale} 件は古くなっていて、採用できません）`}
         </Muted>
         {/* 何件をまとめて採用するのかを、押す前に分かるようにする。採用できるものが無ければ出さない（理由は、すぐ左に出している） */}
-        {acceptable > 0 && (
-          <Button variant="outlined" size="small" disabled={props.disabled} loading={props.busy} onClick={props.onAcceptAll} sx={{ ml: { sm: "auto" }, [TOUCH]: { minHeight: 40 } }}>
-            採用できる {acceptable} 件をすべて採用する
-          </Button>
-        )}
+        <Box sx={{ ml: { sm: "auto" }, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 3, "& .MuiButton-root": { [TOUCH]: { minHeight: 40 } } }}>
+          {/* 取り下げは元に戻せないので、採用のボタンから離して置き、押したあとに確かめる */}
+          {props.mine && (
+            <Button variant="text" size="small" color="error" disabled={props.disabled} loading={props.busy === "withdraw"} onClick={props.onWithdraw}>
+              未対応の {open.length} 件を取り下げる
+            </Button>
+          )}
+          {acceptable > 0 && (
+            <Button variant="outlined" size="small" disabled={props.disabled} loading={props.busy === "acceptAll"} onClick={props.onAcceptAll}>
+              採用できる {acceptable} 件をすべて採用する
+            </Button>
+          )}
+        </Box>
       </Box>
       {props.error ? (
-        <Alert severity="error">まとめて採用できませんでした。{errorMessage(props.error)}</Alert>
+        <Alert severity="error">
+          {props.failed === "withdraw" ? "取り下げられませんでした。" : "まとめて採用できませんでした。"}
+          {errorMessage(props.error)}
+        </Alert>
       ) : (
-        result && (
+        result &&
+        ("withdrawn" in result ? (
+          <Alert severity="success">{result.withdrawn} 件を取り下げました。</Alert>
+        ) : (
           <Alert severity={result.skipped > 0 ? "warning" : "success"}>
             {result.applied > 0 ? `${result.applied} 件を採用し、新しい版を1つ作りました。` : "採用できる提案がありませんでした。"}
             {result.skipped > 0 && `${result.skipped} 件は採用できませんでした。理由は、それぞれの提案に出しています。`}
           </Alert>
-        )
+        ))
       )}
     </Section>
   );
