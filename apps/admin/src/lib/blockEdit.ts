@@ -184,7 +184,17 @@ export const SUGGESTION_REASONS = {
 
 type Signature = { start: number; end: number; kind: string; type: string };
 
+/** 直前に調べた本文の結果（同じ本文に、空行の足し方を変えながら何度か確かめるので、読み直さない） */
+let lastSignatures: { body: string; list: Signature[] } | null = null;
+
 function signatures(body: string): Signature[] {
+  if (lastSignatures?.body === body) return lastSignatures.list;
+  const list = readSignatures(body);
+  lastSignatures = { body, list };
+  return list;
+}
+
+function readSignatures(body: string): Signature[] {
   const { doc, units } = parseBodyWithLines(body);
   const typeAt = (path: readonly number[]) => path.reduce<JSONContent | undefined>((node, i) => node?.content?.[i], doc)?.type ?? "";
   const flat = (list: readonly BlockUnit[]): Signature[] =>
@@ -201,7 +211,7 @@ export function neighborsKept(body: string, startLine: number, endLine: number, 
   const added = replacementLines(replacement);
   const delta = added.length - (endLine - startLine + 1);
   const after = new Set(
-    signatures([...lines.slice(0, startLine - 1), ...added, ...lines.slice(endLine)].join("\n")).map((s) => `${s.start}-${s.end}-${s.kind}-${s.type}`),
+    readSignatures([...lines.slice(0, startLine - 1), ...added, ...lines.slice(endLine)].join("\n")).map((s) => `${s.start}-${s.end}-${s.kind}-${s.type}`),
   );
   return signatures(body).every((s) => {
     // 選んだ範囲の中のブロックは、変わってよい
