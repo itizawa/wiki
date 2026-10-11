@@ -146,6 +146,9 @@ describe("the tokens of the site build and the cron worker", () => {
     }
     expect((await withToken("cron-token", "POST", "/internal/tick", {})).status).toBe(200);
     expect((await withToken("cron-token", "POST", "/internal/versions/prune")).status).toBe(200);
+    // 画像の掃除まで頼む呼び方（週1回）でも同じ
+    expect((await withToken("export-token", "POST", "/internal/versions/prune", { images: true })).status).toBe(401);
+    expect((await withToken("cron-token", "POST", "/internal/versions/prune", { images: true })).status).toBe(200);
   });
 
   it("does not let the token of the cron worker read /export/public", async () => {

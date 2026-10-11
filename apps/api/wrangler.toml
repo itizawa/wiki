@@ -36,6 +36,28 @@ bucket_name = "wiki-images"
 # binding = "CRON_MARKS"
 # id = "<wrangler kv namespace create の出力の id>"
 
+# ログインせずに叩ける経路（/oauth/*・/mcp）の回数の制限。接続元（cf-connecting-ip）ごとに数え、超えたら 429 を返す（src/rate-limit.ts）。
+# period に書けるのは 10 か 60（秒）だけ。namespace_id はアカウントの中で重ならない数字なら何でもよい（wiki-site が 6001 を使っている）
+# https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
+# アプリの登録（POST /oauth/register）：60 秒で 5 回まで
+[[ratelimits]]
+name = "OAUTH_REGISTER_LIMITER"
+namespace_id = "6101"
+simple = { limit = 5, period = 60 }
+
+# /oauth/authorize・/oauth/token・/oauth/revoke：経路ごとに、60 秒で 30 回まで
+[[ratelimits]]
+name = "OAUTH_LIMITER"
+namespace_id = "6102"
+simple = { limit = 30, period = 60 }
+
+# トークンの付いた /mcp：60 秒で 300 回まで。トークンを DB で確かめる前に数えるので、正しいトークンのぶんも入る。
+# 許可ごとの制限（1分に120回、DB で数える）より多くして、同じ接続元から複数のアプリを使っても先にこちらに当たらないようにしている
+[[ratelimits]]
+name = "MCP_LIMITER"
+namespace_id = "6103"
+simple = { limit = 300, period = 60 }
+
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする
 NODE_ENV = "production"

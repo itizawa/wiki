@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { authenticateAccessToken, type AgentContext } from "../oauth/service";
+import { RATE_LIMIT_PERIOD_SEC, withinRateLimit } from "../rate-limit";
 import { callTool, toolsFor } from "./tools";
 
 /** 対応する MCP の版。クライアントが求めた版がこの中にあればそれを、無ければ先頭を返す */
@@ -12,6 +13,10 @@ type JsonRpcRequest = { jsonrpc: "2.0"; id?: string | number | null; method: str
 
 const rpcResult = (id: JsonRpcRequest["id"], result: unknown) => ({ jsonrpc: "2.0", id, result });
 const rpcError = (id: JsonRpcRequest["id"] | null, code: number, message: string) => ({ jsonrpc: "2.0", id, error: { code, message } });
+
+function rateLimited(c: Context<AppEnv>) {
+  return c.json({ error: { code: "rate_limited", message: "too many requests" } }, 429, { "retry-after": String(RATE_LIMIT_PERIOD_SEC) });
+}
 
 function unauthorized(c: Context<AppEnv>, error?: string) {
   const { config } = c.get("deps");
@@ -36,11 +41,11 @@ export const mcpRoutes = new Hono<AppEnv>()
     const header = c.req.header("authorization") ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
     if (!token) return unauthorized(c);
+    // でたらめなトークンを大量に送られても DB を引き続けないよう、確かめる前に接続元ごとに数える（正しいトークンのぶんも入る）
+    if (!(await withinRateLimit(c, "mcp"))) return rateLimited(c);
     const agent = await authenticateAccessToken(db, token);
     if (agent === null) return unauthorized(c, "invalid_token");
-    if (agent === "rate_limited") {
-      return c.json({ error: { code: "rate_limited", message: "too many requests" } }, 429, { "retry-after": "60" });
-    }
+    if (agent === "rate_limited") return rateLimited(c);
 
     let msg: JsonRpcRequest;
     try {

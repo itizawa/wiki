@@ -128,6 +128,40 @@ describe("marks for the cron worker", () => {
     expect(kv.at("build")).not.toBeNull();
   });
 
+  it("marks a pending build for the events recorded in one insert (trash, restore, applying to descendants) and for moves in the tree", async () => {
+    const kv = fakeKv();
+    ctx = await setup({ cronMarks: kv.store });
+    const parent = await newPage("親");
+    const child = (await ctx.call("POST", `${W}/pages`, { title: "子", bodyMd: "x", parentPageId: parent.id })).body as { id: string; headVersionId: string };
+    const other = await newPage("別");
+    for (const page of [parent, child, other]) expect((await publish(page)).status).toBe(200);
+    const marked = async (run: () => Promise<{ status: number }>, ok = 200) => {
+      kv.data.clear();
+      expect((await run()).status).toBe(ok);
+      return kv.at("build") !== null;
+    };
+
+    // 並べ替え・移動（structure）
+    expect(
+      await marked(async () => {
+        const s = (await ctx.call("GET", `${W}/structure`)).body;
+        return ctx.call("POST", `${W}/structure/commits`, {
+          expectedHeadCommitId: s.headCommitId,
+          ops: [{ type: "move", treeId: s.trees[0].id, nodeId: other.id, newParentNodeId: parent.id }],
+        });
+      }, 201),
+    ).toBe(true);
+    // 配下もまとめて公開範囲を変える
+    expect(
+      await marked(() => ctx.call("POST", `${W}/pages/${parent.id}/publish`, { versionId: parent.headVersionId, visibility: "unlisted", applyToDescendants: true })),
+    ).toBe(true);
+    // 配下もまとめて非公開にする
+    expect(await marked(() => ctx.call("POST", `${W}/pages/${parent.id}/unpublish`, { applyToDescendants: true }))).toBe(true);
+    // ゴミ箱に入れる・戻す（公開したことのあるページ）
+    expect(await marked(() => ctx.call("DELETE", `${W}/pages/${parent.id}`))).toBe(true);
+    expect(await marked(() => ctx.call("POST", `${W}/pages/${parent.id}/restore`, {}))).toBe(true);
+  });
+
   it("writes the marks only after the request is done (after the commit), and not at all without a request", async () => {
     const kv = fakeKv();
     await collectCronMarks(kv.store, async () => {

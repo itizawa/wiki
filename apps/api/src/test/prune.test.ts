@@ -277,8 +277,8 @@ describe("pruning automatic versions", () => {
     const newest = await addVersion(a.id, new Date(noonJst.getTime() + HOUR));
 
     expect((await ctx.app.request("/internal/versions/prune", { method: "POST" })).status).toBe(401);
-    expect((await internal("POST", "/internal/versions/prune")).body).toEqual({ deleted: 1 });
-    expect((await internal("POST", "/internal/versions/prune")).body).toEqual({ deleted: 0 });
+    expect((await internal("POST", "/internal/versions/prune")).body).toMatchObject({ deleted: 1 });
+    expect((await internal("POST", "/internal/versions/prune")).body).toMatchObject({ deleted: 0 });
 
     const list = (await ctx.call("GET", `${W}/pages/${a.id}/versions`)).body.versions;
     expect(list.map((v: any) => v.id).sort()).toEqual([a.head, newest].sort());

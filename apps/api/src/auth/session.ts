@@ -3,8 +3,21 @@ import { jwtVerify, SignJWT } from "jose";
 import type { Db } from "../db/client";
 import { sessions } from "../db/schema";
 
+/**
+ * Cookie のもとの名前。http の手元の開発ではこのまま使う。実際に読み書きする名前は `cookieName` で決める。
+ * https では、`__Host-` を付ける前に使っていた古い名前でもあり、読み取らずに消す（`auth/routes.ts` の `clearLegacyCookies`）。
+ */
 export const SESSION_COOKIE = "wiki_session";
 export const OAUTH_COOKIE = "wiki_oauth";
+
+/**
+ * 読み書きする Cookie の名前。https では `__Host-` を付け、兄弟のサブドメイン（公開サイト）から
+ * `Domain` 付きで同じ名前の Cookie を植えられないようにする（ブラウザが `Secure`・`Path=/`・`Domain` なしのものだけを受け付ける）。
+ * http（手元の開発）では `__Host-` の Cookie をブラウザが受け付けないので、もとの名前のままにする。
+ */
+export function cookieName(base: typeof SESSION_COOKIE | typeof OAUTH_COOKIE, secure: boolean): string {
+  return secure ? `__Host-${base}` : base;
+}
 export const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
 
 const key = (secret: string) => new TextEncoder().encode(secret);
