@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { safeNextPath } from "../auth/routes";
-import { setup, W } from "./harness";
+import { fakeRateLimiter, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -126,20 +126,37 @@ describe("authorization", () => {
     expect((await register(["http://127.0.0.1:3333/cb"])).status).toBe(201);
   });
 
-  it("cleans up unused clients and caps how many can pile up", async () => {
+  it("cleans up unused clients, and drops the oldest one instead of refusing when they pile up", async () => {
     ctx = await setup();
     const old = (await register()).body.client_id;
     await ctx.client.query(`update oauth_clients set created_at = now() - interval '2 days' where id = $1`, [old]);
+    // 許可のあるクライアント。どれよりも古いが、消さない
+    const { client: granted } = await connect();
+    await ctx.client.query(`update oauth_clients set created_at = now() - interval '3 days' where id = $1`, [granted.client_id]);
     await ctx.client.query(
-      `insert into oauth_clients (id, name, redirect_uris) select 'wc_fill_' || i, 'x', '[]'::jsonb from generate_series(1, 199) i`,
+      `insert into oauth_clients (id, name, redirect_uris, created_at)
+       select 'wc_fill_' || i, 'x', '[]'::jsonb, now() - (i || ' minutes')::interval from generate_series(1, 199) i`,
     );
-    // 古い、許可の無いクライアントは消えるので、まだ登録できる
+    const unusedCount = async () =>
+      (await ctx.client.query<{ n: number }>(
+        `select count(*)::int as n from oauth_clients c where not exists (select 1 from oauth_grants g where g.client_id = c.id)`,
+      )).rows[0]!.n;
+    const exists = async (id: string) => (await ctx.client.query(`select 1 from oauth_clients where id = $1`, [id])).rows.length === 1;
+
+    // 1日たった、許可の無いクライアントは消える。これで許可の無いものが 200 件になる
     expect((await register()).status).toBe(201);
-    expect((await ctx.client.query(`select 1 from oauth_clients where id = $1`, [old])).rows).toEqual([]);
-    // 許可の無いクライアントが上限に達すると断る
+    expect(await exists(old)).toBe(false);
+    expect(await unusedCount()).toBe(200);
+    expect(await exists("wc_fill_199")).toBe(true);
+
+    // 200 件あっても断らず、いちばん古い許可の無いものを消して受け入れる
     const res = await register();
-    expect(res.status).toBe(429);
-    expect(res.body.error).toBe("temporarily_unavailable");
+    expect(res.status).toBe(201);
+    expect(await exists(res.body.client_id)).toBe(true);
+    expect(await unusedCount()).toBe(200);
+    expect(await exists("wc_fill_199")).toBe(false);
+    expect(await exists("wc_fill_198")).toBe(true);
+    expect(await exists(granted.client_id)).toBe(true);
   });
 
   it("does not redirect to an unregistered redirect_uri", async () => {
@@ -410,6 +427,47 @@ describe("MCP", () => {
     expect(search.data.pages.map((p: { id: string }) => p.id)).toEqual([child.data.id]);
   });
 
+  it("does not create a page under a parent it cannot read", async () => {
+    ctx = await setup();
+    const secret = (await ctx.call("POST", `${W}/pages`, { title: "社外秘", bodyMd: "secret" })).body;
+    const open = (await ctx.call("POST", `${W}/pages`, { title: "公開", bodyMd: "" })).body;
+    await ctx.call("POST", `${W}/pages/${open.id}/publish`, { versionId: open.headVersionId, visibility: "public" });
+    const t = (await connect()).tokens.access_token;
+    const parentOf = async (token: string, id: string) =>
+      (await callTool(token, "get_tree", { wiki: "wiki" })).data.nodes.find((n: { pageId: string }) => n.pageId === id)?.parentPageId;
+
+    // ツリーは非公開のページの ID も返すが、それを親には使えない。move_page と同じく、無いものとして断る
+    const before = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+    const denied = await callTool(t, "create_page", { wiki: "wiki", title: "下に足す", parentPageId: secret.id });
+    expect(denied.data.error.code).toBe("not_found");
+    const after = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+    expect(after.headCommitId).toBe(before.headCommitId);
+    expect(after.nodes).toHaveLength(before.nodes.length);
+    const top = await callTool(t, "create_page", { wiki: "wiki", title: "動かす" });
+    const move = await callTool(t, "move_page", {
+      wiki: "wiki",
+      pageId: top.data.id,
+      newParentPageId: secret.id,
+      expectedHeadCommitId: (await callTool(t, "get_tree", { wiki: "wiki" })).data.headCommitId,
+    });
+    expect(move.data.error).toEqual(denied.data.error);
+
+    // 公開中のページの下、自分で作ったページの下、最上位には、今までどおり作れる
+    const underOpen = await callTool(t, "create_page", { wiki: "wiki", title: "公開の下", parentPageId: open.id });
+    expect(underOpen.isError).toBe(false);
+    expect(await parentOf(t, underOpen.data.id)).toBe(open.id);
+    const underOwn = await callTool(t, "create_page", { wiki: "wiki", title: "自分の下", parentPageId: top.data.id });
+    expect(underOwn.isError).toBe(false);
+    expect(await parentOf(t, underOwn.data.id)).toBe(top.data.id);
+    expect(await parentOf(t, top.data.id)).toBeNull();
+
+    // 非公開のページも読める許可なら、その下に作れる
+    const full = (await connect({ scope: "wiki.read wiki.write wiki.private" })).tokens.access_token;
+    const allowed = await callTool(full, "create_page", { wiki: "wiki", title: "下に足す", parentPageId: secret.id });
+    expect(allowed.isError).toBe(false);
+    expect(await parentOf(full, allowed.data.id)).toBe(secret.id);
+  });
+
   it("hides private and unlisted pages unless wiki.private is granted", async () => {
     ctx = await setup();
     const secret = await ctx.call("POST", `${W}/pages`, { title: "社外秘", bodyMd: "secret" });
@@ -497,6 +555,29 @@ describe("MCP", () => {
     // 依頼されても、同意の画面で外せば使えない
     const declined = await connect({ scope: "wiki.read wiki.publish wiki.delete", grant: ["wiki.read"] });
     expect(declined.tokens.scope).toBe("wiki.read");
+  });
+
+  it("move_page で公開中のページを移すと、公開サイトのビルドの対象になる（非公開のページだけなら、ならない）", async () => {
+    ctx = await setup();
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish" });
+    const t = tokens.access_token;
+    const parent = await callTool(t, "create_page", { wiki: "wiki", title: "親" });
+    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子" });
+    const draft = await callTool(t, "create_page", { wiki: "wiki", title: "下書き" });
+    for (const p of [parent, child]) expect((await callTool(t, "publish_page", { wiki: "wiki", pageId: p.data.id })).isError).toBe(false);
+    await ctx.client.query(`delete from publish_events`);
+    const moveTo = async (pageId: string, newParentPageId: string | null) => {
+      const { headCommitId } = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+      const res = await callTool(t, "move_page", { wiki: "wiki", pageId, newParentPageId, expectedHeadCommitId: headCommitId });
+      expect(res.isError).toBe(false);
+    };
+    const events = async () =>
+      (await ctx.client.query<{ kind: string; via: boolean }>(`select kind, oauth_grant_id is not null as via from publish_events order by id`)).rows;
+
+    await moveTo(draft.data.id, parent.data.id);
+    expect(await events()).toEqual([]);
+    await moveTo(child.data.id, parent.data.id);
+    expect(await events()).toEqual([{ kind: "structure", via: true }]);
   });
 
   it("publishes, schedules and unpublishes with wiki.publish, and records which app did it", async () => {
@@ -650,5 +731,93 @@ describe("login return path", () => {
     const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
     const back = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie } });
     expect(back.headers.get("location")).toBe("http://admin.test/consent?request=r");
+  });
+});
+
+describe("rate limits by client address", () => {
+  const registerFrom = (ip: string) =>
+    ctx.app.request("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+      body: JSON.stringify({ client_name: "テストのアプリ", redirect_uris: [REDIRECT] }),
+    });
+
+  it("refuses registrations over the limit from one address, and still accepts another address", async () => {
+    const oauthRegister = fakeRateLimiter(2);
+    ctx = await setup({ rateLimits: { oauthRegister } });
+    expect((await registerFrom("203.0.113.1")).status).toBe(201);
+    expect((await registerFrom("203.0.113.1")).status).toBe(201);
+    const refused = await registerFrom("203.0.113.1");
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(await refused.json()).toMatchObject({ error: "temporarily_unavailable" });
+    // 断ったぶんは登録されていない
+    expect((await ctx.client.query(`select 1 from oauth_clients`)).rows).toHaveLength(2);
+
+    expect((await registerFrom("203.0.113.2")).status).toBe(201);
+  });
+
+  it("limits /oauth/authorize, /oauth/token and /oauth/revoke, each on its own count", async () => {
+    const oauth = fakeRateLimiter(1);
+    ctx = await setup({ rateLimits: { oauth } });
+    const headers = { "cf-connecting-ip": "203.0.113.1", "content-type": "application/x-www-form-urlencoded" };
+    const token = () => ctx.app.request("/oauth/token", { method: "POST", headers, body: "grant_type=refresh_token&client_id=nope" });
+    const authorize = () => ctx.app.request("/oauth/authorize?client_id=nope", { headers });
+    const revoke = () => ctx.app.request("/oauth/revoke", { method: "POST", headers, body: "token=nope" });
+
+    expect((await token()).status).toBe(401);
+    const refused = await token();
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(await refused.json()).toMatchObject({ error: "temporarily_unavailable" });
+
+    // 経路ごとに別々に数える。/authorize は、超えたときも redirect_uri へは戻さない
+    expect((await authorize()).status).toBe(400);
+    const again = await authorize();
+    expect(again.status).toBe(429);
+    expect(again.headers.get("location")).toBeNull();
+    expect((await revoke()).status).toBe(200);
+    expect((await revoke()).status).toBe(429);
+    expect(oauth.calls).toEqual([
+      "token:203.0.113.1",
+      "token:203.0.113.1",
+      "authorize:203.0.113.1",
+      "authorize:203.0.113.1",
+      "revoke:203.0.113.1",
+      "revoke:203.0.113.1",
+    ]);
+  });
+
+  it("stops looking up tokens for /mcp once an address is over the limit", async () => {
+    const limiter = fakeRateLimiter(2);
+    ctx = await setup({ rateLimits: { mcp: limiter } });
+    const { tokens } = await connect();
+    const from = (ip: string) => ({ "cf-connecting-ip": ip });
+
+    expect((await mcp("wat_nope", "tools/list", undefined, from("203.0.113.1"))).status).toBe(401);
+    expect((await mcp("wat_nope", "tools/list", undefined, from("203.0.113.1"))).status).toBe(401);
+    const refused = await mcp("wat_nope", "tools/list", undefined, from("203.0.113.1"));
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(refused.body.error.code).toBe("rate_limited");
+    // 超えたあとは、正しいトークンでも DB を引かない（許可ごとの回数が進まない）
+    expect((await mcp(tokens.access_token, "tools/list", undefined, from("203.0.113.1"))).status).toBe(429);
+    expect((await ctx.client.query(`select rate_window_count from oauth_grants`)).rows).toEqual([{ rate_window_count: 0 }]);
+
+    // 別の接続元からは通る
+    expect((await mcp(tokens.access_token, "tools/list", undefined, from("203.0.113.2"))).status).toBe(200);
+    // トークンの無いリクエストは DB を引かないので、数えない
+    const before = limiter.calls.length;
+    const bare = await ctx.app.request("/mcp", { method: "POST", headers: from("203.0.113.1"), body: "{}" });
+    expect(bare.status).toBe(401);
+    expect(limiter.calls.length).toBe(before);
+  });
+
+  it("lets requests through when counting fails", async () => {
+    const broken = { limit: () => Promise.reject(new Error("down")) };
+    ctx = await setup({ rateLimits: { oauthRegister: broken, mcp: broken } });
+    expect((await registerFrom("203.0.113.1")).status).toBe(201);
+    const { tokens } = await connect();
+    expect((await mcp(tokens.access_token, "tools/list")).status).toBe(200);
   });
 });

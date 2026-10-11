@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { issueSession, SESSION_COOKIE } from "../auth/session";
+import { cookieName, issueSession, SESSION_COOKIE } from "../auth/session";
 import { createWorker, type WorkerEnv } from "../worker";
 import { ADMIN, setup } from "./harness";
 
@@ -35,7 +35,8 @@ async function worker(env: Partial<WorkerEnv> = {}) {
     INTERNAL_TOKEN: "internal-token",
     ...env,
   } as WorkerEnv;
-  const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+  // production は https なので、Cookie の名前に `__Host-` が付く
+  const cookie = `${cookieName(SESSION_COOKIE, true)}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
   const fetch = (path: string, init: RequestInit = {}) =>
     handler.fetch(new Request(new URL(path, ORIGIN), init), fullEnv, { waitUntil: (p) => void closed.push(p) });
   return { fetch, cookie, stats: () => ({ connections, closes }), settled: () => Promise.all(closed) };
@@ -51,6 +52,21 @@ describe("worker entry", () => {
     const me = await w.fetch("/api/admin/me", { headers: { cookie: w.cookie } });
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({ email: ADMIN, isOwner: true });
+  });
+
+  it("hands the rate limit bindings to the routes that anyone can call", async () => {
+    const refuse = { limit: async () => ({ success: false }) };
+    const w = await worker({ OAUTH_REGISTER_LIMITER: refuse, OAUTH_LIMITER: refuse, MCP_LIMITER: refuse });
+    const register = await w.fetch("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://client.example/callback"] }),
+    });
+    expect(register.status).toBe(429);
+    expect((await w.fetch("/oauth/token", { method: "POST", body: new URLSearchParams({ client_id: "nope" }) })).status).toBe(429);
+    expect((await w.fetch("/mcp", { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" })).status).toBe(429);
+    // バインディングの無い経路はそのまま
+    expect((await w.fetch("/api/health")).status).toBe(200);
   });
 
   it("keeps the query string and the body when stripping /api", async () => {

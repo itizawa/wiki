@@ -1,18 +1,8 @@
 import { Extension, type Editor } from "@tiptap/react";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import { IMAGE_LIMIT_LABEL, IMAGE_MAX_BYTES, IMAGE_TYPES } from "@wiki/shared";
 import { api, errorMessage } from "../lib/api";
-
-/**
- * アップロードする前に、画面の側で分かる理由（形式・大きさ）で断る。断るときはその理由、受け付けるなら null。
- * 最終的な判定はサーバーが中身を見て行う。
- */
-export function imageFileProblem(file: { type: string; size: number }): string | null {
-  if (!(file.type in IMAGE_TYPES)) return `この形式のファイルはアップロードできません。${IMAGE_LIMIT_LABEL}です。`;
-  if (file.size > IMAGE_MAX_BYTES) return `画像が大きすぎます。${IMAGE_LIMIT_LABEL}です。`;
-  return null;
-}
+import { imageFileProblem } from "./imageFile";
 
 /** 貼り付け・ドロップされたもののうち、画像のファイル。画像が無ければ空（文字などの貼り付けはふつうに扱う） */
 export function imageFiles(data: DataTransfer | null): File[] {
