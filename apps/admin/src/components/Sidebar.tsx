@@ -1,4 +1,5 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, GitPullRequestArrow, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, PanelsTopLeft, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, PanelsTopLeft, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
   DragOverlay,

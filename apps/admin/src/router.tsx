@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
-import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays, type EditRequestListStatus } from "@wiki/shared";
+import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
+import type { EditRequestListStatus } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";

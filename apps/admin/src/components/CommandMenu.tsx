@@ -1,4 +1,5 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, GitPullRequestArrow, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
