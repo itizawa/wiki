@@ -1,6 +1,6 @@
 import { IMAGE_MAX_BYTES } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { imageFileProblem } from "./imageUpload";
+import { imageFileProblem } from "./imageFile";
 
 describe("画像のアップロード前の確認", () => {
   it("PNG・JPEG・WebP・GIF で、上限以下なら受け付ける", () => {

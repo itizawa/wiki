@@ -13,9 +13,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
-import { openFindBar } from "../editor/FindBar";
+import { openFindBar } from "../editor/findBarState";
 import { usePageActions } from "../lib/pageActions";
-import { useCreateFromTemplate } from "../routes/TemplatesPage";
+import { useCreateFromTemplate } from "../lib/createFromTemplate";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 

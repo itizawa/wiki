@@ -1,31 +1,38 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
-import { PageBody } from "./components/ui";
+import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
-import { HomeSettingsPage } from "./routes/HomeSettingsPage";
 import { Home, Root } from "./routes/Layout";
-import { AnalyticsPage } from "./routes/AnalyticsPage";
-import { AuditLogPage } from "./routes/AuditLogPage";
-import { CalendarPage } from "./routes/CalendarPage";
+import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
-import { EditorPage } from "./routes/EditorPage";
 import { GeneralSettingsPage } from "./routes/GeneralSettingsPage";
 import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
-import { HistoryPage } from "./routes/HistoryPage";
 import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
-import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
 import { WikisPage } from "./routes/WikisPage";
+
+// 重い画面は、開くときに読み込む（最初に読む JS から外す）。エディタ（TipTap・ProseMirror）を使う画面は、すべてここに置く。
+// 読み込みのあいだは、その画面が自分で出す読み込み中の表示と同じ形を出す
+const page = { fallback: <ScreenSkeleton /> };
+const fullHeight = { fallback: <SkeletonEditor />, bare: true };
+const EditorPage = lazyScreen(() => import("./routes/EditorPage"), "EditorPage", fullHeight);
+const TemplatesPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplatesPage", page);
+const TemplateEditorPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplateEditorPage", fullHeight);
+const HomeSettingsPage = lazyScreen(() => import("./routes/HomeSettingsPage"), "HomeSettingsPage", page);
+const HistoryPage = lazyScreen(() => import("./routes/HistoryPage"), "HistoryPage", page);
+const AnalyticsPage = lazyScreen(() => import("./routes/AnalyticsPage"), "AnalyticsPage", page);
+const AuditLogPage = lazyScreen(() => import("./routes/AuditLogPage"), "AuditLogPage", page);
+const CalendarPage = lazyScreen(() => import("./routes/CalendarPage"), "CalendarPage", page);
 
 // ログインの確認までを Root が行う。wiki の内容は、すべて /w/{key}/... の下にある
 const rootRoute = createRootRoute({ component: Root });
