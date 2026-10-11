@@ -70,7 +70,8 @@ async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcReque
         serverInfo: { name: "wiki", version: "1.0.0" },
         instructions:
           "wiki のページを探して読み、作成・更新・移動できる。許可されていれば、公開・予約・削除もできる（使える道具は tools/list のとおり）。" +
-          "本文の更新は get_page の headVersionId を、移動は get_tree の headCommitId を渡す（楽観ロック）。",
+          "本文の更新は get_page の headVersionId を、移動は get_tree の headCommitId を渡す（楽観ロック）。" +
+          "本文を直接書き換える代わりに、箇所ごとの直し方を提案して人に採否を決めてもらうこともできる（create_edit_request。行は get_page の bodyMd を改行で区切って1から数える）。",
       });
     }
     case "ping":
