@@ -26,4 +26,5 @@ export function measuredSinceLabel(since: string | null): string {
   return `${y}年${m}月${d}日から計測`;
 }
 
-export const VIEWS_NOTE = "Bot を除いた目安の数字です";
+/** 数字の読み方の注意。閲覧は公開サイトの側に貯めてあり、1時間に1回まとめて反映されるので、直近のぶんは遅れて出る */
+export const VIEWS_NOTE = "Bot を除いた目安の数字で、反映まで1時間ほどかかります";

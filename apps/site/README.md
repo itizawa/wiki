@@ -44,7 +44,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 | `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（下の「Google Analytics とサーチコンソール」）も出さない |
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
-| `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから API の `/internal/views` へ渡す。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |
+| `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから Workers Analytics Engine（バインディング `PAGE_VIEWS`）に1行書く。API も DB も呼ばない。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |
 | `/images/{name}` | アップロードした画像。R2 のバケット（バインディング `IMAGES`）から返す。どの wiki でも同じ（`worker/index.ts`） |
 
 別の wiki のページへのリンクは、外部リンクと同じ扱いになる（`/p/{id}` と書いても、その wiki に無いページなのでテキストだけになる）。
