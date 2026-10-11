@@ -2,6 +2,8 @@ import type {
   AcceptEditRequestResult,
   AnalyticsDays,
   AppliedEditRequests,
+  CreatedEditRequest,
+  CreateEditRequestInput,
   EditRequestCount,
   PageEditRequests,
   ConnectionCheck,
@@ -236,6 +238,11 @@ export const api = {
   /** リクエストの未対応の項目のうち、採用できるものをまとめて採用する（1つの版になる）。できなかった項目は `skipped` で返る */
   acceptAllEditRequestItems: (pageId: string, requestId: string) =>
     request<AcceptEditRequestResult>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/accept-all`)),
+  /** 編集リクエストを出す。基準の版が最新の版でなければ 409（`version_conflict`） */
+  createEditRequest: (pageId: string, input: CreateEditRequestInput) => request<CreatedEditRequest>("POST", w(`/pages/${pageId}/edit-requests`), input),
+  /** 自分が出したリクエストの、未対応の項目をまとめて取り下げる。出した本人でなければ 403（`not_requester`） */
+  withdrawEditRequest: (pageId: string, requestId: string) =>
+    request<{ withdrawn: number }>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/withdraw`)),
 
   /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
@@ -336,6 +343,12 @@ export function errorMessage(err: unknown): string {
       }
       case "not_open":
         return "この提案は、すでに採用・却下・取り下げのどれかが済んでいます。最新の状態を読み込みました。";
+      case "not_requester":
+        return "取り下げられるのは、このリクエストを出した本人だけです。";
+      case "no_change":
+        return "元の文面と同じ提案が入っています。書き換えるか、取り除いてから送信してください。";
+      case "line_out_of_range":
+        return "提案の指している行が、本文の外にあります。最新の版に合わせてから、もう一度送信してください。";
       case "not_rejected":
         return "却下した提案だけを、未対応に戻せます。最新の状態を読み込みました。";
       case "image_too_large":

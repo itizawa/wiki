@@ -1,4 +1,4 @@
-import { IMAGE_NAME_PATTERN, type CreateEditRequestInput, type PageEditRequests } from "@wiki/shared";
+import { EDIT_REQUEST_LIMITS, IMAGE_NAME_PATTERN, type CreateEditRequestInput, type PageEditRequests } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEditRequest } from "../editRequests/service";
 import { cleanupImages, referencedImageNames } from "../images/cleanup";
@@ -22,7 +22,7 @@ async function newPage(bodyMd = BODY, title = "ページ") {
 
 type ItemInput = CreateEditRequestInput["items"][number];
 
-/** 編集リクエストを出す（出す API はまだ無いので、MCP の道具と同じ関数を直接呼ぶ） */
+/** 編集リクエストを出す（MCP の道具と、管理画面から出す API が呼ぶ関数を、直接呼ぶ） */
 async function request(page: { id: string; head: string }, items: ItemInput[], opts: { userId?: string; comment?: string; base?: string } = {}) {
   const [wiki] = (await ctx.client.query<{ id: string }>(`select wiki_id as id from pages where id = $1`, [page.id])).rows;
   return ctx.db.transaction((tx) =>
@@ -643,5 +643,106 @@ describe("what keeps working around edit requests", () => {
     const versions = (await ctx.call("GET", `${W}/pages/${page.id}/versions?limit=10`)).body;
     expect(versions.versions.map((v: any) => v.acceptedItems)).toEqual([0, 0]);
     expect((await ctx.call("GET", `${W}/pages/${page.id}/versions/${page.head}`)).body).toMatchObject({ id: page.head, acceptedItems: 0 });
+  });
+});
+
+describe("making an edit request from the admin screen (POST edit-requests)", () => {
+  const post = (pageId: string, body: unknown, call = ctx.call) => call("POST", `${W}/pages/${pageId}/edit-requests`, body);
+
+  it("makes a request as the signed-in member, and lists it the same way as one made over MCP", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    const res = await post(
+      page.id,
+      {
+        baseVersionId: page.head,
+        comment: "  読みやすくする案  ",
+        items: [
+          { startLine: 5, endLine: 7, replacement: "- まとめた", reason: "3つは多い" },
+          { startLine: 3, endLine: 3, replacement: "" },
+        ],
+      },
+      editor.call,
+    );
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ id: expect.any(String), itemIds: [expect.any(String), expect.any(String)] });
+
+    const body = await list(page.id);
+    expect(body.openCount).toBe(2);
+    expect(body.requests).toHaveLength(1);
+    // 画面から出したものは、アプリの名前（via）が付かない。ほかは、MCP から出したものと同じ形
+    expect(body.requests[0]).toMatchObject({ id: res.body.id, comment: "読みやすくする案", createdBy: { id: editor.user.id }, via: null });
+    expect(body.requests[0]!.items.map((i) => i.id)).toEqual(res.body.itemIds);
+    expect(body.requests[0]!.items[0]).toMatchObject({
+      kind: "suggestion",
+      status: "open",
+      baseVersionId: page.head,
+      startLine: 5,
+      endLine: 7,
+      originalText: "- a\n- b\n- c",
+      replacement: "- まとめた",
+      reason: "3つは多い",
+      current: { startLine: 5, endLine: 7 },
+      stale: null,
+    });
+    // 本文は変わらない
+    expect((await getPage(page.id)).headVersionId).toBe(page.head);
+    // ほかの人が採用でき、出した本人だけが取り下げられる
+    expect((await accept(page.id, res.body.itemIds[0])).status).toBe(200);
+    const withdraw = `${W}/pages/${page.id}/edit-requests/${res.body.id}/withdraw`;
+    expect((await ctx.call("POST", withdraw)).body.error).toMatchObject({ code: "not_requester" });
+    expect((await editor.call("POST", withdraw)).body).toEqual({ withdrawn: 1 });
+  });
+
+  it("stops with 409 when someone made a version in the meantime, and leaves nothing behind", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const input = { baseVersionId: page.head, items: [{ startLine: 3, endLine: 3, replacement: "x" }] };
+    const saved = await save(page, `足した\n\n${BODY}`);
+    expect(saved.status).toBe(200);
+    const res = await post(page.id, input);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: "version_conflict", details: { headVersionId: saved.body.headVersionId } });
+    expect((await list(page.id)).requests).toEqual([]);
+    // 読み直した版をもとに、ずれた行で出し直せる
+    const again = await post(page.id, { baseVersionId: saved.body.headVersionId, items: [{ startLine: 5, endLine: 5, replacement: "x" }] });
+    expect(again.status).toBe(201);
+    expect((await itemsOf(page.id))[0]).toMatchObject({ originalText: "1段落目", replacement: "x" });
+  });
+
+  it("checks the input the same way as MCP", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const item = { startLine: 3, endLine: 3, replacement: "x" };
+    const code = async (body: unknown) => {
+      const res = await post(page.id, body);
+      return [res.status, res.body.error?.code];
+    };
+    expect(await code({ baseVersionId: page.head, items: [{ ...item, endLine: 10 }] })).toEqual([400, "line_out_of_range"]);
+    expect(await code({ baseVersionId: page.head, items: [{ startLine: 9, endLine: 9, replacement: "最後の段落" }] })).toEqual([400, "no_change"]);
+    expect(await code({ baseVersionId: page.head, items: [] })).toEqual([400, "invalid_input"]);
+    expect(await code({ baseVersionId: page.head, items: [{ ...item, startLine: 4 }] })).toEqual([400, "invalid_input"]);
+    expect(await code({ baseVersionId: "not-a-uuid", items: [item] })).toEqual([400, "invalid_input"]);
+    expect(await code({ baseVersionId: page.head, items: Array.from({ length: EDIT_REQUEST_LIMITS.items + 1 }, () => item) })).toEqual([400, "invalid_input"]);
+    expect(await code({ baseVersionId: page.head, items: [{ ...item, replacement: "x".repeat(EDIT_REQUEST_LIMITS.replacement + 1) }] })).toEqual([400, "invalid_input"]);
+    expect(await code({ baseVersionId: page.head, items: [{ ...item, reason: "x".repeat(EDIT_REQUEST_LIMITS.reason + 1) }] })).toEqual([400, "invalid_input"]);
+    expect(await code({ baseVersionId: page.head, comment: "x".repeat(EDIT_REQUEST_LIMITS.comment + 1), items: [item] })).toEqual([400, "invalid_input"]);
+    expect((await list(page.id)).requests).toEqual([]);
+  });
+
+  it("treats a page of another wiki, a page in the trash and an archived wiki as not found", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const input = { baseVersionId: page.head, items: [{ startLine: 3, endLine: 3, replacement: "x" }] };
+    expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "ノート" })).status).toBe(201);
+    const other = (await ctx.call("POST", "/admin/w/notes/pages", { title: "別の wiki", bodyMd: BODY })).body;
+    expect((await ctx.call("POST", `/admin/w/notes/pages/${page.id}/edit-requests`, input)).status).toBe(404);
+    const outsider = await ctx.addUser("outsider@example.com", { notes: "editor" });
+    expect((await post(page.id, input, outsider.call)).status).toBe(404);
+    expect((await ctx.call("DELETE", `${W}/pages/${page.id}`)).status).toBe(200);
+    expect((await post(page.id, input)).status).toBe(404);
+    expect((await ctx.call("POST", "/admin/wikis/notes/archive")).status).toBe(200);
+    expect((await ctx.call("POST", `/admin/w/notes/pages/${other.id}/edit-requests`, { ...input, baseVersionId: other.headVersionId })).status).toBe(404);
   });
 });

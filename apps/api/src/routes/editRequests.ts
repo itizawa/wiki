@@ -1,9 +1,17 @@
-import type { AcceptEditRequestResult, AppliedEditRequests, EditRequestCount, PageEditRequests } from "@wiki/shared";
+import {
+  createEditRequestInput,
+  type AcceptEditRequestResult,
+  type AppliedEditRequests,
+  type CreatedEditRequest,
+  type EditRequestCount,
+  type PageEditRequests,
+} from "@wiki/shared";
 import { Hono, type Context } from "hono";
 import {
   acceptEditRequestItems,
   appliedEditRequestsSince,
   countOpenItems,
+  createEditRequest,
   listEditRequests,
   rejectEditRequestItem,
   reopenEditRequestItem,
@@ -11,6 +19,7 @@ import {
 } from "../editRequests/service";
 import type { AppEnv } from "../env";
 import { notFound } from "../errors";
+import { parseJson } from "../validation";
 import { findLivePage } from "./pages";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -23,12 +32,21 @@ function uuidParam(c: Context<AppEnv>, name: string, what: string): string {
 }
 
 /**
- * `/admin/w/{key}/pages/:id/...`：ページの編集リクエスト（読む・採用・却下・未対応に戻す・取り下げ）。
+ * `/admin/w/{key}/pages/:id/...`：ページの編集リクエスト（出す・読む・採用・却下・未対応に戻す・取り下げ）。
  * wiki のメンバーならだれでも使える（`requireUser` + `requireAccess` + `resolveWiki`）。ページがその wiki のもので、
  * ゴミ箱に入っていないことは、どの経路も `findLivePage` で確かめる（別の wiki のページは 404）。
- * 出す経路（`POST /:id/edit-requests`）は、まだ無い。出すのは MCP の `create_edit_request` だけ。
  */
 export const editRequestRoutes = new Hono<AppEnv>()
+  // 人が管理画面から出す。検査と上限は、MCP の `create_edit_request` と同じ（入力のスキーマと `createEditRequest`）。
+  // 基準の版が最新の版でなければ 409（`version_conflict`）。画面は、読み直してから出し直す
+  .post("/:id/edit-requests", async (c) => {
+    const { db } = c.get("deps");
+    const input = await parseJson(c, createEditRequestInput);
+    const made = await db.transaction((tx) =>
+      createEditRequest(tx, { wikiId: c.get("wiki").id, pageId: c.req.param("id"), input, actor: { userId: c.get("user").id } }),
+    );
+    return c.json(made satisfies CreatedEditRequest, 201);
+  })
   .get("/:id/edit-requests", async (c) => {
     const { db } = c.get("deps");
     const page = await findLivePage(db, c.get("wiki").id, c.req.param("id"));
