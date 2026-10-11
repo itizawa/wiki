@@ -1,4 +1,3 @@
-import { ArrowLeft } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -14,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserSummary } from "@wiki/shared";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
 import { Tooltip } from "../components/Tooltip";
-import { Muted, RouterLink, Section } from "../components/ui";
+import { Muted, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useSession } from "./Layout";
@@ -63,13 +62,10 @@ export function OwnersPage() {
   return (
     <Stack spacing={1.5}>
       <ConfirmHost />
+      {/* 「wiki の画面に戻る」とページの見出し（h1）は、「全体の管理」の枠（GlobalAdminLayout）にある */}
       <Box>
-        <RouterLink to="/" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-          <ArrowLeft size={18} />
-          wiki の画面に戻る
-        </RouterLink>
-        <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
-          オーナーの管理
+        <Typography variant="h6" component="h2">
+          オーナー
         </Typography>
         <Muted>
           オーナーは、すべての wiki に管理者として入れ、wiki の作成・アーカイブと、オーナーの追加・解除ができます。オーナーにできるのは、招待で参加した人など、登録済みのユーザーです。
@@ -82,7 +78,7 @@ export function OwnersPage() {
 
       {session.isOwner && (
         <Section>
-          <Typography variant="h6" component="h2" gutterBottom>
+          <Typography variant="subtitle1" component="h3" gutterBottom>
             登録済みのユーザー
           </Typography>
           {users.isPending && <Muted>読み込み中…</Muted>}

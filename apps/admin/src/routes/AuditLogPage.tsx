@@ -1,4 +1,3 @@
-import { ArrowLeft } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -46,13 +45,8 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
   return (
     <Stack spacing={1.5}>
       <Box>
-        {scope === "all" && (
-          <RouterLink to="/" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-            <ArrowLeft size={18} />
-            wiki の画面に戻る
-          </RouterLink>
-        )}
-        <Typography variant={scope === "all" ? "h5" : "h6"} component="h1">
+        {/* すべての wiki のものは「全体の管理」の枠（GlobalAdminLayout）の中に出すので、見出しは h2（戻るリンクと h1 は枠にある） */}
+        <Typography variant="h6" component={scope === "all" ? "h2" : "h1"}>
           {scope === "all" ? "監査ログ（すべての wiki）" : "監査ログ"}
         </Typography>
         <Muted>

@@ -116,8 +116,8 @@ export function Home() {
   );
 }
 
-/** サイドバーの無い画面（wiki の管理、外部アプリ連携とその同意）。読み込み中も、サイドバーの列を出さない。 */
-const NO_SIDEBAR = /^\/(wikis|connections|consent)(\/|$)/;
+/** サイドバーの無い画面（全体の管理の3画面、外部アプリ連携とその同意）。読み込み中も、サイドバーの列を出さない。 */
+const NO_SIDEBAR = /^\/(wikis|owners|audit|connections|consent)(\/|$)/;
 
 /**
  * 画面全体の読み込み中（ログインの確認中、wiki の一覧の取得中）。あとに出る画面の骨組みを出す。
