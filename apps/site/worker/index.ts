@@ -15,7 +15,7 @@ const FIRST_WIKI = "wiki";
 const WIKI_COOKIE = "wiki";
 /**
  * どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon）。ビルド結果の直下にある。
- * `/_astro/*` は、ファイルがあればここを通らずに返る（wrangler.toml の run_worker_first）。ここに来るのは無いファイルのときだけ
+ * `/_astro/*` は Worker を通らずに返る（wrangler.toml の run_worker_first）ので、ふつうはここに来ない。無いファイルの 404 も静的アセットの側が返す
  */
 const SHARED = /^\/(_astro\/|favicon\.svg$)/;
 /** Pagefind の索引のうち、名前にハッシュが入るもの（中身が変われば名前も変わる）。wiki のディレクトリを除いたパスで見る */
