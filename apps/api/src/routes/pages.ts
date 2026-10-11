@@ -17,8 +17,8 @@ import {
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
-import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks } from "../pages/versions";
+import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
+import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent, recordPublishEvents } from "../publishing/service";
 import type { AppEnv } from "../env";
@@ -154,6 +154,7 @@ export async function createPage(
     createdBy: opts.createdBy ?? null,
     oauthGrantId: opts.oauthGrantId ?? null,
   });
+  await syncPageSearch(tx, id, input);
   await replaceLinks(tx, wikiId, id, input.bodyMd);
   await commitOps(tx, wikiId, {
     createdBy: opts.createdBy ?? null,
@@ -414,7 +415,7 @@ export async function restorePage(
 
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
- * 版・下書き・リンク・スター・予約を消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
+ * 版・下書き・リンク・スター・予約と、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
  * 構造の履歴（過去のツリー）がこの行を指しているため。閲覧数の行も残す（画面には出ない）。監査ログに残す。トランザクション内で呼ぶ。
  */
 export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
@@ -426,6 +427,7 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
   await tx.delete(pageLinks).where(or(inArray(pageLinks.fromPageId, ids), inArray(pageLinks.toPageId, ids)));
   await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
   await tx.delete(pageVersions).where(inArray(pageVersions.pageId, ids));
+  await tx.delete(pageSearch).where(inArray(pageSearch.pageId, ids));
   await tx
     .update(pages)
     .set({

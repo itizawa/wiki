@@ -154,6 +154,33 @@ export const pageVersions = pgTable(
 );
 
 /**
+ * 検索用の、head 版のタイトルと本文の写し。管理画面の検索（`routes/search.ts`）が、ここを `ILIKE '%語%'` で探す。
+ *
+ * - 版（`page_versions`）は過去の本文も持つので、そこに索引を付けると、探さない本文まで索引に入る。
+ *   `pages` に本文を持たせると、公開・ゴミ箱などで `pages` の行を書き換えるたびに本文の索引も作り直され、
+ *   `pages` を読むすべての所が本文まで読むことになる。なので表を分けている
+ * - タイトルもここに持つのは、「タイトルか本文に含む」（OR）を1つの表の2つの索引で引けるようにするため
+ * - **head 版を進める所は、同じトランザクションで `syncPageSearch`（`pages/versions.ts`）を呼ぶ**。
+ *   `createPage` と `createVersion` が呼んでいるので、この2つを通せば足りる
+ * - 完全に削除したページの行は消す（本文を残さない）。ゴミ箱のページの行は残す（元に戻せば、また探せる）
+ * - 索引は pg_trgm の GIN。3文字以上の語で効く（1〜2文字の語は、この表を全部読む）
+ */
+export const pageSearch = pgTable(
+  "page_search",
+  {
+    pageId: text("page_id")
+      .primaryKey()
+      .references(() => pages.id),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+  },
+  (t) => [
+    index("page_search_title_trgm_idx").using("gin", t.title.op("gin_trgm_ops")),
+    index("page_search_body_trgm_idx").using("gin", t.bodyMd.op("gin_trgm_ops")),
+  ],
+);
+
+/**
  * 編集中の下書き（自動保存）。人ごとに1つだけ持つ。編集が一段落したらワーカーが版にし、版になったら消す
  * （人が操作して版を作ったときも消す）。
  * base_version_id は下書きを始めたときの head。head が先に進んでいたら、下書きは古い版をもとにしている。

@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import type { Editor } from "@tiptap/react";
 import { pagePath } from "@wiki/shared";
 import { api } from "../lib/api";
+import { useCompositionIn, useSearchTerm } from "../lib/searchTerm";
 import { createTrigger, TriggerMenu, useTriggerMatch, type FindTrigger, type TriggerMatch } from "./trigger";
 
 const MAX_ITEMS = 8;
@@ -30,10 +31,13 @@ export function PageMention({ editor }: { editor: Editor }) {
   const qc = useQueryClient();
   const match = useTriggerMatch(editor, mentionTrigger);
   const q = match?.query.trim() ?? "";
+  // 探しにいくのは、打つのを止めてから（変換中は、確定してから）。それまでは前の候補を出したままにする。
+  // エディタは変換中の文字も1文字ごとに本文へ入れるので、q は変換中も変わる
+  const term = useSearchTerm(q, useCompositionIn(editor.view.dom));
   const pages = useQuery({
     // 検索の画面と同じ検索（タイトルと本文）。タイトルに一致したページが先に来る
-    queryKey: ["search", q],
-    queryFn: () => api.search(q),
+    queryKey: ["search", term],
+    queryFn: () => api.search(term),
     enabled: match !== null,
     placeholderData: keepPreviousData,
   });
