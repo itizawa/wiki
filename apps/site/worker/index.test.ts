@@ -25,8 +25,10 @@ const files = {
   "/wiki/": "<h1>wiki のトップ</h1>",
   "/wiki/p/abcdefghij": "<h1>記事</h1>",
   "/wiki/page-routes.json": JSON.stringify(routes),
+  "/wiki/nav.json": '{"trees":{"main":[{"nodeId":"abcdefghij"}]}}',
   "/wiki/u/SecretKey/": "<h1>限定公開</h1>",
   "/notes/": "<h1>notes のトップ</h1>",
+  "/notes/nav.json": '{"trees":{"main":[{"nodeId":"nnnnnnnnnn"}]}}',
   "/notes/p/nnnnnnnnnn": "<h1>ノートの記事</h1>",
   "/notes/page-routes.json": JSON.stringify({ canonical: { nnnnnnnnnn: "/p/nnnnnnnnnn" }, gone: ["abcdefghij"] }),
   "/_astro/app.js": "console.log(1)",
@@ -47,6 +49,19 @@ describe("site worker", () => {
     expect(await res.text()).toBe("<h1>記事</h1>");
     // 静的ファイルがあるときはルート表を読まない
     expect(e.requested).toEqual(["/wiki/p/abcdefghij"]);
+  });
+
+  it("serves the tree nav data of the host's wiki only", async () => {
+    const e = env(files);
+    const own = await wiki("/nav.json", e);
+    expect(own.status).toBe(200);
+    expect(await own.text()).toContain("abcdefghij");
+    expect(e.requested).toEqual(["/wiki/nav.json"]);
+    expect(await (await notes("/nav.json")).text()).toContain("nnnnnnnnnn");
+    // ほかの wiki のツリーは、パスに key を書いても開けない
+    expect((await wiki("/notes/nav.json")).status).toBe(404);
+    // 知らないサブドメインには、ツリーが無い
+    expect((await get("https://nope.site.test/nav.json")).status).toBe(404);
   });
 
   it("never serves another wiki's directory, even when the path names it", async () => {

@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, isNotNull, isNull, max, min, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { publishEvents, siteBuilds } from "../db/schema";
-import { buildManifest } from "./manifest";
+import { publicContentHash } from "./manifest";
 
 export type BuildDecision =
   | { trigger: true; buildId: string; contentHash: string; attempts: number }
@@ -10,7 +10,8 @@ export type BuildDecision =
 /**
  * 公開イベントをデバウンスしてビルドを起動するか決める（ワーカーが定期的に呼ぶ）。
  * - 最後のイベントから debounceSec 経つまで待つ（連続操作をまとめる）。ただし最古の未反映イベントから maxWaitSec 経ったら起動
- * - マニフェストの contentHash が、最後に起動できたビルドと同じならビルドしない（イベントは消化する）
+ * - 公開内容の contentHash が、最後に起動できたビルドと同じならビルドしない（イベントは消化する）。
+ *   contentHash は公開版の ID・アイコン・公開ツリー・wiki の設定から作り、ここでは本文を読まない（manifest.ts）
  * - 前に頼んだビルドが起動済みになっていなければ（デプロイフックの失敗）、新しいイベントが無くても同じビルドをもう一度頼む
  */
 export async function requestBuild(
@@ -43,7 +44,7 @@ export async function requestBuild(
     const waitedFor = now.getTime() - new Date(pending.oldest!).getTime();
     if (quietFor < debounceMs && waitedFor < maxWaitMs) return { trigger: false, reason: "debouncing" };
 
-    const manifest = await buildManifest(tx, now);
+    const contentHash = await publicContentHash(tx);
     // 比べる相手は、公開サイトにいま出ている内容（最後に起動できたビルド）。起動に失敗したままのビルドとは比べない
     const [deployed] = await tx
       .select({ contentHash: siteBuilds.contentHash })
@@ -51,19 +52,19 @@ export async function requestBuild(
       .where(isNotNull(siteBuilds.triggeredAt))
       .orderBy(desc(siteBuilds.requestedAt))
       .limit(1);
-    const unchanged = deployed?.contentHash === manifest.contentHash;
+    const unchanged = deployed?.contentHash === contentHash;
     const [build] = await tx
       .insert(siteBuilds)
       .values({
         lastEventId: Number(pending.maxId),
-        contentHash: manifest.contentHash,
+        contentHash,
         requestedAt: now,
         // 内容が同じなら起動するものが無いので、起動済みとして置く
         triggeredAt: unchanged ? now : null,
       })
       .returning();
     if (unchanged) return { trigger: false, reason: "unchanged" };
-    return { trigger: true, buildId: build!.id, contentHash: manifest.contentHash, attempts: build!.attempts };
+    return { trigger: true, buildId: build!.id, contentHash, attempts: build!.attempts };
   });
 }
 
