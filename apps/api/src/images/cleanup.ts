@@ -36,6 +36,9 @@ export type CleanupImagesResult = {
  * - `wikis.icon_url`（wiki の画像）、`wikis.theme`（ロゴ・ファビコン）、`wikis.home`（トップページの自由記述）。アーカイブ中の wiki も含む
  *
  * ページのアイコン（`pages.icon`）は絵文字だけなので見ない。
+ * 編集リクエストの、提案の理由（`edit_request_items.reason`）・指摘の本文（`note_body`）・返信（`edit_request_comments.body`）・
+ * 全体へのひとこと（`edit_requests.comment`）も見ない。どれもプレーンテキストとして出すだけで、画像は描かない
+ * （`/images/{name}` という文字が書かれていても、その画像を使っていることにはしない）。
  * **画像のパスを書ける列を足したら、ここにも足す**（足し忘れると、そこでだけ使っている画像が消える）。
  */
 export async function referencedImageNames(db: Db): Promise<Set<string>> {

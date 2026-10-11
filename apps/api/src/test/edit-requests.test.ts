@@ -1,4 +1,4 @@
-import { EDIT_REQUEST_LIMITS, IMAGE_NAME_PATTERN, type CreateEditRequestInput, type PageEditRequests } from "@wiki/shared";
+import { EDIT_REQUEST_LIMITS, IMAGE_NAME_PATTERN, type CreateEditRequestInput, type EditRequestComment, type PageEditRequests } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEditRequest } from "../editRequests/service";
 import { cleanupImages, referencedImageNames } from "../images/cleanup";
@@ -601,6 +601,9 @@ describe("what keeps working around edit requests", () => {
       { startLine: 1, endLine: 1, replacement: `前 ![却下](/images/${names.rejected})` },
     ]);
     const second = await request(page, [{ startLine: 5, endLine: 5, replacement: `後 <img src="/images/${names.withdrawn}">` }]);
+    // 指摘の本文と返信はプレーンテキスト。画像のパスが書かれていても、使っていることにはしない
+    const noted = await request(page, [{ kind: "note", startLine: 1, endLine: 1, body: `この図（/images/${orphan}）は古い` }]);
+    expect((await ctx.call("POST", `${W}/pages/${page.id}/edit-request-items/${noted.itemIds[0]}/comments`, { body: `![図](/images/${orphan})` })).status).toBe(201);
     expect((await ctx.call("POST", `${W}/pages/${page.id}/edit-request-items/${made.itemIds[1]}/reject`)).status).toBe(200);
     expect((await ctx.call("POST", `${W}/pages/${page.id}/edit-requests/${second.id}/withdraw`)).body).toEqual({ withdrawn: 1 });
     // 項目の「元の文面」の列も読んでいることを確かめるため、版の本文からは画像を外しておく
@@ -623,10 +626,15 @@ describe("what keeps working around edit requests", () => {
     ]);
     await request(kept, [{ startLine: 3, endLine: 3, replacement: "x" }]);
     expect((await accept(page.id, made.itemIds[0]!)).status).toBe(200);
+    // 返信も、項目といっしょに消える
+    const keptItem = (await itemsOf(kept.id))[0]!;
+    for (const [pageId, itemId] of [[page.id, made.itemIds[0]], [page.id, made.itemIds[1]], [kept.id, keptItem.id]]) {
+      expect((await ctx.call("POST", `${W}/pages/${pageId}/edit-request-items/${itemId}/comments`, { body: "返信" })).status).toBe(201);
+    }
     expect((await ctx.call("DELETE", `${W}/pages/${page.id}`)).status).toBe(200);
     expect((await ctx.call("DELETE", `${W}/pages/${page.id}/trash`)).status).toBe(200);
     const count = async (table: string) => Number((await ctx.client.query<{ n: number }>(`select count(*)::int as n from ${table}`)).rows[0]!.n);
-    expect([await count("edit_requests"), await count("edit_request_items")]).toEqual([1, 1]);
+    expect([await count("edit_requests"), await count("edit_request_items"), await count("edit_request_comments")]).toEqual([1, 1, 1]);
     expect((await list(kept.id)).openCount).toBe(1);
   });
 
@@ -744,5 +752,351 @@ describe("making an edit request from the admin screen (POST edit-requests)", ()
     expect((await post(page.id, input)).status).toBe(404);
     expect((await ctx.call("POST", "/admin/wikis/notes/archive")).status).toBe(200);
     expect((await ctx.call("POST", `/admin/w/notes/pages/${other.id}/edit-requests`, { ...input, baseVersionId: other.headVersionId })).status).toBe(404);
+  });
+});
+
+describe("notes (items without a replacement)", () => {
+  const itemPath = (pageId: string, itemId: string, action: string) => `${W}/pages/${pageId}/edit-request-items/${itemId}/${action}`;
+
+  it("makes a note with a body and no replacement, next to a suggestion, and counts both as open", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const res = await ctx.call("POST", `${W}/pages/${page.id}/edit-requests`, {
+      baseVersionId: page.head,
+      items: [
+        { kind: "note", startLine: 5, endLine: 7, body: "  根拠が不明です。\n出典はありますか？  " },
+        { kind: "suggestion", startLine: 3, endLine: 3, replacement: "x" },
+        // 種類を省いたものは、今までどおり提案
+        { startLine: 9, endLine: 9, replacement: "" },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const body = await list(page.id);
+    expect(body.openCount).toBe(3);
+    expect((await ctx.call("GET", `${W}/pages/${page.id}/edit-requests/count`)).body).toEqual({ open: 3 });
+    const [note, suggestion, removal] = body.requests[0]!.items;
+    expect(note).toMatchObject({
+      kind: "note",
+      status: "open",
+      startLine: 5,
+      endLine: 7,
+      originalText: "- a\n- b\n- c",
+      // 前後の空白は落とす。中の改行は残す
+      body: "根拠が不明です。\n出典はありますか？",
+      replacement: null,
+      reason: null,
+      current: { startLine: 5, endLine: 7 },
+      stale: null,
+      comments: [],
+    });
+    expect(suggestion).toMatchObject({ kind: "suggestion", replacement: "x", body: null });
+    // 行を消す提案（空の文字）は、置き換え案が無いこと（null）とは別
+    expect(removal).toMatchObject({ kind: "suggestion", replacement: "", body: null });
+  });
+
+  it("refuses a note without a body, with a replacement or a reason, or with a body that is too long", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const post = (item: unknown) => ctx.call("POST", `${W}/pages/${page.id}/edit-requests`, { baseVersionId: page.head, items: [item] });
+    const at = { startLine: 3, endLine: 3 };
+    for (const item of [
+      { kind: "note", ...at },
+      { kind: "note", ...at, body: "   " },
+      { kind: "note", ...at, body: "x", replacement: "y" },
+      { kind: "note", ...at, body: "x", reason: "y" },
+      { kind: "note", ...at, body: "x".repeat(EDIT_REQUEST_LIMITS.note + 1) },
+      { kind: "note", startLine: 3, endLine: 2, body: "x" },
+      { kind: "comment", ...at, body: "x" },
+      // 提案には、今までどおり置き換え案が要る
+      { kind: "suggestion", ...at, body: "x" },
+      { ...at },
+    ]) {
+      const res = await post(item);
+      expect(res.status, JSON.stringify(item).slice(0, 80)).toBe(400);
+      expect(res.body.error.code).toBe("invalid_input");
+    }
+    expect((await post({ kind: "note", startLine: 3, endLine: 10, body: "x" })).body.error.code).toBe("line_out_of_range");
+    expect((await post({ kind: "note", ...at, body: "x".repeat(EDIT_REQUEST_LIMITS.note) })).status).toBe(201);
+    expect((await list(page.id)).requests).toHaveLength(1);
+  });
+
+  it("keeps the shape of each kind in the database too", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [
+      { kind: "note", startLine: 3, endLine: 3, body: "指摘" },
+      { startLine: 9, endLine: 9, replacement: "y" },
+    ]);
+    const [note, suggestion] = made.itemIds;
+    const set = (id: string | undefined, sql: string) => ctx.client.query(`update edit_request_items set ${sql} where id = $1`, [id]);
+    // 指摘：置き換え案・理由を持てない、本文は空にできない、採用・却下にならない
+    for (const sql of [`replacement_md = ''`, `reason = 'x'`, `note_body = null`, `note_body = '  '`, `status = 'accepted'`, `status = 'rejected'`, `kind = 'suggestion'`]) {
+      await expect(set(note, sql), `note: ${sql}`).rejects.toThrow(/edit_request_items_kind_shape_check/);
+    }
+    // 提案：置き換え案が要る、本文を持てない、解決済みにならない
+    for (const sql of [`replacement_md = null`, `note_body = 'x'`, `status = 'resolved'`, `kind = 'note'`]) {
+      await expect(set(suggestion, sql), `suggestion: ${sql}`).rejects.toThrow(/edit_request_items_kind_shape_check/);
+    }
+    await expect(set(note, `status = 'done'`)).rejects.toThrow(/edit_request_items_status_check/);
+    await expect(set(note, `kind = 'question'`)).rejects.toThrow(/edit_request_items_kind/);
+    // 通るもの：行を消す提案（空の文字）、解決済みの指摘
+    await expect(set(suggestion, `replacement_md = ''`)).resolves.toBeTruthy();
+    await expect(set(note, `status = 'resolved'`)).resolves.toBeTruthy();
+  });
+
+  it("resolves an open note and puts a resolved one back to open", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    const made = await request(page, [{ kind: "note", startLine: 3, endLine: 3, body: "ここは古いかもしれない" }]);
+    const path = (action: string) => itemPath(page.id, made.itemIds[0]!, action);
+
+    const reopenOpen = await ctx.call("POST", path("reopen"));
+    expect(reopenOpen.status).toBe(409);
+    expect(reopenOpen.body.error.code).toBe("not_resolved");
+    expect((await editor.call("POST", path("resolve"))).status).toBe(200);
+    expect((await itemsOf(page.id))[0]).toMatchObject({ status: "resolved", decidedBy: { id: editor.user.id, name: "editor" }, current: { startLine: 3, endLine: 3 }, stale: null });
+    expect((await list(page.id)).openCount).toBe(0);
+    const again = await ctx.call("POST", path("resolve"));
+    expect(again.status).toBe(409);
+    expect(again.body.error).toMatchObject({ code: "not_open", details: { status: "resolved" } });
+    // 本文は変わらない
+    expect((await getPage(page.id)).headVersionId).toBe(page.head);
+
+    expect((await ctx.call("POST", path("reopen"))).status).toBe(200);
+    expect((await itemsOf(page.id))[0]).toMatchObject({ status: "open", decidedBy: null, decidedAt: null });
+    expect((await list(page.id)).openCount).toBe(1);
+  });
+
+  it("answers with a clear error for an action that does not fit the kind", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [
+      { kind: "note", startLine: 3, endLine: 3, body: "指摘" },
+      { startLine: 9, endLine: 9, replacement: "y" },
+    ]);
+    const [note, suggestion] = made.itemIds as [string, string];
+    // 指摘は、採用も却下もできない
+    for (const action of ["accept", "reject"]) {
+      const res = await ctx.call("POST", itemPath(page.id, note, action));
+      expect(res.status, action).toBe(409);
+      expect(res.body.error.code, action).toBe("not_a_suggestion");
+    }
+    // 提案は、解決済みにできない
+    const res = await ctx.call("POST", itemPath(page.id, suggestion, "resolve"));
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("not_a_note");
+    expect((await itemsOf(page.id)).map((i) => i.status)).toEqual(["open", "open"]);
+    expect((await getPage(page.id)).headVersionId).toBe(page.head);
+  });
+
+  it("marks a note stale by the same rule as a suggestion, and still resolves it", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [
+      { kind: "note", startLine: 3, endLine: 3, body: "この段落は古い" },
+      { kind: "note", startLine: 9, endLine: 9, body: "最後も確かめて" },
+    ]);
+    // 1段落目を書き換え、前に行を足す
+    const saved = await save(page, `足した\n\n${BODY.replace("1段落目", "書き直した")}`);
+    expect(saved.status).toBe(200);
+    const [gone, moved] = await itemsOf(page.id);
+    expect(gone).toMatchObject({ status: "open", stale: "not_found", current: null });
+    // 元の文面が残っていれば、ずれた行で場所が分かる
+    expect(moved).toMatchObject({ status: "open", stale: null, current: { startLine: 11, endLine: 11 } });
+    expect((await list(page.id)).openCount).toBe(2);
+    expect((await ctx.call("POST", itemPath(page.id, gone!.id, "resolve"))).status).toBe(200);
+    expect((await itemsOf(page.id))[0]).toMatchObject({ status: "resolved", stale: null, current: null });
+    expect((await list(page.id)).openCount).toBe(1);
+  });
+
+  it("finishes a request when its last open item is resolved, and leaves notes alone when accepting everything", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const requester = await ctx.addUser("requester@example.com", { wiki: "editor" });
+    const made = await request(
+      page,
+      [
+        { startLine: 3, endLine: 3, replacement: "x" },
+        { kind: "note", startLine: 5, endLine: 5, body: "a とは？" },
+        { startLine: 9, endLine: 9, replacement: "y" },
+        { kind: "note", startLine: 7, endLine: 7, body: "c は要る？" },
+      ],
+      { userId: requester.user.id },
+    );
+    expect((await list(page.id)).openCount).toBe(4);
+
+    // 「すべて採用」は、提案だけを採用する。指摘は、かけられなかったものにも数えない
+    const all = await ctx.call("POST", `${W}/pages/${page.id}/edit-requests/${made.id}/accept-all`);
+    expect(all.status).toBe(200);
+    expect(all.body.applied.map((a: any) => a.itemId)).toEqual([made.itemIds[0], made.itemIds[2]]);
+    expect(all.body.skipped).toEqual([]);
+    expect((await itemsOf(page.id)).map((i) => i.status)).toEqual(["accepted", "open", "accepted", "open"]);
+    expect((await list(page.id)).openCount).toBe(2);
+    // 指摘だけが残ったリクエストで「すべて採用」しても、何も起きない
+    const none = await ctx.call("POST", `${W}/pages/${page.id}/edit-requests/${made.id}/accept-all`);
+    expect(none.body).toMatchObject({ versionId: null, applied: [], skipped: [] });
+
+    // 指摘を1件解決済みにし、もう1件は出した人が取り下げる → 未対応が0件（リクエストは完了）
+    expect((await ctx.call("POST", itemPath(page.id, made.itemIds[1]!, "resolve"))).status).toBe(200);
+    expect((await list(page.id)).openCount).toBe(1);
+    expect((await requester.call("POST", `${W}/pages/${page.id}/edit-requests/${made.id}/withdraw`)).body).toEqual({ withdrawn: 1 });
+    const done = await list(page.id);
+    expect(done.openCount).toBe(0);
+    expect(done.requests[0]!.items.map((i) => i.status)).toEqual(["accepted", "resolved", "accepted", "withdrawn"]);
+    expect((await ctx.call("GET", `${W}/pages/${page.id}/edit-requests/count`)).body).toEqual({ open: 0 });
+    // 取り下げた指摘は、解決済みにも、未対応にも戻せない
+    expect((await ctx.call("POST", itemPath(page.id, made.itemIds[3]!, "resolve"))).body.error.code).toBe("not_open");
+    expect((await ctx.call("POST", itemPath(page.id, made.itemIds[3]!, "reopen"))).body.error.code).toBe("not_resolved");
+    // 解決済みを戻すと、また未対応に数える
+    expect((await ctx.call("POST", itemPath(page.id, made.itemIds[1]!, "reopen"))).status).toBe(200);
+    expect((await list(page.id)).openCount).toBe(1);
+  });
+
+  it("does not hand a note to the editor as an applied change", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [
+      { kind: "note", startLine: 5, endLine: 5, body: "指摘" },
+      { startLine: 3, endLine: 3, replacement: "x" },
+    ]);
+    expect((await ctx.call("POST", itemPath(page.id, made.itemIds[0]!, "resolve"))).status).toBe(200);
+    expect((await accept(page.id, made.itemIds[1]!)).status).toBe(200);
+    const applied = (await ctx.call("GET", `${W}/pages/${page.id}/edit-requests/applied?since=${page.head}`)).body;
+    expect(applied.steps).toHaveLength(1);
+    expect(applied.steps[0].edits).toEqual([{ itemId: made.itemIds[1], originalText: "1段落目", replacement: "x" }]);
+  });
+});
+
+describe("replies to an item", () => {
+  const commentsPath = (pageId: string, itemId: string) => `${W}/pages/${pageId}/edit-request-items/${itemId}/comments`;
+
+  it("adds replies in order, as plain text, from any member", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    const made = await request(page, [
+      { startLine: 3, endLine: 3, replacement: "x" },
+      { kind: "note", startLine: 9, endLine: 9, body: "指摘" },
+    ]);
+    const text = "  <b>太字</b> と **Markdown** と\nhttps://example.com  ";
+    const first = await ctx.call<EditRequestComment>("POST", commentsPath(page.id, made.itemIds[0]!), { body: text });
+    expect(first.status).toBe(201);
+    // 書いたままの文字で持つ（前後の空白だけ落とす）
+    expect(first.body).toMatchObject({ itemId: made.itemIds[0], body: text.trim(), createdBy: { id: ctx.owner.id, name: "オーナー" }, via: null });
+    expect((await editor.call("POST", commentsPath(page.id, made.itemIds[0]!), { body: "2つ目" })).status).toBe(201);
+    expect((await editor.call("POST", commentsPath(page.id, made.itemIds[1]!), { body: "指摘への返信" })).status).toBe(201);
+
+    const [suggestion, note] = await itemsOf(page.id);
+    expect(suggestion!.comments.map((c) => [c.body, c.createdBy.name])).toEqual([
+      [text.trim(), "オーナー"],
+      ["2つ目", "editor"],
+    ]);
+    expect(suggestion!.comments[0]!.id).toBe(first.body.id);
+    expect(note!.comments.map((c) => c.body)).toEqual(["指摘への返信"]);
+    // 返信しても、項目の状態と未対応の数は変わらない
+    expect((await list(page.id)).openCount).toBe(2);
+  });
+
+  it("checks the body and its length", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [{ startLine: 3, endLine: 3, replacement: "x" }]);
+    const path = commentsPath(page.id, made.itemIds[0]!);
+    for (const body of [{}, { body: "" }, { body: "  \n " }, { body: "x".repeat(EDIT_REQUEST_LIMITS.reply + 1) }, { body: 1 }]) {
+      const res = await ctx.call("POST", path, body);
+      expect(res.status, JSON.stringify(body).slice(0, 40)).toBe(400);
+    }
+    expect((await ctx.call("POST", path, { body: "x".repeat(EDIT_REQUEST_LIMITS.reply) })).status).toBe(201);
+    expect((await itemsOf(page.id))[0]!.comments).toHaveLength(1);
+  });
+
+  it("takes replies after the item is accepted, rejected, resolved or withdrawn", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [
+      { startLine: 3, endLine: 3, replacement: "x" },
+      { startLine: 5, endLine: 5, replacement: "- A" },
+      { kind: "note", startLine: 7, endLine: 7, body: "指摘" },
+      { startLine: 9, endLine: 9, replacement: "y" },
+    ]);
+    const action = (i: number, name: string) => ctx.call("POST", `${W}/pages/${page.id}/edit-request-items/${made.itemIds[i]}/${name}`);
+    expect((await action(0, "accept")).status).toBe(200);
+    expect((await action(1, "reject")).status).toBe(200);
+    expect((await action(2, "resolve")).status).toBe(200);
+    expect((await ctx.call("POST", `${W}/pages/${page.id}/edit-requests/${made.id}/withdraw`)).body).toEqual({ withdrawn: 1 });
+    for (const itemId of made.itemIds) {
+      expect((await ctx.call("POST", commentsPath(page.id, itemId), { body: "あとから" })).status).toBe(201);
+    }
+    const items = await itemsOf(page.id);
+    expect(items.map((i) => [i.status, i.comments.length])).toEqual([
+      ["accepted", 1],
+      ["rejected", 1],
+      ["resolved", 1],
+      ["withdrawn", 1],
+    ]);
+  });
+
+  it("stops at the limit of replies for one item", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [{ startLine: 3, endLine: 3, replacement: "x" }]);
+    await ctx.client.query(
+      `insert into edit_request_comments (item_id, body, created_by) select $1, 'x', $2 from generate_series(1, ${EDIT_REQUEST_LIMITS.repliesPerItem})`,
+      [made.itemIds[0], ctx.owner.id],
+    );
+    const res = await ctx.call("POST", commentsPath(page.id, made.itemIds[0]!), { body: "もう1つ" });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("too_many_replies");
+  });
+
+  it("treats an item of another wiki, a page in the trash and an archived wiki as not found", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const made = await request(page, [
+      { startLine: 3, endLine: 3, replacement: "x" },
+      { kind: "note", startLine: 9, endLine: 9, body: "指摘" },
+    ]);
+    const [suggestion, note] = made.itemIds as [string, string];
+    expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "ノート" })).status).toBe(201);
+    const other = (await ctx.call("POST", "/admin/w/notes/pages", { title: "別の wiki", bodyMd: BODY })).body;
+    const inNotes = await request({ id: other.id, head: other.headVersionId }, [{ kind: "note", startLine: 3, endLine: 3, body: "別の wiki の指摘" }]);
+
+    for (const [path, body] of [
+      // 別の wiki の経路から
+      [`/admin/w/notes/pages/${page.id}/edit-request-items/${suggestion}/comments`, { body: "x" }],
+      [`/admin/w/notes/pages/${page.id}/edit-request-items/${note}/resolve`, undefined],
+      // 自分の wiki のページの経路で、別の wiki の項目を指す
+      [`/admin/w/notes/pages/${other.id}/edit-request-items/${suggestion}/comments`, { body: "x" }],
+      [`/admin/w/notes/pages/${other.id}/edit-request-items/${note}/resolve`, undefined],
+      [`${W}/pages/${page.id}/edit-request-items/${inNotes.itemIds[0]}/comments`, { body: "x" }],
+      [`${W}/pages/${page.id}/edit-request-items/${inNotes.itemIds[0]}/resolve`, undefined],
+      [`${W}/pages/${page.id}/edit-request-items/not-a-uuid/comments`, { body: "x" }],
+      [`${W}/pages/${page.id}/edit-request-items/not-a-uuid/resolve`, undefined],
+    ] as const) {
+      expect((await ctx.call("POST", path, body)).status, path).toBe(404);
+    }
+    // その wiki のメンバーでない人
+    const outsider = await ctx.addUser("outsider@example.com", { notes: "editor" });
+    expect((await outsider.call("POST", commentsPath(page.id, suggestion), { body: "x" })).status).toBe(404);
+    expect((await outsider.call("POST", `${W}/pages/${page.id}/edit-request-items/${note}/resolve`)).status).toBe(404);
+
+    // ゴミ箱のページの項目には、返信も解決もできない
+    expect((await ctx.call("DELETE", `${W}/pages/${page.id}`)).status).toBe(200);
+    expect((await ctx.call("POST", commentsPath(page.id, suggestion), { body: "x" })).status).toBe(404);
+    expect((await ctx.call("POST", `${W}/pages/${page.id}/edit-request-items/${note}/resolve`)).status).toBe(404);
+    expect((await ctx.call("POST", `${W}/pages/${page.id}/restore`)).status).toBe(200);
+    // アーカイブ中の wiki
+    expect((await ctx.call("POST", "/admin/wikis/notes/archive")).status).toBe(200);
+    expect((await ctx.call("POST", `/admin/w/notes/pages/${other.id}/edit-request-items/${inNotes.itemIds[0]}/comments`, { body: "x" })).status).toBe(404);
+    expect((await ctx.call("POST", `/admin/w/notes/pages/${other.id}/edit-request-items/${inNotes.itemIds[0]}/resolve`)).status).toBe(404);
+
+    // どれも、何も残していない。元に戻したページでは、また返信・解決できる
+    expect((await itemsOf(page.id)).map((i) => [i.status, i.comments.length])).toEqual([
+      ["open", 0],
+      ["open", 0],
+    ]);
+    expect((await ctx.call("POST", commentsPath(page.id, suggestion), { body: "x" })).status).toBe(201);
+    expect((await ctx.call("POST", `${W}/pages/${page.id}/edit-request-items/${note}/resolve`)).status).toBe(200);
   });
 });

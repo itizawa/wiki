@@ -249,8 +249,8 @@ export const editRequestItems = pgTable(
       .references(() => editRequests.id),
     /** リクエストの中での並び（0 から） */
     position: integer("position").notNull(),
-    /** 項目の種類。いまは提案（置き換え案を持つ）だけ */
-    kind: text("kind", { enum: ["suggestion"] }).notNull().default("suggestion"),
+    /** 項目の種類。suggestion: 提案（置き換え案を持つ）、note: 指摘（置き換え案を持たず、本文を持つ） */
+    kind: text("kind", { enum: ["suggestion", "note"] }).notNull().default("suggestion"),
     /** 基準の版。項目が残っているあいだは、版の間引き（`pages/prune.ts`）で消さない */
     baseVersionId: uuid("base_version_id")
       .notNull()
@@ -260,11 +260,15 @@ export const editRequestItems = pgTable(
     endLine: integer("end_line").notNull(),
     /** 基準の版で、その範囲にあった文面（Markdown）。サーバーが切り出す */
     originalMd: text("original_md").notNull(),
-    /** 置き換え案（Markdown）。空の文字なら、その行を消す提案。置き換え案を持たない種類の項目では null */
+    /** 提案の置き換え案（Markdown）。空の文字なら、その行を消す提案（null とは別）。指摘では null */
     replacementMd: text("replacement_md"),
+    /** 提案の理由（任意）。指摘では null */
     reason: text("reason"),
-    status: text("status", { enum: ["open", "accepted", "rejected", "withdrawn"] }).notNull().default("open"),
-    /** 採用・却下・取り下げを決めた人と日時。未対応に戻したら null に戻す */
+    /** 指摘の本文（プレーンテキスト。必須）。提案では null */
+    noteBody: text("note_body"),
+    /** 未対応は、種類を問わず open。提案は accepted / rejected、指摘は resolved になる。どちらも withdrawn にできる */
+    status: text("status", { enum: ["open", "accepted", "rejected", "resolved", "withdrawn"] }).notNull().default("open"),
+    /** 採用・却下・解決済み・取り下げを決めた人と日時。未対応に戻したら null に戻す */
     decidedBy: uuid("decided_by").references((): AnyPgColumn => users.id),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** 採用でできた版。「すべて採用」では、複数の項目が同じ版を指す */
@@ -272,16 +276,49 @@ export const editRequestItems = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    check("edit_request_items_kind_check", sql`${t.kind} in ('suggestion')`),
-    check("edit_request_items_status_check", sql`${t.status} in ('open', 'accepted', 'rejected', 'withdrawn')`),
+    check("edit_request_items_kind_check", sql`${t.kind} in ('suggestion', 'note')`),
+    check("edit_request_items_status_check", sql`${t.status} in ('open', 'accepted', 'rejected', 'resolved', 'withdrawn')`),
+    // 種類ごとの形：提案は置き換え案が必須（空の文字は「行を消す」）で本文を持たず、解決済みにならない。
+    // 指摘は本文が必須で、置き換え案・理由・採用でできた版を持たず、採用・却下にならない
+    check(
+      "edit_request_items_kind_shape_check",
+      sql`(${t.kind} = 'suggestion' and ${t.replacementMd} is not null and ${t.noteBody} is null and ${t.status} <> 'resolved') or (${t.kind} = 'note' and ${t.replacementMd} is null and ${t.reason} is null and ${t.acceptedVersionId} is null and ${t.noteBody} is not null and btrim(${t.noteBody}) <> '' and ${t.status} not in ('accepted', 'rejected'))`,
+    ),
     check("edit_request_items_lines_check", sql`${t.startLine} >= 1 and ${t.endLine} >= ${t.startLine}`),
     unique("edit_request_items_request_position_unique").on(t.requestId, t.position),
     // 版の間引きが「項目が基準にしている版か」を版ごとに引く
     index("edit_request_items_base_version_idx").on(t.baseVersionId),
     // 版履歴が「採用でできた版か」を版ごとに引く
     index("edit_request_items_accepted_version_idx").on(t.acceptedVersionId),
-    // 未対応の件数（ページごと・wiki ごと）
+    // 未対応の件数（ページごと・wiki ごと）。提案も指摘も、未対応は open
     index("edit_request_items_open_idx").on(t.requestId).where(sql`${t.status} = 'open'`),
+  ],
+);
+
+/**
+ * 編集リクエストの項目への返信。本文はプレーンテキスト（HTML としても Markdown としても描かない）。
+ * 書いたあとは、書き換えも削除もしない（消えるのは、ページを完全に削除したときだけ）。
+ */
+export const editRequestComments = pgTable(
+  "edit_request_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => editRequestItems.id),
+    body: text("body").notNull(),
+    /** 書いた人。外部のアプリ（MCP）から書いたものは、許可した人 */
+    createdBy: uuid("created_by")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
+    /** 外部のアプリ（MCP）から書いたものなら、その連携 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("edit_request_comments_body_check", sql`btrim(${t.body}) <> ''`),
+    // 項目ごとの返信（古い順）
+    index("edit_request_comments_item_idx").on(t.itemId, t.createdAt),
   ],
 );
 

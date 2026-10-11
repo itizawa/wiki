@@ -4,20 +4,22 @@ import {
   locateLineEdit,
   replacementLines,
   sliceLines,
+  EDIT_REQUEST_LIMITS,
   type AcceptEditRequestResult,
   type AppliedEditRequests,
   type CreateEditRequestInput,
   type EditRequest,
+  type EditRequestComment,
   type EditRequestItem,
   type EditRequestPerson,
   type EditRequestSkipped,
   type LineEdit,
   type PageEditRequests,
 } from "@wiki/shared";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
-import { editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pages, pageVersions, users } from "../db/schema";
+import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pages, pageVersions, users } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { createVersion } from "../pages/versions";
 import { findLivePage } from "../routes/pages";
@@ -53,7 +55,7 @@ export type EditRequestActor = { userId: string; oauthGrantId?: string };
  *
  * - 基準の版が最新の版でなければ 409（`version_conflict`。読み直してから出し直す）
  * - 行の範囲が本文の外なら 400（`line_out_of_range`）
- * - 置き換え案が元の文面と同じなら 400（`no_change`）
+ * - 提案の置き換え案が元の文面と同じなら 400（`no_change`）。指摘（`kind: "note"`）は置き換え案を持たないので、確かめない
  * - 元の文面は、ここで基準の版から切り出す（呼ぶ側には渡させない）
  */
 export async function createEditRequest(
@@ -78,7 +80,7 @@ export async function createEditRequest(
         lineCount,
       });
     }
-    if (replacementLines(item.replacement).join("\n") === original && item.replacement !== "") {
+    if (item.kind !== "note" && replacementLines(item.replacement).join("\n") === original && item.replacement !== "") {
       throw new HttpError(400, "no_change", `items[${index}]: the replacement is the same as the current text`, { index });
     }
     return original;
@@ -104,8 +106,10 @@ export async function createEditRequest(
         startLine: item.startLine,
         endLine: item.endLine,
         originalMd: originals[position]!,
-        replacementMd: item.replacement,
-        reason: item.reason || null,
+        // 指摘は置き換え案を持たず、本文を持つ（DB の制約 `edit_request_items_kind_shape_check` と同じ形）
+        ...(item.kind === "note"
+          ? { kind: "note" as const, replacementMd: null, reason: null, noteBody: item.body }
+          : { kind: "suggestion" as const, replacementMd: item.replacement, reason: item.reason || null, noteBody: null }),
       })),
     )
     .returning({ id: editRequestItems.id, position: editRequestItems.position });
@@ -127,7 +131,8 @@ const toLineEdit = (item: ItemRow, headVersionId: string): LineEdit => ({
 
 /**
  * そのページのリクエストと項目（新しい順、`EDIT_REQUEST_LIST_LIMIT` 件まで）。
- * 未対応と却下の項目には、最新の版での行の範囲（`current`）を付ける。未対応の項目が、もう採用できないなら `stale` に理由が入る。
+ * 未対応・却下・解決済みの項目には、最新の版での行の範囲（`current`）を付ける。未対応の項目の箇所が書き換えられていたら `stale` に理由が入る
+ * （提案は採用できない。指摘は、そのまま解決済みにできる）。項目ごとの返信（古い順）も付ける。
  *
  * `only` で絞れる：`requestId` は1件だけ、`oauthGrantId` はその連携が出したものだけ（MCP で、非公開のページを読めないアプリ向け）。
  */
@@ -163,10 +168,14 @@ export async function listEditRequests(
           .where(inArray(editRequestItems.requestId, ids))
           .orderBy(asc(editRequestItems.position));
 
+  const comments = ids.length === 0 ? new Map<string, EditRequestComment[]>() : await commentsOf(db, inArray(editRequestItems.requestId, ids));
+
   const byRequest = new Map<string, EditRequestItem[]>();
   let openCount = 0;
   for (const { item, deciderName } of items) {
-    const located = item.status === "open" || item.status === "rejected" ? locateLineEdit(head!.bodyMd, toLineEdit(item, page.headVersionId)) : null;
+    const located =
+      item.status === "open" || item.status === "rejected" || item.status === "resolved" ? locateLineEdit(head!.bodyMd, toLineEdit(item, page.headVersionId)) : null;
+    // 未対応の数え方は `countOpenItems` と同じ（種類を問わず open）
     if (item.status === "open") openCount++;
     const list = byRequest.get(item.requestId) ?? [];
     list.push({
@@ -178,13 +187,15 @@ export async function listEditRequests(
       startLine: item.startLine,
       endLine: item.endLine,
       originalText: item.originalMd,
-      replacement: item.replacementMd ?? "",
+      replacement: item.replacementMd,
       reason: item.reason,
+      body: item.noteBody,
       decidedBy: item.decidedBy && deciderName ? { id: item.decidedBy, name: deciderName } : null,
       decidedAt: item.decidedAt?.toISOString() ?? null,
       acceptedVersionId: item.acceptedVersionId,
       current: located?.ok ? { startLine: located.startLine, endLine: located.endLine } : null,
       stale: item.status === "open" && located && !located.ok ? located.reason : null,
+      comments: comments.get(item.id) ?? [],
     });
     byRequest.set(item.requestId, list);
   }
@@ -206,7 +217,38 @@ export async function listEditRequests(
   };
 }
 
-/** そのページの、未対応の項目の数（古くなったものも含む）。 */
+/** 返信を、項目ごとにまとめて読む（古い順）。`where` は、項目（`edit_request_items`）への条件 */
+async function commentsOf(db: Db, where: SQL): Promise<Map<string, EditRequestComment[]>> {
+  const rows = await db
+    .select({ comment: editRequestComments, authorName: personName, via: oauthClients.name })
+    .from(editRequestComments)
+    .innerJoin(editRequestItems, eq(editRequestItems.id, editRequestComments.itemId))
+    .innerJoin(users, eq(users.id, editRequestComments.createdBy))
+    .leftJoin(oauthGrants, eq(oauthGrants.id, editRequestComments.oauthGrantId))
+    .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
+    .where(where)
+    .orderBy(asc(editRequestComments.createdAt), asc(editRequestComments.id));
+  const byItem = new Map<string, EditRequestComment[]>();
+  for (const { comment, authorName, via } of rows) {
+    const list = byItem.get(comment.itemId) ?? [];
+    list.push({
+      id: comment.id,
+      itemId: comment.itemId,
+      body: comment.body,
+      createdBy: { id: comment.createdBy, name: authorName },
+      via: via ?? null,
+      createdAt: comment.createdAt.toISOString(),
+    });
+    byItem.set(comment.itemId, list);
+  }
+  return byItem;
+}
+
+/**
+ * そのページの、未対応の項目の数（古くなったものも含む）。**未対応の数え方は、ここ（と `listEditRequests` の `openCount`）で決めている**：
+ * 種類を問わず `status = 'open'`。提案は採用・却下、指摘は解決済みにすると、どちらも取り下げると、数から外れる。
+ * 未対応だけの索引（`edit_request_items_open_idx`）が、この条件に合わせてある。
+ */
 export async function countOpenItems(db: Db, pageId: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -241,13 +283,14 @@ export async function acceptEditRequestItems(
   const rows = await lockItems(tx, page.id, args.target);
   if (single !== null) {
     if (rows.length === 0) throw notFound("edit request item");
+    // 指摘は置き換え案を持たないので、採用できない（解決済みにする）
+    if (rows[0]!.kind !== "suggestion") throw notASuggestion();
     if (rows[0]!.status !== "open") throw notOpen(rows[0]!);
   } else if (!(await requestExists(tx, page.id, (args.target as { requestId: string }).requestId))) {
     throw notFound("edit request");
   }
-  // 置き換え案を持たない項目は、採用の対象にならない
+  // 指摘は、採用の対象にならない（「すべて採用」でも、未対応のまま残る）
   const open = rows.filter((r) => r.status === "open" && r.kind === "suggestion" && r.replacementMd !== null);
-  if (single !== null && open.length === 0) throw new HttpError(409, "not_acceptable", "this item has no replacement to accept");
 
   const [head] = await tx.select().from(pageVersions).where(eq(pageVersions.id, page.headVersionId));
   const edits = open.map((r) => toLineEdit(r, page.headVersionId));
@@ -322,6 +365,9 @@ export async function acceptEditRequestItems(
 
 const notOpen = (item: ItemRow) =>
   new HttpError(409, "not_open", `this item is already ${item.status}`, { status: item.status });
+/** 種類に合わない操作：指摘を採用・却下しようとした */
+const notASuggestion = () =>
+  new HttpError(409, "not_a_suggestion", "this item is a note without a replacement; it cannot be accepted or rejected, only resolved", { kind: "note" });
 
 /** そのページの項目を、行ロックして読む（リクエストの中の並び順）。別のページ・別の wiki の項目は、無いものとして扱う。 */
 async function lockItems(tx: Db, pageId: string, target: { itemId: string } | { requestId: string }): Promise<ItemRow[]> {
@@ -346,14 +392,15 @@ async function requestExists(db: Db, pageId: string, requestId: string): Promise
 }
 
 // ---------------------------------------------------------------------------
-// 却下・未対応に戻す・取り下げ
+// 却下・解決済み・未対応に戻す・取り下げ
 // ---------------------------------------------------------------------------
 
-/** 未対応の項目を却下する。古くなった項目も却下できる。トランザクション内で呼ぶ。 */
+/** 未対応の提案を却下する。古くなった項目も却下できる。指摘は却下できない（409 `not_a_suggestion`）。トランザクション内で呼ぶ。 */
 export async function rejectEditRequestItem(tx: Db, args: { wikiId: string; pageId: string; itemId: string; actor: EditRequestActor }): Promise<void> {
   const page = await findLivePage(tx, args.wikiId, args.pageId, true);
   const [item] = await lockItems(tx, page.id, { itemId: args.itemId });
   if (!item) throw notFound("edit request item");
+  if (item.kind !== "suggestion") throw notASuggestion();
   if (item.status !== "open") throw notOpen(item);
   await tx
     .update(editRequestItems)
@@ -361,12 +408,37 @@ export async function rejectEditRequestItem(tx: Db, args: { wikiId: string; page
     .where(eq(editRequestItems.id, item.id));
 }
 
-/** 却下した項目を、未対応に戻す。採用・取り下げの項目は戻せない（採用の取り消しは、版履歴から前の版に戻す）。トランザクション内で呼ぶ。 */
+/**
+ * 未対応の指摘を、解決済みにする。箇所が書き換えられて古くなった指摘も、解決済みにできる（本文は変わらない）。
+ * 提案は解決済みにできない（409 `not_a_note`。採用か却下で決める）。トランザクション内で呼ぶ。
+ */
+export async function resolveEditRequestItem(tx: Db, args: { wikiId: string; pageId: string; itemId: string; actor: EditRequestActor }): Promise<void> {
+  const page = await findLivePage(tx, args.wikiId, args.pageId, true);
+  const [item] = await lockItems(tx, page.id, { itemId: args.itemId });
+  if (!item) throw notFound("edit request item");
+  if (item.kind !== "note") {
+    throw new HttpError(409, "not_a_note", "this item is a suggestion; accept or reject it instead of resolving", { kind: item.kind });
+  }
+  if (item.status !== "open") throw notOpen(item);
+  await tx
+    .update(editRequestItems)
+    .set({ status: "resolved", decidedBy: args.actor.userId, decidedAt: new Date() })
+    .where(eq(editRequestItems.id, item.id));
+}
+
+/**
+ * 却下した提案・解決済みにした指摘を、未対応に戻す。採用・取り下げの項目は戻せない（採用の取り消しは、版履歴から前の版に戻す）。
+ * 戻せない状態なら 409：提案は `not_rejected`、指摘は `not_resolved`。トランザクション内で呼ぶ。
+ */
 export async function reopenEditRequestItem(tx: Db, args: { wikiId: string; pageId: string; itemId: string }): Promise<void> {
   const page = await findLivePage(tx, args.wikiId, args.pageId, true);
   const [item] = await lockItems(tx, page.id, { itemId: args.itemId });
   if (!item) throw notFound("edit request item");
-  if (item.status !== "rejected") throw new HttpError(409, "not_rejected", `only rejected items can be reopened; this item is ${item.status}`, { status: item.status });
+  if (item.kind === "note") {
+    if (item.status !== "resolved") throw new HttpError(409, "not_resolved", `only resolved notes can be reopened; this item is ${item.status}`, { status: item.status });
+  } else if (item.status !== "rejected") {
+    throw new HttpError(409, "not_rejected", `only rejected items can be reopened; this item is ${item.status}`, { status: item.status });
+  }
   await tx.update(editRequestItems).set({ status: "open", decidedBy: null, decidedAt: null }).where(eq(editRequestItems.id, item.id));
 }
 
@@ -393,6 +465,38 @@ export async function withdrawEditRequest(
     .where(and(eq(editRequestItems.requestId, request.id), eq(editRequestItems.status, "open")))
     .returning({ id: editRequestItems.id });
   return { withdrawn: rows.length };
+}
+
+// ---------------------------------------------------------------------------
+// 返信
+// ---------------------------------------------------------------------------
+
+/**
+ * 項目に返信する。項目の状態は問わない（採用・却下・解決済み・取り下げのあとも書ける）。本文はプレーンテキスト。
+ * 1つの項目に付けられるのは `EDIT_REQUEST_LIMITS.repliesPerItem` 件まで（超えると 409 `too_many_replies`）。トランザクション内で呼ぶ。
+ * ゴミ箱のページ・別の wiki のページの項目は、無いものとして扱う（`findLivePage`）。
+ */
+export async function addEditRequestComment(
+  tx: Db,
+  args: { wikiId: string; pageId: string; itemId: string; body: string; actor: EditRequestActor },
+): Promise<EditRequestComment> {
+  const page = await findLivePage(tx, args.wikiId, args.pageId);
+  // 項目の行を取ってから数えるので、同時に来た返信とは順番に処理される
+  const [item] = await lockItems(tx, page.id, { itemId: args.itemId });
+  if (!item) throw notFound("edit request item");
+  const [counted] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(editRequestComments)
+    .where(eq(editRequestComments.itemId, item.id));
+  if (Number(counted?.count ?? 0) >= EDIT_REQUEST_LIMITS.repliesPerItem) {
+    throw new HttpError(409, "too_many_replies", `an item can have up to ${EDIT_REQUEST_LIMITS.repliesPerItem} replies`, { limit: EDIT_REQUEST_LIMITS.repliesPerItem });
+  }
+  const [made] = await tx
+    .insert(editRequestComments)
+    .values({ itemId: item.id, body: args.body, createdBy: args.actor.userId, oauthGrantId: args.actor.oauthGrantId ?? null })
+    .returning({ id: editRequestComments.id });
+  const list = (await commentsOf(tx, eq(editRequestItems.id, item.id))).get(item.id) ?? [];
+  return list.find((c) => c.id === made!.id)!;
 }
 
 // ---------------------------------------------------------------------------
