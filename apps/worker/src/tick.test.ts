@@ -23,7 +23,7 @@ describe("tick", () => {
   it("runs due actions, then triggers the deploy hook when a build is due", async () => {
     const { impl, calls } = fakeFetch({
       "https://api.test/internal/scheduled/run": { done: ["a"], retrying: [], failed: [] },
-      "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h" },
+      "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h", attempts: 1 },
     });
     const r = await tick(env, impl);
     expect(r.deployed).toBe(true);
@@ -32,6 +32,7 @@ describe("tick", () => {
       "https://api.test/internal/scheduled/run",
       "https://api.test/internal/builds/request",
       "https://hooks.test/deploy",
+      "https://api.test/internal/builds/b/triggered",
     ]);
     expect(calls[0]!.auth).toBe("Bearer t");
   });
@@ -65,7 +66,7 @@ describe("tick", () => {
     const { impl } = fakeFetch(
       {
         "https://api.test/internal/scheduled/run": { done: ["a"], retrying: [], failed: [] },
-          "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h" },
+          "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h", attempts: 1 },
       },
       ["https://api.test/internal/drafts/promote"],
     );
@@ -73,5 +74,45 @@ describe("tick", () => {
     expect(r.drafts).toBeNull();
     expect(r.run.done).toEqual(["a"]);
     expect(r.deployed).toBe(true);
+  });
+
+  it("reports the build as triggered after the deploy hook succeeds", async () => {
+    const { impl, calls } = fakeFetch({
+      "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
+      "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h", attempts: 1 },
+    });
+    await tick(env, impl);
+    expect(calls.slice(-2).map((c) => c.url)).toEqual(["https://hooks.test/deploy", "https://api.test/internal/builds/b/triggered"]);
+    expect(calls.at(-1)!.auth).toBe("Bearer t");
+  });
+
+  const failingHook = (attempts: number) =>
+    fakeFetch(
+      {
+        "https://api.test/internal/scheduled/run": { done: [], retrying: [], failed: [] },
+        "https://api.test/internal/builds/request": { trigger: true, buildId: "b", contentHash: "h", attempts },
+      },
+      ["https://hooks.test/deploy"],
+    );
+
+  it("leaves the build untriggered when the deploy hook fails, so that the next run asks again", async () => {
+    const { impl, calls } = failingHook(1);
+    await expect(tick(env, impl)).rejects.toThrow("deploy hook failed: 500");
+    expect(calls.some((c) => c.url.endsWith("/triggered"))).toBe(false);
+    expect(calls.some((c) => c.url === "https://hooks.test/notify")).toBe(false);
+  });
+
+  it("notifies once, on the third failure in a row", async () => {
+    const notified = async (attempts: number) => {
+      const { impl, calls } = failingHook(attempts);
+      await expect(tick(env, impl)).rejects.toThrow("deploy hook failed: 500");
+      return calls.filter((c) => c.url === "https://hooks.test/notify").map((c) => JSON.parse(c.body!).text as string);
+    };
+    expect(await notified(2)).toEqual([]);
+    const [text, ...rest] = await notified(3);
+    expect(rest).toEqual([]);
+    expect(text).toContain("公開サイトのビルドを起動できませんでした");
+    expect(text).toContain("deploy hook failed: 500");
+    expect(await notified(4)).toEqual([]);
   });
 });

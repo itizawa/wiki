@@ -10,7 +10,8 @@ Cloudflare Workers（Cron Triggers）。cron は2本ある（`wrangler.toml` の
 2. API の `/internal/scheduled/run` で期限の来た予約（公開・非公開化）を実行
 3. 最終失敗（3回再試行後）があれば `NOTIFY_WEBHOOK_URL`（Slack互換 Incoming Webhook）に通知
 4. `/internal/builds/request` で公開イベントをデバウンスし、必要なら公開サイト（`wiki-site`）のデプロイフックを叩いて公開ビルドを起動
-   （マニフェストの `contentHash` が前回と同じならビルドしない）
+   （マニフェストの `contentHash` が、最後に起動できたビルドと同じならビルドしない）
+5. フックを呼べたら `/internal/builds/{id}/triggered` で、そのビルドを起動済みにする。フックが失敗したビルドは起動済みにならず、次の回の `/internal/builds/request` が、新しい公開イベントが無くても同じビルドをもう一度返す。同じビルドの起動が3回続けて失敗したら、`NOTIFY_WEBHOOK_URL` に一度だけ通知する（そのあとも5分おきに試し続ける）
 
 ## 1日1回（`0 18 * * *`。JST の午前3時）
 
