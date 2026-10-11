@@ -177,7 +177,7 @@ describe("POST /internal/tick", () => {
     next: { drafts: null, scheduled: null, build: null },
   };
 
-  it("needs the internal token, and reports nothing left when there is nothing to do", async () => {
+  it("needs the token of the cron worker, and reports nothing left when there is nothing to do", async () => {
     ctx = await setup();
     expect((await ctx.app.request("/internal/tick", { method: "POST" })).status).toBe(401);
     const res = await internal("POST", "/internal/tick");

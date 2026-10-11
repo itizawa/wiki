@@ -405,7 +405,7 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 5. **公開サイトの Worker**（`wiki-site`）を Cloudflare の Workers Builds（Git 連携）につなぐ。Worker の名前は `apps/site/wrangler.toml` の `name` と一致させる
    - ルートディレクトリ `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ブランチ `main`。`main` 以外のブランチのデプロイコマンドは `npx wrangler preview`（`apps/site/wrangler.toml` に `[previews]` ブロックが要る）
    - ビルドの環境変数：`API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`EXPORT_TOKEN`（手順6の同じ名前のシークレットと同じ値。「シークレット」として入れる）`SITE_BASE_DOMAIN`（`hatchery-works.com`）。サイト名とオリジンは、wiki の表示名と key から決まる
-   - **`main` 以外のブランチのビルド（プレビュー）は、API を呼ばず、サンプルデータ（`apps/site/fixtures/manifest.sample.json`）で作る**。プレビューの URL（`*.workers.dev`）には作ったときの内容が残るので、本番の内容（限定公開の本文と key を含む）で作ると、限定公開の URL を発行し直しても、非公開に戻しても、プレビューには残ってしまうため。ビルドの環境変数は本番のビルドとプレビューのビルドで分けられない（プレビューにも `EXPORT_TOKEN` が渡る）ので、ビルドのスクリプトが、Workers Builds の入れるブランチ名（`WORKERS_CI_BRANCH`）を見て決める（`apps/site/scripts/manifest-source.mjs`）。本番のブランチを `main` から変えるときは、そのファイルの `PRODUCTION_BRANCH` も変える
+   - **`main` 以外のブランチのビルド（プレビュー）は、API を呼ばず、サンプルデータ（`apps/site/fixtures/manifest.sample.json`）で作る**。プレビューの URL（`*.workers.dev`）には作ったときの内容が残るので、本番の内容（限定公開の本文と key を含む）で作ると、限定公開の URL を発行し直しても、非公開に戻しても、プレビューには残ってしまうため。ビルドの環境変数は1組で、本番のビルドとプレビューのビルドで分ける設定は Cloudflare のドキュメントに無い（プレビューにも `EXPORT_TOKEN` が渡るものとして扱う）ので、ビルドのスクリプトが、Workers Builds の入れるブランチ名（`WORKERS_CI_BRANCH`）を見て決める（`apps/site/scripts/manifest-source.mjs`）。本番のブランチを `main` から変えるときは、そのファイルの `PRODUCTION_BRANCH` も変える
    - wiki は `{key}.hatchery-works.com` で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルート `*.hatchery-works.com/*` で受ける（`apps/site/wrangler.toml`）。**DNS に、プロキシを有効にしたワイルドカードのレコード（`*.hatchery-works.com`）を1つ足す**（行き先は使われないので、`AAAA` で `100::` など）。wiki を作るたびに DNS や設定を足す必要は無い
    - このルートは `wiki-admin` など、ほかの Worker のサブドメインにも当たる。wiki の key として使えないホスト名（予約語）は、公開サイトの Worker がそのまま本来の Worker へ渡す。**新しい Worker を同じゾーンのサブドメインで出すときは、その名前を `RESERVED_WIKI_KEYS` に足す**
    - 閲覧数は、Workers Analytics Engine に貯める（`apps/site/wrangler.toml` の `[[analytics_engine_datasets]]`）。データセットは最初に書いたときに自動でできるので、作る手順は無い。アカウントでまだ Analytics Engine を使ったことが無ければ、先に Cloudflare のダッシュボードで Analytics Engine を有効にしておく（有効でないアカウントでは、バインディングのある Worker のデプロイが失敗することがある）。Worker の実行時のシークレットは要らない
@@ -454,6 +454,8 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    - `wiki-site` のビルドの環境変数 `INTERNAL_TOKEN` を消す
    - Worker に残ったシークレットを消す：`npx wrangler secret delete INTERNAL_TOKEN --name wiki-admin`、`--name wiki-worker`、`--name wiki-site`（`wiki-site` の実行時のシークレットは、閲覧数を1件ずつ API へ送っていた頃のもの。無ければ「見つからない」と出るだけ）
 7. プレビューを片付ける。これまでのプレビュー（ブランチごとの `*.workers.dev`）は、作ったときの本番の内容（限定公開の本文と key を含む）を持っていることがある
+   - 持っているかどうかは、`wiki-site` → Deployments で、`main` 以外のブランチの過去のビルドのログを開くと分かる。`manifest: wiki: 12 pages, 3 unlisted` のように本番の件数が出ていれば、本番の内容で作られている（`failed to fetch manifest` や `set MANIFEST_PATH, ...` で失敗していれば、作られていない）
+   - `wiki-site` → Settings → Builds に「Set up Worker Previews」の案内が出ていれば、古い方式のプレビュー（ブランチのビルドが、本番の設定のまま Worker の版と URL を作る）のまま。その場合は下の `wrangler preview delete` では消せないので、Deployments の版の一覧から、ブランチのビルドでできた版を消す
    - `wiki-site` のプレビューの一覧（ダッシュボードの `wiki-site` → Previews）を見て、残っているものを消す：`cd apps/site && npx wrangler preview delete --name <プレビューの名前>`。開いている PR のぶんは、ブランチに push し直せばサンプルデータで作り直される
    - プレビューを消しても、その前に限定公開の URL を見た人がいたかどうかは分からない。漏れては困る限定公開のページがあれば、管理画面で限定公開の URL を発行し直す
 
