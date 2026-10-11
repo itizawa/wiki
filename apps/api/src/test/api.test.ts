@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { SESSION_COOKIE, signSession } from "../auth/session";
+import { issueSession, SESSION_COOKIE, signSession } from "../auth/session";
+import { sessions } from "../db/schema";
 import { DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS } from "../pages/versions";
 import { adoptUnplacedPages } from "../structure/repo";
 import { ADMIN, addLegacyTree, setup, W } from "./harness";
@@ -38,11 +39,75 @@ describe("auth", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects a valid session whose user does not exist", async () => {
+  it("rejects a validly signed session that has no session row (or whose user does not exist)", async () => {
     ctx = await setup();
-    const token = await signSession(ctx.config.sessionSecret, "00000000-0000-4000-8000-000000000000");
-    const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
+    const missing = "00000000-0000-4000-8000-000000000000";
+    for (const claims of [
+      { userId: missing, sessionId: missing },
+      { userId: ctx.owner.id, sessionId: missing },
+    ]) {
+      const token = await signSession(ctx.config.sessionSecret, claims);
+      const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it("rejects a session issued before sessions had a row (no session id)", async () => {
+    ctx = await setup();
+    const { SignJWT } = await import("jose");
+    const old = await new SignJWT({ uid: ctx.owner.id, typ: "session" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(ctx.config.sessionSecret));
+    const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${old}` } });
     expect(res.status).toBe(401);
+  });
+
+  it("does not accept a session again after logging out, even if the cookie leaked", async () => {
+    ctx = await setup();
+    const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+    const other = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+    expect((await ctx.app.request("/admin/me", { headers: { cookie } })).status).toBe(200);
+
+    const out = await ctx.app.request("/auth/logout", { method: "POST", headers: { cookie, origin: ctx.config.adminOrigin } });
+    expect(out.status).toBe(200);
+    expect((await ctx.app.request("/admin/me", { headers: { cookie } })).status).toBe(401);
+    // ほかの端末はログインしたまま
+    expect((await ctx.app.request("/admin/me", { headers: { cookie: other } })).status).toBe(200);
+  });
+
+  it("does not accept an expired session row", async () => {
+    ctx = await setup();
+    const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+    await ctx.db.update(sessions).set({ expiresAt: new Date(Date.now() - 1000) });
+    expect((await ctx.app.request("/admin/me", { headers: { cookie } })).status).toBe(401);
+    // 次にログインしたときに、期限切れの行は消える
+    await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id);
+    expect(await ctx.db.select().from(sessions)).toHaveLength(1);
+  });
+
+  it("logs out the user's other devices but keeps this one and other users' sessions", async () => {
+    ctx = await setup();
+    const issue = async (userId: string) => `${SESSION_COOKIE}=${await issueSession(ctx!.db, ctx!.config.sessionSecret, userId)}`;
+    const here = await issue(ctx.owner.id);
+    const phone = await issue(ctx.owner.id);
+    const laptop = await issue(ctx.owner.id);
+    const { user: editor } = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    const someoneElse = await issue(editor.id);
+
+    const res = await ctx.app.request("/auth/logout-others", { method: "POST", headers: { cookie: here, origin: ctx.config.adminOrigin } });
+    expect(res.status).toBe(200);
+    // setup が ctx.call 用に作ったぶんを含めて3つ
+    expect(await res.json()).toEqual({ ended: 3 });
+    const status = async (cookie: string) => (await ctx!.app.request("/admin/me", { headers: { cookie } })).status;
+    expect(await status(here)).toBe(200);
+    expect(await status(phone)).toBe(401);
+    expect(await status(laptop)).toBe(401);
+    expect(await status(someoneElse)).toBe(200);
+
+    // ログインしていなければ使えない
+    const anon = await ctx.app.request("/auth/logout-others", { method: "POST", headers: { origin: ctx.config.adminOrigin } });
+    expect(anon.status).toBe(401);
   });
 
   it("sends security headers on API responses", async () => {
@@ -234,7 +299,7 @@ describe("pages", () => {
     const other = "other@example.com";
     ctx = await setup();
     const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
-    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, otherUser.id)}` };
     const created = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
     const base = created.headVersionId;
     const url = `${W}/pages/${created.id}/draft`;
@@ -325,7 +390,7 @@ describe("pages", () => {
     const other = "other@example.com";
     ctx = await setup();
     const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
-    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, otherUser.id)}` };
     const draftCount = async () => Number((await ctx.client.query<{ n: number }>(`select count(*)::int as n from page_drafts`)).rows[0]!.n);
 
     // 2人が同じページの下書きを持つ。先に版になった方が head になり、もう一方は古い版をもとにした下書きとして残る
@@ -372,7 +437,7 @@ describe("pages", () => {
     const other = "other@example.com";
     ctx = await setup();
     const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
-    const otherCookie = { cookie: `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, otherUser.id)}` };
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, otherUser.id)}` };
     const page = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;
     const base = page.headVersionId;
     const url = `${W}/pages/${page.id}/draft`;

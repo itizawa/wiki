@@ -1,4 +1,7 @@
+import { and, eq, lte } from "drizzle-orm";
 import { jwtVerify, SignJWT } from "jose";
+import type { Db } from "../db/client";
+import { sessions } from "../db/schema";
 
 export const SESSION_COOKIE = "wiki_session";
 export const OAUTH_COOKIE = "wiki_oauth";
@@ -6,25 +9,39 @@ export const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
 
 const key = (secret: string) => new TextEncoder().encode(secret);
 
+export type SessionClaims = { userId: string; sessionId: string };
+
 /**
- * セッションにはユーザーの ID だけを入れる。ユーザーとメンバーかどうかは、リクエストのたびに DB で確かめる。
- * メールアドレスを入れていた頃のセッションは uid が無いので、通らない（一度ログインし直す）。
+ * セッションにはユーザーの ID と、セッションの行（`sessions`）の ID だけを入れる。ユーザーとメンバーかどうかは、リクエストのたびに DB で確かめる。
+ * 行の ID が無いもの（メールアドレスを入れていた頃・セッションの行を持つ前のもの）は通らない（一度ログインし直す）。
  */
-export async function signSession(secret: string, userId: string): Promise<string> {
-  return new SignJWT({ uid: userId, typ: "session" })
+export async function signSession(secret: string, claims: SessionClaims): Promise<string> {
+  return new SignJWT({ uid: claims.userId, sid: claims.sessionId, typ: "session" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SEC}s`)
     .sign(key(secret));
 }
 
-export async function verifySession(secret: string, token: string): Promise<string | null> {
+export async function verifySession(secret: string, token: string): Promise<SessionClaims | null> {
   try {
     const { payload } = await jwtVerify(token, key(secret), { algorithms: ["HS256"] });
-    return payload.typ === "session" && typeof payload.uid === "string" ? payload.uid : null;
+    if (payload.typ !== "session" || typeof payload.uid !== "string" || typeof payload.sid !== "string") return null;
+    return { userId: payload.uid, sessionId: payload.sid };
   } catch {
     return null;
   }
+}
+
+/** セッションの行を作り、Cookie に入れるトークンを返す。その人の期限切れの行は、ここで消す。 */
+export async function issueSession(db: Db, secret: string, userId: string): Promise<string> {
+  const now = new Date();
+  await db.delete(sessions).where(and(eq(sessions.userId, userId), lte(sessions.expiresAt, now)));
+  const [row] = await db
+    .insert(sessions)
+    .values({ userId, expiresAt: new Date(now.getTime() + SESSION_TTL_SEC * 1000) })
+    .returning({ id: sessions.id });
+  return signSession(secret, { userId, sessionId: row!.id });
 }
 
 /**

@@ -74,8 +74,11 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - 同じリンクを2人が同時に使っても、使用済みにできた1人だけが入れる
 - **メンバーの管理**：管理者はロールを変え、メンバーを外せる。自分から抜けることもできる。**メンバーの管理者が0人になる操作は止める**（オーナーは数えない）。外した人は次のリクエストからその wiki を開けない。外した人の行と、その人が書いた版・履歴は残す
 - どの wiki のメンバーでもなく、オーナーでもない人は、Google でログインできても中に入れない（「この管理画面は招待制です」）。このときユーザーの行は作らない
-- **セッション**は署名付き Cookie にユーザーの ID だけを入れ、リクエストのたびに DB でユーザーと wiki のメンバーかを確かめる
-- データ：`users`（`id` / `google_sub` / `email` / `name` / `is_owner` / `created_at` / `last_login_at`）、`wiki_members`（`wiki_id` / `user_id` / `role` / `created_at` / `invite_id`）、`invites`（`id` / `wiki_id` / `role` / `token_hash` / `created_by` / `expires_at` / `used_by` / `used_at` / `revoked_at`）
+- **セッション**は署名付き Cookie にユーザーの ID と、端末ごとのセッションの行（`sessions`）の ID だけを入れ、リクエストのたびに DB でセッションの行・ユーザー・wiki のメンバーかを確かめる。期限は7日
+  - **ログアウト**すると、その端末のセッションの行を消す。Cookie の値が漏れていても、次のリクエストから通らない。ほかの端末はログインしたまま
+  - 左下のユーザーメニューの「**ほかの端末からログアウトする**」で、この端末のほかのセッションをすべて切れる（Cookie が漏れたかもしれないとき・共用の端末でログアウトし忘れたとき）
+  - 期限切れの行は通さず、その人が次にログインしたときに消す
+- データ：`users`（`id` / `google_sub` / `email` / `name` / `is_owner` / `created_at` / `last_login_at`）、`sessions`（`id` / `user_id` / `created_at` / `expires_at`）、`wiki_members`（`wiki_id` / `user_id` / `role` / `created_at` / `invite_id`）、`invites`（`id` / `wiki_id` / `role` / `token_hash` / `created_by` / `expires_at` / `used_by` / `used_at` / `revoked_at`）
 - **締め出されたとき**（オーナー全員がログインできなくなった等）は、DB に直接つないでオーナーを付ける：`DATABASE_URL=... pnpm db:grant-owner you@example.com`。同じメールアドレスのユーザーがいればオーナーにし、いなければメールアドレスだけの行を作る（最初の Google ログインで結びつく）
   - **メールアドレスだけの行は、そのアドレスで最初にログインした Google アカウント（メールアドレスが確認済みのもの）に結びつく**。`ADMIN_EMAILS` の移行・`db:grant-owner`・スターと下書きの移行が作る行がこれにあたる。会社の Google Workspace のアドレスなら持ち主は1人だが、Gmail 以外の個人のアドレスなどは、同じアドレスを確認した別の Google アカウントがありうる（使われなくなったアドレスの再割り当てなど）。使うのは自分が持っているアドレスだけにし、「オーナーの管理」で「まだログインしていません」の行が残っていないか確かめる
 

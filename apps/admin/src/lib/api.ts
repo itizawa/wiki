@@ -142,6 +142,7 @@ export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
+  logoutOthers: () => request<{ ended: number }>("POST", "/auth/logout-others"),
   me: () => request<Me>("GET", "/admin/me"),
 
   // 招待リンクを開いた人向け（ログインしていなくても呼べる）
