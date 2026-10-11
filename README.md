@@ -23,7 +23,7 @@
 ```
 apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite）
 apps/api         API（Hono + Drizzle + PostgreSQL）
-apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引き（版と、構造のスナップショット）
+apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、構造のスナップショット、役目を終えたトークンと公開イベント、週1回は参照されていない画像）
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
@@ -146,6 +146,19 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - 置き場所は Cloudflare R2 のバケット `wiki-images`。名前はランダムな24文字で、本文には相対パス `/images/{name}` と書く。管理画面（`wiki-admin`）と公開サイト（`wiki-site`、どの wiki のサブドメインでも）が、同じバケットからこのパスで配る
   - 認証はしない。非公開・限定公開のページに貼った画像も、URL を知っていればだれでも見られる
   - 手元の開発（`pnpm dev`）では `apps/api/.data/images`（`IMAGES_DIR` で変えられる）に置く
+  - どこからも参照されていない画像は、週1回消す（`/internal/versions/prune` に `{"images": true}` を渡した回。ワーカーが日曜 18:00 UTC = JST の月曜午前3時に渡す。`apps/api/src/images/cleanup.ts`）。**消した画像は戻せない**
+    - 消すのは、次のどこにも `/images/{name}` が書かれておらず、アップロードから30日より古い画像：すべての版の本文（ゴミ箱のページ・アーカイブ中の wiki の版も含む）、下書き、テンプレート、トップページの自由記述、wiki の画像、テーマのロゴとファビコン
+    - ゴミ箱から完全に削除したページは版ごと消えるので、そのページだけが使っていた画像は、アップロードから30日たっていれば次の回で消える。ロゴや wiki の画像を差し替えたときの前の画像も同じ
+    - アップロードから30日以内の画像は、参照が無くても消さない（貼ったばかりで、まだ保存されていない画像を消さないため）。名前がアップロードした画像の形でないものにも触らない
+    - 1回に消すのは1000枚まで（残りは次の週）、一覧から読むのは20,000枚まで。消す前に、件数を API のログに出す（`imageCleanup`）。読む上限に当たると `truncated: true` になる。名前の順で後ろの画像を見られなくなるので、そのときは上限（`IMAGE_CLEANUP_MAX_LISTED`）を上げる
+    - **画像のパスを書ける列を足したら、`referencedImageNames` にも足す**（足し忘れると、そこでだけ使っている画像が消える）
+- 役目を終えた行の掃除（版の間引きと同じ `/internal/versions/prune`、1日1回）。**消した行は戻せない**。1回に消すのは、表ごとに5000行まで（残りは次の日）
+  - `oauth_tokens`・`oauth_codes`（`apps/api/src/oauth/cleanup.ts`）：期限を7日より前に過ぎた行のうち、アクセストークン、使われなかった認可コード、取り消し済みか期限切れの許可のリフレッシュトークンと認可コード
+    - 使える許可の、入れ替え済みのリフレッシュトークンと使った認可コードは残す。もう一度使われたら漏れたものとみなして許可ごと取り消すので、行が無いと検知できなくなる。許可は90日で切れるので、残るのは許可1つにつき90日ぶんまで
+    - 許可（`oauth_grants`）とアプリ（`oauth_clients`）は消さない
+  - `publish_events`・`site_builds`（`apps/api/src/publishing/cleanup.ts`）：30日より古い行のうち、ビルドに反映済みのイベントと、起動済みのビルド
+    - 消さない行：いちばん新しい `site_builds`（どこまで反映したかを持つ）、起動済みのいちばん新しい `site_builds`（内容が変わったかを比べる相手）、起動できていない `site_builds`、まだ反映していない `publish_events`
+  - `audit_logs` と `page_views_daily` は、残す期間が決まっていないので消さない
 - 構造：`trees` / `tree_snapshots` / `tree_nodes` / `structure_commits` / `structure_commit_parents` / `commit_trees` / `structure_branches`
   - ツリーを変えるたびに、コミット（`structure_commits`）と、その時点のツリー全体の写し（スナップショット。`tree_snapshots` と `tree_nodes`）ができる
   - 古いコミットのスナップショットは消す（版の間引きと同じ `/internal/versions/prune`、1日1回。`apps/api/src/structure/prune.ts`）。**消したスナップショットは戻せない**

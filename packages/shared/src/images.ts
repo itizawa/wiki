@@ -19,8 +19,14 @@ export type ImageType = keyof typeof IMAGE_TYPES;
 /** 画面に出す上限の説明 */
 export const IMAGE_LIMIT_LABEL = "PNG・JPEG・WebP・GIF、5MB まで";
 
-/** 本文に書く画像のパス。名前はランダムな24文字＋拡張子 */
-const IMAGE_PATH = /^\/images\/([0-9a-z]{24}\.(?:png|jpg|webp|gif))$/;
+/**
+ * 画像の名前（ランダムな24文字＋拡張子）の正規表現。前後の区切りは付けていない。
+ * 本文などの文字列の中から名前を拾うとき（参照されていない画像の掃除）にも、同じ形を使う
+ */
+export const IMAGE_NAME_PATTERN = "[0-9a-z]{24}\\.(?:png|jpg|webp|gif)";
+
+/** 本文に書く画像のパス */
+const IMAGE_PATH = new RegExp(`^/images/(${IMAGE_NAME_PATTERN})$`);
 
 /** `/images/{name}` なら name を返す。 */
 export function imageNameFromPath(path: string): string | null {

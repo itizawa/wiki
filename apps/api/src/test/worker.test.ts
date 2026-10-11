@@ -114,6 +114,12 @@ describe("worker entry", () => {
         const o = objects.get(key);
         return o ? { body: new Response(o.value as BodyInit).body!, httpMetadata: { contentType: o.contentType } } : null;
       },
+      async list() {
+        return { objects: [...objects.keys()].map((key) => ({ key, uploaded: new Date() })), truncated: false };
+      },
+      async delete(keys: string | string[]) {
+        for (const key of [keys].flat()) objects.delete(key);
+      },
     };
     const w = await worker({ IMAGES });
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
