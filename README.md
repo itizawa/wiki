@@ -120,6 +120,12 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 - `page_drafts`：編集中の内容は、打つのが止まると（1.5 秒）人ごとの下書きとして自動保存する。ページと人ごとに1行で、上書きする
   - 編集が一段落したら、ワーカーが下書きを版にして、下書きを消す（`/internal/drafts/promote`、5分ごと）。一段落したとみなすのは、最後の自動保存から5分たったとき。打ち続けているあいだも、下書きを始めてから30分たてば版にする（時間は `apps/api/src/pages/versions.ts` の定数）。版になるまでは、5分＋ワーカーの間隔（最大5分）で、5〜10分
   - 版にしない下書き：タイトルが空のもの、古い版をもとにしたもの（あいだにできた版の変更を黙って上書きしないため）、削除したページやアーカイブ中の wiki のもの。消さずに残す
+- 管理画面の検索（検索の画面、コマンドメニュー（⌘K）、本文の「@」「[[」のリンクの挿入。`GET /search`）：開いている wiki の、タイトルといまの本文（head 版）を `ILIKE '%語%'` で探す
+  - 探す先は `page_search`（head 版のタイトルと本文の写し。ページごとに1行）。**head 版を進める所は、同じトランザクションで `syncPageSearch`（`apps/api/src/pages/versions.ts`）を呼ぶ**。いまは `createPage` と `createVersion` が呼んでいて、保存・下書きから版になるとき・前の版の内容での保存・MCP の `update_page` は、どれも `createVersion` を通る。完全に削除したページの行は消す
+  - 索引は pg_trgm の GIN（`page_search_title_trgm_idx` `page_search_body_trgm_idx`）。3文字以上の語で効く。1〜2文字の語は trigram が取れないので、`page_search` を全部読んで探す（結果は同じ）
+  - 語が空のとき（候補の一覧の初期表示）は、本文を読まず、`pages` から最近更新した50件を返す
+  - 管理画面は、打つのを止めてから 200ms たって探しにいく。日本語入力などの変換中は探さず、確定してから数える。語を空にしたときは待たない（`apps/admin/src/lib/searchTerm.ts` の `useSearchTerm`。3つの画面が同じものを使う）
+  - MCP の `search_pages` は別の検索で（エージェントが読める版を探す）、索引を使わない
   - 区切りたいときは、⌘S・編集画面の「…」メニュー・コマンドメニューの「いまの内容を版として残す」で、すぐ版を作れる。公開・予約を押したときも、版になっていない変更があれば先に版を作る。公開・予約は版に対して行う
   - 版には、間引かずに残すかどうかの印（`page_versions.keep`）がある。ワーカーが作った版は `false`（版履歴に「自動」と出る）、人が操作して作った版と、公開・予約に使った版は `true`
   - 自動でできた版（`keep = false`）は、古いほど粗く間引く（`/internal/versions/prune`、1日1回、JST の午前3時。`apps/api/src/pages/prune.ts`）。**消した版は戻せない**
@@ -399,6 +405,8 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 ### 初回の準備
 
 1. **PostgreSQL** を用意し、接続文字列を控える（プーラーを通さない直接接続のもの。`channel_binding=require` は付けない）
+   - 拡張 **pg_trgm** を使う（管理画面の検索の索引）。マイグレーションが `CREATE EXTENSION IF NOT EXISTS pg_trgm` を流すので、マイグレーションのユーザーに拡張を作る権限が要る（Neon は pg_trgm に対応している）。権限が無い環境では、権限のあるユーザーで先に作っておく
+   - DB の文字の種類の設定（`datctype`）が `C` だと、日本語から trigram が取れず、索引が効かない（検索の結果は変わらない）。`select show_trgm('日本語の検索')` が空でない配列を返せばよい
 2. **Hyperdrive** をその接続文字列で作り（キャッシュは無効にする）、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
 3. **R2 のバケット** `wiki-images` を作る（`npx wrangler r2 bucket create wiki-images`）。公開アクセス（r2.dev や独自ドメイン）は有効にしない。画像は Worker が配る
 4. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `https://wiki-admin.hatchery-works.com/api/auth/google/callback` を登録する
@@ -453,7 +461,7 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 
 ## ローカル開発
 
-Node 22 と pnpm、PostgreSQL が必要。
+Node 22 と pnpm、PostgreSQL（拡張 pg_trgm を作れること。ふつうは contrib に入っている）が必要。
 
 ```sh
 pnpm install
@@ -477,7 +485,7 @@ APIのデータでビルドする場合は `API_ORIGIN=http://localhost:8787 INT
 Googleログインを試す場合は OAuth クライアントを作り、承認済みリダイレクトURIに `http://localhost:5173/api/auth/google/callback` を登録する。
 MCP は `http://localhost:5173/mcp` でつなげる（管理画面の開発サーバーが `/oauth` `/.well-known/oauth-*` `/mcp` を API へ渡す）。例：`claude mcp add --transport http wiki-local http://localhost:5173/mcp`。
 
-テスト・型チェック（DBはPGliteで動くのでPostgreSQL不要）：
+テスト・型チェック（DBはPGliteで動くのでPostgreSQL不要。PGlite を自分で立てるときは、`new PGlite({ extensions: { pg_trgm } })` のように pg_trgm を読み込む。`apps/api/src/test/harness.ts` の `pgliteExtensions`）：
 
 ```sh
 pnpm typecheck
