@@ -12,6 +12,7 @@ import { analyticsRoutes } from "./routes/analytics";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
+import { snsRoutes, xCallbackRoutes } from "./routes/sns";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { structureRoutes, treeRoutes } from "./routes/structure";
@@ -69,6 +70,7 @@ export function createApp(deps: Deps) {
 
   app.get("/health", (c) => c.json({ ok: true }));
   app.route("/auth", authRoutes);
+  app.route("/auth/x", xCallbackRoutes);
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
   app.route("/images", imageServeRoutes);
@@ -112,6 +114,7 @@ export function createApp(deps: Deps) {
   wiki.route("/views", viewRoutes);
   wiki.route("/settings", wikiSettingsRoutes);
   wiki.route("/analytics", analyticsRoutes);
+  wiki.route("/sns", snsRoutes);
   admin.route("/w/:wikiKey", wiki);
   app.route("/admin", admin);
 

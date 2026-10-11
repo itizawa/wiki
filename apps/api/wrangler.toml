@@ -66,3 +66,6 @@ enabled = true
 # GOOGLE_CLIENT_SECRET
 # INTERNAL_TOKEN        /export/public と /internal/* 用トークン（ワーカー・サイトのビルドと同じ値）
 # GOOGLE_SERVICE_ACCOUNT_JSON  任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読むサービスアカウントの鍵（JSON そのまま）。無ければその機能だけが「未設定」になる
+# X_CLIENT_ID          任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 クライアント。3つそろわなければその機能だけが「未設定」になる
+# X_CLIENT_SECRET
+# SNS_TOKEN_KEY         任意。SNS のトークンを暗号化して DB に持つための鍵（32文字以上）。変えると、つないであるアカウントは使えなくなる

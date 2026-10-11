@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../app";
 import type { GoogleReporting } from "../analytics/google";
 import type { GoogleOidc } from "../auth/google";
+import type { XClient } from "../sns/x-client";
 import { issueSession, SESSION_COOKIE } from "../auth/session";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -29,6 +30,7 @@ export const testConfig: AppConfig = {
   siteBaseDomain: "site.test",
   internalToken: "internal-token",
   googleServiceAccount: null,
+  x: null,
 };
 
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
@@ -57,13 +59,13 @@ function migratedDataDir() {
   })());
 }
 
-export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null; reporting?: GoogleReporting | null; rateLimits?: RateLimiters } = {}) {
+export async function setup(opts: { google?: GoogleOidc; x?: XClient; config?: Partial<AppConfig>; images?: ImageStore | null; reporting?: GoogleReporting | null; rateLimits?: RateLimiters } = {}) {
   const client = new PGlite({ loadDataDir: await migratedDataDir() });
   const db = drizzle(client, { schema }) as unknown as Db;
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
-  const app = createApp({ db, config, google: opts.google ?? null, images, reporting: opts.reporting ?? null, rateLimits: opts.rateLimits ?? null });
+  const app = createApp({ db, config, google: opts.google ?? null, x: opts.x ?? null, images, reporting: opts.reporting ?? null, rateLimits: opts.rateLimits ?? null });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 
   /**

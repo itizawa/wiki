@@ -46,6 +46,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   | 外観 | `/w/{key}/settings/appearance` | 公開サイトの外観（下の「公開サイトの外観（テーマ）」） | 管理者だけ |
   | トップページ | `/w/{key}/settings/home` | 公開サイトのトップの自由記述（下の「公開サイトのトップページ」） | 管理者だけ |
   | 連携 | `/w/{key}/settings/integrations` | Google Analytics・サーチコンソール | だれでも（変えるのはオーナーだけ） |
+  | SNS | `/w/{key}/settings/sns` | X のアカウントとの連携（下の「SNS 連携」） | 管理者だけ |
   | メンバー | `/w/{key}/settings/members` | メンバーと招待（「ユーザーとロール」） | だれでも（変えるのは管理者だけ） |
   | 監査ログ | `/w/{key}/settings/audit` | この wiki の監査ログ（「監査ログ」） | 管理者だけ |
   - タブにまとめる前の URL（`/w/{key}/members` `/audit` `/appearance` `/home`）は、新しいタブへ移す
@@ -76,6 +77,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   | 招待リンクの発行、メンバーのロール変更・削除 | — | ○ |
   | 公開サイトの外観（サイト名・アクセント色・ロゴ・ファビコン） | — | ○ |
   | 公開サイトのトップページの自由記述 | — | ○ |
+  | SNS（X）のアカウントの連携・解除・テスト投稿 | — | ○ |
 - **オーナー**は wiki のロールとは別の、全体の権限。すべての wiki に管理者として入れ（メンバーの一覧には出ない）、wiki の作成・アーカイブと、オーナーの追加・解除（管理画面の「全体の管理」の「オーナー」タブ、`/owners`）ができる。オーナーにできるのは登録済みのユーザーで、最後のオーナーは解除できない
 - 権限は API で確かめる。管理画面は、できない操作のボタンを出さない
 - **招待**：管理者が、ロールを選んで招待リンクを発行する（「設定」の「メンバー」タブ）。1リンクで1人、期限は7日、使われる前なら無効にできる。リンクは発行した直後に一度だけ見せ、DB には SHA-256 のハッシュだけを持つ（値は 128bit の乱数）。メールは送らない
@@ -110,7 +112,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   | メンバー | 招待リンクの発行・使用・無効化、ロールの変更、メンバーの削除、自分で抜けた、オーナーの追加・解除 |
   | 公開 | 公開（公開し直しを含む）、非公開化、公開範囲の変更、限定公開 URL の再発行、予約の作成・日時の変更・取り消し、予約の実行（成功・最終的な失敗。再試行に戻したものは残さない） |
   | ページ | 削除（ゴミ箱に入れる）、ゴミ箱から元に戻す、ゴミ箱から完全に削除する |
-  | 設定 | wiki の名前・画像の変更、公開サイトのトップページの自由記述の変更（中身は残さない） |
+  | 設定 | wiki の名前・画像の変更、公開サイトのトップページの自由記述の変更（中身は残さない）、SNS（X）のアカウントの連携・解除・テスト投稿（文面とトークンは残さない） |
   | wiki | 作成、アーカイブ、元に戻す |
 - **残らない操作**：本文の保存・下書きの自動保存、ページの作成・並べ替え・移動（版履歴と構造の履歴にある）、下書きから自動で版ができたこと、アイコンの変更、wiki の設定（Google Analytics・サーチコンソール）の変更、公開サイトの外観（テーマ）の変更、スター、テンプレートの作成・変更、画像のアップロード、管理画面でページを開いたこと（閲覧）。アーカイブから戻したときに、止まっていた間に時刻を過ぎた予約を失敗にすること
 - **1件に持つもの**：いつ、どの wiki で（ログイン・オーナーの変更・wiki の作成とアーカイブは、全体にかかわるものとして wiki なし）、誰が（ユーザー／システム（予約の実行））、何を（操作の種類・対象）、変更の前と後（`detail`）
@@ -364,6 +366,41 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 
 手元で試すときは、`apps/api/.env` の `GOOGLE_SERVICE_ACCOUNT_JSON` に、JSON を1行にして入れる。
 
+## SNS 連携
+
+wiki ごとに、その wiki の SNS アカウントをつなぐ。いまつなげるのは **X** だけ。管理画面の「設定」の「SNS」タブ（`/w/{key}/settings/sns`）で、wiki の管理者（とオーナー）が行う。
+
+- **できること**：X のアカウントをつなぐ・外す、つないだアカウントの名前（`@...`）とつないだ人・日時を見る、**テスト投稿**（文面を入れて、実際に1件ポストし、連携が働いているかを確かめる）。記事を公開したときのお知らせのポストは、まだ無い（これから足す。ポストは `apps/api/src/sns/service.ts` の `postAsWiki` を通す）
+- **つなぎ方**：「X と連携する」を押すと X の認可の画面に移り、許可すると「SNS」タブに戻る（OAuth 2.0 の認可コード + PKCE）。X のパスワードは、この管理画面には渡らない。もらう権限は `tweet.read` `tweet.write` `users.read` `offline.access`（ポストと、アカウント名の確認、許可を持ち続けるための更新）
+  - つなぐのは、**X の画面でログインしているアカウント**。別のアカウントにしたいときは、先に X の側でアカウントを切り替える
+  - wiki と X のアカウントは1対1（1つの wiki に1つ）。同じアカウントを、複数の wiki につないでもよい。つなぎ直すと、新しいアカウントで置き換わる
+  - 認可を始めてから戻るまでは10分。戻ってきたときに、始めた人がいまもログインしていて、その wiki の管理者であることを確かめ直す
+- **トークン**（アクセストークンと、更新用のトークン）は、`SNS_TOKEN_KEY` を鍵に暗号化して DB に持つ（AES-256-GCM。`apps/api/src/sns/crypto.ts`）。管理画面にも、監査ログにも、ログにも出さない
+  - アクセストークンの期限（2時間）が近ければ、ポストの前に更新する。X の更新用のトークンは1回きりで、使うたびに新しいものに置き換わるので、行をロックして更新し、同じトランザクションで保存する
+  - **`SNS_TOKEN_KEY` を変えると、つないであるアカウントは使えなくなる**（復号できない）。変えたら、wiki ごとに連携し直す
+- **連携が切れたとき**（X の側で連携を外した・長く使わず許可の期限が切れた）は、テスト投稿の結果にそう出るので、「X と連携し直す」から許可し直す
+- **解除**すると、行を消し、X の側のトークンも無効にする（X に届かなくても、解除は済ませる）。これまでのポストは消えない
+- **1ポストの長さ**は X の数え方（半角は1、全角は2、URL は長さにかかわらず23。上限280）で確かめる。日本語だけなら140文字まで。絵文字の合成までは追わないので、合成した絵文字は X より多めに数える
+- 監査ログに、連携・解除・テスト投稿を残す（「監査ログ」）
+- API：`GET /admin/w/{key}/sns`（状態）、`POST .../sns/x/connect`（認可を始める。X の画面の URL を返す）、`GET /auth/x/callback`（X から戻る所）、`POST .../sns/x/disconnect`、`POST .../sns/x/test-post`
+- データ：`wiki_sns_accounts`（`id` / `wiki_id` / `provider`（`x`）/ `external_id`（X のアカウント ID）/ `username` / `display_name` / `access_token_enc` / `refresh_token_enc` / `expires_at` / `scopes` / `connected_by` / `connected_by_label` / `connected_at` / `updated_at`）。`wiki_id` と `provider` の組で1行
+
+### 使えるようにする
+
+X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理画面の全体で1つ用意する。**未設定なら、この機能だけが無効**で、「SNS」タブに「設定がまだ登録されていない」と出す。ほかの画面は今までどおり動く。
+
+1. [X の開発者ポータル](https://developer.x.com/)で、プロジェクトとアプリを作る。ポストを作れるプランであること（料金と上限は、X の側で確かめる）
+2. アプリの「User authentication settings」を設定する
+   - App permissions：**Read and write**
+   - Type of App：**Web App, Automated App or Bot**（Confidential client）
+   - Callback URI / Redirect URL：`https://wiki-admin.hatchery-works.com/api/auth/x/callback`（手元で試すなら `http://localhost:5173/api/auth/x/callback` も足す）
+   - Website URL：管理画面か公開サイトの URL
+3. 「Keys and tokens」の **OAuth 2.0 Client ID and Client Secret** を控える（API Key / API Key Secret や Bearer Token ではない）
+4. GitHub の Settings → Secrets and variables → Actions に、`X_CLIENT_ID`・`X_CLIENT_SECRET`・`SNS_TOKEN_KEY`（`openssl rand -base64 48`。32文字以上）を登録し、Actions の「Deploy」を実行する
+5. 管理画面の「設定」の「SNS」タブで「X と連携する」を押し、つないだあと「テスト投稿する」で確かめる
+
+3つのうち1つでも無い（または `SNS_TOKEN_KEY` が32文字より短い）と、未設定として扱う。手元で試すときは、`apps/api/.env` に同じ3つを入れる。
+
 ## スマホから使う（PWA）
 
 管理画面はホーム画面に置ける（Web App Manifest と Service Worker。`apps/admin/vite.config.ts` の `vite-plugin-pwa`）。置いたものから開くと、ブラウザの枠なしで出る。
@@ -446,6 +483,8 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    | `SITE_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
+
+   | `X_CLIENT_ID` `X_CLIENT_SECRET` `SNS_TOKEN_KEY` | 任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 の Client ID / Client Secret と、トークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上）。作り方は上の「SNS 連携 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**`SNS_TOKEN_KEY` は、あとから変えない**（つないであるアカウントが使えなくなる） |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
 8. 任意。管理画面の「アクセス解析」を使うなら、**Google のサービスアカウント**を作り、鍵を `GOOGLE_SERVICE_ACCOUNT_JSON` として登録する（Google Cloud で Google Analytics Data API と Google Search Console API を有効にする → サービスアカウントと鍵（JSON）を作る → 手順6の表のシークレットに登録する → 「Deploy」を実行する）。くわしくは上の「アクセス解析 → 使えるようにする」。あとから行ってもよい

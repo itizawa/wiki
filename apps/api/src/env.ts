@@ -1,6 +1,7 @@
 import type { AppConfig } from "./config";
 import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
+import type { XClient } from "./sns/x-client";
 import type { GoogleReporting } from "./analytics/google";
 import type { ImageStore } from "./images/store";
 import type { RateLimiters } from "./rate-limit";
@@ -16,6 +17,8 @@ export type Deps = {
   images?: ImageStore | null;
   /** Google Analytics とサーチコンソールの数字を読むもの。無ければ「アクセス解析」は未設定として出す */
   reporting?: GoogleReporting | null;
+  /** SNS 連携の X の API。無ければ（`config.x` が null）X 連携は使えない */
+  x?: XClient | null;
   /** ログインせずに叩ける経路（/oauth/*・/mcp）の、接続元ごとの回数の制限。無ければ制限しない */
   rateLimits?: RateLimiters | null;
 };

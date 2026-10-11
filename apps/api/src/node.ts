@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { reportingFromConfig } from "./analytics/google";
 import { createApp } from "./app";
 import { createGoogleOidc } from "./auth/google";
+import { createXClient } from "./sns/x-client";
 import { loadConfig } from "./config";
 import { createPostgresDb } from "./db/postgres";
 import { bootstrapStructure } from "./structure/repo";
@@ -22,6 +23,6 @@ const port = Number(process.env.PORT ?? 8787);
 // 手元の開発では、アップロードした画像をディレクトリに置く（既定は apps/api/.data/images）
 const images = dirImageStore(process.env.IMAGES_DIR ?? ".data/images", imageTypeOfName);
 
-serve({ fetch: createApp({ db, config, google, images, reporting: reportingFromConfig(config) }).fetch, port }, (info) => {
+serve({ fetch: createApp({ db, config, google, x: config.x ? createXClient(config.x) : null, images, reporting: reportingFromConfig(config) }).fetch, port }, (info) => {
   console.log(`api listening on http://localhost:${info.port}`);
 });

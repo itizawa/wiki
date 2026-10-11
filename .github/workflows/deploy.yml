@@ -52,10 +52,15 @@ jobs:
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
           # 任意。「アクセス解析」用のサービスアカウントの鍵（JSON）。未登録なら渡さず、その機能だけが「未設定」になる
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # 任意。「SNS 連携」用の X の開発者アプリと、トークンを暗号化する鍵。未登録なら渡さず、その機能だけが「未設定」になる
+          X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
+          X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
+          SNS_TOKEN_KEY: ${{ secrets.SNS_TOKEN_KEY }}
         run: |
           pnpm --filter @wiki/admin build
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
+            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?" \
+            "X_CLIENT_ID?" "X_CLIENT_SECRET?" "SNS_TOKEN_KEY?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker
