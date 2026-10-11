@@ -5,7 +5,7 @@ import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { pruneVersions } from "../pages/prune";
 import { promoteDrafts } from "../pages/versions";
-import { requestBuild } from "../publishing/builds";
+import { markBuildTriggered, requestBuild } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
 import { parseJson } from "../validation";
@@ -56,6 +56,14 @@ export const internalRoutes = new Hono<AppEnv>()
   .post("/builds/request", async (c) => {
     const body = buildRequestInput.parse(await c.req.json().catch(() => ({})));
     return c.json(await requestBuild(c.get("deps").db, body));
+  })
+  // ワーカーがデプロイフックを呼べたあとに呼ぶ。これが来ないビルドは、次の builds/request でもう一度頼む
+  .post("/builds/:id/triggered", async (c) => {
+    const id = z.string().uuid().safeParse(c.req.param("id"));
+    if (!id.success || !(await markBuildTriggered(c.get("deps").db, id.data))) {
+      throw new HttpError(404, "not_found", "build not found");
+    }
+    return c.json({ ok: true });
   })
   // 公開サイトの Worker が、Bot の判定と記事の確認をしてから渡す閲覧1回。数えない記事でも同じ応答にする
   .post("/views", async (c) => {

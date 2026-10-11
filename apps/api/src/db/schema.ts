@@ -414,12 +414,19 @@ export const publishEvents = pgTable("publish_events", {
   createdAt: createdAt(),
 });
 
-/** 起動したビルド。last_event_id までの publish_events を反映済み。 */
+/** 起動を決めたビルド。last_event_id までの publish_events を反映済み。 */
 export const siteBuilds = pgTable("site_builds", {
   id: uuid("id").primaryKey().defaultRandom(),
   lastEventId: bigint("last_event_id", { mode: "number" }).notNull(),
   contentHash: text("content_hash").notNull(),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * ワーカーがデプロイフックを呼べた時刻。空のあいだは、次の Cron で起動し直す。
+   * 内容が変わらずビルドしなかった行（unchanged）は、起動するものが無いので作った時刻を入れる
+   */
+  triggeredAt: timestamp("triggered_at", { withTimezone: true }),
+  /** ワーカーに起動を頼んだ回数（最初の1回を含む） */
+  attempts: integer("attempts").notNull().default(1),
 });
 
 // ---------------------------------------------------------------------------

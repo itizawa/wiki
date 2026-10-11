@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { buildManifest } from "../publishing/manifest";
-import { requestBuild } from "../publishing/builds";
+import { markBuildTriggered, requestBuild } from "../publishing/builds";
 import { runDueActions } from "../publishing/scheduler";
 import { ARCHIVED_REASON } from "../wikis/service";
 import { issueSession, SESSION_COOKIE } from "../auth/session";
@@ -311,7 +311,10 @@ describe("archiving a wiki", () => {
     let now = Date.now();
     const build = async () => {
       now += 1000_000;
-      return requestBuild(ctx.db, { now: new Date(now) });
+      const decision = await requestBuild(ctx.db, { now: new Date(now) });
+      // ワーカーがデプロイフックを呼べたことにする（しないと、次の回に同じビルドがもう一度返る）
+      if (decision.trigger) await markBuildTriggered(ctx.db, decision.buildId);
+      return decision;
     };
     // いまの内容を1回ビルド済みにする
     await ctx.client.query(`insert into publish_events (wiki_id, kind) select id, 'test' from wikis where key = 'wiki'`);
@@ -394,7 +397,10 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     let now = Date.now();
     const build = async () => {
       now += 1000_000;
-      return requestBuild(ctx.db, { now: new Date(now) });
+      const decision = await requestBuild(ctx.db, { now: new Date(now) });
+      // ワーカーがデプロイフックを呼べたことにする（しないと、次の回に同じビルドがもう一度返る）
+      if (decision.trigger) await markBuildTriggered(ctx.db, decision.buildId);
+      return decision;
     };
     await ctx.client.query(`insert into publish_events (wiki_id, kind) select id, 'test' from wikis where key = 'wiki'`);
     expect((await build()).trigger).toBe(true);

@@ -412,7 +412,7 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順4のクライアント |
    | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数・実行時のシークレットと同じ値 |
    | `SITE_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
-   | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗の通知を送る Slack 互換 Incoming Webhook |
+   | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
@@ -482,6 +482,7 @@ pnpm test
 - **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNode（`src/node.ts`）、本番は Workers（`src/worker.ts`）で動かす
 - **予約の通知先**：最終失敗は Slack 互換の Incoming Webhook（`NOTIFY_WEBHOOK_URL`）へ。メールは未対応
 - **予約の反映遅延**：Cron 5分 + デバウンス2分 + ビルド時間
+- **公開ビルドの起動の失敗**：デプロイフックを呼べなかったビルドは、次の Cron（5分後）で、新しい公開操作が無くても起動し直す（`site_builds.triggered_at` が空のあいだ。ワーカーはフックを呼べたら `/internal/builds/{id}/triggered` で埋める）。同じビルドの起動が3回続けて失敗したら、予約の最終失敗と同じ通知先へ一度だけ知らせ、そのあとも5分おきに試し続ける。Workers Builds の側でビルドが失敗したことは検知しない
 - **管理画面とAPIは同一オリジン**（管理画面の `/api/*` をAPIへ）。Cookieは `SameSite=Lax`、状態を変えるリクエストは `Origin` が管理画面と一致する場合のみ受け付ける
 - **ツリーそのものの設定は無い。** ツリーは常に公開サイトに出し、出す・出さないはページごとの公開範囲で決める。公開サイトでの呼び名は固定（「ページ一覧」）
 - **設計書に無い構造操作を1つ追加**：`remove_node`（ツリーから外す。子がある場合は不可）
