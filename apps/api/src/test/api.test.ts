@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { issueSession, SESSION_COOKIE, signSession } from "../auth/session";
+import { cookieName, issueSession, OAUTH_COOKIE, SESSION_COOKIE, signSession } from "../auth/session";
 import { sessions } from "../db/schema";
 import { DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS } from "../pages/versions";
 import { adoptUnplacedPages } from "../structure/repo";
@@ -197,6 +197,83 @@ describe("auth", () => {
     const session = res.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
     const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
     expect(await me.json()).toMatchObject({ email: "dev@example.com", isOwner: true });
+  });
+
+  it("uses __Host- cookie names over https and keeps working through login, logout and logout-others", async () => {
+    ctx = await setup({
+      config: { secureCookies: true, adminOrigin: "https://admin.test" },
+      google: {
+        authorizationUrl: ({ state }) => `https://accounts.example/auth?state=${state}`,
+        exchangeCode: async () => ({ sub: "test:owner", email: ADMIN, emailVerified: true, name: "オーナー" }),
+      },
+    });
+    const origin = "https://admin.test";
+    const attrs = (setCookie: string) => setCookie.split("; ").slice(1);
+
+    // OAuth の一時 Cookie も、セッションの Cookie も `__Host-` 付き（Secure・Path=/・Domain なし）
+    const login = await ctx.app.request("/auth/google/login");
+    const oauthSet = login.headers.getSetCookie().find((c) => c.startsWith("__Host-wiki_oauth="))!;
+    expect(attrs(oauthSet)).toEqual(expect.arrayContaining(["Secure", "Path=/", "HttpOnly"]));
+    expect(oauthSet).not.toMatch(/domain=/i);
+    const state = new URL(login.headers.get("location")!).searchParams.get("state");
+    const callback = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie: oauthSet.split(";")[0]! } });
+    expect(callback.headers.get("location")).toBe("https://admin.test/");
+    const set = callback.headers.getSetCookie();
+    // 使い終えた OAuth の Cookie は消す
+    expect(set.find((c) => c.startsWith("__Host-wiki_oauth=;"))).toContain("Max-Age=0");
+    const sessionSet = set.find((c) => c.startsWith("__Host-wiki_session="))!;
+    expect(attrs(sessionSet)).toEqual(expect.arrayContaining(["Secure", "Path=/", "HttpOnly", "SameSite=Lax"]));
+    expect(sessionSet).not.toMatch(/domain=/i);
+    expect(set.some((c) => c.startsWith(`${SESSION_COOKIE}=`))).toBe(false);
+
+    const cookie = sessionSet.split(";")[0]!;
+    const me = await ctx.app.request("/admin/me", { headers: { cookie } });
+    expect(me.status).toBe(200);
+    expect(me.headers.getSetCookie()).toEqual([]);
+
+    // ほかの端末からログアウトする
+    const other = `${cookieName(SESSION_COOKIE, true)}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+    const others = await ctx.app.request("/auth/logout-others", { method: "POST", headers: { cookie, origin } });
+    // テストの土台が作ったセッションと、いま作ったものの 2 つが切れる
+    expect(await others.json()).toEqual({ ended: 2 });
+    expect((await ctx.app.request("/admin/me", { headers: { cookie: other } })).status).toBe(401);
+    expect((await ctx.app.request("/admin/me", { headers: { cookie } })).status).toBe(200);
+
+    // ログアウト
+    const out = await ctx.app.request("/auth/logout", { method: "POST", headers: { cookie, origin } });
+    expect(out.status).toBe(200);
+    expect(out.headers.getSetCookie().find((c) => c.startsWith("__Host-wiki_session=;"))).toContain("Max-Age=0");
+    expect((await ctx.app.request("/admin/me", { headers: { cookie } })).status).toBe(401);
+  });
+
+  it("does not read cookies under the old names over https, and deletes them", async () => {
+    ctx = await setup({ config: { secureCookies: true, adminOrigin: "https://admin.test" } });
+    // 中身は有効なセッションでも、古い名前では通らない
+    const token = await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id);
+    const res = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=${token}; ${OAUTH_COOKIE}=x` } });
+    expect(res.status).toBe(401);
+    const set = res.headers.getSetCookie();
+    expect(set).toHaveLength(2);
+    for (const name of [SESSION_COOKIE, OAUTH_COOKIE]) {
+      const deleted = set.find((c) => c.startsWith(`${name}=;`))!;
+      expect(deleted).toContain("Max-Age=0");
+      expect(deleted).toContain("Path=/");
+    }
+    // 古い Cookie が残っていても、新しい名前のセッションは通る（消す指示も付く）
+    const both = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=stale; ${cookieName(SESSION_COOKIE, true)}=${token}` } });
+    expect(both.status).toBe(200);
+    expect(both.headers.getSetCookie()).toHaveLength(1);
+  });
+
+  it("keeps the plain cookie names over http (local development) and leaves them alone", async () => {
+    ctx = await setup({ config: { devLoginEmail: "dev@example.com" } });
+    const res = await ctx.app.request("/auth/dev-login", { method: "POST", headers: { origin: ctx.config.adminOrigin } });
+    const set = res.headers.getSetCookie();
+    expect(set).toHaveLength(1);
+    expect(set[0]).toMatch(/^wiki_session=[^;]+;/);
+    const me = await ctx.app.request("/admin/me", { headers: { cookie: set[0]!.split(";")[0]! } });
+    expect(me.status).toBe(200);
+    expect(me.headers.getSetCookie()).toEqual([]);
   });
 });
 

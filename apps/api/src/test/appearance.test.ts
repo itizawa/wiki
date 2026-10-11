@@ -1,6 +1,7 @@
 import { DEFAULT_THEME, THEME_IMAGE_MAX_BYTES, auditSentenceText, type AuditLogEntry } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { setup, W, wikiManifest } from "./harness";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
+import { chunkedBody, setup, W, wikiManifest } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -133,5 +134,21 @@ describe("appearance", () => {
     for (const logo of ["/images/abcdefghijklmnopqrstuvwx.svg", "https://example.com/logo.png"]) {
       expect((await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme: { ...green, logo } })).status).toBe(400);
     }
+  });
+
+  it("stops reading a chunked logo upload once it passes 512KB", async () => {
+    ctx = await setup();
+    const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+    // 64KB × 100（content-length なし）
+    const big = chunkedBody(PNG, 64 * 1024, 100);
+    const res = await ctx.app.request(`${W}/appearance/images`, {
+      method: "POST",
+      headers: { cookie, origin: ctx.config.adminOrigin },
+      body: big.stream,
+      duplex: "half",
+    } as RequestInit);
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as any).error.details).toMatchObject({ maxBytes: THEME_IMAGE_MAX_BYTES });
+    expect(big.pulled()).toBeLessThan(20);
   });
 });

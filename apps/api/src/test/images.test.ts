@@ -1,7 +1,8 @@
 import { IMAGE_MAX_BYTES } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { memoryImageStore } from "../images/store";
-import { setup, W } from "./harness";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
+import { chunkedBody, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -44,6 +45,34 @@ describe("images", () => {
     const res = await ctx.call("POST", `${W}/images`, big);
     expect(res.status).toBe(413);
     expect(res.body.error.details).toEqual({ maxBytes: IMAGE_MAX_BYTES });
+  });
+
+  it("stops reading a chunked upload once it passes the size limit", async () => {
+    ctx = await setup();
+    const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
+    const upload = (body: ReturnType<typeof chunkedBody>) =>
+      ctx.app.request(`${W}/images`, {
+        method: "POST",
+        headers: { cookie, origin: ctx.config.adminOrigin },
+        body: body.stream,
+        duplex: "half",
+      } as RequestInit);
+
+    // 1MB × 20（content-length なし）。5MB を超えた所で止め、残りは読まない
+    const big = chunkedBody(PNG, 1024 * 1024, 20);
+    const res = await upload(big);
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as any).error).toMatchObject({ code: "image_too_large", details: { maxBytes: IMAGE_MAX_BYTES } });
+    expect(big.pulled()).toBeLessThan(10);
+    expect((ctx.images as ReturnType<typeof memoryImageStore>).files.size).toBe(0);
+
+    // 上限以下なら、chunked でも今までどおり保存する
+    const small = chunkedBody(PNG, 1024 * 1024, 5);
+    const ok = await upload(small);
+    expect(ok.status).toBe(201);
+    const { url } = (await ok.json()) as { url: string };
+    const served = await ctx.app.request(url);
+    expect((await served.arrayBuffer()).byteLength).toBe(IMAGE_MAX_BYTES);
   });
 
   it("only lets admins upload, from the admin origin", async () => {

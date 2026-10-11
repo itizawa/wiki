@@ -121,3 +121,21 @@ export async function addLegacyTree(client: PGlite, key = "by-theme") {
   );
   return id;
 }
+
+/**
+ * `content-length` の無い（chunked の）アップロードの本文。`first` のあとに、`chunkBytes` の塊を合計 `chunks` 個まで流す。
+ * `pulled()` は、読み手が実際に取り出した塊の数（途中で打ち切られたかを確かめる）。
+ */
+export function chunkedBody(first: Uint8Array, chunkBytes: number, chunks: number) {
+  let pulled = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (pulled >= chunks) return controller.close();
+      const chunk = new Uint8Array(chunkBytes);
+      if (pulled === 0) chunk.set(first);
+      pulled++;
+      controller.enqueue(chunk);
+    },
+  });
+  return { stream, pulled: () => pulled };
+}
