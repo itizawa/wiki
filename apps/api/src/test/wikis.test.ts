@@ -3,7 +3,7 @@ import { buildManifest } from "../publishing/manifest";
 import { requestBuild } from "../publishing/builds";
 import { runDueActions } from "../publishing/scheduler";
 import { ARCHIVED_REASON } from "../wikis/service";
-import { SESSION_COOKIE, signSession } from "../auth/session";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
 import { setup, W, wikiManifest } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;

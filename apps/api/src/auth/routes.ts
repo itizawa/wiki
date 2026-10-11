@@ -2,8 +2,8 @@ import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
-import { users } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { sessions, users } from "../db/schema";
+import { and, eq, gt, ne } from "drizzle-orm";
 import { ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, userForInviteLogin, type LoginIdentity, type UserRow } from "../users/service";
 import { requestMeta, userActor, writeAudit, type RequestMeta } from "../audit/service";
 import type { Db } from "../db/client";
@@ -11,19 +11,32 @@ import {
   OAUTH_COOKIE,
   randomToken,
   SESSION_COOKIE,
+  issueSession,
   SESSION_TTL_SEC,
   signOAuthState,
-  signSession,
   verifyOAuthState,
   verifySession,
+  type SessionClaims,
 } from "./session";
 
-/** セッションの人を DB から引く。セッションが無い・壊れている・行が無いなら null。 */
-export async function currentUser(c: Context<AppEnv>): Promise<UserRow | null> {
-  const { config, db } = c.get("deps");
+/** Cookie のセッションを読む（署名と期限だけ。行があるかは見ない）。 */
+async function sessionClaims(c: Context<AppEnv>): Promise<SessionClaims | null> {
   const token = getCookie(c, SESSION_COOKIE);
-  const userId = token ? await verifySession(config.sessionSecret, token) : null;
-  return userId ? findUser(db, userId) : null;
+  return token ? verifySession(c.get("deps").config.sessionSecret, token) : null;
+}
+
+/**
+ * セッションの人を DB から引く。セッションが無い・壊れている・セッションの行が無い（ログアウトした）・期限切れ・ユーザーの行が無いなら null。
+ */
+export async function currentUser(c: Context<AppEnv>): Promise<UserRow | null> {
+  const claims = await sessionClaims(c);
+  if (!claims) return null;
+  const { db } = c.get("deps");
+  const [row] = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(eq(sessions.id, claims.sessionId), eq(sessions.userId, claims.userId), gt(sessions.expiresAt, new Date())));
+  return row ? findUser(db, claims.userId) : null;
 }
 
 /** ログインしている人だけを通す。ユーザーはリクエストのたびに DB で引く。 */
@@ -136,11 +149,27 @@ export const authRoutes = new Hono<AppEnv>()
     await startSession(c, user.id);
     return c.json({ email: user.email });
   })
+  // この端末のセッションの行を消す。Cookie の値が漏れていても、ここから先は通らない
   .post("/logout", async (c) => {
+    const { db } = c.get("deps");
     const user = await currentUser(c);
-    if (user) await writeAudit(c.get("deps").db, { wikiId: null, actor: userActor(user), action: "logout", detail: {} });
+    const claims = await sessionClaims(c);
+    if (claims) await db.delete(sessions).where(eq(sessions.id, claims.sessionId));
+    if (user) await writeAudit(db, { wikiId: null, actor: userActor(user), action: "logout", detail: {} });
     deleteCookie(c, SESSION_COOKIE, { path: "/" });
     return c.json({ ok: true });
+  })
+  // この端末はログインしたまま、同じ人のほかの端末のセッションをすべて切る
+  .post("/logout-others", requireUser, async (c) => {
+    const { db } = c.get("deps");
+    const user = c.get("user");
+    const claims = (await sessionClaims(c))!;
+    const ended = await db
+      .delete(sessions)
+      .where(and(eq(sessions.userId, user.id), ne(sessions.id, claims.sessionId)))
+      .returning({ id: sessions.id });
+    await writeAudit(db, { wikiId: null, actor: userActor(user), action: "logout_others", detail: { count: ended.length } });
+    return c.json({ ended: ended.length });
   })
   .get("/providers", (c) => {
     const { config, google } = c.get("deps");
@@ -174,8 +203,8 @@ export function safeNextPath(next: string | undefined): string | undefined {
 }
 
 async function startSession(c: Context<AppEnv>, userId: string) {
-  const { config } = c.get("deps");
-  setCookie(c, SESSION_COOKIE, await signSession(config.sessionSecret, userId), {
+  const { config, db } = c.get("deps");
+  setCookie(c, SESSION_COOKIE, await issueSession(db, config.sessionSecret, userId), {
     httpOnly: true,
     secure: config.secureCookies,
     sameSite: "Lax",

@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = {
   login: "login",
   login_denied: "login",
   logout: "login",
+  logout_others: "login",
 
   invite_create: "member",
   invite_accept: "member",
@@ -86,6 +87,8 @@ export type AuditDetailMap = {
   login: Record<string, never>;
   login_denied: { reason: "invite_only" | "unverified" };
   logout: Record<string, never>;
+  /** 切ったほかの端末のセッションの数 */
+  logout_others: { count: number };
 
   invite_create: { role: WikiRole };
   invite_accept: { role: WikiRole };
@@ -222,6 +225,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`ログインを拒否しました（${DENIED_LABELS[entry.detail.reason]}）`);
     case "logout":
       return plain("ログアウトしました");
+    case "logout_others":
+      return plain(`ほかの端末からログアウトしました（${entry.detail.count}件）`);
 
     case "invite_create":
       return plain(`${WIKI_ROLE_LABELS[entry.detail.role]}の招待リンクを発行しました`);

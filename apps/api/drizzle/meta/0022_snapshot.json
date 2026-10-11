@@ -1,5 +1,5 @@
 {
-  "id": "da73214f-a227-4a3b-aac9-0cc8310522eb",
+  "id": "96ebc8b8-7baf-4e5c-8f20-78c8be37dd8c",
   "prevId": "5145b5be-79a5-42df-82c8-463af5d06cf1",
   "version": "7",
   "dialect": "postgresql",
@@ -1923,6 +1923,75 @@
       },
       "isRLSEnabled": false
     },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "sessions_user_idx": {
+          "name": "sessions_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sessions_user_id_users_id_fk": {
+          "name": "sessions_user_id_users_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.site_builds": {
       "name": "site_builds",
       "schema": "",
@@ -2687,12 +2756,6 @@
         },
         "theme": {
           "name": "theme",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "home": {
-          "name": "home",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
