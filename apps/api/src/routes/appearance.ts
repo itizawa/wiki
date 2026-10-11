@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { auditActor } from "../audit/service";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
+import { readBodyUpTo } from "../images/upload";
 import { parseJson } from "../validation";
 import { toAppearance, updateAppearance } from "../wikis/service";
 import { requireWikiAdmin } from "./wikis";
@@ -30,9 +31,7 @@ export const appearanceRoutes = new Hono<AppEnv>()
         maxBytes: THEME_IMAGE_MAX_BYTES,
         limit: THEME_IMAGE_LIMIT_LABEL,
       });
-    if (Number(c.req.header("content-length") ?? 0) > THEME_IMAGE_MAX_BYTES) throw tooLarge();
-    const body = new Uint8Array(await c.req.arrayBuffer());
-    if (body.byteLength > THEME_IMAGE_MAX_BYTES) throw tooLarge();
+    const body = await readBodyUpTo(c.req.raw, THEME_IMAGE_MAX_BYTES, tooLarge);
     const type = sniffImageType(body);
     if (!type || !(THEME_IMAGE_TYPES as readonly string[]).includes(type)) {
       throw new HttpError(415, "unsupported_image_type", "only PNG and WebP images are accepted for logos and favicons", {

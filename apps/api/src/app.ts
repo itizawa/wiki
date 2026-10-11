@@ -1,6 +1,6 @@
 import { StructureOpError, StructureValidationError } from "@wiki/shared";
 import { Hono } from "hono";
-import { authRoutes, requireAccess, requireUser } from "./auth/routes";
+import { authRoutes, clearLegacyCookies, requireAccess, requireUser } from "./auth/routes";
 import { appearanceRoutes } from "./routes/appearance";
 import { homeRoutes } from "./routes/home";
 import type { AppEnv, Deps } from "./env";
@@ -46,6 +46,9 @@ export function createApp(deps: Deps) {
       if (!c.res.headers.has(name)) c.res.headers.set(name, value);
     }
   });
+  // `__Host-` を付ける前の名前の Cookie は、セッションを見る経路に来たら消す（401 などのエラーの応答にも付ける）。
+  // 画像（/images）のようにキャッシュさせる応答には Set-Cookie を付けない
+  for (const path of ["/auth/*", "/admin/*", "/invites/*"]) app.use(path, clearLegacyCookies);
   // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
   // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外
   app.use("*", async (c, next) => {
