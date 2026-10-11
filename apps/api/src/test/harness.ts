@@ -15,6 +15,7 @@ import { users, wikiMembers, wikis } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
 import { memoryImageStore, type ImageStore } from "../images/store";
+import type { RateLimiter, RateLimiters } from "../rate-limit";
 
 /** setup が作るオーナー（すべての wiki に管理者として入れる）。call はこの人として呼ぶ */
 export const ADMIN = "admin@example.com";
@@ -56,13 +57,13 @@ function migratedDataDir() {
   })());
 }
 
-export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null; reporting?: GoogleReporting | null } = {}) {
+export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppConfig>; images?: ImageStore | null; reporting?: GoogleReporting | null; rateLimits?: RateLimiters } = {}) {
   const client = new PGlite({ loadDataDir: await migratedDataDir() });
   const db = drizzle(client, { schema }) as unknown as Db;
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
-  const app = createApp({ db, config, google: opts.google ?? null, images, reporting: opts.reporting ?? null });
+  const app = createApp({ db, config, google: opts.google ?? null, images, reporting: opts.reporting ?? null, rateLimits: opts.rateLimits ?? null });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 
   /**
@@ -104,6 +105,18 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
   }
 
   return { app, db, client, config, images, call, callAs, addUser, owner: owner!, close: () => client.close() };
+}
+
+/** Workers の Rate Limiting のバインディングの代わり。鍵ごとに limit 回まで通す（窓は進まない）。calls は数えた鍵 */
+export function fakeRateLimiter(limit: number): RateLimiter & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    async limit({ key }) {
+      calls.push(key);
+      return { success: calls.filter((k) => k === key).length <= limit };
+    },
+  };
 }
 
 /** 複数ツリー時代のデータを再現する：primary以外のツリーを現在のheadコミットに直接足す。 */
