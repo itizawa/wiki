@@ -205,6 +205,86 @@ export const pageDrafts = pgTable(
   (t) => [primaryKey({ columns: [t.pageId, t.userId] })],
 );
 
+/**
+ * 編集リクエスト：1ページに対する1回分。箇所ごとの項目（`edit_request_items`）を束ねる。
+ * リクエスト自体に状態は持たせない（未対応の項目が0件になったら完了）。
+ */
+export const editRequests = pgTable(
+  "edit_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** 全体へのひとこと */
+    comment: text("comment"),
+    /** 出した人。外部のアプリ（MCP）から出したものは、許可した人 */
+    createdBy: uuid("created_by")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
+    /** 外部のアプリ（MCP）から出したものなら、その連携 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // ページごとの一覧（新しい順）
+    index("edit_requests_page_idx").on(t.pageId, t.createdAt),
+    // wiki ごとの一覧（新しい順）
+    index("edit_requests_wiki_idx").on(t.wikiId, t.createdAt),
+  ],
+);
+
+/**
+ * 編集リクエストの項目。位置は「基準の版・本文（Markdown）の行の範囲・その範囲の元の文面」で持つ（行の数え方は `bodyLines`）。
+ * 出したあとは書き換えない（直すときは、取り下げて出し直す）。変わるのは状態と、決めた人・日時・採用でできた版だけ。
+ * 「古くなった」は状態に持たない（未対応のまま。読むたびに最新の版から決める）。
+ */
+export const editRequestItems = pgTable(
+  "edit_request_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => editRequests.id),
+    /** リクエストの中での並び（0 から） */
+    position: integer("position").notNull(),
+    /** 項目の種類。いまは提案（置き換え案を持つ）だけ */
+    kind: text("kind", { enum: ["suggestion"] }).notNull().default("suggestion"),
+    /** 基準の版。項目が残っているあいだは、版の間引き（`pages/prune.ts`）で消さない */
+    baseVersionId: uuid("base_version_id")
+      .notNull()
+      .references(() => pageVersions.id),
+    /** 基準の版での行の範囲（1から数え、両端を含む） */
+    startLine: integer("start_line").notNull(),
+    endLine: integer("end_line").notNull(),
+    /** 基準の版で、その範囲にあった文面（Markdown）。サーバーが切り出す */
+    originalMd: text("original_md").notNull(),
+    /** 置き換え案（Markdown）。空の文字なら、その行を消す提案。置き換え案を持たない種類の項目では null */
+    replacementMd: text("replacement_md"),
+    reason: text("reason"),
+    status: text("status", { enum: ["open", "accepted", "rejected", "withdrawn"] }).notNull().default("open"),
+    /** 採用・却下・取り下げを決めた人と日時。未対応に戻したら null に戻す */
+    decidedBy: uuid("decided_by").references((): AnyPgColumn => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** 採用でできた版。「すべて採用」では、複数の項目が同じ版を指す */
+    acceptedVersionId: uuid("accepted_version_id").references(() => pageVersions.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("edit_request_items_kind_check", sql`${t.kind} in ('suggestion')`),
+    check("edit_request_items_status_check", sql`${t.status} in ('open', 'accepted', 'rejected', 'withdrawn')`),
+    check("edit_request_items_lines_check", sql`${t.startLine} >= 1 and ${t.endLine} >= ${t.startLine}`),
+    unique("edit_request_items_request_position_unique").on(t.requestId, t.position),
+    // 版の間引きが「項目が基準にしている版か」を版ごとに引く
+    index("edit_request_items_base_version_idx").on(t.baseVersionId),
+    // 版履歴が「採用でできた版か」を版ごとに引く
+    index("edit_request_items_accepted_version_idx").on(t.acceptedVersionId),
+    // 未対応の件数（ページごと・wiki ごと）
+    index("edit_request_items_open_idx").on(t.requestId).where(sql`${t.status} = 'open'`),
+  ],
+);
+
 export const pageLinks = pgTable(
   "page_links",
   {
