@@ -263,6 +263,15 @@ describe("auth", () => {
     const both = await ctx.app.request("/admin/me", { headers: { cookie: `${SESSION_COOKIE}=stale; ${cookieName(SESSION_COOKIE, true)}=${token}` } });
     expect(both.status).toBe(200);
     expect(both.headers.getSetCookie()).toHaveLength(1);
+    // セッションを見ない経路（キャッシュさせる画像など）の応答には、Set-Cookie を付けない
+    const image = await ctx.app.request("/images/aaaaaaaaaaaaaaaaaaaaaaaa.png", { headers: { cookie: `${SESSION_COOKIE}=stale` } });
+    expect(image.headers.getSetCookie()).toEqual([]);
+    expect((await ctx.app.request("/health", { headers: { cookie: `${SESSION_COOKIE}=stale` } })).headers.getSetCookie()).toEqual([]);
+    // 招待の画面とログインの経路では消す
+    for (const path of ["/invites/nope", "/auth/providers"]) {
+      const res = await ctx.app.request(path, { headers: { cookie: `${SESSION_COOKIE}=stale` } });
+      expect(res.headers.getSetCookie(), path).toHaveLength(1);
+    }
   });
 
   it("keeps the plain cookie names over http (local development) and leaves them alone", async () => {
