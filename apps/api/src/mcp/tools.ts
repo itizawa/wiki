@@ -240,6 +240,8 @@ export const TOOLS = [
     ),
     async run({ db, agent }, { wiki: key, ...input }) {
       const wiki = await memberWiki(db, agent, key);
+      // 読めない親は、無いものとして扱う（非公開の部分木の下に、ページを足させない）
+      if (input.parentPageId) await visiblePage(db, agent, wiki.id, input.parentPageId);
       const id = await db.transaction((tx) => createPage(tx, wiki.id, input, { createdBy: agent.user.id, oauthGrantId: agent.grantId }));
       const page = await findLivePage(db, wiki.id, id);
       return { id, headVersionId: page.headVersionId };
