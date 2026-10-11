@@ -45,7 +45,7 @@ export function HistoryPage() {
                     {c.authorType === "ai" && <StatusChip label="AI" />}
                     {c.via && <StatusChip label={`${c.via} 経由`} />}
                     {c.parentIds.length > 1 && <StatusChip label="merge" />}
-                    {!c.diffAvailable && <StatusChip label="差分なし" />}
+                    {!c.diffAvailable && <StatusChip label="差分は見られません" />}
                   </Row>
                 }
                 secondary={
