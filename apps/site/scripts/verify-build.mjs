@@ -160,6 +160,35 @@ const routes = JSON.parse(await read("wiki/page-routes.json"));
 check(routes.canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check(routes.gone.includes("ggggggggg1"), "page-routes.json lists gone pages");
 check((await read("_headers")).includes("/:wiki/u/*") && (await read("_headers")).includes("X-Robots-Tag: noindex"), "_headers marks /u/ of every wiki noindex");
+// _headers で長くキャッシュさせるのは /_astro/ だけ（HTML には付けない。公開・非公開がすぐ反映されなくなる）。
+// Pagefind のハッシュ付きの断片は、見つかったときだけ Worker が付ける（_headers は無いファイルの 404 にも付くため）
+const headerRules = Object.fromEntries(
+  (await read("_headers")).split(/\n(?=\S)/).map((block) => {
+    const [path, ...lines] = block.trim().split("\n");
+    return [path, lines.map((l) => l.trim())];
+  }),
+);
+const immutableHeader = "Cache-Control: public, max-age=31536000, immutable";
+const cachedPaths = Object.keys(headerRules).filter((path) => headerRules[path].some((l) => /^cache-control:/i.test(l))).sort();
+check(
+  cachedPaths.join() === "/_astro/*" && headerRules["/_astro/*"].includes(immutableHeader),
+  `_headers lets only /_astro/ be cached for long (got ${cachedPaths.join(", ")})`,
+);
+// /_astro/ は Worker（Host による wiki の振り分け）を通さずに返す（wrangler.toml の run_worker_first）。
+// どの wiki のサブドメインからも読めるので、wiki ごとの内容（限定公開を含む）が出ていないことを確かめる
+const sharedPaths = [
+  ...(await readdir(join(dist, "_astro"), { withFileTypes: true, recursive: true })).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name)),
+  join(dist, "favicon.svg"),
+];
+const sharedFiles = await Promise.all(sharedPaths.map(async (path) => ({ path: path.slice(dist.length), text: await readFile(path, "utf8") })));
+const perWikiWords = [
+  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "by-theme", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc"],
+  ...["bbbbbbbbb1", "hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート", "#00716b", "notes0logo0sample0000000"],
+];
+const inShared = leaks(sharedFiles, perWikiWords);
+check(sharedFiles.length > 1 && inShared.length === 0, `the shared files (/_astro/ is served without the Worker) hold nothing of any wiki${inShared.length ? ` (${inShared.join(", ")})` : ""}`);
+const unhashed = sharedFiles.filter((f) => f.path.startsWith("_astro/") && !/\.[\w-]{8}\.(js|css)$/.test(f.path)).map((f) => f.path);
+check(unhashed.length === 0, `every file under /_astro/ has a content hash in its name${unhashed.length ? ` (${unhashed.join(", ")})` : ""}`);
 
 check(await exists("wiki/pagefind/pagefind.js"), "pagefind index is built per wiki");
 const fragments = await readdir(join(dist, "wiki/pagefind/fragment")).catch(() => []);
