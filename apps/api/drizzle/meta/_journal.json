@@ -190,6 +190,13 @@
       "when": 1791704314309,
       "tag": "0026_drop_tree_nodes_page_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791706527499,
+      "tag": "0027_page_search",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
+import { useComposition, useSearchTerm } from "../lib/searchTerm";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/FindBar";
 import { usePageActions } from "../lib/pageActions";
@@ -44,7 +45,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const pageActions = usePageActions();
 
   // 検索の画面と同じ検索（タイトルと本文）。何も打っていなければ、最近更新したページ
-  const pages = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: open, placeholderData: keepPreviousData });
+  // 探しにいくのは、打つのを止めてから（変換中は、確定してから）。それまでは前の結果を出したままにする
+  const { composing, compositionProps } = useComposition();
+  const term = useSearchTerm(q, composing);
+  const pages = useQuery({ queryKey: ["search", term], queryFn: () => api.search(term), enabled: open, placeholderData: keepPreviousData });
   const create = useMutation({
     mutationFn: () => api.createPage({ title: q || "無題" }),
     onSuccess: async (page) => {
@@ -225,7 +229,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="ページを探す（タイトルと本文）、または操作を選ぶ"
-          inputProps={{ "aria-label": "ページを探す、または操作を選ぶ", role: "combobox", "aria-expanded": true, "aria-controls": "command-menu-list" }}
+          inputProps={{ "aria-label": "ページを探す、または操作を選ぶ", role: "combobox", "aria-expanded": true, "aria-controls": "command-menu-list", ...compositionProps }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -259,7 +263,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           ];
         })}
       </MenuList>
-      {q !== "" && pages.data && pageItems.length === 0 && matched.length === 0 && (
+      {q !== "" && term === q && pages.data && !pages.isPlaceholderData && pageItems.length === 0 && matched.length === 0 && (
         <Muted sx={{ px: 2, pb: 1.5 }}>「{q}」に一致するページや操作はありません。上の項目から、この名前でページを作れます。</Muted>
       )}
       {(create.error ?? pages.error) && (
