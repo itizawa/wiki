@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequestItem } from "@wiki/shared";
+import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequest, type EditRequestItem } from "@wiki/shared";
 import { api, currentWikiKey } from "./api";
 
 /**
@@ -15,7 +15,21 @@ export const editRequestKeys = {
   count: (pageId: string) => ["edit-requests", pageId, "count"] as const,
 };
 
-/** 採否を決めたあとに、そのページの一覧と件数を読み直す。 */
+/**
+ * 出した人・返信した人の表示。外部のアプリ（MCP）からのものは「アプリ名・許可した人」。
+ * リクエスト（`EditRequest`）にも、返信（`EditRequestComment`）にも、同じ決まりで使う
+ */
+export const requesterLabel = (by: Pick<EditRequest, "createdBy" | "via">) => (by.via ? `${by.via}・${by.createdBy.name}` : by.createdBy.name);
+
+/** 項目の数の言い方：「提案 2 件・指摘 1 件」。片方だけなら、その種類だけ。どちらも無ければ「0 件」 */
+export function itemCountLabel(items: readonly { kind: EditRequestItem["kind"] }[]): string {
+  const notes = items.filter((i) => i.kind === "note").length;
+  const suggestions = items.length - notes;
+  const parts = [suggestions > 0 && `提案 ${suggestions} 件`, notes > 0 && `指摘 ${notes} 件`].filter(Boolean);
+  return parts.length > 0 ? parts.join("・") : "0 件";
+}
+
+/** 採否を決めたあと・返信したあとに、そのページの一覧と件数を読み直す。 */
 export const invalidateEditRequests = (qc: QueryClient, pageId: string) => qc.invalidateQueries({ queryKey: editRequestKeys.page(pageId) });
 
 /** 開いている wiki の、ページのレビュー画面（編集リクエスト）へのリンク。`<RouterLink {...editRequestsLink(id)}>` のように使う。 */
@@ -39,7 +53,7 @@ export function placeOfAccepted(
 ): { startLine: number; endLine: number } | null {
   if (known && item.acceptedVersionId === head.versionId) return known;
   // そのあとに本文が進んでいたら、置き換え案の文面を探す。行を消した提案は、探す文面が無い
-  if (item.replacement === "") return null;
+  if (item.replacement === null || item.replacement === "") return null;
   const found = locateLineEdit(head.bodyMd, { startLine: 1, endLine: 1, originalText: item.replacement, atBase: false });
   return found.ok ? { startLine: found.startLine, endLine: found.endLine } : null;
 }

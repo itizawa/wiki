@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { editRequestKeys, mergeAppliedEdits, placeOfAccepted } from "./editRequests";
+import { editRequestKeys, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
 
 const step = (versionId: string, edits: [string, string][]) => ({
   versionId,
@@ -56,5 +56,23 @@ describe("editRequestKeys", () => {
     const page = editRequestKeys.page("p1");
     expect(editRequestKeys.list("p1").slice(0, page.length)).toEqual([...page]);
     expect(editRequestKeys.count("p1").slice(0, page.length)).toEqual([...page]);
+  });
+});
+
+describe("itemCountLabel / requesterLabel", () => {
+  it("項目の数を、種類ごとに言う", () => {
+    expect(itemCountLabel([{ kind: "suggestion" }, { kind: "note" }, { kind: "suggestion" }])).toBe("提案 2 件・指摘 1 件");
+    expect(itemCountLabel([{ kind: "note" }])).toBe("指摘 1 件");
+    expect(itemCountLabel([{ kind: "suggestion" }])).toBe("提案 1 件");
+    expect(itemCountLabel([])).toBe("0 件");
+  });
+
+  it("外部のアプリからのものは「アプリ名・許可した人」", () => {
+    expect(requesterLabel({ createdBy: { id: "u", name: "佐藤" }, via: "Claude" })).toBe("Claude・佐藤");
+    expect(requesterLabel({ createdBy: { id: "u", name: "佐藤" }, via: null })).toBe("佐藤");
+  });
+
+  it("指摘（置き換え案が無い）には、採用した場所が無い", () => {
+    expect(placeOfAccepted({ replacement: null, acceptedVersionId: null }, { versionId: "v3", bodyMd: "a" }, undefined)).toBeNull();
   });
 });

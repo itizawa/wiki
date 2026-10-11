@@ -1,7 +1,10 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import TextField from "@mui/material/TextField";
-import { EDIT_REQUEST_LIMITS } from "@wiki/shared";
+import { EDIT_REQUEST_LIMITS, type EditRequestItemKind } from "@wiki/shared";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type MutableRefObject } from "react";
 import { buildSuggestion, editorInputFor, type BuiltSuggestion } from "../../lib/blockEdit";
@@ -9,17 +12,21 @@ import type { UnitSelection } from "../../lib/blockLines";
 import { TOUCH } from "../../theme";
 import { SuggestionEditor } from "./SuggestionEditor";
 
-/** 入力欄で書いたもの（「提案に追加する」で、送信前の項目になる） */
-export type ComposedItem = { kind: "suggestion"; suggestion: BuiltSuggestion; editorMarkdown: string; reason: string };
+/** 入力欄で書いたもの（「提案に追加する」「指摘を追加する」で、送信前の項目になる） */
+export type ComposedItem = { kind: "suggestion"; suggestion: BuiltSuggestion; editorMarkdown: string; reason: string } | { kind: "note"; body: string };
 
 /** 書きかけの中身。本文が新しい版になって場所を失ったとき、呼ぶ側が拾って、書いた内容を捨てずに見せる */
-export type ComposerDraft = { editorMarkdown: string; replacement: string | null; reason: string };
+export type ComposerDraft = { kind: EditRequestItemKind; editorMarkdown: string; replacement: string | null; reason: string; body: string };
+
+/** 送信前の項目を直すときの、もとの中身 */
+export type ComposerInitial = { kind: EditRequestItemKind; editorMarkdown: string | null; reason: string; body: string };
 
 /**
- * 本文で選んだ範囲のすぐ下に開く入力欄。選んだ範囲が入った小さなエディタで置き換え案を書き、理由（任意）を添えて「提案に追加する」。
+ * 本文で選んだ範囲のすぐ下に開く入力欄。はじめに、書く内容の種類を選ぶ：
+ * - 置き換えを提案する：選んだ範囲が入った小さなエディタで置き換え案を書き、理由（任意）を添える
+ * - 指摘だけ書く：置き換え案は持たず、本文（必須。プレーンテキスト）だけを書く
  *
- * 項目の種類（いまは提案だけ）を足すときは、ここに種類の選択（ラジオボタン）を置き、種類ごとの入力（提案なら小さなエディタ）を切り替える。
- * 範囲・理由・ボタンは、種類が増えても共通。
+ * 種類を切り替えても、もう片方に書いた内容は残す（小さなエディタは、隠すだけで外さない）。範囲とボタンは、どちらの種類でも共通。
  *
  * 本文（`.tiptap`）の中に差し込むので、本文の見た目が当たる要素（p / ul など）は、小さなエディタの中のほかでは使わない。
  */
@@ -30,7 +37,7 @@ export function ItemComposer(props: {
   /** 選んだ範囲の呼び方（「段落」「3つのブロック」など） */
   rangeLabel: string;
   /** 送信前の項目を直すときの、もとの中身。新しく書くときは null */
-  initial: { editorMarkdown: string; reason: string } | null;
+  initial: ComposerInitial | null;
   /** 範囲を広げられるか（広げた先に、ほかの提案があるときも広げられない） */
   canExtend: { up: boolean; down: boolean };
   onExtend: (direction: "up" | "down") => void;
@@ -46,19 +53,23 @@ export function ItemComposer(props: {
   const [loaded, setLoaded] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [reason, setReason] = useState(initial?.reason ?? "");
+  const [kind, setKind] = useState<EditRequestItemKind>(initial?.kind ?? "suggestion");
+  const [noteBody, setNoteBody] = useState(initial?.body ?? "");
+  const note = kind === "note";
   /** 「追加する」を押して分かった、追加できない理由 */
   const [refused, setRefused] = useState<string | null>(null);
 
   const restored = useMemo(() => (markdown === null ? null : input.restore(markdown)), [input, markdown]);
   const unchanged = restored?.ok === true && restored.replacement === input.unchanged;
   const edited = loaded !== null && markdown !== loaded;
-  const dirty = edited || reason !== (initial?.reason ?? "");
+  // 種類を変えただけでは、書きかけにしない（直しているときは、種類を変えたら「直した」）
+  const dirty = edited || reason !== (initial?.reason ?? "") || noteBody !== (initial?.body ?? "") || (initial !== null && kind !== initial.kind);
   const tooLong = restored?.ok === true && restored.replacement.length > EDIT_REQUEST_LIMITS.replacement;
 
   const { onDirtyChange, draft } = props;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
-  draft.current = markdown === null ? null : { editorMarkdown: markdown, replacement: restored?.ok ? restored.replacement : null, reason };
+  draft.current = markdown === null ? null : { kind, editorMarkdown: markdown, replacement: restored?.ok ? restored.replacement : null, reason, body: noteBody };
   useEffect(() => () => void (draft.current = null), [draft]);
 
   // 追加できない理由は、入力欄のすぐ下に、書いているあいだから出す
@@ -70,8 +81,17 @@ export function ItemComposer(props: {
     : null;
   const messageId = useId();
   const titleId = useId();
+  const kindId = useId();
+  const noteEmpty = noteBody.trim() === "";
+  const canAdd = note
+    ? !noteEmpty && !(initial !== null && !dirty)
+    : !(markdown === null || !restored?.ok || unchanged || tooLong || (initial !== null && !dirty));
 
   const add = () => {
+    if (note) {
+      if (!noteEmpty) props.onAdd({ kind: "note", body: noteBody.trim() });
+      return;
+    }
     if (!restored?.ok || markdown === null) return;
     const built = buildSuggestion(props.body, selection, restored.replacement);
     if (!built.ok) return setRefused(built.reason);
@@ -108,10 +128,26 @@ export function ItemComposer(props: {
     >
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 1, rowGap: 0.5 }}>
         <Box id={titleId} component="span" sx={{ fontWeight: 600 }}>
-          {initial ? "提案を直す" : "提案を書く"}
+          {initial ? (note ? "指摘を直す" : "提案を直す") : note ? "指摘を書く" : "提案を書く"}
         </Box>
         <Box component="span" sx={{ color: "text.secondary" }}>
           選んだ範囲：{props.rangeLabel}
+        </Box>
+      </Box>
+
+      {/* 選択肢が2つなので、ラジオボタンで、どちらも見えるようにする */}
+      <Box>
+        <Box id={kindId} component="span" sx={{ display: "block", color: "text.secondary", fontSize: "0.8rem" }}>
+          書く内容
+        </Box>
+        <RadioGroup row aria-labelledby={kindId} value={kind} onChange={(e) => setKind(e.target.value as EditRequestItemKind)} sx={{ columnGap: 1 }}>
+          <FormControlLabel value="suggestion" control={<Radio size="small" />} label="置き換えを提案する" slotProps={{ typography: { sx: { fontSize: "0.875rem" } } }} />
+          <FormControlLabel value="note" control={<Radio size="small" />} label="指摘だけ書く" slotProps={{ typography: { sx: { fontSize: "0.875rem" } } }} />
+        </RadioGroup>
+        <Box component="span" sx={{ display: "block", color: "text.secondary", fontSize: "0.8rem" }}>
+          {note
+            ? "直し方は示さず、気づいたこと（根拠が分からない、古いかもしれない、など）だけを伝えます。採用・却下ではなく、「解決済み」で片付きます。"
+            : "選んだ範囲を、どう書き換えるかを示します。採用されると、本文がそのとおりに置き換わります。"}
         </Box>
       </Box>
 
@@ -137,7 +173,8 @@ export function ItemComposer(props: {
           </Box>
         ))}
 
-      <Box>
+      {/* 指摘を書いているあいだも、小さなエディタは外さない（切り替えて戻ったときに、書いた置き換え案が残る） */}
+      <Box sx={{ display: note ? "none" : "block" }}>
         <Box component="span" sx={{ display: "block", color: "text.secondary", fontSize: "0.8rem", mb: 0.5 }}>
           置き換え案（この内容に書き換える提案になります）
         </Box>
@@ -160,7 +197,32 @@ export function ItemComposer(props: {
         </Box>
       </Box>
 
+      {note && (
+        <TextField
+          label="指摘（必須）"
+          placeholder="例：この数字の出典が分かりません。いまの値に直したほうがよさそうです"
+          value={noteBody}
+          onChange={(e) => setNoteBody(e.target.value)}
+          multiline
+          minRows={2}
+          maxRows={10}
+          size="small"
+          fullWidth
+          required
+          autoFocus
+          slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.note }, inputLabel: { shrink: true } }}
+          helperText={
+            noteBody.length > EDIT_REQUEST_LIMITS.note * 0.9
+              ? `${noteBody.length.toLocaleString()} / ${EDIT_REQUEST_LIMITS.note.toLocaleString()} 字`
+              : noteEmpty
+                ? "指摘を書くと、追加できます。書いたままの文字で送られます（Markdown の記法は、そのまま出ます）。"
+                : "書いたままの文字で送られます（Markdown の記法は、そのまま出ます）。"
+          }
+        />
+      )}
+
       <TextField
+        sx={{ display: note ? "none" : undefined }}
         label="理由（任意）"
         placeholder="例：ほかのページと表記をそろえるため"
         value={reason}
@@ -175,8 +237,8 @@ export function ItemComposer(props: {
       />
 
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-        <Button variant="contained" size="small" disabled={markdown === null || !restored?.ok || unchanged || tooLong || (initial !== null && !dirty)} onClick={add} aria-describedby={messageId}>
-          {initial ? "この内容に直す" : "提案に追加する"}
+        <Button variant="contained" size="small" disabled={!canAdd} onClick={add} aria-describedby={note ? undefined : messageId}>
+          {initial ? "この内容に直す" : note ? "指摘を追加する" : "提案に追加する"}
         </Button>
         <Button variant="outlined" size="small" color="inherit" onClick={props.onClose}>
           {initial ? "直さずに閉じる" : "追加せずに閉じる"}
