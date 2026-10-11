@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { SESSION_COOKIE, signSession } from "../auth/session";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
 import { createWorker, type WorkerEnv } from "../worker";
 import { ADMIN, setup } from "./harness";
 
@@ -35,7 +35,7 @@ async function worker(env: Partial<WorkerEnv> = {}) {
     INTERNAL_TOKEN: "internal-token",
     ...env,
   } as WorkerEnv;
-  const cookie = `${SESSION_COOKIE}=${await signSession(ctx.config.sessionSecret, ctx.owner.id)}`;
+  const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
   const fetch = (path: string, init: RequestInit = {}) =>
     handler.fetch(new Request(new URL(path, ORIGIN), init), fullEnv, { waitUntil: (p) => void closed.push(p) });
   return { fetch, cookie, stats: () => ({ connections, closes }), settled: () => Promise.all(closed) };

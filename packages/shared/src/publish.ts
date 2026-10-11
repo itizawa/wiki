@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { WikiHome } from "./home";
 import type { WikiTheme } from "./theme";
 
 /** 公開操作で選べる公開範囲（private は「非公開化」で扱う）。 */
@@ -115,6 +116,8 @@ export type WikiManifest = {
   name: string;
   /** 公開サイトの見た目（既定で埋めたもの）。ビルドのときに CSS 変数・ロゴ・ファビコンとして出す */
   theme: WikiTheme;
+  /** 公開サイトのトップの設定（既定で埋めたもの）。自由記述は新着記事の上に出す */
+  home: WikiHome;
   /** Google Analytics（GA4）の測定 ID。null なら Google タグを出さない */
   gaMeasurementId: string | null;
   /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */

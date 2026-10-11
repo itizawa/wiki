@@ -27,8 +27,10 @@ import type {
   TreeNode,
   UserSummary,
   UpdateAppearanceInput,
+  UpdateHomeInput,
   WikiAnalytics,
   WikiAppearance,
+  WikiHome,
   WikiRole,
   WikiSettings,
   WikiSummary,
@@ -142,6 +144,7 @@ export const api = {
   providers: () => request<{ google: boolean; devLogin: boolean }>("GET", "/auth/providers"),
   devLogin: () => request<{ email: string }>("POST", "/auth/dev-login"),
   logout: () => request<{ ok: true }>("POST", "/auth/logout"),
+  logoutOthers: () => request<{ ended: number }>("POST", "/auth/logout-others"),
   me: () => request<Me>("GET", "/admin/me"),
 
   // 招待リンクを開いた人向け（ログインしていなくても呼べる）
@@ -269,6 +272,8 @@ export const api = {
   /** 公開サイトの「外観」（管理者だけ） */
   getAppearance: () => request<WikiAppearance>("GET", w("/appearance")),
   saveAppearance: (input: UpdateAppearanceInput) => request<WikiAppearance>("PUT", w("/appearance"), input),
+  getHome: () => request<WikiHome>("GET", w("/home")),
+  saveHome: (input: UpdateHomeInput) => request<WikiHome>("PUT", w("/home"), input),
   /** ロゴ・ファビコンをアップロードし、パス（`/images/{name}`）を返す。PNG・WebP の 512KB まで */
   uploadThemeImage: (file: Blob) => upload(w("/appearance/images"), file),
 

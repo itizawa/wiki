@@ -3,13 +3,37 @@
 .visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ツリーナビ＋本文の2カラム。ナビは左に置き、右は本文の目次（Article）に空ける。
-   HTML では本文が先（読み上げと狭い画面では、本文のあとにナビが来る） */
+   HTML では本文が先（読み上げでは、本文のあとにナビが来る）。ナビの列は NavDrawer.astro */
 .withNav { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-areas: "nav main"; gap: 32px; align-items: start; }
 .withNav > main { grid-area: main; }
 .withNav > aside { grid-area: nav; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; font-size: 0.9rem; }
+/* ドロワーの幕と見出し（閉じるボタン）。広い画面では出さない */
+.navBackdrop { display: none; }
+.drawerHead { display: none; }
+.drawerClose { width: 40px; height: 40px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: 1.4rem; line-height: 1; cursor: pointer; }
+.drawerClose:hover { background: var(--border); }
+/* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「階層を開く」で開く。NavDrawer.astro）。
+   閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
 @media (max-width: 800px) {
-  .withNav { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "nav"; }
-  .withNav > aside { position: static; max-height: none; }
+  .withNav { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
+  .withNav > aside {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
+    width: min(320px, 85vw); max-height: none; overflow-y: auto; overscroll-behavior: contain;
+    padding: 0 16px 24px; background: var(--bg); border-right: 1px solid var(--border); box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
+    transform: translateX(-100%); visibility: hidden;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+  :global(html[data-nav-open]) .withNav > aside { transform: none; visibility: visible; transition: transform 0.2s ease; }
+  /* 開いている間は、後ろの本文をスクロールさせない */
+  :global(html[data-nav-open]) { overflow: hidden; }
+  :global(html[data-nav-open]) .navBackdrop { display: block; position: fixed; inset: 0; z-index: 25; background: rgb(0 0 0 / 0.4); }
+  .drawerHead {
+    display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0;
+    min-height: var(--header-height); margin-bottom: 8px; background: var(--bg); border-bottom: 1px solid var(--border); font-weight: 700;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .withNav > aside { transition: none !important; }
 }
 
 .breadcrumbs { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
@@ -18,3 +42,8 @@
 .postList { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; }
 .postList h2 { font-size: 1.15rem; margin: 0; }
 .postList p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+/* トップの自由記述（管理画面の「トップページ」）。新着記事との間を空け、線で区切る */
+.homeIntro { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.homeIntro > :first-child { margin-top: 0; }
+.homeIntro > :last-child { margin-bottom: 0; }

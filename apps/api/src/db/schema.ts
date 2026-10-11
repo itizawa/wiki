@@ -38,6 +38,11 @@ export const wikis = pgTable("wikis", {
    * 読むときは resolveTheme を通し、欠けた・正しくない項目は既定に戻す
    */
   theme: jsonb("theme"),
+  /**
+   * 公開サイトのトップの設定（自由記述。`WikiHome`）。null なら既定（何も出さない）。
+   * 読むときは resolveHome を通す。あとでトップの部品の並びなどを足せるよう、オブジェクトで持つ
+   */
+  home: jsonb("home"),
   /** Google Analytics（GA4）の測定 ID（`G-` で始まる）。null なら公開サイトに Google タグを出さない */
   gaMeasurementId: text("ga_measurement_id"),
   /** Google サーチコンソールの確認用の値（meta タグの content の中身）。null なら出さない */
@@ -440,6 +445,24 @@ export const users = pgTable(
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   },
   (t) => [index("users_email_idx").on(t.email)],
+);
+
+/**
+ * ログインしている端末ごとのセッション。Cookie の署名付きトークンにこの行の ID を入れ、リクエストのたびに行があるかを確かめる。
+ * ログアウトでその端末の行を、「ほかの端末からログアウト」でそれ以外の行を消すと、Cookie が残っていても次のリクエストから通らない。
+ */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    /** Cookie の期限と同じ。過ぎた行は通さず、その人が次にログインしたときに消す */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
 );
 
 /** wiki ごとのメンバー。オーナーは行が無くても、すべての wiki に管理者として入れる。 */

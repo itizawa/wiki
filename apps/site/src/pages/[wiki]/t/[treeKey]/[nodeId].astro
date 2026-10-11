@@ -2,6 +2,7 @@
 import layout from "../../../../styles/page.module.css";
 import type { ManifestPage, ManifestTree } from "@wiki/shared";
 import Article from "../../../../components/Article.astro";
+import NavDrawer from "../../../../components/NavDrawer.astro";
 import TreeNav from "../../../../components/TreeNav";
 import Base from "../../../../layouts/Base.astro";
 import { allWikis, siteData, TREE_LABEL } from "../../../../lib/manifest";
@@ -33,7 +34,7 @@ const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const crumbs = ancestors(tree, page.id).slice(0, -1);
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={`/t/${tree.key}/`}>
   <div class={layout.withNav}>
     <main data-pagefind-ignore>
       <nav class={layout.breadcrumbs}>
@@ -60,8 +61,8 @@ const crumbs = ancestors(tree, page.id).slice(0, -1);
       <Backlinks pages={backlinks} />
       <ViewCounter pageId={page.id} />
     </main>
-    <aside>
+    <NavDrawer>
       <TreeNav client:idle items={navItems(tree, titleOf, iconOf)} current={page.id} />
-    </aside>
+    </NavDrawer>
   </div>
 </Base>

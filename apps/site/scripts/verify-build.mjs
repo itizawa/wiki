@@ -4,6 +4,7 @@
 // - Google のタグ（Analytics・サーチコンソール）が、設定した wiki の公開ページにだけ入り、限定公開のページに入っていないこと
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 const dist = new URL("../dist/", import.meta.url).pathname;
 const read = (p) => readFile(join(dist, p), "utf8");
@@ -53,6 +54,21 @@ check(
 const unlisted = await read(`wiki/u/${key}/index.html`);
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
+
+// ---- 狭い画面のドロワー（ヘッダーの「階層を開く」と、ツリーナビの列）
+const hasDrawer = (html) => html.includes("data-nav-toggle") && html.includes('id="site-nav"');
+check(hasDrawer(iconPage) && iconPage.includes('href="/t/main/" data-nav-toggle'), "an article page has the tree button (a link to the tree without JavaScript) and the drawer");
+check(hasDrawer(tPage) && tPage.includes('href="/t/by-theme/" data-nav-toggle'), "a page viewed through a tree opens that tree in the drawer");
+check(/<aside[^>]*id="site-nav"[^>]*data-pagefind-ignore/.test(iconPage), "the tree nav column is left out of the search index");
+const topPage = await read("wiki/index.html");
+check(hasDrawer(topPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(topPage), "the top shows the tree nav next to the new posts");
+const noDrawer = { "search": await read("wiki/search.html"), "404": await read("wiki/404.html"), "unlisted": unlisted };
+const withDrawer = Object.entries(noDrawer).filter(([, html]) => html.includes("data-nav-toggle") || html.includes("site-nav"));
+check(withDrawer.length === 0, `search, 404 and unlisted pages have no tree button or drawer${withDrawer.length ? ` (${withDrawer.map(([k]) => k).join(", ")})` : ""}`);
+const fragmentTexts = await Promise.all(
+  (await readdir(join(dist, "wiki/pagefind/fragment")).catch(() => [])).map(async (f) => gunzipSync(await readFile(join(dist, "wiki/pagefind/fragment", f))).toString("utf8").replaceAll("\u200b", "")),
+);
+check(fragmentTexts.length > 0 && fragmentTexts.every((t) => t.includes("設計メモ") && !t.includes("階層を閉じる") && !t.includes("階層を開く")), "the search index holds no text of the tree button or drawer");
 
 const publicHtml = [await read("wiki/index.html"), await read("wiki/p/aaaaaaaaa1.html"), await read("wiki/sitemap.xml"), await read("wiki/feed.xml")];
 check(publicHtml.every((h) => !h.includes(key)), "unlisted key does not appear in public pages, sitemap or RSS");
@@ -118,6 +134,14 @@ check(fragments.length === 2, `pagefind indexes only the 2 public pages of the w
 const wikiIndex = await read("wiki/index.html");
 const notesIndex = await read("notes/index.html");
 check(wikiIndex.includes("<title>サンプル wiki</title>") && notesIndex.includes("<title>開発ノート</title>"), "the site name is the wiki's name");
+
+// ---- トップの自由記述（管理画面の「トップページ」）
+check(wikiIndex.includes("data-home-intro") && wikiIndex.includes("この wiki の紹介文です"), "the top shows the wiki's intro above the new posts");
+check(wikiIndex.indexOf("data-home-intro") < wikiIndex.indexOf("新着記事"), "the intro comes before the new posts");
+check(wikiIndex.includes('<a href="/p/aaaaaaaaa1"'), "an internal link in the intro points to the public page");
+check(wikiIndex.includes("まだ公開していないページ") && !wikiIndex.includes("zzzzzzzzz9"), "a link to a page that is not public is plain text in the intro");
+check(!notesIndex.includes("data-home-intro"), "a wiki without an intro shows only the new posts");
+check(!wikiIndex.includes("階層から探す") && !notesIndex.includes("階層から探す"), "the top no longer links to the tree");
 check((await read("notes/sitemap.xml")).includes("<loc>http://notes.localhost:4321/p/bbbbbbbbb1</loc>"), "sitemap uses the wiki's origin");
 check((await read("notes/feed.xml")).includes("<link>http://notes.localhost:4321/p/bbbbbbbbb1/</link>"), "RSS uses the wiki's origin");
 check((await read("notes/robots.txt")).includes("Sitemap: http://notes.localhost:4321/sitemap.xml"), "robots.txt points to the wiki's sitemap");

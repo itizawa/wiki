@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = {
   login: "login",
   login_denied: "login",
   logout: "login",
+  logout_others: "login",
 
   invite_create: "member",
   invite_accept: "member",
@@ -51,6 +52,7 @@ export const AUDIT_ACTIONS = {
   page_purge: "page",
 
   wiki_update: "settings",
+  wiki_home_update: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -85,6 +87,8 @@ export type AuditDetailMap = {
   login: Record<string, never>;
   login_denied: { reason: "invite_only" | "unverified" };
   logout: Record<string, never>;
+  /** 切ったほかの端末のセッションの数 */
+  logout_others: { count: number };
 
   invite_create: { role: WikiRole };
   invite_accept: { role: WikiRole };
@@ -119,6 +123,8 @@ export type AuditDetailMap = {
   page_purge: { descendants?: number };
 
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
+  /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
+  wiki_home_update: Record<string, never>;
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -219,6 +225,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`ログインを拒否しました（${DENIED_LABELS[entry.detail.reason]}）`);
     case "logout":
       return plain("ログアウトしました");
+    case "logout_others":
+      return plain(`ほかの端末からログアウトしました（${entry.detail.count}件）`);
 
     case "invite_create":
       return plain(`${WIKI_ROLE_LABELS[entry.detail.role]}の招待リンクを発行しました`);
@@ -285,6 +293,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       if (entry.detail.iconUrl) parts.push("画像を変更しました");
       return [{ text: "wiki の" }, { text: parts.join("。") || "設定を変更しました" }];
     }
+    case "wiki_home_update":
+      return plain("公開サイトのトップページの自由記述を変更しました");
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];

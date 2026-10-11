@@ -57,6 +57,9 @@
     {
       "key": "wiki",
       "name": "サンプル wiki",
+      "home": {
+        "introMd": "## ようこそ\n\nこの wiki の紹介文です。まずは [はじめに](/p/aaaaaaaaa1) を読んでください。[まだ公開していないページ](/p/zzzzzzzzz9) はリンクになりません。"
+      },
       "gaMeasurementId": "G-SAMPLE1234",
       "searchConsoleVerification": "sampleVerification_0123-abc",
       "headCommitId": "00000000-0000-0000-0000-000000000000",

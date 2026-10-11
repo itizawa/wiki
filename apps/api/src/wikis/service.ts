@@ -1,13 +1,16 @@
 import {
   newWikiId,
+  resolveHome,
   resolveTheme,
   wikiOrigin,
   type CreateWikiInput,
   type UpdateAppearanceInput,
+  type UpdateHomeInput,
   type UpdateWikiInput,
   type UpdateWikiSettingsInput,
   type Wiki,
   type WikiAppearance,
+  type WikiHome,
   type WikiRole,
   type WikiSettings,
   type WikiSummary,
@@ -159,6 +162,25 @@ export async function updateAppearance(db: Db, wikiId: string, input: UpdateAppe
     const [row] = await tx.update(wikis).set({ name: input.name, theme }).where(eq(wikis.id, wiki.id)).returning();
     if (!wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_theme");
     return toAppearance(row!);
+  });
+}
+
+/**
+ * 「トップページ」（公開サイトのトップに出す自由記述）の保存。input は検証済みのもの。
+ * 変わったときだけ監査ログに残し、公開イベントを記録して公開サイトをビルドし直す（アーカイブ中の wiki ではビルドしない）。
+ */
+export async function updateHome(db: Db, wikiId: string, input: UpdateHomeInput, actor: AuditActor): Promise<WikiHome> {
+  return db.transaction(async (tx) => {
+    const [wiki] = await tx.select().from(wikis).where(eq(wikis.id, wikiId)).for("update");
+    if (!wiki) throw notFound(`wiki ${wikiId}`);
+    const before = resolveHome(wiki.home);
+    const home = resolveHome(input);
+    if (JSON.stringify(before) === JSON.stringify(home)) return before;
+    await tx.update(wikis).set({ home }).where(eq(wikis.id, wiki.id));
+    if (!wiki.archivedAt) await recordPublishEvent(tx, wiki.id, "wiki_home");
+    // 自由記述の中身は残さない（本文と同じ扱い）
+    await writeAudit(tx, { wikiId: wiki.id, actor, action: "wiki_home_update", target: { type: "wiki", id: wiki.id, label: wiki.name }, detail: {} });
+    return home;
   });
 }
 
