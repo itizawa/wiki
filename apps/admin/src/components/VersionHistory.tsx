@@ -219,17 +219,12 @@ export function VersionHistory(props: {
           {isFetchingNextPage && <SkeletonRows rows={3} height={VERSION_ROW_HEIGHT} label="続きを読み込み中" />}
           <Box ref={sentinel} aria-hidden sx={{ height: "1px" }} />
           {versionRows !== undefined && isFetchNextPageError && !isFetchingNextPage && (
-            // 読み込めた分は消さず、末尾で知らせる
-            <Alert
-              severity="error"
-              sx={{ mt: 1 }}
-              action={
-                <Button color="inherit" variant="outlined" onClick={() => void fetchNextPage()}>
-                  もう一度読み込む
-                </Button>
-              }
-            >
+            // 読み込めた分は消さず、末尾で知らせる。枠が狭いので、ボタンは文の下に置く（横に並べると文字が折れる）
+            <Alert severity="error" sx={{ mt: 1 }}>
               続きを読み込めませんでした。{errorMessage(versions.error)}
+              <Button color="inherit" variant="outlined" size="small" onClick={() => void fetchNextPage()} sx={{ display: "flex", mt: 1 }}>
+                もう一度読み込む
+              </Button>
             </Alert>
           )}
           {versions.data && !hasNextPage && (
