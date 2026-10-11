@@ -118,6 +118,14 @@ check(fragments.length === 2, `pagefind indexes only the 2 public pages of the w
 const wikiIndex = await read("wiki/index.html");
 const notesIndex = await read("notes/index.html");
 check(wikiIndex.includes("<title>サンプル wiki</title>") && notesIndex.includes("<title>開発ノート</title>"), "the site name is the wiki's name");
+
+// ---- トップの自由記述（管理画面の「トップページ」）
+check(wikiIndex.includes("data-home-intro") && wikiIndex.includes("この wiki の紹介文です"), "the top shows the wiki's intro above the new posts");
+check(wikiIndex.indexOf("data-home-intro") < wikiIndex.indexOf("新着記事"), "the intro comes before the new posts");
+check(wikiIndex.includes('<a href="/p/aaaaaaaaa1"'), "an internal link in the intro points to the public page");
+check(wikiIndex.includes("まだ公開していないページ") && !wikiIndex.includes("zzzzzzzzz9"), "a link to a page that is not public is plain text in the intro");
+check(!notesIndex.includes("data-home-intro"), "a wiki without an intro shows only the new posts");
+check(!wikiIndex.includes("階層から探す") && !notesIndex.includes("階層から探す"), "the top no longer links to the tree");
 check((await read("notes/sitemap.xml")).includes("<loc>http://notes.localhost:4321/p/bbbbbbbbb1</loc>"), "sitemap uses the wiki's origin");
 check((await read("notes/feed.xml")).includes("<link>http://notes.localhost:4321/p/bbbbbbbbb1/</link>"), "RSS uses the wiki's origin");
 check((await read("notes/robots.txt")).includes("Sitemap: http://notes.localhost:4321/sitemap.xml"), "robots.txt points to the wiki's sitemap");

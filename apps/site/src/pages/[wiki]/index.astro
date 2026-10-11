@@ -1,18 +1,24 @@
 ---
+import { resolveHome } from "@wiki/shared";
+import article from "../../components/Article.module.css";
 import page from "../../styles/page.module.css";
 import Base from "../../layouts/Base.astro";
-import { allWikis, siteData, TREE_LABEL } from "../../lib/manifest";
-import { excerpt } from "../../lib/markdown";
+import { allWikis, siteData } from "../../lib/manifest";
+import { excerpt, renderMarkdown } from "../../lib/markdown";
 
 export async function getStaticPaths() {
   return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
 }
 
-const { wiki: manifest, primaryTree } = await siteData(Astro.params.wiki);
+const { wiki: manifest, publicPaths, origin } = await siteData(Astro.params.wiki);
+// 管理画面の「トップページ」で書いた自由記述。内部リンクの解決は記事の本文と同じ
+const { introMd } = resolveHome(manifest.home);
+const introHtml = introMd ? renderMarkdown(introMd, { publicPaths, origin }) : null;
 const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
 ---
 
 <Base wiki={manifest.key} title={manifest.name} canonical="/">
+  {introHtml && <div class:list={[article.body, page.homeIntro]} data-home-intro set:html={introHtml} />}
   <h1 class={page.visuallyHidden}>新着記事</h1>
   {manifest.pages.length === 0 && <p class={page.muted}>まだ記事はありません。</p>}
   <ul class={page.postList}>
@@ -29,14 +35,4 @@ const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle
       ))
     }
   </ul>
-  {
-    primaryTree && (
-      <section>
-        <h2>階層から探す</h2>
-        <p>
-          <a href={`/t/${primaryTree.key}/`}>{TREE_LABEL}を見る</a>
-        </p>
-      </section>
-    )
-  }
 </Base>

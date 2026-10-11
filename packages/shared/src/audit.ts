@@ -52,6 +52,7 @@ export const AUDIT_ACTIONS = {
   page_purge: "page",
 
   wiki_update: "settings",
+  wiki_home_update: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -122,6 +123,8 @@ export type AuditDetailMap = {
   page_purge: { descendants?: number };
 
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
+  /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
+  wiki_home_update: Record<string, never>;
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -290,6 +293,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       if (entry.detail.iconUrl) parts.push("画像を変更しました");
       return [{ text: "wiki の" }, { text: parts.join("。") || "設定を変更しました" }];
     }
+    case "wiki_home_update":
+      return plain("公開サイトのトップページの自由記述を変更しました");
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];
