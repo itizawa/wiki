@@ -17,7 +17,7 @@ import {
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
+import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
 import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent, recordPublishEvents } from "../publishing/service";
@@ -434,6 +434,9 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
   await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
   // 編集リクエストの項目は版を指しているので、版より先に消す
   const requestIds = tx.select({ id: editRequests.id }).from(editRequests).where(inArray(editRequests.pageId, ids));
+  // 返信は項目を指しているので、項目より先に消す
+  const itemIds = tx.select({ id: editRequestItems.id }).from(editRequestItems).where(inArray(editRequestItems.requestId, requestIds));
+  await tx.delete(editRequestComments).where(inArray(editRequestComments.itemId, itemIds));
   await tx.delete(editRequestItems).where(inArray(editRequestItems.requestId, requestIds));
   await tx.delete(editRequests).where(inArray(editRequests.pageId, ids));
   await tx.delete(pageVersions).where(inArray(pageVersions.pageId, ids));

@@ -1,20 +1,24 @@
 import {
   createEditRequestInput,
+  editRequestCommentInput,
   type AcceptEditRequestResult,
   type AppliedEditRequests,
   type CreatedEditRequest,
+  type EditRequestComment,
   type EditRequestCount,
   type PageEditRequests,
 } from "@wiki/shared";
 import { Hono, type Context } from "hono";
 import {
   acceptEditRequestItems,
+  addEditRequestComment,
   appliedEditRequestsSince,
   countOpenItems,
   createEditRequest,
   listEditRequests,
   rejectEditRequestItem,
   reopenEditRequestItem,
+  resolveEditRequestItem,
   withdrawEditRequest,
 } from "../editRequests/service";
 import type { AppEnv } from "../env";
@@ -32,7 +36,7 @@ function uuidParam(c: Context<AppEnv>, name: string, what: string): string {
 }
 
 /**
- * `/admin/w/{key}/pages/:id/...`：ページの編集リクエスト（出す・読む・採用・却下・未対応に戻す・取り下げ）。
+ * `/admin/w/{key}/pages/:id/...`：ページの編集リクエスト（出す・読む・採用・却下・解決済み・未対応に戻す・取り下げ・返信）。
  * wiki のメンバーならだれでも使える（`requireUser` + `requireAccess` + `resolveWiki`）。ページがその wiki のもので、
  * ゴミ箱に入っていないことは、どの経路も `findLivePage` で確かめる（別の wiki のページは 404）。
  */
@@ -82,6 +86,26 @@ export const editRequestRoutes = new Hono<AppEnv>()
     );
     return c.json({ ok: true });
   })
+  // 指摘を解決済みにする（提案は 409 `not_a_note`）。古くなった指摘も解決済みにできる
+  .post("/:id/edit-request-items/:itemId/resolve", async (c) => {
+    const { db } = c.get("deps");
+    const itemId = uuidParam(c, "itemId", "edit request item");
+    await db.transaction((tx) =>
+      resolveEditRequestItem(tx, { wikiId: c.get("wiki").id, pageId: c.req.param("id"), itemId, actor: { userId: c.get("user").id } }),
+    );
+    return c.json({ ok: true });
+  })
+  // 項目に返信する。項目の状態は問わない。本文はプレーンテキスト
+  .post("/:id/edit-request-items/:itemId/comments", async (c) => {
+    const { db } = c.get("deps");
+    const itemId = uuidParam(c, "itemId", "edit request item");
+    const input = await parseJson(c, editRequestCommentInput);
+    const made = await db.transaction((tx) =>
+      addEditRequestComment(tx, { wikiId: c.get("wiki").id, pageId: c.req.param("id"), itemId, body: input.body, actor: { userId: c.get("user").id } }),
+    );
+    return c.json(made satisfies EditRequestComment, 201);
+  })
+  // 却下した提案・解決済みにした指摘を、未対応に戻す
   .post("/:id/edit-request-items/:itemId/reopen", async (c) => {
     const { db } = c.get("deps");
     const itemId = uuidParam(c, "itemId", "edit request item");

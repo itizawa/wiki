@@ -243,7 +243,7 @@ export function ReviewBody(props: {
           "& a": { color: "primary.main", cursor: "pointer", "&::after": { content: '"↗"', ml: "0.15em", fontSize: "0.75em" } },
           // チェックリストは、押しても変わらない
           "& ul[data-type='taskList'] li > label": { mt: "0.35em", flexShrink: 0, pointerEvents: "none" },
-          // 提案が指している箇所。背景色だけに頼らず、左に線を引く
+          // 項目（提案・指摘）が指している箇所。背景色だけに頼らず、左に線を引く
           "& .review-target": { position: "relative", bgcolor: "action.hover", borderRadius: "2px" },
           // コールアウトは、::before を種類の名前（「メモ」など）に使っているので、線は枠で引く
           "& blockquote[data-callout].review-target": { outline: `2px solid ${t.palette.primary.main}`, outlineOffset: 2 },
@@ -276,19 +276,19 @@ export function ReviewBody(props: {
       ))}
       <EditorContent editor={editor} />
       {select && (
-        <Box className="compose-handles" role="group" aria-label="提案を書く箇所を選ぶ">
+        <Box className="compose-handles" role="group" aria-label="提案・指摘を書く箇所を選ぶ">
           {selectable.map((unit, i) => {
             const top = tops[i] ?? -1;
             if (top < 0) return null;
             const name = unitName(parsed.doc, unit);
             const excerpt = textOf(nodeAtPath(parsed.doc, unit.path)).trim().slice(0, 20);
             return (
-              <Tooltip key={unit.path.join("-")} title={select.disabled ? "" : `この${name}に提案を書く`} placement="left">
+              <Tooltip key={unit.path.join("-")} title={select.disabled ? "" : `この${name}に提案・指摘を書く`} placement="left">
                 {/* 押せないボタンにもツールチップの土台が要るので、位置は外側の要素に持たせる */}
                 <Box component="span" sx={{ position: "absolute", right: 0, top: top + 1, display: "inline-flex" }}>
                   <IconButton
                     size="small"
-                    aria-label={`この${name}に提案を書く${excerpt ? `：${excerpt}` : ""}`}
+                    aria-label={`この${name}に提案・指摘を書く${excerpt ? `：${excerpt}` : ""}`}
                     disabled={select.disabled}
                     onClick={(e) => select.onPick(unit, e.shiftKey)}
                     sx={{

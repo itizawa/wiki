@@ -72,7 +72,10 @@ const publish = (page: { id: string; head: string }) => ctx.call("POST", `${W}/p
 
 const SUGGEST_TOOLS = ["create_edit_request", "list_edit_requests", "get_edit_request", "withdraw_edit_request"];
 const DECIDE_TOOLS = ["accept_edit_request_item", "reject_edit_request_item"];
-const EDIT_REQUEST_TOOLS = [...SUGGEST_TOOLS, ...DECIDE_TOOLS];
+/** 返信（wiki.suggest）と、指摘を解決済みにする（wiki.write）。道具の並びでは、いちばん後ろ */
+const REPLY_TOOL = "reply_edit_request_item";
+const RESOLVE_TOOL = "resolve_edit_request_item";
+const EDIT_REQUEST_TOOLS = [...SUGGEST_TOOLS, ...DECIDE_TOOLS, REPLY_TOOL, RESOLVE_TOOL];
 
 describe("edit request tools by scope", () => {
   it("offers wiki.suggest as a scope, and lists the tools each scope allows", async () => {
@@ -82,9 +85,9 @@ describe("edit request tools by scope", () => {
 
     const of = async (scope: string) => (await toolNames(await connect(scope))).filter((n) => EDIT_REQUEST_TOOLS.includes(n));
     expect(await of("wiki.read")).toEqual([]);
-    expect(await of("wiki.read wiki.suggest")).toEqual(SUGGEST_TOOLS);
-    // 採用・却下は本文が変わるので、wiki.write の側に出る
-    expect(await of("wiki.read wiki.write")).toEqual(DECIDE_TOOLS);
+    expect(await of("wiki.read wiki.suggest")).toEqual([...SUGGEST_TOOLS, REPLY_TOOL]);
+    // 採用・却下は本文が変わるので、wiki.write の側に出る。指摘を解決済みにするのも同じ
+    expect(await of("wiki.read wiki.write")).toEqual([...DECIDE_TOOLS, RESOLVE_TOOL]);
     expect(await of("wiki.read wiki.write wiki.suggest")).toEqual(EDIT_REQUEST_TOOLS);
     // 道具は、いまある道具の末尾に並ぶ
     const all = await toolNames(await connect("wiki.read wiki.write wiki.private wiki.publish wiki.delete wiki.suggest"));
@@ -104,7 +107,7 @@ describe("edit request tools by scope", () => {
     const token = await connect("wiki.read wiki.suggest wiki.private");
     const made = await callTool(token, "create_edit_request", { wiki: "wiki", pageId: page.id, baseVersionId: page.head, items: [{ startLine: 3, endLine: 3, replacement: "x" }] });
     expect(made.isError).toBe(false);
-    for (const name of DECIDE_TOOLS) {
+    for (const name of [...DECIDE_TOOLS, RESOLVE_TOOL]) {
       const res = await callTool(token, name, { wiki: "wiki", pageId: page.id, itemId: made.data.itemIds[0] });
       expect(res.isError, name).toBe(true);
       expect(res.data.error.code, name).toBe("insufficient_scope");
@@ -113,8 +116,8 @@ describe("edit request tools by scope", () => {
     expect((await ctx.call("GET", `${W}/pages/${page.id}/edit-requests`)).body.openCount).toBe(1);
     // wiki.write だけでは、出せない・読めない
     const writer = await connect("wiki.read wiki.write wiki.private");
-    for (const name of SUGGEST_TOOLS) {
-      const res = await callTool(writer, name, { wiki: "wiki", pageId: page.id, requestId: made.data.id, baseVersionId: page.head, items: [] });
+    for (const name of [...SUGGEST_TOOLS, REPLY_TOOL]) {
+      const res = await callTool(writer, name, { wiki: "wiki", pageId: page.id, requestId: made.data.id, itemId: made.data.itemIds[0], body: "x", baseVersionId: page.head, items: [] });
       expect(res.data.error.code, name).toBe("insufficient_scope");
     }
   });
@@ -156,7 +159,7 @@ describe("making and reading edit requests over MCP", () => {
 
     const listed = await callTool(token, "list_edit_requests", { wiki: "wiki", pageId: page.id });
     expect(listed.data.requests).toEqual([
-      expect.objectContaining({ id: made.data.id, comment: "言い回しを整える案", via: "テストのアプリ", items: { open: 2, accepted: 0, rejected: 0, withdrawn: 0 } }),
+      expect.objectContaining({ id: made.data.id, comment: "言い回しを整える案", via: "テストのアプリ", items: { open: 2, accepted: 0, rejected: 0, resolved: 0, withdrawn: 0 } }),
     ]);
     const got = await callTool(token, "get_edit_request", { wiki: "wiki", pageId: page.id, requestId: made.data.id });
     expect(got.data).toMatchObject({ id: made.data.id, headVersionId: page.head });
@@ -224,6 +227,8 @@ describe("making and reading edit requests over MCP", () => {
       ["withdraw_edit_request", { requestId: humanOnHidden.id }],
       ["accept_edit_request_item", { itemId: humanOnHidden.itemIds[0] }],
       ["reject_edit_request_item", { itemId: humanOnHidden.itemIds[0] }],
+      ["reply_edit_request_item", { itemId: humanOnHidden.itemIds[0], body: "x" }],
+      ["resolve_edit_request_item", { itemId: humanOnHidden.itemIds[0] }],
     ] as const) {
       const res = await callTool(token, name, { wiki: "wiki", pageId: hidden.id, ...args });
       expect(res.data.error?.code, name).toBe("not_found");
@@ -239,6 +244,18 @@ describe("making and reading edit requests over MCP", () => {
     expect((await callTool(token, "get_edit_request", { wiki: "wiki", pageId: page.id, requestId: human.id })).data.error.code).toBe("not_found");
     expect((await callTool(token, "accept_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: human.itemIds[0] })).data.error.code).toBe("not_found");
     expect((await callTool(token, "reject_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: human.itemIds[0] })).data.error.code).toBe("not_found");
+    // 返信・解決済みも、その許可で出したリクエストの項目だけ
+    const humanNote = await ctx.db.transaction((tx) =>
+      createEditRequest(tx, {
+        wikiId: wiki!.id,
+        pageId: page.id,
+        input: { baseVersionId: page.head, items: [{ kind: "note", startLine: 5, endLine: 5, body: "人の指摘" }] },
+        actor: { userId: ctx.owner.id },
+      }),
+    );
+    expect((await callTool(token, "reply_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: human.itemIds[0], body: "x" })).data.error.code).toBe("not_found");
+    expect((await callTool(token, "resolve_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: humanNote.itemIds[0] })).data.error.code).toBe("not_found");
+    expect((await callTool(token, "reply_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: made.data.itemIds[0], body: "自分の項目には返信できる" })).isError).toBe(false);
 
     // 公開のあとに人が編集した（未公開の編集がある）ページには、出せないし採用もできない（update_page と同じ 409）
     const edited = await ctx.call("PUT", `${W}/pages/${page.id}`, { baseVersionId: page.head, title: "公開", bodyMd: `${BODY}\n公開前の書きかけ` });
@@ -256,7 +273,14 @@ describe("making and reading edit requests over MCP", () => {
     expect(got.data).toMatchObject({ id: made.data.id, headVersionId: null });
     expect(got.data.items[0]).toMatchObject({ originalText: "最後の段落", current: null });
     // 人が出したものも含め、管理画面からは全部見える
-    expect((await ctx.call("GET", `${W}/pages/${page.id}/edit-requests`)).body.requests).toHaveLength(2);
+    const all = (await ctx.call("GET", `${W}/pages/${page.id}/edit-requests`)).body;
+    expect(all.requests).toHaveLength(3);
+    // 断った返信・解決は、何も残していない
+    expect(all.requests.flatMap((r: any) => r.items).map((i: any) => [i.status, i.comments.length])).toEqual([
+      ["open", 0],
+      ["open", 1],
+      ["open", 0],
+    ]);
 
     // 別の wiki・メンバーでない wiki は、wiki ごと無い
     expect((await callTool(token, "list_edit_requests", { wiki: "nope", pageId: page.id })).data.error.code).toBe("wiki_not_found");
@@ -338,5 +362,88 @@ describe("deciding over MCP", () => {
     const res = await callTool(token, "accept_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: made.data.itemIds[0] });
     expect(res.isError).toBe(true);
     expect(res.data.error).toMatchObject({ code: "draft_conflict", details: { editors: [{ name: "editor" }] } });
+  });
+});
+
+describe("notes and replies over MCP", () => {
+  it("makes a note, reads it back with its replies, and replies as the app", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const token = await connect("wiki.read wiki.suggest wiki.private");
+    const made = await callTool(token, "create_edit_request", {
+      wiki: "wiki",
+      pageId: page.id,
+      baseVersionId: page.head,
+      items: [
+        { kind: "note", startLine: 3, endLine: 3, body: "根拠が不明です" },
+        { startLine: 9, endLine: 9, replacement: "y", reason: "短く" },
+      ],
+    });
+    expect(made.isError).toBe(false);
+    const [note, suggestion] = made.data.itemIds as [string, string];
+
+    // 人が返信し、アプリが返信する
+    const human = await ctx.call("POST", `${W}/pages/${page.id}/edit-request-items/${note}/comments`, { body: "どの資料を見ましたか？" });
+    expect(human.status).toBe(201);
+    const text = "<script>alert(1)</script> **太字**\n2行目";
+    const replied = await callTool(token, "reply_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: note, body: text });
+    expect(replied.isError).toBe(false);
+    expect(replied.data).toMatchObject({ itemId: note });
+
+    const got = await callTool(token, "get_edit_request", { wiki: "wiki", pageId: page.id, requestId: made.data.id });
+    expect(got.data.items[0]).toMatchObject({ id: note, kind: "note", status: "open", originalText: "1段落目", body: "根拠が不明です", replacement: null, reason: null });
+    expect(got.data.items[0].comments.map((c: any) => [c.body, c.createdBy, c.via])).toEqual([
+      ["どの資料を見ましたか？", "オーナー", null],
+      [text, "オーナー", "テストのアプリ"],
+    ]);
+    expect(got.data.items[1]).toMatchObject({ id: suggestion, kind: "suggestion", replacement: "y", reason: "短く", body: null, comments: [] });
+
+    // 管理画面には、項目を出した人と同じ決まり（アプリ名・許可した人）で出せる形で、書いたままの文字が並ぶ
+    const seen = (await ctx.call("GET", `${W}/pages/${page.id}/edit-requests`)).body;
+    expect(seen.requests[0]).toMatchObject({ createdBy: { id: ctx.owner.id }, via: "テストのアプリ" });
+    expect(seen.requests[0].items[0].comments[1]).toMatchObject({ id: replied.data.id, body: text, createdBy: { id: ctx.owner.id, name: "オーナー" }, via: "テストのアプリ" });
+    expect((await callTool(token, "list_edit_requests", { wiki: "wiki", pageId: page.id })).data.requests[0].items).toEqual({ open: 2, accepted: 0, rejected: 0, resolved: 0, withdrawn: 0 });
+
+    // 検査：本文が無い・長すぎる返信、本文の無い指摘、置き換え案を持つ指摘
+    for (const body of ["", "  ", "x".repeat(2001)]) {
+      expect((await callTool(token, "reply_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: note, body })).data.error.code).toBe("invalid_input");
+    }
+    for (const item of [{ kind: "note", startLine: 3, endLine: 3 }, { kind: "note", startLine: 3, endLine: 3, body: "x", replacement: "y" }]) {
+      const res = await callTool(token, "create_edit_request", { wiki: "wiki", pageId: page.id, baseVersionId: page.head, items: [item] });
+      expect(res.data.error.code).toBe("invalid_input");
+    }
+    // 取り下げたあとも、返信できる
+    expect((await callTool(token, "withdraw_edit_request", { wiki: "wiki", pageId: page.id, requestId: made.data.id })).data).toEqual({ id: made.data.id, withdrawn: 2 });
+    expect((await callTool(token, "reply_edit_request_item", { wiki: "wiki", pageId: page.id, itemId: note, body: "出し直します" })).isError).toBe(false);
+  });
+
+  it("resolves a note with wiki.write, and refuses actions that do not fit the kind", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const token = await connect("wiki.read wiki.write wiki.suggest wiki.private");
+    const made = await callTool(token, "create_edit_request", {
+      wiki: "wiki",
+      pageId: page.id,
+      baseVersionId: page.head,
+      items: [
+        { kind: "note", startLine: 3, endLine: 3, body: "古いかもしれない" },
+        { startLine: 9, endLine: 9, replacement: "y" },
+      ],
+    });
+    const [note, suggestion] = made.data.itemIds as [string, string];
+    const on = (name: string, itemId: string) => callTool(token, name, { wiki: "wiki", pageId: page.id, itemId });
+    expect((await on("accept_edit_request_item", note)).data.error.code).toBe("not_a_suggestion");
+    expect((await on("reject_edit_request_item", note)).data.error.code).toBe("not_a_suggestion");
+    expect((await on("resolve_edit_request_item", suggestion)).data.error.code).toBe("not_a_note");
+
+    const resolved = await on("resolve_edit_request_item", note);
+    expect(resolved.isError).toBe(false);
+    expect(resolved.data).toEqual({ id: note, status: "resolved" });
+    expect((await on("resolve_edit_request_item", note)).data.error.code).toBe("not_open");
+    expect((await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId).toBe(page.head);
+    const seen = (await ctx.call("GET", `${W}/pages/${page.id}/edit-requests`)).body;
+    expect(seen.openCount).toBe(1);
+    expect(seen.requests[0].items[0]).toMatchObject({ status: "resolved", decidedBy: { id: ctx.owner.id } });
+    expect((await callTool(token, "list_edit_requests", { wiki: "wiki", pageId: page.id })).data.requests[0].items).toEqual({ open: 1, accepted: 0, rejected: 0, resolved: 1, withdrawn: 0 });
   });
 });

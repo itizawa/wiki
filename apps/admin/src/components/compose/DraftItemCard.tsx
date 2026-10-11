@@ -7,7 +7,7 @@ import { useMemo } from "react";
 import { suggestionDiff } from "../../lib/editRequestDiff";
 import type { DraftItem } from "../../lib/editRequestDraft";
 import { TOUCH } from "../../theme";
-import { DiffBlock } from "../EditRequestItemCard";
+import { DiffBlock, KindChip, NoteBody, QuotedOriginal } from "../EditRequestItemCard";
 
 const LOST_TEXT: Record<StaleReason, string> = {
   not_found: "新しい版では、この箇所が書き換えられていて、場所が見つかりません。このままでは送信できません。",
@@ -15,7 +15,8 @@ const LOST_TEXT: Record<StaleReason, string> = {
 };
 
 /**
- * 送信前の項目1件：差分・理由と、「直す」「取り除く」。送ったあとの項目（`EditRequestItemCard`）と同じ差分の見た目にする。
+ * 送信前の項目1件：提案なら差分・理由、指摘なら本文と、「直す」「取り除く」。送ったあとの項目（`EditRequestItemCard`）と同じ見た目にする
+ * （種類の印、差分の箱、指摘の吹き出し）。
  * 本文（`.tiptap`）の中にも差し込むので、本文の見た目が当たる要素（p / pre / code / ul …）は使わない。
  */
 export function DraftItemCard(props: {
@@ -28,11 +29,14 @@ export function DraftItemCard(props: {
   onRemove: () => void;
 }) {
   const { item } = props;
-  const diff = useMemo(() => suggestionDiff(item.originalText, item.replacement), [item.originalText, item.replacement]);
+  const note = item.kind === "note";
+  const replacement = item.kind === "suggestion" ? item.replacement : null;
+  const diff = useMemo(() => (replacement === null ? [] : suggestionDiff(item.originalText, replacement)), [item.originalText, replacement]);
+  const name = note ? "指摘" : "提案";
   return (
     <Box
       component="section"
-      aria-label={props.index === undefined ? "送信前の提案" : `送信前の提案 ${props.index} 件目`}
+      aria-label={props.index === undefined ? `送信前の${name}` : `送信前の${name} ${props.index} 件目`}
       sx={{
         color: "text.primary",
         fontSize: "0.875rem",
@@ -56,17 +60,26 @@ export function DraftItemCard(props: {
       }}
     >
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 1, rowGap: 0.25 }}>
+        <KindChip kind={item.kind} />
         <Box component="span" sx={{ fontWeight: 600 }}>
-          {props.index === undefined ? "あなたの提案" : `${props.index} 件目の提案`}
+          {props.index === undefined ? `あなたの${name}` : `${props.index} 件目`}
         </Box>
         <Box component="span" sx={{ ml: "auto" }}>
           {item.lost ? <Chip size="small" variant="outlined" color="warning" label="場所が見つからない" /> : <Chip size="small" variant="outlined" color="primary" label="送信前" />}
         </Box>
       </Box>
 
-      <DiffBlock lines={diff} />
+      {item.kind === "note" ? (
+        <>
+          {/* 本文の箇所のすぐ下に出していないとき（送信前の一覧、場所が見つからないとき）は、どこへの指摘かも出す */}
+          {(props.index !== undefined || item.lost) && <QuotedOriginal text={item.originalText} />}
+          <NoteBody text={item.body} />
+        </>
+      ) : (
+        <DiffBlock lines={diff} />
+      )}
 
-      {item.reason && (
+      {item.kind === "suggestion" && item.reason && (
         <Box sx={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
           <Box component="span" sx={{ color: "text.secondary" }}>
             理由：
@@ -77,7 +90,7 @@ export function DraftItemCard(props: {
 
       {item.lost && (
         <Alert severity="warning" sx={{ py: 0 }}>
-          {LOST_TEXT[item.lost]}書いた内容は、上の差分に残っています。本文で箇所を選び直して書き直してから、この提案を取り除いてください。
+          {LOST_TEXT[item.lost]}書いた内容は、上に残っています。本文で箇所を選び直して書き直してから、この{name}を取り除いてください。
         </Alert>
       )}
 

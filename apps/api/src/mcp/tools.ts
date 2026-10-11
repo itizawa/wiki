@@ -2,7 +2,9 @@ import {
   bodyLines,
   createEditRequestInput,
   createPageInput,
+  EDIT_REQUEST_ITEM_KINDS,
   EDIT_REQUEST_LIMITS,
+  editRequestCommentInput,
   publishVisibilitySchema,
   savePageInput,
   type EditRequest,
@@ -15,9 +17,11 @@ import type { Db } from "../db/client";
 import { editRequestItems, editRequests, pages, pageVersions, scheduledActions } from "../db/schema";
 import {
   acceptEditRequestItems,
+  addEditRequestComment,
   createEditRequest,
   listEditRequests,
   rejectEditRequestItem,
+  resolveEditRequestItem,
   withdrawEditRequest,
 } from "../editRequests/service";
 import { HttpError, notFound } from "../errors";
@@ -34,7 +38,7 @@ import { findOpenWiki, listWikis } from "../wikis/service";
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
  * 公開・予約は wiki.publish、削除（ゴミ箱に入れる・一覧・元に戻す）は wiki.delete を許したアプリだけが使える。
  * ゴミ箱から完全に削除する道具は置かない（完全に消せるのは、管理画面の人だけ）。
- * 編集リクエストを出す・読む・取り下げるのは wiki.suggest、採用・却下は本文が変わるので wiki.write。
+ * 編集リクエストを出す・読む・返信する・取り下げるのは wiki.suggest、採用・却下は本文が変わるので wiki.write（指摘を解決済みにするのも、人の代わりに片付ける操作なので wiki.write）。
  */
 type ToolContext = { db: Db; config: AppConfig; agent: AgentContext };
 
@@ -168,6 +172,8 @@ const describeRequest = (r: EditRequest, hideCurrent: boolean) => ({
   createdAt: r.createdAt,
   items: r.items.map((i) => ({
     id: i.id,
+    /** suggestion: 提案（replacement を持つ） / note: 指摘（body を持つ） */
+    kind: i.kind,
     status: i.status,
     baseVersionId: i.baseVersionId,
     startLine: i.startLine,
@@ -175,12 +181,15 @@ const describeRequest = (r: EditRequest, hideCurrent: boolean) => ({
     originalText: i.originalText,
     replacement: i.replacement,
     reason: i.reason,
+    body: i.body,
     stale: i.stale,
     /** 最新の版での行の範囲（未対応・却下の項目で、場所が決まるときだけ） */
     current: hideCurrent ? null : i.current,
     decidedBy: i.decidedBy?.name ?? null,
     decidedAt: i.decidedAt,
     acceptedVersionId: i.acceptedVersionId,
+    /** 返信（古い順）。本文はプレーンテキスト。書いた人は、項目を出した人と同じ決まり（アプリからなら via にアプリの名前） */
+    comments: i.comments.map((c) => ({ id: c.id, body: c.body, createdBy: c.createdBy.name, via: c.via, createdAt: c.createdAt })),
   })),
 });
 
@@ -626,6 +635,8 @@ export const TOOLS = [
       "ページの本文に、箇所ごとの「こう直す」を提案する（編集リクエスト）。本文は変えず、人が管理画面で1件ずつ採用・却下を決める。" +
       "箇所は、get_page の bodyMd の行の範囲（startLine〜endLine。1から数え、両端を含む）で指し、その範囲を replacement で置き換える提案になる。" +
       "replacement を空の文字にすると、その行を消す提案になる。行を足すときは、隣の行を範囲に入れ、その行も replacement に書く。" +
+      "直し方を示せないとき（根拠が不明、古いかもしれない、など）は、kind を note にして、replacement の代わりに body（プレーンテキスト。必須）を書くと、置き換え案の無い指摘になる。" +
+      "指摘は採用・却下の対象にならず、人が解決済みにする。" +
       "baseVersionId は get_page の headVersionId。最新の版でなければエラー（version_conflict）を返すので、get_page で読み直してから出し直す。" +
       `1回に ${EDIT_REQUEST_LIMITS.items} 件まで。出したあとは書き換えられない（直すときは withdraw_edit_request で取り下げて出し直す）。`,
     scope: "wiki.suggest",
@@ -640,15 +651,17 @@ export const TOOLS = [
           type: "array",
           minItems: 1,
           maxItems: EDIT_REQUEST_LIMITS.items,
-          description: "箇所ごとの提案",
+          description: "箇所ごとの提案（kind を省くか suggestion）と指摘（kind が note）",
           items: schema(
             {
-              startLine: { type: "integer", minimum: 1, description: "置き換える範囲の最初の行（1から数える）" },
-              endLine: { type: "integer", minimum: 1, description: "置き換える範囲の最後の行（この行も含む。1行だけなら startLine と同じ）" },
-              replacement: str("置き換える文面（Markdown）。空の文字なら、その行を消す", { maxLength: EDIT_REQUEST_LIMITS.replacement }),
-              reason: str("理由（省略可）", { maxLength: EDIT_REQUEST_LIMITS.reason }),
+              kind: { type: "string", enum: [...EDIT_REQUEST_ITEM_KINDS], description: "suggestion: 提案（replacement が必須。省くとこれ） / note: 指摘（body が必須。replacement と reason は渡さない）" },
+              startLine: { type: "integer", minimum: 1, description: "範囲の最初の行（1から数える）" },
+              endLine: { type: "integer", minimum: 1, description: "範囲の最後の行（この行も含む。1行だけなら startLine と同じ）" },
+              replacement: str("提案：置き換える文面（Markdown）。空の文字なら、その行を消す", { maxLength: EDIT_REQUEST_LIMITS.replacement }),
+              reason: str("提案：理由（省略可）", { maxLength: EDIT_REQUEST_LIMITS.reason }),
+              body: str("指摘：本文（プレーンテキスト。Markdown としては描かれない）", { maxLength: EDIT_REQUEST_LIMITS.note }),
             },
-            ["startLine", "endLine", "replacement"],
+            ["startLine", "endLine"],
           ),
         },
       },
@@ -668,7 +681,7 @@ export const TOOLS = [
   tool({
     name: "list_edit_requests",
     description:
-      "ページの編集リクエストを、新しい順に返す（項目の数を、状態ごとに付ける。open: 未対応 / accepted: 採用 / rejected: 却下 / withdrawn: 取り下げ）。" +
+      "ページの編集リクエストを、新しい順に返す（項目の数を、状態ごとに付ける。open: 未対応 / accepted: 採用 / rejected: 却下 / resolved: 解決済み / withdrawn: 取り下げ）。" +
       "中身は get_edit_request で読む。非公開のページも読む許可が無いと、その許可で出したリクエストだけを返す。",
     scope: "wiki.suggest",
     input: z.object({ wiki: wikiKey, pageId }),
@@ -688,6 +701,7 @@ export const TOOLS = [
             open: r.items.filter((i) => i.status === "open").length,
             accepted: r.items.filter((i) => i.status === "accepted").length,
             rejected: r.items.filter((i) => i.status === "rejected").length,
+            resolved: r.items.filter((i) => i.status === "resolved").length,
             withdrawn: r.items.filter((i) => i.status === "withdrawn").length,
           },
         })),
@@ -697,8 +711,9 @@ export const TOOLS = [
   tool({
     name: "get_edit_request",
     description:
-      "編集リクエスト1件と、その項目（行の範囲・元の文面・置き換え案・理由・状態）を返す。startLine / endLine は、出したときの版（baseVersionId）での行。" +
-      "未対応の項目の stale が null でなければ、その箇所があとから書き換えられていて、もう採用できない（not_found: 元の文面が無い / ambiguous: 同じ文面が複数ある）。",
+      "編集リクエスト1件と、その項目（種類・行の範囲・元の文面・置き換え案と理由（提案）・本文（指摘）・状態・返信）を返す。startLine / endLine は、出したときの版（baseVersionId）での行。" +
+      "未対応の項目の stale が null でなければ、その箇所があとから書き換えられていて、提案はもう採用できない（not_found: 元の文面が無い / ambiguous: 同じ文面が複数ある）。" +
+      "項目ごとの comments が、人やアプリからの返信（古い順）。返信するときは reply_edit_request_item。",
     scope: "wiki.suggest",
     input: z.object({ wiki: wikiKey, pageId, requestId: z.string().uuid() }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), requestId: str("編集リクエストの ID（list_edit_requests で分かる）") }, ["wiki", "pageId", "requestId"]),
@@ -715,7 +730,7 @@ export const TOOLS = [
   }),
   tool({
     name: "withdraw_edit_request",
-    description: "その許可で出した編集リクエストの、未対応の項目をまとめて取り下げる（採用・却下が済んだ項目は変わらない）。ほかの人やアプリが出したものは取り下げられない。",
+    description: "その許可で出した編集リクエストの、未対応の項目（提案も指摘も）をまとめて取り下げる（採用・却下・解決済みの項目は変わらない）。ほかの人やアプリが出したものは取り下げられない。",
     scope: "wiki.suggest",
     input: z.object({ wiki: wikiKey, pageId, requestId: z.string().uuid() }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), requestId: str("編集リクエストの ID") }, ["wiki", "pageId", "requestId"]),
@@ -737,7 +752,7 @@ export const TOOLS = [
   tool({
     name: "accept_edit_request_item",
     description:
-      "編集リクエストの項目を1件採用する：最新の版の該当行を置き換えて、新しい版を作る（公開中のページでも、公開側は人が公開し直すまで変わらない）。" +
+      "編集リクエストの提案を1件採用する（指摘は採用できない。resolve_edit_request_item で解決済みにする）：最新の版の該当行を置き換えて、新しい版を作る（公開中のページでも、公開側は人が公開し直すまで変わらない）。" +
       "その箇所があとから書き換えられていると採用できない（edit_request_stale）。編集中の人の下書きとぶつかるときも止まる（draft_conflict）。" +
       "項目の ID は get_edit_request で分かる（読むには wiki.suggest の許可が要る）。",
     scope: "wiki.write",
@@ -761,7 +776,7 @@ export const TOOLS = [
   }),
   tool({
     name: "reject_edit_request_item",
-    description: "編集リクエストの項目を1件却下する（本文は変わらない）。却下した項目は、管理画面で人が未対応に戻せる。",
+    description: "編集リクエストの提案を1件却下する（本文は変わらない。指摘は却下できない）。却下した項目は、管理画面で人が未対応に戻せる。",
     scope: "wiki.write",
     input: z.object({ wiki: wikiKey, pageId, itemId: z.string().uuid() }),
     inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), itemId: str("項目の ID（get_edit_request で分かる）") }, ["wiki", "pageId", "itemId"]),
@@ -773,6 +788,57 @@ export const TOOLS = [
         await rejectEditRequestItem(tx, { wikiId: wiki.id, pageId: page.id, itemId: input.itemId, actor: { userId: agent.user.id, oauthGrantId: agent.grantId } });
       });
       return { id: input.itemId, status: "rejected" };
+    },
+  }),
+  tool({
+    name: "reply_edit_request_item",
+    description:
+      "編集リクエストの項目（提案・指摘）に返信する。本文はプレーンテキスト（Markdown としては描かれない。改行は残る）。" +
+      "採用・却下・解決済み・取り下げが済んだ項目にも返信できる。書いた返信は、書き換えも削除もできない。" +
+      "項目の ID と、これまでの返信は get_edit_request で分かる。非公開のページも読む許可が無いと、その許可で出したリクエストの項目にだけ返信できる。",
+    scope: "wiki.suggest",
+    input: z.object({ wiki: wikiKey, pageId, itemId: z.string().uuid() }).merge(editRequestCommentInput),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        itemId: str("項目の ID（get_edit_request で分かる）"),
+        body: str("返信の本文（プレーンテキスト）", { minLength: 1, maxLength: EDIT_REQUEST_LIMITS.reply }),
+      },
+      ["wiki", "pageId", "itemId", "body"],
+    ),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      return db.transaction(async (tx) => {
+        const page = await visiblePage(tx, agent, wiki.id, input.pageId);
+        await assertItemReadable(tx, agent, page.id, input.itemId);
+        const made = await addEditRequestComment(tx, {
+          wikiId: wiki.id,
+          pageId: page.id,
+          itemId: input.itemId,
+          body: input.body,
+          actor: { userId: agent.user.id, oauthGrantId: agent.grantId },
+        });
+        return { id: made.id, itemId: made.itemId, createdAt: made.createdAt };
+      });
+    },
+  }),
+  tool({
+    name: "resolve_edit_request_item",
+    description:
+      "編集リクエストの指摘（kind が note の項目）を1件、解決済みにする（本文は変わらない）。提案は解決済みにできない（採用か却下で決める）。" +
+      "指している箇所があとから書き換えられていても（stale）、解決済みにできる。解決済みにした指摘は、管理画面で人が未対応に戻せる。",
+    scope: "wiki.write",
+    input: z.object({ wiki: wikiKey, pageId, itemId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), itemId: str("項目の ID（get_edit_request で分かる）") }, ["wiki", "pageId", "itemId"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      await db.transaction(async (tx) => {
+        const page = await visiblePage(tx, agent, wiki.id, input.pageId);
+        await assertItemReadable(tx, agent, page.id, input.itemId);
+        await resolveEditRequestItem(tx, { wikiId: wiki.id, pageId: page.id, itemId: input.itemId, actor: { userId: agent.user.id, oauthGrantId: agent.grantId } });
+      });
+      return { id: input.itemId, status: "resolved" };
     },
   }),
 ];

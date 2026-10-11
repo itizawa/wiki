@@ -5,8 +5,9 @@ import { parseBodyWithLines, selectionForLines, type BlockUnit, type UnitSelecti
 /**
  * 編集リクエストを画面から出すときの、**送信前の項目**（まだサーバーに送っていない。画面を離れると消える）。
  *
- * 項目は種類（`kind`）で分ける。いまは提案（置き換え案を持つ）だけ。指摘（置き換え案を持たない）を足すときは、
- * ここに型を足し、`toCreateInput` と、入力欄（`components/compose/ItemComposer.tsx`）・表示（`DraftItemCard.tsx`）を種類で分ける。
+ * 項目は種類（`kind`）で分ける：提案（置き換え案を持つ）と、指摘（置き換え案を持たず、本文を持つ）。
+ * 種類ごとに違うのは、`toCreateInput` と、入力欄（`components/compose/ItemComposer.tsx`）・表示（`DraftItemCard.tsx`）。
+ * 版が進んだときの付け替え（`rebaseDraftItems`）は、どちらも同じ（選んだ範囲の元の文面で探し直す）。
  */
 
 /** どの種類の項目も持つもの */
@@ -30,7 +31,18 @@ export type DraftSuggestion = DraftBase &
     reason: string;
   };
 
-export type DraftItem = DraftSuggestion;
+/** 指摘：選んだ範囲に、本文（プレーンテキスト）を付ける。行の範囲は、選んだ範囲そのまま */
+export type DraftNote = DraftBase & {
+  kind: "note";
+  startLine: number;
+  endLine: number;
+  /** 選んだ範囲の文面（`selectedText` と同じ） */
+  originalText: string;
+  /** 指摘の本文（必須） */
+  body: string;
+};
+
+export type DraftItem = DraftSuggestion | DraftNote;
 
 type Range = { startLine: number; endLine: number };
 export const rangesOverlap = (a: Range, b: Range) => a.startLine <= b.endLine && b.startLine <= a.endLine;
@@ -73,11 +85,10 @@ export function toCreateInput(baseVersionId: string, comment: string, items: rea
   return {
     baseVersionId,
     comment: comment.trim() || undefined,
-    items: inBodyOrder(items.filter((i) => i.lost === null)).map((i) => ({
-      startLine: i.startLine,
-      endLine: i.endLine,
-      replacement: i.replacement,
-      reason: i.reason.trim() || undefined,
-    })),
+    items: inBodyOrder(items.filter((i) => i.lost === null)).map((i) =>
+      i.kind === "note"
+        ? { kind: "note", startLine: i.startLine, endLine: i.endLine, body: i.body.trim() }
+        : { kind: "suggestion", startLine: i.startLine, endLine: i.endLine, replacement: i.replacement, reason: i.reason.trim() || undefined },
+    ),
   };
 }

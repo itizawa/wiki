@@ -4,6 +4,7 @@ import type {
   AppliedEditRequests,
   CreatedEditRequest,
   CreateEditRequestInput,
+  EditRequestComment,
   EditRequestCount,
   PageEditRequests,
   ConnectionCheck,
@@ -233,7 +234,12 @@ export const api = {
   acceptEditRequestItem: (pageId: string, itemId: string) =>
     request<AcceptEditRequestResult>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/accept`)),
   rejectEditRequestItem: (pageId: string, itemId: string) => request<{ ok: true }>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/reject`)),
-  /** 却下した項目を、未対応に戻す */
+  /** 指摘を解決済みにする（古くなった指摘も）。提案は 409（`not_a_note`） */
+  resolveEditRequestItem: (pageId: string, itemId: string) => request<{ ok: true }>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/resolve`)),
+  /** 項目に返信する（プレーンテキスト）。項目の状態は問わない */
+  replyToEditRequestItem: (pageId: string, itemId: string, body: string) =>
+    request<EditRequestComment>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/comments`), { body }),
+  /** 却下した提案・解決済みにした指摘を、未対応に戻す */
   reopenEditRequestItem: (pageId: string, itemId: string) => request<{ ok: true }>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/reopen`)),
   /** リクエストの未対応の項目のうち、採用できるものをまとめて採用する（1つの版になる）。できなかった項目は `skipped` で返る */
   acceptAllEditRequestItems: (pageId: string, requestId: string) =>

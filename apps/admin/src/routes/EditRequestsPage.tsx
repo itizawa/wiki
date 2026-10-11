@@ -1,6 +1,3 @@
-import Accordion from "@mui/material/Accordion";
-import AccordionDetails from "@mui/material/AccordionDetails";
-import AccordionSummary from "@mui/material/AccordionSummary";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -10,7 +7,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcceptEditRequestResult, EditRequest, EditRequestItem } from "@wiki/shared";
-import { ArrowLeft, ChevronDown, PenLine } from "lucide-react";
+import { ArrowLeft, PenLine } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ComposeMode } from "../components/compose/ComposeMode";
 import { confirmDialog } from "../components/ConfirmDialog";
@@ -18,21 +15,28 @@ import { EditRequestItemCard, requesterLabel, type ItemNotice } from "../compone
 import { ReviewBody, type ReviewSlot } from "../components/ReviewBody";
 import { LoadingRegion, Muted, RouterLink, Section, SkeletonLines } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
-import { invalidateEditRequests, editRequestKeys, placeOfAccepted } from "../lib/editRequests";
+import { invalidateEditRequests, editRequestKeys, itemCountLabel, placeOfAccepted } from "../lib/editRequests";
 import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
 
-type Decision = { kind: "accept" | "reject" | "reopen"; itemId: string } | { kind: "acceptAll"; requestId: string } | { kind: "withdraw"; requestId: string };
+type Decision = { kind: "accept" | "reject" | "resolve" | "reopen"; itemId: string } | { kind: "acceptAll"; requestId: string } | { kind: "withdraw"; requestId: string };
 type Range = { startLine: number; endLine: number };
+
+/** 片付いた項目を、はじめに出す数。残りは「残りを表示する」で出す */
+const DONE_SHOWN = 10;
 
 /** 「すべて採用」「取り下げる」の結果。押したボタンのそばに出す */
 type AllResult = { applied: number; skipped: number } | { withdrawn: number };
 
 /**
  * `/w/{key}/pages/{id}/requests`：ページの編集リクエストのレビュー画面。
- * 最新の版の本文を読み取り専用で出し、提案を、指している箇所のすぐ下に並べる。ここで1件ずつ（かリクエストごとにまとめて）採用・却下する。
- * 採用すると、その箇所を置き換えた新しい版ができる（公開はしない）。本文は書き換えられない。
+ * 最新の版の本文を読み取り専用で出し、項目（提案と指摘）を、指している箇所のすぐ下に並べる。
+ * 提案は、ここで1件ずつ（かリクエストごとにまとめて）採用・却下する。採用すると、その箇所を置き換えた新しい版ができる（公開はしない）。
+ * 指摘は置き換え案を持たず、「解決済みにする」で片付ける（本文は変わらない）。どの項目にも、返信を重ねられる。本文は書き換えられない。
+ *
+ * 片付いた項目（採用・却下・解決済み・取り下げ）は、いちばん下に、1件ずつ畳んで並べる（開けば、返信まで読める）。
+ * この画面で片付けたばかりの項目は、結果が分かるよう、その場所に開いたまま残す。
  *
  * 「編集リクエストを出す」を押すと、出すモード（`components/compose/ComposeMode.tsx`）に入る。
  * 本文のブロックを選んで提案を書き、まとめて送信する。モードのあいだは、この画面の中身をまるごと入れ替える。
@@ -45,8 +49,10 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me }).data;
   /** 出すモードに入っているか */
   const [composing, setComposing] = useState(false);
-  /** 送信できた提案の数。この画面に戻ったときに知らせる */
-  const [sent, setSent] = useState<number | null>(null);
+  /** 送信できた項目の数（「提案 2 件・指摘 1 件」）。この画面に戻ったときに知らせる */
+  const [sent, setSent] = useState<string | null>(null);
+  /** 片付いた項目を、すべて出すか */
+  const [allDone, setAllDone] = useState(false);
 
   /** 項目の場所に出す、操作の結果 */
   const [notices, setNotices] = useState<Record<string, ItemNotice>>({});
@@ -78,6 +84,7 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
       if (d.kind === "acceptAll") return api.acceptAllEditRequestItems(pageId, d.requestId);
       if (d.kind === "withdraw") return api.withdrawEditRequest(pageId, d.requestId);
       if (d.kind === "reject") await api.rejectEditRequestItem(pageId, d.itemId);
+      else if (d.kind === "resolve") await api.resolveEditRequestItem(pageId, d.itemId);
       else await api.reopenEditRequestItem(pageId, d.itemId);
       return null;
     },
@@ -88,8 +95,8 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
       }
       if (result && "applied" in result) noteAccepted(result);
       if (d.kind === "acceptAll" && result && "applied" in result) setAllResults((r) => ({ ...r, [d.requestId]: { applied: result.applied.length, skipped: result.skipped.length } }));
-      if (d.kind === "reject") setRecent((r) => ({ ...r, [d.itemId]: true }));
-      if (d.kind === "reject" || d.kind === "reopen") {
+      if (d.kind === "reject" || d.kind === "resolve") setRecent((r) => ({ ...r, [d.itemId]: true }));
+      if (d.kind === "reject" || d.kind === "resolve" || d.kind === "reopen") {
         setNotices(({ [d.itemId]: _, ...rest }) => rest);
       }
     },
@@ -108,10 +115,10 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
   const busyOf = (itemId: string) => (pending && "itemId" in pending && pending.itemId === itemId ? pending.kind : null);
 
   const withdraw = async (request: EditRequest) => {
-    const open = request.items.filter((i) => i.status === "open").length;
+    const open = request.items.filter((i) => i.status === "open");
     const ok = await confirmDialog({
-      title: `未対応の提案 ${open} 件を取り下げますか？`,
-      body: "取り下げた提案は、採用できなくなり、未対応には戻せません。もう一度提案するときは、出し直します。",
+      title: `未対応の${itemCountLabel(open)}を取り下げますか？`,
+      body: "取り下げた項目は、採用も解決済みにもできなくなり、未対応には戻せません。もう一度出すときは、出し直します。",
       confirmLabel: "取り下げる",
       cancelLabel: "取り下げない",
       danger: true,
@@ -145,7 +152,7 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
     return { inline, unplaced, done, pendingRequests: data.requests.filter((r) => r.items.some((i) => i.status === "open")) };
   }, [data, recent]);
 
-  const card = (request: EditRequest, item: EditRequestItem) => (
+  const card = (request: EditRequest, item: EditRequestItem, where: "inline" | "unplaced" | "done" = "inline") => (
     <EditRequestItemCard
       pageId={pageId}
       request={request}
@@ -153,8 +160,12 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
       notice={notices[item.id]}
       busy={busyOf(item.id)}
       disabled={decide.isPending}
+      // 片付いた項目は畳む。本文の箇所のすぐ下に出していない項目には、指している文面も出す
+      collapsible={where === "done"}
+      showOriginal={where !== "inline"}
       onAccept={() => decide.mutate({ kind: "accept", itemId: item.id })}
       onReject={() => decide.mutate({ kind: "reject", itemId: item.id })}
+      onResolve={() => decide.mutate({ kind: "resolve", itemId: item.id })}
       onReopen={() => decide.mutate({ kind: "reopen", itemId: item.id })}
     />
   );
@@ -189,8 +200,8 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
           return fresh ? { versionId: fresh.headVersionId, bodyMd: fresh.headBodyMd } : null;
         }}
         onQuit={() => setComposing(false)}
-        onSent={(count) => {
-          setSent(count);
+        onSent={(label) => {
+          setSent(label);
           setComposing(false);
         }}
       />
@@ -270,12 +281,12 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
         ) : (
           <Stack spacing={3}>
             <Muted>
-              最新の版の本文に、提案を、指している箇所のすぐ下に出しています。採用すると、その箇所を置き換えた新しい版ができます。公開中の内容は、公開し直すまで変わりません。
+              最新の版の本文に、提案と指摘を、指している箇所のすぐ下に出しています。提案を採用すると、その箇所を置き換えた新しい版ができます。公開中の内容は、公開し直すまで変わりません。指摘は、直し方を示さない気づきです。片付いたら、解決済みにします。
             </Muted>
 
             {sent !== null && (
               <Alert severity="success" onClose={() => setSent(null)}>
-                編集リクエストを送信しました（提案 {sent} 件）。下の本文の、指している箇所に並んでいます。
+                編集リクエストを送信しました（{sent}）。下の本文の、指している箇所に並んでいます。
               </Alert>
             )}
 
@@ -285,7 +296,7 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
                   このページへの編集リクエストは、まだありません
                 </Typography>
                 <Muted sx={{ mt: 0.5 }}>
-                  編集リクエストは、本文の箇所ごとに「こう直す」を提案し、1件ずつ採用・却下を決める仕組みです。この wiki
+                  編集リクエストは、本文の箇所ごとに「こう直す」を提案し、1件ずつ採用・却下を決める仕組みです。直し方を示せないときは、指摘だけを書けます。この wiki
                   のメンバーと、外部のアプリ（MCP）でつないだ AI が出せます。出されると、下の本文の、指している箇所のすぐ下に並びます。
                 </Muted>
                 <Box sx={{ mt: 1.5, display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 2, rowGap: 1 }}>
@@ -296,7 +307,7 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
                 </Box>
               </Section>
             ) : (
-              view.pendingRequests.length === 0 && <Alert severity="success">未対応の提案はありません。これまでの提案は、いちばん下の「対応済みの提案」にあります。</Alert>
+              view.pendingRequests.length === 0 && <Alert severity="success">未対応の項目はありません。これまでの提案と指摘は、いちばん下の「対応済みの項目」にあります。</Alert>
             )}
 
             {view.pendingRequests.length > 0 && (
@@ -321,11 +332,11 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
             {view.unplaced.length > 0 && (
               <Stack component="section" spacing={1} aria-labelledby="unplaced-title">
                 <Typography id="unplaced-title" variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
-                  本文の中に場所が見つからない提案
+                  本文の中に場所が見つからない項目
                 </Typography>
-                <Muted>提案のあとに本文が書き換えられ、どこを指していたかを示せないものです。</Muted>
+                <Muted>出されたあとに本文が書き換えられ、どこを指していたかを示せないものです。</Muted>
                 {view.unplaced.map(({ request, item }) => (
-                  <Box key={item.id}>{card(request, item)}</Box>
+                  <Box key={item.id}>{card(request, item, "unplaced")}</Box>
                 ))}
               </Stack>
             )}
@@ -345,21 +356,22 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
             </Box>
 
             {view.done.length > 0 && (
-              <Accordion variant="outlined" disableGutters slotProps={{ transition: { unmountOnExit: true } }} sx={{ "&::before": { display: "none" }, borderRadius: 1 }}>
-                <AccordionSummary expandIcon={<ChevronDown size={18} />} sx={{ [TOUCH]: { minHeight: 48 } }}>
-                  <Typography component="h2" variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    対応済みの提案（{view.done.length} 件）
-                  </Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Stack spacing={1}>
-                    <Muted>採用・却下・取り下げが済んだ提案です。却下した提案は、未対応に戻せます。</Muted>
-                    {view.done.map(({ request, item }) => (
-                      <Box key={item.id}>{card(request, item)}</Box>
-                    ))}
-                  </Stack>
-                </AccordionDetails>
-              </Accordion>
+              <Stack component="section" spacing={1} aria-labelledby="done-title">
+                <Typography id="done-title" variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
+                  対応済みの項目（{view.done.length} 件）
+                </Typography>
+                <Muted>採用・却下・解決済み・取り下げが済んだ提案と指摘です。押すと開き、中身と返信を読めます。却下した提案と、解決済みの指摘は、未対応に戻せます。</Muted>
+                {(allDone ? view.done : view.done.slice(0, DONE_SHOWN)).map(({ request, item }) => (
+                  <Box key={item.id}>{card(request, item, "done")}</Box>
+                ))}
+                {!allDone && view.done.length > DONE_SHOWN && (
+                  <Box>
+                    <Button variant="outlined" size="small" color="inherit" onClick={() => setAllDone(true)} sx={{ [TOUCH]: { minHeight: 40 } }}>
+                      残りの {view.done.length - DONE_SHOWN} 件を表示する
+                    </Button>
+                  </Box>
+                )}
+              </Stack>
             )}
           </Stack>
         )}
@@ -384,8 +396,10 @@ function RequestSummary(props: {
 }) {
   const { request, result } = props;
   const open = request.items.filter((i) => i.status === "open");
-  const acceptable = open.filter((i) => i.stale === null).length;
-  const stale = open.length - acceptable;
+  // 採用できるのは提案だけ。指摘は「すべて採用」の対象にならず、古くなっても解決済みにできる
+  const suggestions = open.filter((i) => i.kind === "suggestion");
+  const acceptable = suggestions.filter((i) => i.stale === null).length;
+  const stale = suggestions.length - acceptable;
   return (
     <Section sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 1 }}>
@@ -399,7 +413,8 @@ function RequestSummary(props: {
       )}
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1.5 }}>
         <Muted component="span">
-          未対応 {open.length} 件{stale > 0 && `（うち ${stale} 件は古くなっていて、採用できません）`}
+          未対応：{itemCountLabel(open)}
+          {stale > 0 && `（提案のうち ${stale} 件は古くなっていて、採用できません）`}
         </Muted>
         {/* 何件をまとめて採用するのかを、押す前に分かるようにする。採用できるものが無ければ出さない（理由は、すぐ左に出している） */}
         <Box sx={{ ml: { sm: "auto" }, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 3, "& .MuiButton-root": { [TOUCH]: { minHeight: 40 } } }}>
@@ -411,7 +426,7 @@ function RequestSummary(props: {
           )}
           {acceptable > 0 && (
             <Button variant="outlined" size="small" disabled={props.disabled} loading={props.busy === "acceptAll"} onClick={props.onAcceptAll}>
-              採用できる {acceptable} 件をすべて採用する
+              採用できる提案 {acceptable} 件をすべて採用する
             </Button>
           )}
         </Box>
@@ -424,7 +439,7 @@ function RequestSummary(props: {
       ) : (
         result &&
         ("withdrawn" in result ? (
-          <Alert severity="success">{result.withdrawn} 件を取り下げました。</Alert>
+          <Alert severity="success">{result.withdrawn} 件を取り下げました。いちばん下の「対応済みの項目」にあります。</Alert>
         ) : (
           <Alert severity={result.skipped > 0 ? "warning" : "success"}>
             {result.applied > 0 ? `${result.applied} 件を採用し、新しい版を1つ作りました。` : "採用できる提案がありませんでした。"}

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { applyLineEdits, bodyLines, createEditRequestInput, locateLineEdit, replacementLines, sliceLines, type LineEdit } from "./editRequest";
+import {
+  EDIT_REQUEST_ITEM_STATUSES,
+  EDIT_REQUEST_LIMITS,
+  applyLineEdits,
+  bodyLines,
+  createEditRequestInput,
+  editRequestCommentInput,
+  editRequestItemInput,
+  isOpenEditRequestItem,
+  locateLineEdit, replacementLines, sliceLines, type LineEdit } from "./editRequest";
 
 const BASE = ["# 見出し", "", "1段落目", "", "- a", "- b", "- c", "", "最後の段落"].join("\n");
 
@@ -174,5 +183,43 @@ describe("createEditRequestInput", () => {
     expect(createEditRequestInput.safeParse({ ...base, items: [{ ...item, startLine: 0 }] }).success).toBe(false);
     expect(createEditRequestInput.safeParse({ ...base, items: [{ ...item, replacement: "x".repeat(20_001) }] }).success).toBe(false);
     expect(createEditRequestInput.safeParse({ ...base, comment: "x".repeat(2_001), items: [item] }).success).toBe(false);
+  });
+});
+
+describe("editRequestItemInput（提案と指摘）", () => {
+  const at = { startLine: 2, endLine: 3 };
+
+  it("種類を省いた項目は提案（指摘を足す前からの入力を、そのまま受け付ける）", () => {
+    expect(editRequestItemInput.parse({ ...at, replacement: "x", reason: " 短く " })).toEqual({ kind: "suggestion", ...at, replacement: "x", reason: "短く" });
+    expect(editRequestItemInput.parse({ kind: "suggestion", ...at, replacement: "" })).toEqual({ kind: "suggestion", ...at, replacement: "" });
+  });
+
+  it("指摘は本文が必須で、置き換え案と理由を持てない", () => {
+    expect(editRequestItemInput.parse({ kind: "note", ...at, body: " 根拠が不明\n出典は？ " })).toEqual({ kind: "note", ...at, body: "根拠が不明\n出典は？" });
+    for (const bad of [
+      { kind: "note", ...at },
+      { kind: "note", ...at, body: " " },
+      { kind: "note", ...at, body: "x", replacement: "y" },
+      { kind: "note", ...at, body: "x", reason: "y" },
+      { kind: "note", ...at, body: "x".repeat(EDIT_REQUEST_LIMITS.note + 1) },
+      { kind: "note", startLine: 3, endLine: 2, body: "x" },
+      { kind: "other", ...at, body: "x" },
+      { ...at, body: "x" },
+      { ...at },
+      null,
+      "note",
+    ]) {
+      expect(editRequestItemInput.safeParse(bad).success, JSON.stringify(bad)?.slice(0, 60)).toBe(false);
+    }
+  });
+
+  it("返信は、空でなく、上限までの文字", () => {
+    expect(editRequestCommentInput.parse({ body: " a\nb " })).toEqual({ body: "a\nb" });
+    expect(editRequestCommentInput.safeParse({ body: "  " }).success).toBe(false);
+    expect(editRequestCommentInput.safeParse({ body: "x".repeat(EDIT_REQUEST_LIMITS.reply + 1) }).success).toBe(false);
+  });
+
+  it("未対応は、種類を問わず open だけ", () => {
+    expect(EDIT_REQUEST_ITEM_STATUSES.filter((status) => isOpenEditRequestItem({ status }))).toEqual(["open"]);
   });
 });

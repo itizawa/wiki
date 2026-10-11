@@ -168,19 +168,58 @@ export const EDIT_REQUEST_LIMITS = {
   reason: 2_000,
   /** 全体へのひとことの長さ（文字） */
   comment: 2_000,
+  /** 指摘の本文の長さ（文字） */
+  note: 2_000,
+  /** 返信の本文の長さ（文字） */
+  reply: 2_000,
+  /** 1つの項目に付けられる返信の数 */
+  repliesPerItem: 200,
 } as const;
 
+/**
+ * 項目の種類。
+ * - suggestion: 提案。置き換え案を持つ。未対応 → 採用 / 却下
+ * - note: 指摘。置き換え案を持たず、本文（プレーンテキスト）を持つ。未対応 → 解決済み
+ */
+export const EDIT_REQUEST_ITEM_KINDS = ["suggestion", "note"] as const;
+export type EditRequestItemKind = (typeof EDIT_REQUEST_ITEM_KINDS)[number];
+
+const lineRange = {
+  /** 行の範囲（1から数え、両端を含む）。行の数え方は `bodyLines` */
+  startLine: z.number().int().min(1),
+  endLine: z.number().int().min(1),
+};
+
+/** 提案：行の範囲を、置き換え案で置き換える。`kind` は省ける（省くと提案） */
+export type EditRequestSuggestionInput = { kind?: "suggestion"; startLine: number; endLine: number; replacement: string; reason?: string };
+/** 指摘：行の範囲に、本文（プレーンテキスト）を付ける。置き換え案は持たない */
+export type EditRequestNoteInput = { kind: "note"; startLine: number; endLine: number; body: string };
+export type EditRequestItemInput = EditRequestSuggestionInput | EditRequestNoteInput;
+
 export const editRequestItemInput = z
-  .object({
-    /** 行の範囲（1から数え、両端を含む）。行の数え方は `bodyLines` */
-    startLine: z.number().int().min(1),
-    endLine: z.number().int().min(1),
-    /** 置き換える文面（Markdown）。空の文字なら、その行を消す */
-    replacement: z.string().max(EDIT_REQUEST_LIMITS.replacement),
-    reason: z.string().trim().max(EDIT_REQUEST_LIMITS.reason).optional(),
-  })
+  .preprocess(
+    // `kind` を省いた項目は提案（指摘を足す前からの入力を、そのまま受け付ける）
+    (v) => (typeof v === "object" && v !== null && !Array.isArray(v) && (v as { kind?: unknown }).kind === undefined ? { ...v, kind: "suggestion" } : v),
+    z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("suggestion"),
+        ...lineRange,
+        /** 置き換える文面（Markdown）。空の文字なら、その行を消す */
+        replacement: z.string().max(EDIT_REQUEST_LIMITS.replacement),
+        reason: z.string().trim().max(EDIT_REQUEST_LIMITS.reason).optional(),
+      }),
+      z
+        .object({
+          kind: z.literal("note"),
+          ...lineRange,
+          /** 指摘の本文（プレーンテキスト）。必須 */
+          body: z.string().trim().min(1).max(EDIT_REQUEST_LIMITS.note),
+        })
+        // 指摘に置き換え案や理由を渡したら、黙って捨てずに断る
+        .strict(),
+    ]),
+  )
   .refine((v) => v.endLine >= v.startLine, { message: "endLine must not be before startLine", path: ["endLine"] });
-export type EditRequestItemInput = z.infer<typeof editRequestItemInput>;
 
 export const createEditRequestInput = z.object({
   /** 基準の版。最新の版（`headVersionId`）でなければ受け付けない */
@@ -189,7 +228,11 @@ export const createEditRequestInput = z.object({
   comment: z.string().trim().max(EDIT_REQUEST_LIMITS.comment).optional(),
   items: z.array(editRequestItemInput).min(1).max(EDIT_REQUEST_LIMITS.items),
 });
-export type CreateEditRequestInput = z.infer<typeof createEditRequestInput>;
+export type CreateEditRequestInput = { baseVersionId: string; comment?: string; items: EditRequestItemInput[] };
+
+/** 項目への返信（`POST edit-request-items/:itemId/comments`、MCP の `reply_edit_request_item`）。本文はプレーンテキスト */
+export const editRequestCommentInput = z.object({ body: z.string().trim().min(1).max(EDIT_REQUEST_LIMITS.reply) });
+export type EditRequestCommentInput = z.infer<typeof editRequestCommentInput>;
 
 // ---------------------------------------------------------------------------
 // API の応答
@@ -197,18 +240,31 @@ export type CreateEditRequestInput = z.infer<typeof createEditRequestInput>;
 
 /**
  * 項目の状態。
- * - open: 未対応 / accepted: 採用 / rejected: 却下 / withdrawn: 取り下げ
+ * - open: 未対応 / accepted: 採用 / rejected: 却下 / resolved: 解決済み / withdrawn: 取り下げ
+ * - 提案は open → accepted / rejected（rejected は open に戻せる）、指摘は open → resolved（open に戻せる）。どちらも open から withdrawn にできる
  *
+ * **「未対応」は、種類を問わず `status === "open"`**（`isOpenEditRequestItem`）。リクエストは、未対応の項目が0件になったら完了。
  * 「古くなった」は状態ではない（未対応のまま残る）。読むたびに、最新の版から決める（`EditRequestItem.stale`）。
  */
-export const EDIT_REQUEST_ITEM_STATUSES = ["open", "accepted", "rejected", "withdrawn"] as const;
+export const EDIT_REQUEST_ITEM_STATUSES = ["open", "accepted", "rejected", "resolved", "withdrawn"] as const;
 export type EditRequestItemStatus = (typeof EDIT_REQUEST_ITEM_STATUSES)[number];
 
-/** 項目の種類。いまは提案（置き換え案を持つ）だけ */
-export const EDIT_REQUEST_ITEM_KINDS = ["suggestion"] as const;
-export type EditRequestItemKind = (typeof EDIT_REQUEST_ITEM_KINDS)[number];
+/** 未対応の項目か（提案も指摘も同じ決まり）。件数の数え方は、サーバーの `countOpenItems` と同じ */
+export const isOpenEditRequestItem = (item: { status: EditRequestItemStatus }) => item.status === "open";
 
 export type EditRequestPerson = { id: string; name: string };
+
+/** 項目への返信。本文はプレーンテキスト（HTML としても Markdown としても描かない）。書き換え・削除はできない */
+export type EditRequestComment = {
+  id: string;
+  itemId: string;
+  body: string;
+  /** 書いた人。外部のアプリ（MCP）から書いたものは、許可した人 */
+  createdBy: EditRequestPerson;
+  /** 外部のアプリ（MCP）から書いたものなら、そのアプリの名前 */
+  via: string | null;
+  createdAt: string;
+};
 
 export type EditRequestItem = {
   id: string;
@@ -220,21 +276,29 @@ export type EditRequestItem = {
   startLine: number;
   endLine: number;
   originalText: string;
-  /** 置き換える文面。空の文字なら、その行を消す提案 */
-  replacement: string;
+  /** 提案の、置き換える文面。空の文字なら、その行を消す提案。指摘では null */
+  replacement: string | null;
+  /** 提案の理由（任意）。指摘では null */
   reason: string | null;
-  /** 採用・却下・取り下げを決めた人と日時。未対応なら null */
+  /** 指摘の本文（プレーンテキスト）。提案では null */
+  body: string | null;
+  /** 採用・却下・解決済み・取り下げを決めた人と日時。未対応なら null */
   decidedBy: EditRequestPerson | null;
   decidedAt: string | null;
   /** 採用でできた版 */
   acceptedVersionId: string | null;
   /**
    * 最新の版での行の範囲（元の文面がある場所）。場所を決められなければ null。
-   * 未対応と却下の項目にだけ付く（採用・取り下げの項目は、いつも null）
+   * 未対応・却下・解決済みの項目にだけ付く（採用・取り下げの項目は、いつも null）
    */
   current: { startLine: number; endLine: number } | null;
-  /** 未対応の項目が、最新の版ではもう採用できない理由。採用できるなら null */
+  /**
+   * 未対応の項目の箇所が、最新の版では書き換えられている理由（「古くなった」）。そのままなら null。
+   * 古くなった提案は採用できない（却下・取り下げはできる）。古くなった指摘も、解決済みにできる
+   */
   stale: StaleReason | null;
+  /** 返信（古い順） */
+  comments: EditRequestComment[];
 };
 
 export type EditRequest = {
@@ -256,7 +320,7 @@ export type PageEditRequests = {
   headVersionId: string;
   /** 最新の版の本文（項目の位置は、この本文の行で数えている） */
   headBodyMd: string;
-  /** 未対応の項目の数（古くなったものも含む） */
+  /** 未対応の項目の数（提案も指摘も。古くなったものも含む） */
   openCount: number;
   requests: EditRequest[];
 };

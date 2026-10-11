@@ -18,19 +18,23 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { api, ApiError, errorMessage } from "../../lib/api";
 import { extendSelection, parseBodyWithLines, selectBetween, selectionForLines, targetForSelection, type BlockUnit, type UnitSelection } from "../../lib/blockLines";
 import { inBodyOrder, rangesOverlap, rebaseDraftItems, relocateSelection, toCreateInput, type DraftItem } from "../../lib/editRequestDraft";
-import { invalidateEditRequests } from "../../lib/editRequests";
+import { invalidateEditRequests, itemCountLabel } from "../../lib/editRequests";
 import { TOUCH } from "../../theme";
 import { confirmDialog } from "../ConfirmDialog";
 import { ReviewBody, unitName, type ReviewSelect, type ReviewSlot } from "../ReviewBody";
 import { Muted } from "../ui";
 import { DraftItemCard } from "./DraftItemCard";
-import { ItemComposer, type ComposedItem, type ComposerDraft } from "./ItemComposer";
+import { ItemComposer, type ComposedItem, type ComposerDraft, type ComposerInitial } from "./ItemComposer";
 
 /** 版と、その本文 */
 export type ComposeHead = { versionId: string; bodyMd: string };
 
 /** 入力欄を開いている範囲。`editingId` は、送信前の項目を直しているときの、その項目 */
-type Active = { key: number; selection: UnitSelection; editingId: string | null; initial: { editorMarkdown: string; reason: string } | null };
+type Active = { key: number; selection: UnitSelection; editingId: string | null; initial: ComposerInitial | null };
+
+/** 送信前の項目を直すときに、入力欄へ入れ直す中身 */
+const initialOf = (item: DraftItem): ComposerInitial =>
+  item.kind === "note" ? { kind: "note", editorMarkdown: null, reason: "", body: item.body } : { kind: "suggestion", editorMarkdown: item.editorMarkdown, reason: item.reason, body: "" };
 
 let nextKey = 0;
 const newId = () => `draft-${++nextKey}`;
@@ -42,7 +46,7 @@ const rangeOf = (s: { startLine: number; endLine: number }) => ({ startLine: s.s
  * 状態は、どれもこの部品が持つ（サーバーには、送信するまで何も送らない。画面を離れると消える）：
  * - `base`: 提案の行を数える本文（モードに入ったときの最新の版）。ほかの人が版を作ったら、「最新の版に合わせる」で差し替え、
  *   送信前の項目の場所を、元の文面で探し直す（`rebaseDraftItems`）
- * - `items`: 送信前の項目（`DraftItem`）
+ * - `items`: 送信前の項目（`DraftItem`。提案と指摘）
  * - `active`: 入力欄を開いている範囲（同時に1つ）
  *
  * 離れる前の確認は、編集画面（`EditorPage`）と同じ `useBlocker`：ほかの画面への移動は画面内の確認、タブを閉じる・再読み込みはブラウザの確認。
@@ -57,8 +61,8 @@ export function ComposeMode(props: {
   reloadHead: () => Promise<ComposeHead | null>;
   /** 送信せずに、モードを終える */
   onQuit: () => void;
-  /** 送信できた。`count` は、送った提案の数 */
-  onSent: (count: number) => void;
+  /** 送信できた。`label` は、送った項目の数（「提案 2 件・指摘 1 件」） */
+  onSent: (label: string) => void;
 }) {
   const { pageId } = props;
   const qc = useQueryClient();
@@ -83,7 +87,9 @@ export function ComposeMode(props: {
   const behind = conflict || props.head.versionId !== base.versionId;
   const full = placed.length >= EDIT_REQUEST_LIMITS.items;
   const hasPending = items.length > 0 || dirty;
-  const pendingText = `送信していない提案（${items.length} 件）${dirty ? "と、書きかけの内容" : ""}は、保存されずに消えます。`;
+  const pendingText = `送信していない項目（${itemCountLabel(items)}）${dirty ? "と、書きかけの内容" : ""}は、保存されずに消えます。`;
+  /** 送る項目の数（「提案 2 件・指摘 1 件」） */
+  const placedLabel = itemCountLabel(placed);
 
   useBlocker({
     // 同じ画面の中の移動では確かめない
@@ -103,7 +109,7 @@ export function ComposeMode(props: {
   const quit = async () => {
     if (
       hasPending &&
-      !(await confirmDialog({ title: "編集リクエストの作成をやめますか？", body: pendingText, confirmLabel: "やめて、提案を捨てる", cancelLabel: "作成に戻る", danger: true }))
+      !(await confirmDialog({ title: "編集リクエストの作成をやめますか？", body: pendingText, confirmLabel: "やめて、書いた内容を捨てる", cancelLabel: "作成に戻る", danger: true }))
     )
       return;
     props.onQuit();
@@ -111,9 +117,9 @@ export function ComposeMode(props: {
 
   const send = useMutation({
     mutationFn: () => api.createEditRequest(pageId, toCreateInput(base.versionId, comment, items)),
-    onSuccess: async (made) => {
+    onSuccess: async () => {
       await invalidateEditRequests(qc, pageId);
-      props.onSent(made.itemIds.length);
+      props.onSent(placedLabel);
     },
     onError: (err) => {
       if (!(err instanceof ApiError && err.code === "version_conflict")) return;
@@ -139,20 +145,14 @@ export function ComposeMode(props: {
         const written = composerDraft.current;
         if (at.ok) {
           nextActive = { ...active, selection: at.selection };
-        } else if (dirty && !active.editingId && written && written.replacement !== null) {
-          // 書きかけの箇所が見つからない：書いた内容を、場所の無い提案として残す（捨てない）
-          nextItems.push({
-            id: newId(),
-            kind: "suggestion",
-            selection: { kind: active.selection.kind, ...rangeOf(active.selection) },
-            selectedText: text,
-            lost: at.reason,
-            ...rangeOf(active.selection),
-            originalText: text,
-            replacement: written.replacement,
-            editorMarkdown: written.editorMarkdown,
-            reason: written.reason,
-          });
+        } else if (dirty && !active.editingId && written) {
+          // 書きかけの箇所が見つからない：書いた内容を、場所の無い項目として残す（捨てない）
+          const common = { id: newId(), selection: { kind: active.selection.kind, ...rangeOf(active.selection) }, selectedText: text, lost: at.reason, ...rangeOf(active.selection), originalText: text };
+          if (written.kind === "note") {
+            if (written.body.trim() !== "") nextItems.push({ ...common, kind: "note", body: written.body.trim() });
+          } else if (written.replacement !== null) {
+            nextItems.push({ ...common, kind: "suggestion", replacement: written.replacement, editorMarkdown: written.editorMarkdown, reason: written.reason });
+          }
         }
       }
       setBase(next);
@@ -175,13 +175,13 @@ export function ComposeMode(props: {
   const open = (selection: UnitSelection, editing: DraftItem | null = null) => {
     setPickNotice(null);
     setDirty(false);
-    setActive({ key: ++nextKey, selection, editingId: editing?.id ?? null, initial: editing && { editorMarkdown: editing.editorMarkdown, reason: editing.reason } });
+    setActive({ key: ++nextKey, selection, editingId: editing?.id ?? null, initial: editing && initialOf(editing) });
   };
 
   /** 書きかけがあれば、捨ててよいかを確かめる */
   const mayDiscard = async () =>
     !dirty ||
-    (await confirmDialog({ title: "書きかけの提案を捨てますか？", body: "入力欄に書いた内容は、提案に追加していないので消えます。", confirmLabel: "捨てる", cancelLabel: "書き続ける", danger: true }));
+    (await confirmDialog({ title: "書きかけの内容を捨てますか？", body: "入力欄に書いた内容は、まだ追加していないので消えます。", confirmLabel: "捨てる", cancelLabel: "書き続ける", danger: true }));
 
   const pick = async (unit: BlockUnit, extend: boolean) => {
     if (active && extend) {
@@ -193,7 +193,7 @@ export function ComposeMode(props: {
         .filter((s): s is UnitSelection => s !== null)
         .sort((a, b) => b.endLine - b.startLine - (a.endLine - a.startLine))[0];
       if (!wider) return;
-      if (taken(wider, active.editingId)) return setPickNotice("あいだに、すでに提案を書いた箇所があるので、そこまでは広げられません。");
+      if (taken(wider, active.editingId)) return setPickNotice("あいだに、すでに提案か指摘を書いた箇所があるので、そこまでは広げられません。");
       return setActive({ ...active, key: ++nextKey, selection: wider });
     }
     if (!(await mayDiscard())) return;
@@ -210,16 +210,13 @@ export function ComposeMode(props: {
   const add = (composed: ComposedItem) => {
     if (!active) return;
     const { selection } = active;
-    const item: DraftItem = {
-      id: active.editingId ?? newId(),
-      kind: composed.kind,
-      selection: { kind: selection.kind, ...rangeOf(selection) },
-      selectedText: sliceLines(base.bodyMd, selection.startLine, selection.endLine) ?? "",
-      lost: null,
-      ...composed.suggestion,
-      editorMarkdown: composed.editorMarkdown,
-      reason: composed.reason,
-    };
+    const selectedText = sliceLines(base.bodyMd, selection.startLine, selection.endLine) ?? "";
+    const common = { id: active.editingId ?? newId(), selection: { kind: selection.kind, ...rangeOf(selection) }, selectedText, lost: null };
+    const item: DraftItem =
+      composed.kind === "note"
+        ? // 指摘は、選んだ範囲をそのまま指す（提案のように、変わった行だけに絞らない）
+          { ...common, kind: "note", ...rangeOf(selection), originalText: selectedText, body: composed.body }
+        : { ...common, kind: "suggestion", ...composed.suggestion, editorMarkdown: composed.editorMarkdown, reason: composed.reason };
     setItems((list) => (list.some((i) => i.id === item.id) ? list.map((i) => (i.id === item.id ? item : i)) : [...list, item]));
     setDirty(false);
     setActive(null);
@@ -235,7 +232,7 @@ export function ComposeMode(props: {
   };
 
   const remove = async (item: DraftItem) => {
-    if (!(await confirmDialog({ title: "この提案を取り除きますか？", body: "書いた内容は消えます。", confirmLabel: "取り除く", cancelLabel: "残す", danger: true }))) return;
+    if (!(await confirmDialog({ title: `この${item.kind === "note" ? "指摘" : "提案"}を取り除きますか？`, body: "書いた内容は消えます。", confirmLabel: "取り除く", cancelLabel: "残す", danger: true }))) return;
     setItems((list) => list.filter((i) => i.id !== item.id));
     if (active?.editingId === item.id) {
       setDirty(false);
@@ -310,11 +307,11 @@ export function ComposeMode(props: {
   );
 
   const blocked = behind
-    ? `${conflict ? "送信できませんでした。" : ""}作成しているあいだに、ほかの人がこのページの新しい版を作りました。書いた提案は、そのまま残っています。「最新の版に合わせる」を押すと、新しい本文を読み込み、提案の箇所を探し直します。`
+    ? `${conflict ? "送信できませんでした。" : ""}作成しているあいだに、ほかの人がこのページの新しい版を作りました。書いた内容は、そのまま残っています。「最新の版に合わせる」を押すと、新しい本文を読み込み、書いた箇所を探し直します。`
     : lost.length > 0
-      ? "場所が見つからない提案を取り除くと、送信できます。"
+      ? "場所が見つからない項目を取り除くと、送信できます。"
       : placed.length === 0
-        ? "提案が 0 件です。本文で直したい箇所を選び、提案を追加すると送信できます。"
+        ? "まだ 0 件です。本文で箇所を選び、提案か指摘を追加すると送信できます。"
         : null;
   const narrow = useMediaQuery(useTheme().breakpoints.down("sm"));
 
@@ -344,7 +341,8 @@ export function ComposeMode(props: {
         <Typography component="h1" variant="subtitle1" sx={{ fontWeight: 700 }}>
           編集リクエストを作成中
           <Box component="span" role="status" sx={{ fontWeight: 400 }}>
-            {" ・ "}提案 {placed.length} 件
+            {" ・ "}
+            {placedLabel}
           </Box>
         </Typography>
         <Box sx={{ ml: "auto", display: "flex", gap: 1, "& .MuiButton-root": { whiteSpace: "nowrap", [TOUCH]: { minHeight: 40 } } }}>
@@ -377,7 +375,7 @@ export function ComposeMode(props: {
           )}
           {caughtUp && !("failed" in caughtUp) && !behind && (
             <Alert severity={caughtUp.lost > 0 ? "warning" : "success"} onClose={() => setCaughtUp(null)}>
-              最新の版に合わせました。{caughtUp.kept > 0 && `${caughtUp.kept} 件の提案は、同じ箇所に残しました。`}
+              最新の版に合わせました。{caughtUp.kept > 0 && `${caughtUp.kept} 件は、同じ箇所に残しました。`}
               {caughtUp.lost > 0 && `${caughtUp.lost} 件は、箇所が書き換えられていて残せませんでした。下に、理由と書いた内容を出しています。`}
             </Alert>
           )}
@@ -385,7 +383,7 @@ export function ComposeMode(props: {
           {lost.length > 0 && (
             <Stack component="section" spacing={1} aria-labelledby="compose-lost-title">
               <Typography id="compose-lost-title" variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
-                場所が見つからなくなった提案
+                場所が見つからなくなった項目
               </Typography>
               {lost.map((item) => (
                 <DraftItemCard key={item.id} item={item} disabled={busy} onRemove={() => void remove(item)} />
@@ -394,10 +392,10 @@ export function ComposeMode(props: {
           )}
 
           <Muted>
-            直したい箇所の右にある鉛筆のボタン（か、その箇所そのもの）を押すと、すぐ下に入力欄が開きます。書き換えた内容は、「提案に追加する」で送信前の提案になり、「送信する」でまとめて送られます。本文そのものは、採用されるまで変わりません。
+            直したい箇所・気になる箇所の右にある鉛筆のボタン（か、その箇所そのもの）を押すと、すぐ下に入力欄が開きます。置き換えの提案か、直し方を示さない指摘を書けます。追加したものは送信前の項目になり、「送信する」でまとめて送られます。本文そのものは、提案が採用されるまで変わりません。
           </Muted>
           {full && (
-            <Alert severity="info">1回の編集リクエストに入れられる提案は {EDIT_REQUEST_LIMITS.items} 件までです。続きは、送信したあとに、もう一度出してください。</Alert>
+            <Alert severity="info">1回の編集リクエストに入れられる提案と指摘は、合わせて {EDIT_REQUEST_LIMITS.items} 件までです。続きは、送信したあとに、もう一度出してください。</Alert>
           )}
 
           <Box component="article" aria-label="提案を書く本文">
@@ -415,7 +413,7 @@ export function ComposeMode(props: {
                 {pickNotice}
               </Alert>
             )}
-            {parsed.units.length === 0 && <Muted>本文がまだ書かれていないので、提案を書ける箇所がありません。</Muted>}
+            {parsed.units.length === 0 && <Muted>本文がまだ書かれていないので、提案や指摘を書ける箇所がありません。</Muted>}
             <ReviewBody bodyMd={base.bodyMd} parsed={parsed} slots={slots} select={select} />
           </Box>
         </Stack>
@@ -426,10 +424,10 @@ export function ComposeMode(props: {
         <DialogContent>
           <Stack spacing={2}>
             <Muted>
-              下の {placed.length} 件の提案を、1つの編集リクエストとして送信します。送信したあとは書き換えられません（直すときは、取り下げて出し直します）。
+              下の{placedLabel}を、1つの編集リクエストとして送信します。送信したあとは書き換えられません（直すときは、取り下げて出し直します）。
             </Muted>
-            {dirty && <Alert severity="info">入力欄に書きかけの内容があります。「提案に追加する」を押していないので、今回の送信には入りません。</Alert>}
-            <Stack spacing={1} component="section" aria-label="送信する提案">
+            {dirty && <Alert severity="info">入力欄に書きかけの内容があります。まだ追加していないので、今回の送信には入りません。</Alert>}
+            <Stack spacing={1} component="section" aria-label="送信する項目">
               {placed.map((item, i) => (
                 <DraftItemCard key={item.id} item={item} index={i + 1} disabled={send.isPending} onEdit={() => void edit(item)} onRemove={() => void remove(item)} />
               ))}
@@ -448,11 +446,11 @@ export function ComposeMode(props: {
               helperText={
                 comment.length > EDIT_REQUEST_LIMITS.comment * 0.9
                   ? `${comment.length.toLocaleString()} / ${EDIT_REQUEST_LIMITS.comment.toLocaleString()} 字`
-                  : "採否を決める人に、提案の全体について伝えたいことがあれば書きます。"
+                  : "読む人に、全体について伝えたいことがあれば書きます。"
               }
             />
             {send.isError && <Alert severity="error">送信できませんでした。{errorMessage(send.error)}</Alert>}
-            {placed.length === 0 && <Alert severity="warning">提案が 0 件です。作成に戻って、提案を追加してください。</Alert>}
+            {placed.length === 0 && <Alert severity="warning">まだ 0 件です。作成に戻って、提案か指摘を追加してください。</Alert>}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, "& .MuiButton-root": { [TOUCH]: { minHeight: 40 } } }}>
@@ -460,7 +458,7 @@ export function ComposeMode(props: {
             作成に戻る
           </Button>
           <Button variant="contained" disabled={placed.length === 0} loading={send.isPending} onClick={() => send.mutate()}>
-            提案 {placed.length} 件を送信する
+            {placedLabel}を送信する
           </Button>
         </DialogActions>
       </Dialog>
