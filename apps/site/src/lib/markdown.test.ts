@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, headingId, renderArticle, renderMarkdown } from "./markdown";
+import { excerpt, headingId, renderArticle, renderArticleOnce, renderMarkdown } from "./markdown";
 
 const publicPaths = new Map([["abcdefghij", "/p/abcdefghij"]]);
 
@@ -134,6 +134,29 @@ describe("toggles", () => {
 
   it("leaves an unclosed +++ as plain text", () => {
     expect(renderMarkdown("+++ 見出し\n本文", { publicPaths })).toBe("<p>+++ 見出し\n本文</p>\n");
+  });
+});
+
+describe("renderArticleOnce", () => {
+  const md = "# 見出し\n\n[公開](/p/abcdefghij) と [外](https://example.com/)";
+
+  it("gives the same result as renderArticle and converts the same body only once", () => {
+    const first = renderArticleOnce(md, { publicPaths, origin: "http://wiki.test" });
+    expect(first).toEqual(renderArticle(md, { publicPaths, origin: "http://wiki.test" }));
+    // 2回目（/t/ のページ）は、1回目（/p/ のページ）で作ったものをそのまま返す
+    expect(renderArticleOnce(md, { publicPaths, origin: "http://wiki.test" })).toBe(first);
+  });
+
+  it("does not reuse a result across wikis, origins or the sponsored flag", () => {
+    const base = renderArticleOnce(md, { publicPaths, origin: "http://wiki.test" });
+    const sponsored = renderArticleOnce(md, { publicPaths, origin: "http://wiki.test", sponsored: true });
+    expect(sponsored.html).toContain('rel="sponsored noopener"');
+    expect(base.html).not.toContain("sponsored");
+    // 別の wiki（公開ページの一覧が別）では、同じ本文でもリンクの出し方が変わる
+    const other = renderArticleOnce(md, { publicPaths: new Map(), origin: "http://wiki.test" });
+    expect(other.html).not.toContain('href="/p/abcdefghij"');
+    expect(base.html).toContain('href="/p/abcdefghij"');
+    expect(renderArticleOnce(md, { publicPaths, origin: "http://notes.test" })).not.toBe(base);
   });
 });
 

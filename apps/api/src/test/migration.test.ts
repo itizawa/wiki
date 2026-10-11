@@ -6,7 +6,7 @@ import type { Db } from "../db/client";
 import * as schema from "../db/schema";
 import { runDueActions } from "../publishing/scheduler";
 import { bootstrapStructure } from "../structure/repo";
-import { wikiManifest } from "./harness";
+import { pgliteExtensions, wikiManifest } from "./harness";
 
 let client: PGlite | undefined;
 afterEach(async () => {
@@ -23,7 +23,7 @@ async function runMigration(db: PGlite, tag: string) {
 
 describe("0002_pages_only", () => {
   it("turns folders into pages and lifts the inbox children to the top level", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     await runMigration(db, "0000_phase1_foundation");
     await runMigration(db, "0001_phase2_publishing");
 
@@ -86,7 +86,7 @@ describe("0005_multi_wiki", () => {
   const before = ["0000_phase1_foundation", "0001_phase2_publishing", "0002_pages_only", "0003_drop_slug", "0004_rule_engine"];
 
   it("moves every existing row into the first wiki, named after the tree", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of before) await runMigration(db, tag);
 
     await db.exec(`
@@ -134,7 +134,7 @@ describe("0005_multi_wiki", () => {
   });
 
   it("creates the first wiki on an empty database", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of [...before, "0005_multi_wiki"]) await runMigration(db, tag);
     const wikis = (await db.query<{ key: string; name: string }>(`select key, name from wikis`)).rows;
     expect(wikis).toEqual([{ key: "wiki", name: "wiki" }]);
@@ -148,7 +148,7 @@ describe("0008_drop_tree_is_public", () => {
     `insert into trees (id, wiki_id, key, name, is_public, is_primary) select '${id}', id, '${key}', '${name}', ${isPublic}, ${isPrimary} from wikis where key = 'wiki'`;
 
   it("stops when the tree is hidden from the public site, instead of silently showing it", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of before) await runMigration(db, tag);
     await db.exec(tree("t_main", "main", "メイン", false, true));
 
@@ -161,7 +161,7 @@ describe("0008_drop_tree_is_public", () => {
   });
 
   it("ignores hidden legacy trees that are no longer used, and keeps the tree name", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of before) await runMigration(db, tag);
     await db.exec(tree("t_main", "main", "ブログ", true, true));
     await db.exec(tree("t_old", "by-theme", "テーマ別", false, false));
@@ -190,7 +190,7 @@ describe("0013_auto_version", () => {
   ];
 
   it("keeps every existing version, and starts existing drafts at their last autosave", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of before) await runMigration(db, tag);
     // すでにある版は、すべて人がボタンを押して作ったもの。下書きは、最後に保存した時刻しか分からない
     await db.exec(`
@@ -232,7 +232,7 @@ describe("0013_auto_version", () => {
   });
 
   it("runs on an empty database", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of [...before, "0013_auto_version"]) await runMigration(db, tag);
     expect((await db.query(`select 1 from page_drafts`)).rows).toEqual([]);
   });
@@ -245,7 +245,7 @@ describe("0014_page_trash", () => {
   ];
 
   it("keeps every existing row, and shows the pages deleted so far in the trash one by one", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of before) await runMigration(db, tag);
     await db.exec(`
       insert into pages (id, wiki_id, title, head_version_id, published_version_id, visibility, first_published_at, deleted_at)
@@ -304,7 +304,7 @@ describe("0018_remove_rules", () => {
     (await db.query<{ c: string }>(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'public'`)).rows.map((r) => r.c);
 
   it("drops the rules, the article states and the review queue, and still publishes what a rule had scheduled", async () => {
-    const pg = (client = new PGlite());
+    const pg = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of before) await runMigration(pg, tag);
     const db = drizzle(pg, { schema }) as unknown as Db;
     const wikiId = (await pg.query<{ id: string }>(`select id from wikis where key = 'wiki'`)).rows[0]!.id;
@@ -381,7 +381,7 @@ describe("0018_remove_rules", () => {
   });
 
   it("runs on an empty database", async () => {
-    const pg = (client = new PGlite());
+    const pg = (client = new PGlite({ extensions: pgliteExtensions }));
     for (const tag of [...before, "0018_remove_rules"]) await runMigration(pg, tag);
     expect(await tables(pg)).not.toContain("rules");
     expect((await pg.query(`select 1 from pages`)).rows).toEqual([]);
@@ -390,7 +390,7 @@ describe("0018_remove_rules", () => {
 
 describe("0019_users_and_invites", () => {
   it("keeps stars, drafts, app grants and version authors by turning their emails into users, which ADMIN_EMAILS then makes owners", async () => {
-    const db = (client = new PGlite());
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
     const { readdir } = await import("node:fs/promises");
     const tags = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).sort();
     for (const tag of tags.filter((t) => t < "0019")) await runMigration(db, tag);
@@ -441,5 +441,34 @@ describe("0019_users_and_invites", () => {
     ]);
     const members = (await db.query<{ user_id: string }>(`select user_id from wiki_members where role = 'admin'`)).rows;
     expect(members.map((m) => m.user_id)).toContain(owner.id);
+  });
+});
+
+describe("0027_page_search", () => {
+  it("copies the head version of every page that still has one", async () => {
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
+    const { readdir } = await import("node:fs/promises");
+    const tags = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).sort();
+    for (const tag of tags.filter((t) => t < "0027")) await runMigration(db, tag);
+
+    await db.exec(`
+      insert into pages (id, wiki_id, title, head_version_id) values
+        ('pageaaaaa1', (select id from wikis where key = 'wiki'), 'いまの題', '00000000-0000-0000-0000-000000000002'),
+        ('pageaaaaa2', (select id from wikis where key = 'wiki'), 'ゴミ箱', '00000000-0000-0000-0000-000000000003'),
+        ('pageaaaaa3', (select id from wikis where key = 'wiki'), '完全に削除した', '00000000-0000-0000-0000-000000000009');
+      update pages set deleted_at = now() where id in ('pageaaaaa2', 'pageaaaaa3');
+      update pages set purged_at = now() where id = 'pageaaaaa3';
+      insert into page_versions (id, page_id, title, body_md, author_type) values
+        ('00000000-0000-0000-0000-000000000001', 'pageaaaaa1', '前の題', '前の本文', 'human'),
+        ('00000000-0000-0000-0000-000000000002', 'pageaaaaa1', 'いまの題', 'いまの本文', 'human'),
+        ('00000000-0000-0000-0000-000000000003', 'pageaaaaa2', 'ゴミ箱', 'ゴミ箱の本文', 'human');
+    `);
+    await runMigration(db, "0027_page_search");
+
+    expect((await db.query(`select page_id, title, body_md from page_search order by page_id`)).rows).toEqual([
+      { page_id: "pageaaaaa1", title: "いまの題", body_md: "いまの本文" },
+      { page_id: "pageaaaaa2", title: "ゴミ箱", body_md: "ゴミ箱の本文" },
+    ]);
+    expect((await db.query<{ n: number }>(`select count(*)::int as n from page_search where body_md ilike '%いまの本文%'`)).rows[0]!.n).toBe(1);
   });
 });

@@ -25,3 +25,4 @@ export * from "./home";
 export * from "./oauth";
 export * from "./views";
 export * from "./analytics";
+export * from "./editRequest";
