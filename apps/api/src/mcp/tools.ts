@@ -313,6 +313,7 @@ export const TOOLS = [
         ops: [{ type: "move", treeId: tree.id, nodeId: input.pageId, newParentNodeId: input.newParentPageId }],
         createdBy: agent.user.id,
         oauthGrantId: agent.grantId,
+        recordPublishEvent: true,
       });
       return { headCommitId: result.commitId };
     },

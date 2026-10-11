@@ -557,6 +557,29 @@ describe("MCP", () => {
     expect(declined.tokens.scope).toBe("wiki.read");
   });
 
+  it("move_page で公開中のページを移すと、公開サイトのビルドの対象になる（非公開のページだけなら、ならない）", async () => {
+    ctx = await setup();
+    const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish" });
+    const t = tokens.access_token;
+    const parent = await callTool(t, "create_page", { wiki: "wiki", title: "親" });
+    const child = await callTool(t, "create_page", { wiki: "wiki", title: "子" });
+    const draft = await callTool(t, "create_page", { wiki: "wiki", title: "下書き" });
+    for (const p of [parent, child]) expect((await callTool(t, "publish_page", { wiki: "wiki", pageId: p.data.id })).isError).toBe(false);
+    await ctx.client.query(`delete from publish_events`);
+    const moveTo = async (pageId: string, newParentPageId: string | null) => {
+      const { headCommitId } = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
+      const res = await callTool(t, "move_page", { wiki: "wiki", pageId, newParentPageId, expectedHeadCommitId: headCommitId });
+      expect(res.isError).toBe(false);
+    };
+    const events = async () =>
+      (await ctx.client.query<{ kind: string; via: boolean }>(`select kind, oauth_grant_id is not null as via from publish_events order by id`)).rows;
+
+    await moveTo(draft.data.id, parent.data.id);
+    expect(await events()).toEqual([]);
+    await moveTo(child.data.id, parent.data.id);
+    expect(await events()).toEqual([{ kind: "structure", via: true }]);
+  });
+
   it("publishes, schedules and unpublishes with wiki.publish, and records which app did it", async () => {
     ctx = await setup();
     const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish" });

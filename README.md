@@ -174,6 +174,8 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
     - 管理画面では、親の設定のために選べない公開範囲を選べない状態で見せ、理由を添える。サイドバーのツリーでは、限定公開（リンクの印）・非公開（鍵の印）のページに印を付ける
 - 予約公開：`scheduled_actions`（公開・非公開化）。予約時点の版を固定し、予約後に編集があれば警告。同じ `batch_id` は1トランザクションで実行、失敗は3回まで再試行
 - 公開パイプライン：操作ごとに `publish_events` を記録 → ワーカーがデバウンスしてビルド起動（`contentHash` が同じなら省略）→ サイトが `/export/public` を取得して静的出力 → Pagefind
+  - 記録する操作（`publish_events.kind`）：公開・予約の実行（`publish`）、非公開化（`unpublish`）、限定公開URLの再発行（`rotate_unlisted_key`）、公開中のページのアイコンの変更（`icon`）、公開したことのあるページをゴミ箱に入れる・元に戻す（`delete` `restore`）、並べ替え・移動（`structure`）、wiki の作成・設定の変更（`wiki_create` `wiki_rename` `wiki_theme` `wiki_home` `wiki_settings` `wiki_archive` `wiki_unarchive`）
+  - 並べ替え・移動（サイドバーのドラッグ、MCP の `move_page`）は、公開サイトのツリーに出るもの（公開中のページの親子と並び）が変わるときだけ記録する。非公開・限定公開のページだけを動かしたときは記録せず、ビルドも起動しない。非公開のページを動かしても、その下に公開中のページがあって公開サイトでの位置が変わるなら記録する。公開し直さなくても、次のビルドで公開サイトのツリーに出る
 - 公開サイト（`apps/site`）：記事・ツリー経由の閲覧（`/t/`、canonicalは `/p/`）・新着一覧・検索（Pagefind、遅延ロード）・RSS・サイトマップ
   - 内部リンクは公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
   - slug つきの旧URL（`/p/{id}-{slug}`）は `/p/{id}` へ 301（`apps/site/worker`）、削除記事は 410
