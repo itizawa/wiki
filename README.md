@@ -372,6 +372,8 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 - Service Worker が覚えるのは、ビルドした画面のファイル（JS・HTML・アイコン）だけ。API の応答（`/api/*`）とアップロードした画像（`/images/*`）は覚えない。オフラインでは画面の枠までは出るが、内容の読み込みと編集はできない
 - `/api/*` `/export/*` `/internal/*` `/images/*` `/health` への画面遷移には、Service Worker が手を出さない（Google ログインのリダイレクトがここを通る）。`apps/api/wrangler.toml` の `run_worker_first` に経路を足したら、`vite.config.ts` の `navigateFallbackDenylist` にも足す
 - 新しい版をデプロイしても、開いている画面は勝手に切り替わらない。「新しい版があります」と出し、「更新する」を押したときに読み込み直す（`apps/admin/src/components/UpdatePrompt.tsx`）。新しい版が出ていないかは、画面を開いたとき、裏から戻ったとき、開いたままなら1時間ごとに確かめる。「あとで」を選んだときは、管理画面をすべて閉じて開き直すと新しい版になる
+- 管理画面の JS は、ライブラリ（`react` `mui` `editor`。`vite.config.ts` の `manualChunks`）と、重い画面ごと（`apps/admin/src/router.tsx` の `lazyScreen`）のファイルに分けてある。エディタ（TipTap・ProseMirror）は、エディタを使う画面を開くときに読む。どの画面にも出る部品（サイドバー・コマンドメニューなど）から `src/editor` や画面のファイルを import すると、エディタが最初に読む JS に戻り、ビルドが止まる（`vite.config.ts` の `wiki:first-load`）
+- 分けたファイルも Service Worker が全部覚えるので、新しい版をデプロイして古いファイルがサーバーから消えても、開いている画面は覚えているファイルで動く。Service Worker がまだ効いていない画面（初めて開いた画面など）や、ほかのタブで「更新する」を押したあとの古いタブでは、画面のファイルが取れないことがある。そのときは、その場に「この画面を読み込めませんでした」と「画面を読み込み直す」を出す（`apps/admin/src/routes/lazyScreen.tsx`）
 - Service Worker は `pnpm dev` では動かない。手元で確かめるときは `pnpm --filter @wiki/admin build` のあと `pnpm --filter @wiki/admin preview --port 5173`（API の `ADMIN_ORIGIN` と同じオリジンで開く）
 - サイドバーの並び替え（ツリー、スター）は、タッチでは長押ししてからドラッグする（すぐ動かすとスクロールになる）
 - サイドバーの行のボタン（「…」「＋」）は、マウスで操作する端末（`(hover: hover) and (pointer: fine)`）ではマウスを乗せたときとキーボードのフォーカスがあるときだけ出す。指で操作する端末では、乗せる操作が無いので、いつも出す
