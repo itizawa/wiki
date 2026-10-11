@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, PanelsTopLeft, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -127,7 +127,6 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -215,28 +214,10 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
           構造の履歴
         </NavItem>
-        <NavItem to="/w/$wikiKey/members" icon={<Users size={18} />} onClick={props.onNavigate}>
-          メンバー
-        </NavItem>
-        {role === "admin" && (
-          <NavItem to="/w/$wikiKey/audit" icon={<ClipboardList size={18} />} onClick={props.onNavigate}>
-            監査ログ
-          </NavItem>
-        )}
-        {role === "admin" && (
-          <NavItem to="/w/$wikiKey/appearance" icon={<Palette size={18} />} onClick={props.onNavigate}>
-            外観
-          </NavItem>
-        )}
-        {role === "admin" && (
-          <NavItem to="/w/$wikiKey/home" icon={<PanelsTopLeft size={18} />} onClick={props.onNavigate}>
-            トップページ
-          </NavItem>
-        )}
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
           ゴミ箱
         </NavItem>
-        {/* この wiki の設定（公開サイトの連携）。変えられるのはオーナーだけだが、いまの値はだれでも見られる */}
+        {/* この wiki の設定（一般・外観・トップページ・連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
         </NavItem>
