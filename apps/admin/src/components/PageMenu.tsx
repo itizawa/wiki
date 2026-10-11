@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   Ellipsis,
+  GitPullRequestArrow,
   Globe,
   History,
   LayoutTemplate,
@@ -23,7 +24,7 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Snackbar from "@mui/material/Snackbar";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { createLink, useNavigate } from "@tanstack/react-router";
 import type { Editor } from "@tiptap/react";
 import type { PageDetail } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
@@ -31,6 +32,7 @@ import { openFindBar } from "../editor/FindBar";
 import { OutlinePopover } from "../editor/Outline";
 import type { OutlineHeading } from "../editor/outlineHeadings";
 import { api, errorMessage } from "../lib/api";
+import { editRequestsLink } from "../lib/editRequests";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { useStars } from "../lib/stars";
@@ -42,6 +44,8 @@ import type { EnsureVersion } from "./PublishPanel";
 import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
+
+const MenuItemLink = createLink(MenuItem);
 
 /**
  * 編集画面の「…」メニュー。本文を検索・置換する・プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
@@ -62,6 +66,8 @@ export function PageMenu(props: {
   /** いまの内容を版として残す（⌘S と同じ）。結果の知らせは、呼ばれた側が出す */
   onKeepVersion: () => void;
   onOpenHistory: () => void;
+  /** 未対応の編集リクエストの項目の数。読み込み中は undefined（件数を出さない） */
+  openEditRequests: number | undefined;
   onDelete: () => void;
   /** スマホ幅か。ヘッダーの「…」以外のボタンの代わりを、このメニューに出す */
   narrow: boolean;
@@ -255,6 +261,18 @@ export function PageMenu(props: {
           </ListItemIcon>
           <ListItemText>版履歴</ListItemText>
         </MenuItem>
+        {/* レビュー画面へ移る（画面が変わるので、リンクにする）。未対応が0件でも、これまでの提案を見られる */}
+        <MenuItemLink {...editRequestsLink(props.pageId)} onClick={() => setAnchor(null)}>
+          <ListItemIcon>
+            <GitPullRequestArrow size={18} />
+          </ListItemIcon>
+          <ListItemText>編集リクエスト</ListItemText>
+          {props.openEditRequests !== undefined && (
+            <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
+              未対応 {props.openEditRequests} 件
+            </Muted>
+          )}
+        </MenuItemLink>
         <MenuItem
           aria-haspopup="dialog"
           onClick={() => {

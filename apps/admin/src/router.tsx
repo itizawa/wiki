@@ -10,6 +10,7 @@ import { AuditLogPage } from "./routes/AuditLogPage";
 import { CalendarPage } from "./routes/CalendarPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
+import { EditRequestsPage } from "./routes/EditRequestsPage";
 import { EditorPage } from "./routes/EditorPage";
 import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
 import { HistoryPage } from "./routes/HistoryPage";
@@ -81,6 +82,15 @@ const editorRoute = createRoute({
     const { pageId } = editorRoute.useParams();
     const { history } = editorRoute.useSearch();
     return <EditorPage key={pageId} pageId={pageId} historyVersionId={history ?? null} />;
+  },
+});
+// ページの編集リクエストのレビュー画面（最新の版を読み取り専用で出し、提案を採用・却下する）
+const editRequestsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "pages/$pageId/requests",
+  component: function EditRequests() {
+    const { pageId } = editRequestsRoute.useParams();
+    return <EditRequestsPage key={pageId} pageId={pageId} />;
   },
 });
 const searchRoute = createRoute({
@@ -165,6 +175,7 @@ const routeTree = rootRoute.addChildren([
   wikiRoute.addChildren([
     pagesRoute,
     editorRoute,
+    editRequestsRoute,
     searchRoute,
     calendarRoute,
     analyticsRoute,

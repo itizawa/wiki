@@ -2,15 +2,15 @@ import { createTheme } from "@mui/material/styles";
 
 declare module "@mui/material/styles" {
   interface Palette {
-    /** 差分表示の背景色 */
-    diff: { added: string; removed: string };
+    /** 差分表示の背景色。Strong は、行の中の変わった語（行の背景より濃い） */
+    diff: { added: string; removed: string; addedStrong: string; removedStrong: string };
     /** 検索の語に一致した部分の背景色 */
     search: { hit: string };
     /** 本文の検索で一致した箇所の背景色 */
     find: { match: string; current: string };
   }
   interface PaletteOptions {
-    diff?: { added: string; removed: string };
+    diff?: { added: string; removed: string; addedStrong: string; removedStrong: string };
     search?: { hit: string };
     find?: { match: string; current: string };
   }
@@ -35,7 +35,7 @@ export const theme = createTheme({
         background: { default: "#f6f7f9", paper: "#fff" },
         text: { primary: "#1d2330", secondary: "#6b7385" },
         divider: "#e2e5eb",
-        diff: { added: "#e5f6ea", removed: "#fbe9e9" },
+        diff: { added: "#e5f6ea", removed: "#fbe9e9", addedStrong: "#b4e6c3", removedStrong: "#f6c4c4" },
         search: { hit: "#fff3a8" },
         find: { match: "#fff2b3", current: "#ffd24d" },
       },
@@ -47,7 +47,7 @@ export const theme = createTheme({
         background: { default: "#14171d", paper: "#1c2028" },
         text: { primary: "#e4e7ee", secondary: "#949bad" },
         divider: "#2d3340",
-        diff: { added: "#1d3b27", removed: "#45232a" },
+        diff: { added: "#1d3b27", removed: "#45232a", addedStrong: "#2f6b43", removedStrong: "#7d3540" },
         search: { hit: "#5b4f10" },
         find: { match: "#5a4a12", current: "#8a6d00" },
       },
