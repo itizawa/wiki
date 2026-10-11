@@ -208,7 +208,15 @@ const routeTree = rootRoute.addChildren([
   legacyScreen("/history", "/w/$wikiKey/history"),
 ]);
 
-export const router = createRouter({ routeTree });
+// 画面を移るとき、前の画面をフェードアウトさせ、次の画面をフェードインさせる（View Transitions API。見た目は theme.ts の MuiCssBaseline）。
+// 同じ画面のままクエリ（タブ・絞り込み・検索語）だけが変わるときと、最初に開いたときはフェードさせない。
+// それを見分ける仕組み（遷移の型）に対応していないブラウザでは、フェードそのものを使わない（ふつうに切り替わる）
+const pageTransition =
+  typeof CSS !== "undefined" && CSS.supports?.("selector(:active-view-transition-type(a))")
+    ? { types: ({ fromLocation, pathChanged }: { fromLocation?: unknown; pathChanged: boolean }) => (fromLocation && pathChanged ? ["page"] : false) }
+    : false;
+
+export const router = createRouter({ routeTree, defaultViewTransition: pageTransition });
 
 declare module "@tanstack/react-router" {
   interface Register {

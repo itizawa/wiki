@@ -37,7 +37,8 @@ a { color: var(--accent); }
 /* ページ遷移のフェード（View Transitions API）。
    同じオリジンのページへ移るとき、前のページをフェードアウトさせ、次のページをフェードインさせる。
    静的サイトのふつうのリンク遷移のままで効き（スクリプトは要らない）、対応していないブラウザではふつうに移る。
-   ヘッダーとフッターはどのページでも同じなので、view-transition-name で切り出してフェードさせない（Base.module.css） */
+   ヘッダーはどのページでも同じ場所・同じ見た目なので、view-transition-name で切り出してフェードさせない（Base.module.css）。
+   フッターは本文の長さで位置が変わるので、切り出さずにページといっしょにフェードさせる */
 @view-transition { navigation: auto; }
 ::view-transition-old(root) { animation: page-fade-out 0.18s ease-out both; }
 ::view-transition-new(root) { animation: page-fade-in 0.18s ease-out both; }
@@ -45,10 +46,7 @@ a { color: var(--accent); }
 @keyframes page-fade-in { from { opacity: 0; } to { opacity: 1; } }
 ::view-transition-group(site-header),
 ::view-transition-old(site-header),
-::view-transition-new(site-header),
-::view-transition-group(site-footer),
-::view-transition-old(site-footer),
-::view-transition-new(site-footer) { animation: none; }
+::view-transition-new(site-header) { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-old(*),

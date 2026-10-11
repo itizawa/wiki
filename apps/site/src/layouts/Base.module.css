@@ -31,8 +31,4 @@
 .logo { display: block; height: 32px; width: auto; max-width: min(240px, 50vw); }
 .nav { display: flex; gap: 14px; margin-left: auto; font-size: 0.9rem; }
 .body { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
-.footer {
-  max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem;
-  /* ページ遷移のフェードから外す（global.css） */
-  view-transition-name: site-footer;
-}
+.footer { max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }

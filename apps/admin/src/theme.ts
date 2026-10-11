@@ -63,6 +63,25 @@ export const theme = createTheme({
     button: { textTransform: "none" },
   },
   components: {
+    // 画面を移るときのフェード（router.tsx の defaultViewTransition）。サイドバーと狭い画面の上の帯は
+    // どの画面でも同じなので、view-transition-name で切り出してフェードさせない（WikiLayout）
+    MuiCssBaseline: {
+      styleOverrides: {
+        "::view-transition-old(root)": { animation: "page-fade-out 0.18s ease-out both" },
+        "::view-transition-new(root)": { animation: "page-fade-in 0.18s ease-out both" },
+        "@keyframes page-fade-out": { from: { opacity: 1 }, to: { opacity: 0 } },
+        "@keyframes page-fade-in": { from: { opacity: 0 }, to: { opacity: 1 } },
+        // 前後の画面の両方にあるときだけ、動かさずに新しいほうを出す。片方にしか無いとき（サイドバーの無い「全体の管理」へ移るときなど）は、画面といっしょにフェードさせる
+        "::view-transition-group(admin-sidebar), ::view-transition-group(admin-bar)": { animation: "none" },
+        "::view-transition-old(admin-sidebar):not(:only-child), ::view-transition-new(admin-sidebar):not(:only-child), ::view-transition-old(admin-bar):not(:only-child), ::view-transition-new(admin-bar):not(:only-child)":
+          { animation: "none" },
+        "::view-transition-old(admin-sidebar):only-child, ::view-transition-old(admin-bar):only-child": { animation: "page-fade-out 0.18s ease-out both" },
+        "::view-transition-new(admin-sidebar):only-child, ::view-transition-new(admin-bar):only-child": { animation: "page-fade-in 0.18s ease-out both" },
+        "@media (prefers-reduced-motion: reduce)": {
+          "::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*)": { animation: "none !important" },
+        },
+      },
+    },
     MuiButton: { defaultProps: { size: "small", disableElevation: true } },
     MuiTextField: { defaultProps: { size: "small" } },
     // 入力欄は背景（グレー）の上にも置くので、常にカードと同じ面の色にする
