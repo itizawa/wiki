@@ -1,30 +1,39 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
 import type { ComponentType } from "react";
-import { PageBody } from "./components/ui";
+import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
-import { HomeSettingsPage } from "./routes/HomeSettingsPage";
 import { Home, Root } from "./routes/Layout";
-import { AnalyticsPage } from "./routes/AnalyticsPage";
-import { AuditLogPage } from "./routes/AuditLogPage";
-import { CalendarPage } from "./routes/CalendarPage";
+import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
-import { EditRequestsPage } from "./routes/EditRequestsPage";
-import { EditorPage } from "./routes/EditorPage";
+import { GeneralSettingsPage } from "./routes/GeneralSettingsPage";
 import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
-import { HistoryPage } from "./routes/HistoryPage";
 import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
-import { TemplateEditorPage, TemplatesPage } from "./routes/TemplatesPage";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
+import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
 import { WikisPage } from "./routes/WikisPage";
+
+// 重い画面は、開くときに読み込む（最初に読む JS から外す）。エディタ（TipTap・ProseMirror）を使う画面は、すべてここに置く。
+// 読み込みのあいだは、その画面が自分で出す読み込み中の表示と同じ形を出す
+const page = { fallback: <ScreenSkeleton /> };
+const fullHeight = { fallback: <SkeletonEditor />, bare: true };
+const EditorPage = lazyScreen(() => import("./routes/EditorPage"), "EditorPage", fullHeight);
+const EditRequestsPage = lazyScreen(() => import("./routes/EditRequestsPage"), "EditRequestsPage", fullHeight);
+const TemplatesPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplatesPage", page);
+const TemplateEditorPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplateEditorPage", fullHeight);
+const HomeSettingsPage = lazyScreen(() => import("./routes/HomeSettingsPage"), "HomeSettingsPage", page);
+const HistoryPage = lazyScreen(() => import("./routes/HistoryPage"), "HistoryPage", page);
+const AnalyticsPage = lazyScreen(() => import("./routes/AnalyticsPage"), "AnalyticsPage", page);
+const AuditLogPage = lazyScreen(() => import("./routes/AuditLogPage"), "AuditLogPage", page);
+const CalendarPage = lazyScreen(() => import("./routes/CalendarPage"), "CalendarPage", page);
 
 // ログインの確認までを Root が行う。wiki の内容は、すべて /w/{key}/... の下にある
 const rootRoute = createRootRoute({ component: Root });
@@ -137,16 +146,32 @@ const templateEditorRoute = createRoute({
   },
 });
 const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
-const membersRoute = createRoute({ getParentRoute: () => wikiRoute, path: "members", component: padded(MembersPage) });
-// この wiki の監査ログ（管理者だけ）
-const auditRoute = createRoute({ getParentRoute: () => wikiRoute, path: "audit", component: padded(() => <AuditLogPage scope="wiki" />) });
-// 公開サイトの外観（管理者だけ）
-const appearanceRoute = createRoute({ getParentRoute: () => wikiRoute, path: "appearance", component: padded(AppearancePage) });
-// 公開サイトのトップに出す自由記述（管理者だけ）。ページと同じエディタで書くので、編集画面と同じく余白を付けない
-const siteHomeRoute = createRoute({ getParentRoute: () => wikiRoute, path: "home", component: HomeSettingsPage });
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
-// wiki ごとの設定（公開サイトの連携）。読むのはだれでも、変えるのはオーナーだけ
-const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(SettingsPage) });
+
+// wiki ごとの設定。見出しとタブ（WikiSettingsLayout）の下に、タブごとの画面を出す。タブごとに URL を分ける
+const settingsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "settings", component: padded(WikiSettingsLayout) });
+// 一般：表示名と画像（変えるのはオーナーだけ）
+const settingsGeneralRoute = createRoute({ getParentRoute: () => settingsRoute, path: "/", component: GeneralSettingsPage });
+// 公開サイトの外観（管理者だけ）
+const appearanceRoute = createRoute({ getParentRoute: () => settingsRoute, path: "appearance", component: AppearancePage });
+// 公開サイトのトップに出す自由記述（管理者だけ）
+const siteHomeRoute = createRoute({ getParentRoute: () => settingsRoute, path: "home", component: HomeSettingsPage });
+// 公開サイトの連携（GA・サーチコンソール）。読むのはだれでも、変えるのはオーナーだけ
+const integrationsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "integrations", component: SettingsPage });
+// メンバー。一覧はだれでも、変えるのは管理者だけ
+const membersRoute = createRoute({ getParentRoute: () => settingsRoute, path: "members", component: MembersPage });
+// この wiki の監査ログ（管理者だけ）
+const auditRoute = createRoute({ getParentRoute: () => settingsRoute, path: "audit", component: () => <AuditLogPage scope="wiki" /> });
+
+// 設定のタブにまとめる前の URL。ブックマークや共有したリンクを切らさないよう、新しいタブへ移す
+const legacySettingsScreen = (path: "members" | "audit" | "appearance" | "home") =>
+  createRoute({
+    getParentRoute: () => wikiRoute,
+    path,
+    beforeLoad: ({ params }) => {
+      throw redirect({ to: `/w/$wikiKey/settings/${path}`, params: { wikiKey: params.wikiKey }, replace: true });
+    },
+  });
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -182,12 +207,12 @@ const routeTree = rootRoute.addChildren([
     templatesRoute,
     templateEditorRoute,
     historyRoute,
-    membersRoute,
-    auditRoute,
-    appearanceRoute,
-    siteHomeRoute,
     trashRoute,
-    settingsRoute,
+    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, membersRoute, auditRoute]),
+    legacySettingsScreen("members"),
+    legacySettingsScreen("audit"),
+    legacySettingsScreen("appearance"),
+    legacySettingsScreen("home"),
   ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),

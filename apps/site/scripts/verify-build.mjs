@@ -92,8 +92,11 @@ const counterScript = async (html) => {
   // スクリプトは小さければページに埋め込まれ、大きければ _astro/ のファイルになる。どちらでも送り先（/_v）を探す
   const srcs = [...html.matchAll(/<script[^>]*src="(\/_astro\/[^"]+)"/g)].map((m) => m[1]);
   const external = await Promise.all(srcs.map((src) => read(src.slice(1))));
-  return [html, ...external].some((t) => t.includes('"/_v"'));
+  // 圧縮のしかたで引用符が変わる（Astro 7 は `/_v` と出す）ので、引用符の種類は問わない
+  return [html, ...external].some((t) => /["'`]\/_v["'`]/.test(t));
 };
+// レイアウトのスクリプトは <body> の中に出る（</html> のあとに書くと、Astro 7 はそのまま </html> のあとへ出す）
+check(/<\/body>\s*<\/html>\s*$/.test(intro), "nothing is emitted after </body></html>");
 check(intro.includes('data-count-view="aaaaaaaaa1"') && (await counterScript(intro)), "a public page counts its views with its own id");
 check(tPage.includes('data-count-view="aaaaaaaaa2"') && (await counterScript(tPage)), "a page viewed through the tree counts as the same page");
 check(!unlisted.includes("data-count-view") && !(await counterScript(unlisted)), "an unlisted page does not count views or send anything");
