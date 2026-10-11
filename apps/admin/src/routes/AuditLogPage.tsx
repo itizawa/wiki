@@ -52,7 +52,8 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
             wiki の画面に戻る
           </RouterLink>
         )}
-        <Typography variant={scope === "all" ? "h5" : "h6"} component="h1">
+        {/* wiki のものは「設定」のタブの中に出すので、見出しは h2（h1 は「設定」） */}
+        <Typography variant={scope === "all" ? "h5" : "h6"} component={scope === "all" ? "h1" : "h2"}>
           {scope === "all" ? "監査ログ（すべての wiki）" : "監査ログ"}
         </Typography>
         <Muted>

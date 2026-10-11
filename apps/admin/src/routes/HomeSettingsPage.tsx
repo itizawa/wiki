@@ -23,7 +23,7 @@ export function HomeSettingsPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h1">
+        <Typography variant="h6" component="h2">
           トップページ
         </Typography>
         <Muted>「{wiki.name}」の公開サイトのトップに出す、紹介文などの自由記述を書きます。トップには、自由記述の下に新着記事が並びます。</Muted>
@@ -80,7 +80,7 @@ function HomeForm({ saved }: { saved: WikiHome }) {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="subtitle1" component="h2">
+        <Typography variant="subtitle1" component="h3">
           自由記述
         </Typography>
         <Muted sx={{ mb: 1.5 }}>Markdown で書けます（記事と同じ記法）。空にすると、トップには新着記事だけが出ます。</Muted>
