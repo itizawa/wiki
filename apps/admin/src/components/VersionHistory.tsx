@@ -18,7 +18,8 @@ import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { monoFont } from "../theme";
 import { Tooltip } from "./Tooltip";
-import { LoadingRegion, Muted, SkeletonRows, StatusChip } from "./ui";
+import { editRequestsLink } from "../lib/editRequests";
+import { LoadingRegion, Muted, RouterLink, SkeletonRows, StatusChip } from "./ui";
 
 type Content = { title: string; bodyMd: string };
 
@@ -150,6 +151,7 @@ export function VersionHistory(props: {
                   {version.data.id === props.headVersionId && <StatusChip label="最新の版" size="small" sx={{ ml: 1 }} />}
                   {!version.data.keep && <StatusChip label="自動" size="small" sx={{ ml: 1 }} />}
                   {version.data.authorType === "ai" && <StatusChip label="AI" size="small" sx={{ ml: 1 }} />}
+                  {version.data.acceptedItems > 0 && <StatusChip label="提案の採用" size="small" sx={{ ml: 1 }} />}
                 </Typography>
                 <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)} aria-label="表示">
                   <ToggleButton value="diff">編集中の内容との差分</ToggleButton>
@@ -159,7 +161,14 @@ export function VersionHistory(props: {
                   この版に戻す
                 </Button>
               </Stack>
-              {version.data.createdBy && <Muted>{version.data.createdBy.name} が作った版です。</Muted>}
+              {version.data.acceptedItems > 0 ? (
+                <Muted>
+                  {version.data.createdBy ? `${version.data.createdBy.name} が、` : ""}編集リクエストの提案を {version.data.acceptedItems} 件採用してできた版です。{" "}
+                  <RouterLink {...editRequestsLink(props.pageId)}>編集リクエストを見る</RouterLink>
+                </Muted>
+              ) : (
+                version.data.createdBy && <Muted>{version.data.createdBy.name} が作った版です。</Muted>
+              )}
               <Muted>
                 「この版に戻す」は、この版の内容をエディタに入れて閉じます。戻した内容は、ほかの編集と同じく自動で保存され、新しい版になります。公開中の内容は、公開し直すまで変わりません。
               </Muted>
@@ -206,6 +215,8 @@ export function VersionHistory(props: {
                 {!v.keep && <StatusChip label="自動" size="small" />}
                 {v.authorType === "ai" && <StatusChip label="AI" size="small" />}
                 {v.via && <StatusChip label={`${v.via} 経由`} size="small" />}
+                {/* 編集リクエストの提案を採用してできた版 */}
+                {v.acceptedItems > 0 && <StatusChip label={`提案の採用 ${v.acceptedItems} 件`} size="small" />}
                 {/* 作った人。これより前の版と、ルール・AI による版には無い */}
                 {v.createdBy && (
                   <Box component="span" sx={{ width: "100%", color: "text.secondary", fontSize: "0.8rem" }}>

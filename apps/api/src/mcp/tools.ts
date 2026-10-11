@@ -1,9 +1,25 @@
-import { createPageInput, publishVisibilitySchema, savePageInput, type OAuthScope } from "@wiki/shared";
+import {
+  bodyLines,
+  createEditRequestInput,
+  createPageInput,
+  EDIT_REQUEST_LIMITS,
+  publishVisibilitySchema,
+  savePageInput,
+  type EditRequest,
+  type OAuthScope,
+} from "@wiki/shared";
 import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { pages, pageVersions, scheduledActions } from "../db/schema";
+import { editRequestItems, editRequests, pages, pageVersions, scheduledActions } from "../db/schema";
+import {
+  acceptEditRequestItems,
+  createEditRequest,
+  listEditRequests,
+  rejectEditRequestItem,
+  withdrawEditRequest,
+} from "../editRequests/service";
 import { HttpError, notFound } from "../errors";
 import type { AgentContext } from "../oauth/service";
 import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage } from "../routes/pages";
@@ -18,6 +34,7 @@ import { findOpenWiki, listWikis } from "../wikis/service";
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
  * 公開・予約は wiki.publish、削除（ゴミ箱に入れる・一覧・元に戻す）は wiki.delete を許したアプリだけが使える。
  * ゴミ箱から完全に削除する道具は置かない（完全に消せるのは、管理画面の人だけ）。
+ * 編集リクエストを出す・読む・取り下げるのは wiki.suggest、採用・却下は本文が変わるので wiki.write。
  */
 type ToolContext = { db: Db; config: AppConfig; agent: AgentContext };
 
@@ -114,6 +131,59 @@ async function visiblePage(db: Db, agent: AgentContext, wikiId: string, id: stri
   return page;
 }
 
+// ---------------------------------------------------------------------------
+// 編集リクエスト
+// ---------------------------------------------------------------------------
+
+/** 最新の版を読めないアプリ（wiki.private が無く、公開前の編集がある）には、その版への提案も採用もさせない */
+async function assertNoHiddenEdits(db: Db, agent: AgentContext, page: { id: string; headVersionId: string }): Promise<void> {
+  if ((await readableVersion(db, agent, page.id)) !== page.headVersionId) {
+    throw new HttpError(409, "hidden_edits", "this page has unpublished edits that this connection cannot read (needs wiki.private)");
+  }
+}
+
+/**
+ * wiki.private が無い許可で読めるリクエストは、読めるページの、その許可で出したものだけ。
+ * ほかの人が出したリクエストには、そのアプリが読めない版（公開前の書きかけ）の文面が入っていることがある
+ */
+const ownRequestsOnly = (agent: AgentContext) => (agent.scopes.includes("wiki.private") ? undefined : agent.grantId);
+
+/** 読めない項目（別のページのもの、読めないリクエストのもの）は、無いものとして扱う */
+async function assertItemReadable(db: Db, agent: AgentContext, pageId: string, itemId: string): Promise<void> {
+  const own = ownRequestsOnly(agent);
+  const [row] = await db
+    .select({ id: editRequestItems.id })
+    .from(editRequestItems)
+    .innerJoin(editRequests, eq(editRequests.id, editRequestItems.requestId))
+    .where(and(eq(editRequestItems.id, itemId), eq(editRequests.pageId, pageId), own ? eq(editRequests.oauthGrantId, own) : undefined));
+  if (!row) throw notFound("edit request item");
+}
+
+const describeRequest = (r: EditRequest, hideCurrent: boolean) => ({
+  id: r.id,
+  pageId: r.pageId,
+  comment: r.comment,
+  createdBy: r.createdBy.name,
+  via: r.via,
+  createdAt: r.createdAt,
+  items: r.items.map((i) => ({
+    id: i.id,
+    status: i.status,
+    baseVersionId: i.baseVersionId,
+    startLine: i.startLine,
+    endLine: i.endLine,
+    originalText: i.originalText,
+    replacement: i.replacement,
+    reason: i.reason,
+    stale: i.stale,
+    /** 最新の版での行の範囲（未対応・却下の項目で、場所が決まるときだけ） */
+    current: hideCurrent ? null : i.current,
+    decidedBy: i.decidedBy?.name ?? null,
+    decidedAt: i.decidedAt,
+    acceptedVersionId: i.acceptedVersionId,
+  })),
+});
+
 export const TOOLS = [
   tool({
     name: "list_wikis",
@@ -166,7 +236,8 @@ export const TOOLS = [
   tool({
     name: "get_page",
     description:
-      "ページの最新の本文（Markdown）を返す。update_page には、ここで返す headVersionId を baseVersionId として渡す。" +
+      "ページの最新の本文（Markdown）を返す。update_page と create_edit_request には、ここで返す headVersionId を baseVersionId として渡す。" +
+      "本文の行は、bodyMd を改行（\\n）で区切って1から数える（空行も1行。末尾が改行なら、最後に空の行が1つある。lineCount が行数）。" +
       "非公開のページも読む許可が無いと、公開中のページは公開した版を返し、公開前の編集があれば hasHiddenEdits が true になる（そのあいだは更新できない）。",
     scope: "wiki.read",
     input: z.object({ wiki: wikiKey, pageId }),
@@ -181,6 +252,7 @@ export const TOOLS = [
         title: version!.title,
         icon: page.icon,
         bodyMd: version!.bodyMd,
+        lineCount: bodyLines(version!.bodyMd).length,
         headVersionId: versionId,
         hasHiddenEdits: versionId !== page.headVersionId,
         visibility: page.visibility,
@@ -546,6 +618,161 @@ export const TOOLS = [
       });
       const { restoredPageIds, ...placed } = result;
       return { id: input.pageId, restored: true, restoredPages: restoredPageIds.length, ...placed };
+    },
+  }),
+  tool({
+    name: "create_edit_request",
+    description:
+      "ページの本文に、箇所ごとの「こう直す」を提案する（編集リクエスト）。本文は変えず、人が管理画面で1件ずつ採用・却下を決める。" +
+      "箇所は、get_page の bodyMd の行の範囲（startLine〜endLine。1から数え、両端を含む）で指し、その範囲を replacement で置き換える提案になる。" +
+      "replacement を空の文字にすると、その行を消す提案になる。行を足すときは、隣の行を範囲に入れ、その行も replacement に書く。" +
+      "baseVersionId は get_page の headVersionId。最新の版でなければエラー（version_conflict）を返すので、get_page で読み直してから出し直す。" +
+      `1回に ${EDIT_REQUEST_LIMITS.items} 件まで。出したあとは書き換えられない（直すときは withdraw_edit_request で取り下げて出し直す）。`,
+    scope: "wiki.suggest",
+    input: z.object({ wiki: wikiKey, pageId }).merge(createEditRequestInput),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        baseVersionId: str("get_page で返した headVersionId"),
+        comment: str("全体へのひとこと（省略可）", { maxLength: EDIT_REQUEST_LIMITS.comment }),
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: EDIT_REQUEST_LIMITS.items,
+          description: "箇所ごとの提案",
+          items: schema(
+            {
+              startLine: { type: "integer", minimum: 1, description: "置き換える範囲の最初の行（1から数える）" },
+              endLine: { type: "integer", minimum: 1, description: "置き換える範囲の最後の行（この行も含む。1行だけなら startLine と同じ）" },
+              replacement: str("置き換える文面（Markdown）。空の文字なら、その行を消す", { maxLength: EDIT_REQUEST_LIMITS.replacement }),
+              reason: str("理由（省略可）", { maxLength: EDIT_REQUEST_LIMITS.reason }),
+            },
+            ["startLine", "endLine", "replacement"],
+          ),
+        },
+      },
+      ["wiki", "pageId", "baseVersionId", "items"],
+    ),
+    async run({ db, agent }, { wiki: key, pageId: id, ...input }) {
+      const wiki = await memberWiki(db, agent, key);
+      return db.transaction(async (tx) => {
+        const page = await visiblePage(tx, agent, wiki.id, id);
+        // 読めていない版には提案させない（update_page と同じ）
+        await assertNoHiddenEdits(tx, agent, page);
+        const made = await createEditRequest(tx, { wikiId: wiki.id, pageId: page.id, input, actor: { userId: agent.user.id, oauthGrantId: agent.grantId } });
+        return { id: made.id, pageId: page.id, itemIds: made.itemIds };
+      });
+    },
+  }),
+  tool({
+    name: "list_edit_requests",
+    description:
+      "ページの編集リクエストを、新しい順に返す（項目の数を、状態ごとに付ける。open: 未対応 / accepted: 採用 / rejected: 却下 / withdrawn: 取り下げ）。" +
+      "中身は get_edit_request で読む。非公開のページも読む許可が無いと、その許可で出したリクエストだけを返す。",
+    scope: "wiki.suggest",
+    input: z.object({ wiki: wikiKey, pageId }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const { requests } = await listEditRequests(db, page, { oauthGrantId: ownRequestsOnly(agent) });
+      return {
+        requests: requests.map((r) => ({
+          id: r.id,
+          comment: r.comment,
+          createdBy: r.createdBy.name,
+          via: r.via,
+          createdAt: r.createdAt,
+          items: {
+            open: r.items.filter((i) => i.status === "open").length,
+            accepted: r.items.filter((i) => i.status === "accepted").length,
+            rejected: r.items.filter((i) => i.status === "rejected").length,
+            withdrawn: r.items.filter((i) => i.status === "withdrawn").length,
+          },
+        })),
+      };
+    },
+  }),
+  tool({
+    name: "get_edit_request",
+    description:
+      "編集リクエスト1件と、その項目（行の範囲・元の文面・置き換え案・理由・状態）を返す。startLine / endLine は、出したときの版（baseVersionId）での行。" +
+      "未対応の項目の stale が null でなければ、その箇所があとから書き換えられていて、もう採用できない（not_found: 元の文面が無い / ambiguous: 同じ文面が複数ある）。",
+    scope: "wiki.suggest",
+    input: z.object({ wiki: wikiKey, pageId, requestId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), requestId: str("編集リクエストの ID（list_edit_requests で分かる）") }, ["wiki", "pageId", "requestId"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const { requests, headVersionId } = await listEditRequests(db, page, { requestId: input.requestId, oauthGrantId: ownRequestsOnly(agent) });
+      const request = requests[0];
+      if (!request) throw notFound("edit request");
+      // 最新の版を読めないアプリには、最新の版での行の位置を教えない
+      const hidden = (await readableVersion(db, agent, page.id)) !== page.headVersionId;
+      return { ...describeRequest(request, hidden), headVersionId: hidden ? null : headVersionId };
+    },
+  }),
+  tool({
+    name: "withdraw_edit_request",
+    description: "その許可で出した編集リクエストの、未対応の項目をまとめて取り下げる（採用・却下が済んだ項目は変わらない）。ほかの人やアプリが出したものは取り下げられない。",
+    scope: "wiki.suggest",
+    input: z.object({ wiki: wikiKey, pageId, requestId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), requestId: str("編集リクエストの ID") }, ["wiki", "pageId", "requestId"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const result = await db.transaction((tx) =>
+        withdrawEditRequest(tx, {
+          wikiId: wiki.id,
+          pageId: page.id,
+          requestId: input.requestId,
+          actor: { userId: agent.user.id, oauthGrantId: agent.grantId },
+          byGrantOnly: true,
+        }),
+      );
+      return { id: input.requestId, withdrawn: result.withdrawn };
+    },
+  }),
+  tool({
+    name: "accept_edit_request_item",
+    description:
+      "編集リクエストの項目を1件採用する：最新の版の該当行を置き換えて、新しい版を作る（公開中のページでも、公開側は人が公開し直すまで変わらない）。" +
+      "その箇所があとから書き換えられていると採用できない（edit_request_stale）。編集中の人の下書きとぶつかるときも止まる（draft_conflict）。" +
+      "項目の ID は get_edit_request で分かる（読むには wiki.suggest の許可が要る）。",
+    scope: "wiki.write",
+    input: z.object({ wiki: wikiKey, pageId, itemId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), itemId: str("項目の ID（get_edit_request で分かる）") }, ["wiki", "pageId", "itemId"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      return db.transaction(async (tx) => {
+        const page = await visiblePage(tx, agent, wiki.id, input.pageId);
+        await assertNoHiddenEdits(tx, agent, page);
+        await assertItemReadable(tx, agent, page.id, input.itemId);
+        const result = await acceptEditRequestItems(tx, {
+          wikiId: wiki.id,
+          pageId: page.id,
+          target: { itemId: input.itemId },
+          actor: { userId: agent.user.id, oauthGrantId: agent.grantId },
+        });
+        return { id: input.itemId, status: "accepted", headVersionId: result.headVersionId };
+      });
+    },
+  }),
+  tool({
+    name: "reject_edit_request_item",
+    description: "編集リクエストの項目を1件却下する（本文は変わらない）。却下した項目は、管理画面で人が未対応に戻せる。",
+    scope: "wiki.write",
+    input: z.object({ wiki: wikiKey, pageId, itemId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), itemId: str("項目の ID（get_edit_request で分かる）") }, ["wiki", "pageId", "itemId"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      await db.transaction(async (tx) => {
+        const page = await visiblePage(tx, agent, wiki.id, input.pageId);
+        await assertItemReadable(tx, agent, page.id, input.itemId);
+        await rejectEditRequestItem(tx, { wikiId: wiki.id, pageId: page.id, itemId: input.itemId, actor: { userId: agent.user.id, oauthGrantId: agent.grantId } });
+      });
+      return { id: input.itemId, status: "rejected" };
     },
   }),
 ];

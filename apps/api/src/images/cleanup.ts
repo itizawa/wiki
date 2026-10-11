@@ -31,6 +31,8 @@ export type CleanupImagesResult = {
  *   完全に削除したページは版ごと消えているので、そのページだけが使っていた画像は参照が無くなる
  * - `page_drafts.body_md`：下書き
  * - `page_templates.body_md`：テンプレート
+ * - `edit_request_items.original_md` / `replacement_md`：編集リクエストの項目の、元の文面と置き換え案（状態は問わない。
+ *   未対応の提案の中でだけ使っている画像も、採用されるまで消さない）
  * - `wikis.icon_url`（wiki の画像）、`wikis.theme`（ロゴ・ファビコン）、`wikis.home`（トップページの自由記述）。アーカイブ中の wiki も含む
  *
  * ページのアイコン（`pages.icon`）は絵文字だけなので見ない。
@@ -48,6 +50,10 @@ export async function referencedImageNames(db: Db): Promise<Set<string>> {
         ${names(sql`"body_md"`, sql`"page_drafts"`)}
         union all
         ${names(sql`"body_md"`, sql`"page_templates"`)}
+        union all
+        ${names(sql`"original_md"`, sql`"edit_request_items"`)}
+        union all
+        ${names(sql`"replacement_md"`, sql`"edit_request_items"`)}
         union all
         ${names(sql`concat_ws(' ', "icon_url", "theme"::text, "home"::text)`, sql`"wikis"`)}
       ) refs

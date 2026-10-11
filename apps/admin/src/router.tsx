@@ -26,6 +26,7 @@ import { WikisPage } from "./routes/WikisPage";
 const page = { fallback: <ScreenSkeleton /> };
 const fullHeight = { fallback: <SkeletonEditor />, bare: true };
 const EditorPage = lazyScreen(() => import("./routes/EditorPage"), "EditorPage", fullHeight);
+const EditRequestsPage = lazyScreen(() => import("./routes/EditRequestsPage"), "EditRequestsPage", fullHeight);
 const TemplatesPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplatesPage", page);
 const TemplateEditorPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplateEditorPage", fullHeight);
 const HomeSettingsPage = lazyScreen(() => import("./routes/HomeSettingsPage"), "HomeSettingsPage", page);
@@ -90,6 +91,15 @@ const editorRoute = createRoute({
     const { pageId } = editorRoute.useParams();
     const { history } = editorRoute.useSearch();
     return <EditorPage key={pageId} pageId={pageId} historyVersionId={history ?? null} />;
+  },
+});
+// ページの編集リクエストのレビュー画面（最新の版を読み取り専用で出し、提案を採用・却下する）
+const editRequestsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "pages/$pageId/requests",
+  component: function EditRequests() {
+    const { pageId } = editRequestsRoute.useParams();
+    return <EditRequestsPage key={pageId} pageId={pageId} />;
   },
 });
 const searchRoute = createRoute({
@@ -190,6 +200,7 @@ const routeTree = rootRoute.addChildren([
   wikiRoute.addChildren([
     pagesRoute,
     editorRoute,
+    editRequestsRoute,
     searchRoute,
     calendarRoute,
     analyticsRoute,
