@@ -1,6 +1,7 @@
 import {
   childrenByParent,
   pagePath,
+  resolveHome,
   resolveTheme,
   unlistedPath,
   type ManifestPage,
@@ -84,6 +85,7 @@ async function buildWikiManifest(db: Db, wiki: typeof wikis.$inferSelect): Promi
     key: wiki.key,
     name: wiki.name,
     theme: resolveTheme(wiki.theme),
+    home: resolveHome(wiki.home),
     gaMeasurementId: wiki.gaMeasurementId,
     searchConsoleVerification: wiki.searchConsoleVerification,
     headCommitId: main.headCommitId,

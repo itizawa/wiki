@@ -1,0 +1,1 @@
+ALTER TABLE "wikis" ADD COLUMN "home" jsonb;

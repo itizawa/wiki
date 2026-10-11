@@ -38,6 +38,11 @@ export const wikis = pgTable("wikis", {
    * 読むときは resolveTheme を通し、欠けた・正しくない項目は既定に戻す
    */
   theme: jsonb("theme"),
+  /**
+   * 公開サイトのトップの設定（自由記述。`WikiHome`）。null なら既定（何も出さない）。
+   * 読むときは resolveHome を通す。あとでトップの部品の並びなどを足せるよう、オブジェクトで持つ
+   */
+  home: jsonb("home"),
   /** Google Analytics（GA4）の測定 ID（`G-` で始まる）。null なら公開サイトに Google タグを出さない */
   gaMeasurementId: text("ga_measurement_id"),
   /** Google サーチコンソールの確認用の値（meta タグの content の中身）。null なら出さない */

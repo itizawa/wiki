@@ -18,3 +18,8 @@
 .postList { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; }
 .postList h2 { font-size: 1.15rem; margin: 0; }
 .postList p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+/* トップの自由記述（管理画面の「トップページ」）。新着記事との間を空け、線で区切る */
+.homeIntro { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.homeIntro > :first-child { margin-top: 0; }
+.homeIntro > :last-child { margin-bottom: 0; }

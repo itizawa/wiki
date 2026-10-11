@@ -21,6 +21,7 @@ export * from "./images";
 export * from "./users";
 export * from "./audit";
 export * from "./theme";
+export * from "./home";
 export * from "./oauth";
 export * from "./views";
 export * from "./analytics";
