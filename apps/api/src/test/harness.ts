@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../app";
 import type { GoogleReporting } from "../analytics/google";
 import type { GoogleOidc } from "../auth/google";
-import { SESSION_COOKIE, signSession } from "../auth/session";
+import { issueSession, SESSION_COOKIE } from "../auth/session";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 import * as schema from "../db/schema";
@@ -70,7 +70,7 @@ export async function setup(opts: { google?: GoogleOidc; config?: Partial<AppCon
    * body が Uint8Array なら、そのまま（JSON にせず）送る
    */
   async function callAs(userId: string | null) {
-    const cookie = userId ? `${SESSION_COOKIE}=${await signSession(config.sessionSecret, userId)}` : "";
+    const cookie = userId ? `${SESSION_COOKIE}=${await issueSession(db, config.sessionSecret, userId)}` : "";
     return async function <T = any>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
       const raw = body instanceof Uint8Array;
       const res = await app.request(path, {

@@ -15,6 +15,15 @@
 @media (prefers-reduced-motion: reduce) {
   .header { transition: none; }
 }
+/* ツリーを開くボタン（狭い画面で、ツリーナビのあるページだけ）。広い画面ではツリーが左の列に出ているので出さない */
+.navToggle {
+  display: none; align-items: center; justify-content: center; width: 40px; height: 40px; margin: -8px -4px -8px -8px;
+  border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer;
+}
+.navToggle:hover { background: var(--border); }
+@media (max-width: 800px) {
+  .navToggle { display: inline-flex; }
+}
 .brand { display: flex; align-items: center; font-weight: 700; color: var(--text); text-decoration: none; }
 /* ロゴは高さ 32px にそろえ、横長の画像は幅を成り行きにする */
 .logo { display: block; height: 32px; width: auto; max-width: min(240px, 50vw); }

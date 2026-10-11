@@ -1,0 +1,88 @@
+---
+import layout from "../styles/page.module.css";
+
+/**
+ * ツリーナビを入れる左の列。`.withNav` の中に置く。
+ * 広い画面では左の列に張り付き、狭い画面（800px 以下）ではヘッダーの「階層を開く」で開く左のドロワーになる
+ * （同じ要素を CSS で切り替えるので、ツリーは1か所にしか出ない）。ボタンを出すのは Base.astro（`nav` を渡したとき）。
+ * スクリプトが動かなければ、ボタンはツリーの一覧ページ（/t/{key}/）へのリンクのまま。
+ */
+---
+
+<div class={layout.navBackdrop} data-nav-backdrop></div>
+<aside id="site-nav" data-nav-drawer data-pagefind-ignore>
+  <div class={layout.drawerHead}>
+    <span>階層</span>
+    <button type="button" class={layout.drawerClose} data-nav-close aria-label="階層を閉じる">×</button>
+  </div>
+  <slot />
+</aside>
+
+<script>
+  // ヘッダーのリンク（スクリプトが動かないときの行き先）を、ドロワーを開くボタンに差しかえる
+  const drawer = document.querySelector<HTMLElement>("[data-nav-drawer]");
+  const fallback = document.querySelector<HTMLAnchorElement>("[data-nav-toggle]");
+  if (drawer && fallback) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = fallback.className;
+    toggle.innerHTML = fallback.innerHTML;
+    toggle.setAttribute("aria-label", "階層を開く");
+    toggle.setAttribute("aria-controls", drawer.id);
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.toggleAttribute("data-nav-toggle", true);
+    fallback.replaceWith(toggle);
+
+    const root = document.documentElement;
+    const close = drawer.querySelector<HTMLButtonElement>("[data-nav-close]");
+    const backdrop = document.querySelector<HTMLElement>("[data-nav-backdrop]");
+    let inerted: HTMLElement[] = [];
+
+    // 開いている間は、ドロワーのほか（ヘッダー・本文・フッター）を操作できないようにする（フォーカスもドロワーの中にとどまる）
+    const inertOthers = () => {
+      for (let el: HTMLElement | null = drawer; el && el !== document.body; el = el.parentElement) {
+        for (const sibling of Array.from(el.parentElement?.children ?? [])) {
+          if (sibling !== el && sibling !== backdrop && sibling instanceof HTMLElement && !sibling.inert) {
+            sibling.inert = true;
+            inerted.push(sibling);
+          }
+        }
+      }
+    };
+
+    const setOpen = (open: boolean, restoreFocus = true) => {
+      if (root.hasAttribute("data-nav-open") === open) return;
+      root.toggleAttribute("data-nav-open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) {
+        drawer.setAttribute("role", "dialog");
+        drawer.setAttribute("aria-modal", "true");
+        drawer.setAttribute("aria-label", "階層");
+        inertOthers();
+        close?.focus();
+      } else {
+        drawer.removeAttribute("role");
+        drawer.removeAttribute("aria-modal");
+        drawer.removeAttribute("aria-label");
+        for (const el of inerted) el.inert = false;
+        inerted = [];
+        if (restoreFocus) toggle.focus();
+      }
+    };
+
+    toggle.addEventListener("click", () => setOpen(true));
+    close?.addEventListener("click", () => setOpen(false));
+    backdrop?.addEventListener("click", () => setOpen(false));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && root.hasAttribute("data-nav-open")) setOpen(false);
+    });
+    // リンクを押したら閉じる（ページはそのまま移る）
+    drawer.addEventListener("click", (e) => {
+      if (e.target instanceof Element && e.target.closest("a[href]")) setOpen(false, false);
+    });
+    // 広い画面に変わったら閉じる（ツリーは左の列に戻る）
+    matchMedia("(max-width: 800px)").addEventListener("change", (e) => {
+      if (!e.matches) setOpen(false, false);
+    });
+  }
+</script>

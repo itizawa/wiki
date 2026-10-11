@@ -1,4 +1,3 @@
-import { ArrowLeft } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -46,14 +45,8 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
   return (
     <Stack spacing={1.5}>
       <Box>
-        {scope === "all" && (
-          <RouterLink to="/" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-            <ArrowLeft size={18} />
-            wiki の画面に戻る
-          </RouterLink>
-        )}
-        {/* wiki のものは「設定」のタブの中に出すので、見出しは h2（h1 は「設定」） */}
-        <Typography variant={scope === "all" ? "h5" : "h6"} component={scope === "all" ? "h1" : "h2"}>
+        {/* どちらも枠（「設定」のタブ・「全体の管理」）の中に出すので、見出しは h2（h1 と戻るリンクは枠にある） */}
+        <Typography variant="h6" component="h2">
           {scope === "all" ? "監査ログ（すべての wiki）" : "監査ログ"}
         </Typography>
         <Muted>

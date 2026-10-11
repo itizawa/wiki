@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, Plus, Puzzle, Search, Settings, ShieldUser, SlidersHorizontal, Star, Trash2 } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -24,6 +24,7 @@ import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import Snackbar from "@mui/material/Snackbar";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -37,6 +38,7 @@ import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
+import { confirmDialog } from "./ConfirmDialog";
 import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
 import { WikiIcon } from "./WikiIcon";
 import { Muted, RouterLink, SkeletonRows } from "./ui";
@@ -125,7 +127,6 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { isOwner } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -220,31 +221,6 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
         </NavItem>
-        {/* wiki の管理・オーナーの管理・すべての wiki の監査ログは /w/ の外の画面なので、NavItem ではなくリンクを直接置く。オーナーにだけ出す */}
-        {isOwner && (
-          <RouterLink to="/wikis" onClick={props.onNavigate} underline="none" sx={rowSx}>
-            <Settings size={18} />
-            <Box component="span" sx={ellipsis}>
-              wiki の管理
-            </Box>
-          </RouterLink>
-        )}
-        {isOwner && (
-          <RouterLink to="/owners" onClick={props.onNavigate} underline="none" sx={rowSx}>
-            <ShieldUser size={18} />
-            <Box component="span" sx={ellipsis}>
-              オーナーの管理
-            </Box>
-          </RouterLink>
-        )}
-        {isOwner && (
-          <RouterLink to="/audit" onClick={props.onNavigate} underline="none" sx={rowSx}>
-            <ClipboardList size={18} />
-            <Box component="span" sx={ellipsis}>
-              監査ログ（すべての wiki）
-            </Box>
-          </RouterLink>
-        )}
 
         {structure.data && <StarredPages pages={structure.data.pages} openMenuKey={openMenuKey} onOpenMenu={openMenu} onNavigate={props.onNavigate} />}
 
@@ -312,6 +288,7 @@ const MenuItemLink = createLink(MenuItem);
  */
 function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: () => void; onNavigate?: () => void }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const logoutOthers = useLogoutOthers();
   return (
     <>
       <Box
@@ -390,6 +367,17 @@ function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: ()
         <MenuItem
           onClick={() => {
             setAnchor(null);
+            logoutOthers.run();
+          }}
+        >
+          <ListItemIcon>
+            <MonitorSmartphone size={18} />
+          </ListItemIcon>
+          <ListItemText>ほかの端末からログアウトする</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
             onLogout();
           }}
         >
@@ -399,16 +387,57 @@ function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: ()
           <ListItemText>ログアウトする</ListItemText>
         </MenuItem>
       </Menu>
+      {logoutOthers.notice}
     </>
   );
 }
 
 /**
+ * 「ほかの端末からログアウトする」：確かめてから、この端末のほかのセッションをすべて切る。結果は左下に出す。
+ * Cookie が漏れたかもしれないとき・共用の端末でログアウトし忘れたときに使う。
+ */
+function useLogoutOthers() {
+  const [result, setResult] = useState<{ ok: true; ended: number } | { ok: false; error: Error } | null>(null);
+  // 閉じるアニメーションの間も文言を出したままにする
+  const [open, setOpen] = useState(false);
+  const mutation = useMutation({
+    mutationFn: api.logoutOthers,
+    onSuccess: ({ ended }) => setResult({ ok: true, ended }),
+    onError: (error) => setResult({ ok: false, error }),
+    onSettled: () => setOpen(true),
+  });
+  const run = async () => {
+    const ok = await confirmDialog({
+      title: "ほかの端末からログアウトしますか？",
+      body: "この端末のほかに、このアカウントでログインしているブラウザや端末をすべてログアウトさせます。この端末はログインしたままです。",
+      confirmLabel: "ほかの端末からログアウトする",
+      cancelLabel: "やめる",
+    });
+    if (ok) mutation.mutate();
+  };
+  const clear = () => setOpen(false);
+  const notice = (
+    <Snackbar open={open} onClose={clear} autoHideDuration={result?.ok ? 6000 : null} anchorOrigin={{ vertical: "bottom", horizontal: "left" }}>
+      {result?.ok === false ? (
+        <Alert severity="error" variant="filled" onClose={clear}>
+          ほかの端末からログアウトできませんでした。{errorMessage(result.error)}
+        </Alert>
+      ) : (
+        <Alert severity="success" variant="filled" onClose={clear}>
+          {result?.ended ? `ほかの端末（${result.ended}件）からログアウトしました` : "ほかにログインしている端末はありませんでした"}
+        </Alert>
+      )}
+    </Snackbar>
+  );
+  return { run, notice };
+}
+
+/**
  * wiki の切り替え。いまどの wiki にいるかを、サイドバーの上に常に出す（表示名と、公開サイトのサブドメインになる key）。
- * 押すと、選べる wiki の一覧を出す。
+ * 押すと、選べる wiki の一覧と、オーナーには wiki をまたぐ「全体の管理」（wiki・オーナー・すべての監査ログ）への入口を出す。
  */
 function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
-  const { wiki, wikis } = useWiki();
+  const { wiki, wikis, isOwner } = useWiki();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const close = () => {
     setAnchor(null);
@@ -476,6 +505,16 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             {w.key === wiki.key && <Box component={Check} size={18} sx={{ flexShrink: 0 }} />}
           </MenuItemLink>
         ))}
+        {isOwner && <Divider />}
+        {isOwner && (
+          <MenuItemLink to="/wikis" onClick={close} sx={{ gap: 1.5 }}>
+            {/* アイコンの列の幅は、wiki の行のアイコン（36px）に揃える */}
+            <Box sx={{ width: 36, display: "flex", justifyContent: "center", flexShrink: 0, color: "text.secondary" }}>
+              <Settings size={18} />
+            </Box>
+            <ListItemText>全体の管理</ListItemText>
+          </MenuItemLink>
+        )}
       </Menu>
     </>
   );

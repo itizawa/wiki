@@ -12,6 +12,7 @@ import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
 import { EditorPage } from "./routes/EditorPage";
 import { GeneralSettingsPage } from "./routes/GeneralSettingsPage";
+import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
 import { HistoryPage } from "./routes/HistoryPage";
 import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
@@ -40,12 +41,14 @@ const padded = (Page: ComponentType) => () => (
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Home });
 // ログイン失敗時のリダイレクト先。Root がログイン画面を出す
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: Home });
+// 「全体の管理」：wiki をまたぐオーナー向けの3画面の共通の枠（「wiki の画面に戻る」・見出し・タブ）。URL は持たない
+const globalAdminRoute = createRoute({ getParentRoute: () => rootRoute, id: "global-admin", component: padded(GlobalAdminLayout) });
 // wiki の一覧・作成・アーカイブ（オーナーだけ）。wiki が1つも無くても開けるよう、/w/ の外に置く
-const wikisRoute = createRoute({ getParentRoute: () => rootRoute, path: "/wikis", component: padded(WikisPage) });
+const wikisRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/wikis", component: WikisPage });
 // オーナーの追加・解除（オーナーだけ）
-const ownersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/owners", component: padded(OwnersPage) });
+const ownersRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/owners", component: OwnersPage });
 // すべての wiki と全体にかかわる監査ログ（オーナーだけ）
-const auditAllRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit", component: padded(() => <AuditLogPage scope="all" />) });
+const auditAllRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/audit", component: () => <AuditLogPage scope="all" /> });
 // 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
 // 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
@@ -173,9 +176,7 @@ const legacyScreen = (path: "/calendar" | "/history", to: `/w/$wikiKey${typeof p
 const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
-  wikisRoute,
-  ownersRoute,
-  auditAllRoute,
+  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute]),
   inviteRoute,
   consentRoute,
   connectionsRoute,

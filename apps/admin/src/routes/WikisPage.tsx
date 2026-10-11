@@ -1,4 +1,4 @@
-import { ArrowLeft, Circle, CircleCheck, ExternalLink } from "lucide-react";
+import { Circle, CircleCheck, ExternalLink } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -80,13 +80,10 @@ export function WikisPage() {
 
   return (
     <Stack spacing={1.5}>
+      {/* 「wiki の画面に戻る」とページの見出し（h1）は、「全体の管理」の枠（GlobalAdminLayout）にある */}
       <Box>
-        <RouterLink to="/" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-          <ArrowLeft size={18} />
-          {active.length > 0 ? "wiki の画面に戻る" : "最初の画面に戻る"}
-        </RouterLink>
-        <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
-          wiki の管理
+        <Typography variant="h6" component="h2">
+          wiki
         </Typography>
         <Muted>wiki ごとに、ページ・ツリー・予約を分け、それぞれ別のサブドメインで公開します。</Muted>
       </Box>
@@ -97,7 +94,7 @@ export function WikisPage() {
 
       {session.isOwner && (
         <Section>
-          <Typography variant="h6" component="h2" gutterBottom>
+          <Typography variant="subtitle1" component="h3" gutterBottom>
             使用中の wiki
           </Typography>
           {done && (
@@ -194,7 +191,7 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
 
   return (
     <Section>
-      <Typography variant="h6" component="h2" gutterBottom>
+      <Typography variant="subtitle1" component="h3" gutterBottom>
         wiki を作成する
       </Typography>
       <Stack
@@ -358,7 +355,7 @@ function ArchivedWikis({ wikis }: { wikis: WikiSummary[] }) {
   });
   return (
     <Section>
-      <Typography variant="h6" component="h2">
+      <Typography variant="subtitle1" component="h3">
         アーカイブ中の wiki
       </Typography>
       <Muted sx={{ mb: 1 }}>
