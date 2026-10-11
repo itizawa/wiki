@@ -9,6 +9,7 @@ import {
   type PageSummary,
   type SavePageDraftResult,
   type PageVersion,
+  type PageVersionList,
   type SavePageInput,
   type StructureOp,
   type TrashedPage,
@@ -19,7 +20,7 @@ import type { Db } from "../db/client";
 import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
 import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks } from "../pages/versions";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
-import { recordPublishEvent } from "../publishing/service";
+import { recordPublishEvent, recordPublishEvents } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePages } from "../structure/repo";
@@ -84,20 +85,25 @@ function clampPageLimit(value: string | undefined): number {
   return Math.min(Math.max(n, 1), PAGE_LIMIT_MAX);
 }
 
-/** 一覧の続きの位置。最後に返した行の更新日時（DB の文字のまま）と id。 */
-type PageCursor = { updatedAt: string; id: string };
+/** 一覧の続きの位置。最後に返した行の日時（ページは更新日時、版は作った日時。DB の文字のまま）と id。 */
+type ListCursor = { at: string; id: string };
 
-const encodePageCursor = (cursor: PageCursor): string =>
-  btoa(JSON.stringify([cursor.updatedAt, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const encodeCursor = (cursor: ListCursor): string =>
+  btoa(JSON.stringify([cursor.at, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-/** 壊れたカーソルは 400 にする（DB に渡してから失敗させない）。 */
-function decodePageCursor(value: string): PageCursor {
+/** 壊れたカーソルは 400 にする（DB に渡してから失敗させない）。`idPattern` は、その一覧の id の形。 */
+function decodeCursor(value: string, idPattern?: RegExp): ListCursor {
   try {
     const parsed: unknown = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/")));
     if (Array.isArray(parsed) && parsed.length === 2) {
-      const [updatedAt, id] = parsed as unknown[];
-      if (typeof updatedAt === "string" && typeof id === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/.test(updatedAt)) {
-        return { updatedAt, id };
+      const [at, id] = parsed as unknown[];
+      if (
+        typeof at === "string" &&
+        typeof id === "string" &&
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/.test(at) &&
+        (idPattern?.test(id) ?? true)
+      ) {
+        return { at, id };
       }
     }
   } catch {
@@ -105,6 +111,8 @@ function decodePageCursor(value: string): PageCursor {
   }
   throw new HttpError(400, "invalid_cursor", "the cursor is not valid; load the list from the start");
 }
+
+const UUID_PATTERN = /^[0-9a-f-]{36}$/;
 
 /** 指定の wiki のページだけを返す。別の wiki のページ ID を指定しても、無いものとして扱う。 */
 export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate = false): Promise<PageRow> {
@@ -241,30 +249,41 @@ export async function deletePage(
       oauthGrantId: opts.oauthGrantId,
     });
   }
-  const now = new Date();
-  for (const m of members) {
-    const node = nodeOf.get(m.id);
-    await tx
-      .update(pages)
-      .set({
-        deletedAt: now,
-        updatedAt: now,
-        publishedVersionId: null,
-        visibility: "private",
-        trashRootId: id,
-        trashedParentId: node?.parentNodeId ?? null,
-        trashedPosition: node?.position ?? null,
-      })
-      .where(eq(pages.id, m.id));
+  if (members.length > 0) {
+    // ページごとに違うのは、ゴミ箱に入れる前の親と並びだけ。(ページ, 親, 並び) の組を渡して、1回で更新する
+    const now = new Date().toISOString();
+    const values = sql.join(
+      members.map((m) => {
+        const node = nodeOf.get(m.id);
+        return sql`(${m.id}::text, ${node?.parentNodeId ?? null}::text, ${node?.position ?? null}::text)`;
+      }),
+      sql`, `,
+    );
+    await tx.execute(sql`
+      update "pages" p
+      set "deleted_at" = ${now}::timestamptz,
+          "updated_at" = ${now}::timestamptz,
+          "published_version_id" = null,
+          "visibility" = 'private',
+          "trash_root_id" = ${id}::text,
+          "trashed_parent_id" = v."parent_id",
+          "trashed_position" = v."position"
+      from (values ${values}) as v("id", "parent_id", "position")
+      where p."id" = v."id"
+    `);
   }
   // 予約は無効にする。公開済みだった記事は再ビルドで410になる
   await tx
     .update(scheduledActions)
     .set({ status: "canceled", lastError: "page deleted" })
     .where(and(inArray(scheduledActions.pageId, ids), eq(scheduledActions.status, "scheduled")));
-  for (const m of members) {
-    if (m.firstPublishedAt) await recordPublishEvent(tx, wikiId, "delete", { pageId: m.id, oauthGrantId: opts.oauthGrantId });
-  }
+  await recordPublishEvents(
+    tx,
+    wikiId,
+    "delete",
+    members.filter((m) => m.firstPublishedAt).map((m) => m.id),
+    { oauthGrantId: opts.oauthGrantId },
+  );
   await writeAudit(tx, {
     wikiId,
     actor: opts.actor,
@@ -376,9 +395,13 @@ export async function restorePage(
     oauthGrantId: opts.oauthGrantId,
   });
   // 公開したことがあるページは、公開サイトで 410 を返すのをやめる（非公開なので 404 になる）
-  for (const m of members) {
-    if (m.firstPublishedAt) await recordPublishEvent(tx, wikiId, "restore", { pageId: m.id, oauthGrantId: opts.oauthGrantId });
-  }
+  await recordPublishEvents(
+    tx,
+    wikiId,
+    "restore",
+    members.filter((m) => m.firstPublishedAt).map((m) => m.id),
+    { oauthGrantId: opts.oauthGrantId },
+  );
   await writeAudit(tx, {
     wikiId,
     actor: opts.actor,
@@ -438,9 +461,9 @@ export const pageRoutes = new Hono<AppEnv>()
       return c.json({ pages: rows.map(toSummary) });
     }
     const limit = clampPageLimit(limitParam);
-    const after = cursorParam === undefined ? null : decodePageCursor(cursorParam);
+    const after = cursorParam === undefined ? null : decodeCursor(cursorParam);
     // 続きは「最後の行より後ろ」。更新日時が同じ行は id で順を決めるので、抜けも重なりも出ない
-    const rest = after ? sql`(${pages.updatedAt}, ${pages.id}) < (${after.updatedAt}::timestamptz, ${after.id})` : undefined;
+    const rest = after ? sql`(${pages.updatedAt}, ${pages.id}) < (${after.at}::timestamptz, ${after.id})` : undefined;
     const rows = await db
       // 日時はマイクロ秒まで持っている。Date にするとミリ秒に丸まり、同じミリ秒の行を取りこぼすので、カーソルには文字のまま使う
       .select({ page: pages, updatedAtText: sql<string>`${pages.updatedAt}::text` })
@@ -453,7 +476,7 @@ export const pageRoutes = new Hono<AppEnv>()
     const last = shown[shown.length - 1];
     return c.json({
       pages: shown.map((r) => toSummary(r.page)),
-      nextCursor: rows.length > limit && last ? encodePageCursor({ updatedAt: last.updatedAtText, id: last.page.id }) : null,
+      nextCursor: rows.length > limit && last ? encodeCursor({ at: last.updatedAtText, id: last.page.id }) : null,
     });
   })
   .post("/", async (c) => {
@@ -573,6 +596,11 @@ export const pageRoutes = new Hono<AppEnv>()
     const id = c.req.param("id");
     const wikiId = c.get("wiki").id;
     await findLivePage(db, wikiId, id);
+    const limit = clampPageLimit(c.req.query("limit"));
+    const cursorParam = c.req.query("cursor");
+    const after = cursorParam === undefined ? null : decodeCursor(cursorParam, UUID_PATTERN);
+    // 続きは「最後の行より後ろ」。同じトランザクションで作った版は日時が同じになるので、id で順を決める
+    const rest = after ? sql`(${pageVersions.createdAt}, ${pageVersions.id}) < (${after.at}::timestamptz, ${after.id}::uuid)` : undefined;
     const rows = await db
       .select({
         id: pageVersions.id,
@@ -581,6 +609,8 @@ export const pageRoutes = new Hono<AppEnv>()
         authorType: pageVersions.authorType,
         keep: pageVersions.keep,
         createdAt: pageVersions.createdAt,
+        // 日時はマイクロ秒まで持っている。カーソルには文字のまま使う（ページの一覧と同じ）
+        createdAtText: sql<string>`${pageVersions.createdAt}::text`,
         createdById: pageVersions.createdBy,
         createdByName: sql<string | null>`coalesce(${users.name}, ${users.email})`,
         // 外部のアプリ（MCP）から保存した版なら、そのアプリの名前
@@ -590,15 +620,20 @@ export const pageRoutes = new Hono<AppEnv>()
       .leftJoin(users, eq(users.id, pageVersions.createdBy))
       .leftJoin(oauthGrants, eq(oauthGrants.id, pageVersions.oauthGrantId))
       .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-      .where(eq(pageVersions.pageId, id))
-      .orderBy(desc(pageVersions.createdAt));
+      .where(and(eq(pageVersions.pageId, id), rest))
+      .orderBy(desc(pageVersions.createdAt), desc(pageVersions.id))
+      // 1件多く取って、続きがあるかを見る
+      .limit(limit + 1);
+    const shown = rows.slice(0, limit);
+    const last = shown[shown.length - 1];
     return c.json({
-      versions: rows.map(({ createdById, createdByName, ...r }) => ({
+      versions: shown.map(({ createdById, createdByName, createdAtText: _, ...r }) => ({
         ...r,
         createdBy: createdById && createdByName ? { id: createdById, name: createdByName } : null,
         createdAt: r.createdAt.toISOString(),
       })),
-    });
+      nextCursor: rows.length > limit && last ? encodeCursor({ at: last.createdAtText, id: last.id }) : null,
+    } satisfies PageVersionList);
   })
   .get("/:id/versions/:versionId", async (c) => {
     const { db } = c.get("deps");

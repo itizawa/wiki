@@ -27,7 +27,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { Editor } from "@tiptap/react";
 import type { PageDetail } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
-import { openFindBar } from "../editor/FindBar";
+import { openFindBar } from "../editor/findBarState";
 import { OutlinePopover } from "../editor/Outline";
 import type { OutlineHeading } from "../editor/outlineHeadings";
 import { api, errorMessage } from "../lib/api";

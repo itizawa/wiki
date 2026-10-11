@@ -1,22 +1,34 @@
 import { createWikiInput, updateWikiInput, updateWikiSettingsInput, type WikiSummary } from "@wiki/shared";
 import { Hono, type MiddlewareHandler } from "hono";
 import type { AppEnv } from "../env";
-import { HttpError } from "../errors";
-import { archiveWiki, createWiki, findOpenWiki, listWikis, toWikiSettings, unarchiveWiki, updateWiki, updateWikiSettings } from "../wikis/service";
+import { HttpError, notFound } from "../errors";
+import { archiveWiki, createWiki, listWikis, toWikiSettings, unarchiveWiki, updateWiki, updateWikiSettings } from "../wikis/service";
 import { parseJson } from "../validation";
-import { requireOwner } from "../auth/routes";
-import { roleIn, rolesByWiki } from "../users/service";
+import { inviteOnly, requireOwner, sessionClaims, unauthenticated } from "../auth/routes";
+import { findSessionUserInWiki, hasAccess, rolesByWiki } from "../users/service";
 import { auditActor } from "../audit/service";
 
 /**
- * `/admin/w/:wikiKey/*` の入口。リクエストのたびに wiki と、ログインしている人のロールを引く。
+ * `/admin/w/:wikiKey/*` の入口。リクエストのたびに、セッションの人・wiki・その人のロールを1本のクエリで引く。
+ * `/admin/*` に掛けた `requireUser`・`requireAccess` よりも先に掛ける（ここで user と role を入れると、その2つは引き直さない）。
  * メンバーでない wiki は、無いものとして扱う（オーナーはすべての wiki に管理者として入れる）。
+ * 通らないときの応答は、3つを順に引いていたときと同じ：ログインしていなければ 401、
+ * どの wiki のメンバーでもなければ 403、wiki が無い・アーカイブ中・メンバーでないなら 404。
  */
 export const resolveWiki: MiddlewareHandler<AppEnv> = async (c, next) => {
   const { db } = c.get("deps");
-  const wiki = await findOpenWiki(db, c.req.param("wikiKey") ?? "");
-  const role = await roleIn(db, c.get("user"), wiki.id);
-  if (!role) throw new HttpError(404, "wiki_not_found", `wiki ${wiki.key} not found`);
+  const key = c.req.param("wikiKey") ?? "";
+  const claims = await sessionClaims(c);
+  const found = claims && (await findSessionUserInWiki(db, claims, key));
+  if (!found) throw unauthenticated();
+  const { user, wiki, role } = found;
+  if (!wiki || wiki.archivedAt || !role) {
+    // 通らないときだけ、どの wiki にも入れない人（招待制の案内を出す）かを確かめる
+    if (!(await hasAccess(db, user))) throw inviteOnly(user);
+    if (wiki?.archivedAt) throw notFound(`wiki ${key}`);
+    throw new HttpError(404, "wiki_not_found", `wiki ${key} not found`);
+  }
+  c.set("user", user);
   c.set("wiki", wiki);
   c.set("role", role);
   await next();

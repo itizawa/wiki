@@ -8,6 +8,20 @@ export type StructureChange =
   | { kind: "node_moved"; treeId: string; nodeId: string; from: string | null; to: string | null }
   | { kind: "node_reordered"; treeId: string; nodeId: string };
 
+/**
+ * 構造のスナップショット（コミットごとのツリーの状態）を残す日数。
+ * これより古いコミットは、head とその前後を除いてスナップショットを消すので、差分を出せなくなる。
+ */
+export const STRUCTURE_SNAPSHOT_KEEP_DAYS = 30;
+
+/** コミットの差分（`GET /structure/commits/:id` の応答のうち、差分の部分） */
+export type StructureCommitDiff = {
+  /** 親のコミットとの差分。`diffAvailable` が false のときは空（「変更なし」ではない） */
+  changes: StructureChange[];
+  /** 差分を出せるか。このコミットか親のスナップショットを消していると false */
+  diffAvailable: boolean;
+};
+
 /** 2つの構造状態の差分を、ツリーごと・node_id単位で算出する。 */
 export function diffStructures(before: StructureState, after: StructureState): StructureChange[] {
   const changes: StructureChange[] = [];

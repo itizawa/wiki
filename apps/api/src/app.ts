@@ -1,6 +1,6 @@
 import { StructureOpError, StructureValidationError } from "@wiki/shared";
 import { Hono } from "hono";
-import { authRoutes, requireAccess, requireUser } from "./auth/routes";
+import { authRoutes, clearLegacyCookies, requireAccess, requireUser } from "./auth/routes";
 import { appearanceRoutes } from "./routes/appearance";
 import { homeRoutes } from "./routes/home";
 import type { AppEnv, Deps } from "./env";
@@ -46,6 +46,9 @@ export function createApp(deps: Deps) {
       if (!c.res.headers.has(name)) c.res.headers.set(name, value);
     }
   });
+  // `__Host-` を付ける前の名前の Cookie は、セッションを見る経路に来たら消す（401 などのエラーの応答にも付ける）。
+  // 画像（/images）のようにキャッシュさせる応答には Set-Cookie を付けない
+  for (const path of ["/auth/*", "/admin/*", "/invites/*"]) app.use(path, clearLegacyCookies);
   // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
   // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外
   app.use("*", async (c, next) => {
@@ -78,6 +81,9 @@ export function createApp(deps: Deps) {
 
   // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
+  // wiki の経路は、セッションの人・wiki・ロールを1本のクエリで引く。下の2つよりも先に掛け、同じことを引き直させない。
+  // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
+  admin.use("/w/:wikiKey/*", resolveWiki);
   admin.use("*", requireUser, requireAccess);
   admin.get("/me", (c) => {
     const user = c.get("user");
@@ -88,9 +94,7 @@ export function createApp(deps: Deps) {
   admin.route("/audit-logs", globalAuditRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
-  // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
   const wiki = new Hono<AppEnv>();
-  wiki.use("*", resolveWiki);
   wiki.route("/pages", pageRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);

@@ -54,10 +54,9 @@ export async function pruneVersions(db: Db, now = new Date()): Promise<{ deleted
             ) r
             where r.rn > 1
               and r."created_at" < ${keepAllSince}::timestamptz
-              and not exists (
-                select 1 from "pages" p
-                where p."head_version_id" = r."id" or p."published_version_id" = r."id"
-              )
+              -- OR でつなぐと索引を使えず、候補ごとに pages 全体を読む。列ごとに分けて、それぞれの索引で引く
+              and not exists (select 1 from "pages" p where p."head_version_id" = r."id")
+              and not exists (select 1 from "pages" p where p."published_version_id" = r."id")
               and not exists (select 1 from "scheduled_actions" a where a."version_id" = r."id")
               and not exists (select 1 from "page_drafts" dr where dr."base_version_id" = r."id")
               -- 派生元が null になると「その連携が作ったページ」の判定（最初の版を作った連携）に当たってしまう
