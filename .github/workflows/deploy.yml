@@ -3,6 +3,13 @@ name: Deploy
 on:
   push:
     branches: [main]
+    # 文書と、エージェント向けの設定（.claude）だけの変更では動かさない（検査もマイグレーションもデプロイも要らない）。
+    # どちらも、ビルドにも実行時にも読まれない。1つでもほかのファイルが変わっていれば動く。
+    # ビルドや実行時に .md や .claude の中を読むようにしたら、ここから外す
+    paths-ignore:
+      - "**/*.md"
+      - ".claude/**"
+  # 手動実行は、変わったファイルに関係なく動く（シークレットの値を変えたあとの入れ直しに使う）
   workflow_dispatch:
 
 # デプロイは1本ずつ。途中で打ち切らない（マイグレーションの途中で止めないため）
@@ -11,7 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる
+  # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる。
+  # ここでビルドした管理画面は、成果物 admin-dist として deploy のジョブへ渡る
   check:
     uses: ./.github/workflows/ci.yml
     with:
@@ -43,6 +51,14 @@ jobs:
           # ユーザーを DB で持つ移行（0007）で一度だけ読み、オーナーとして登録する。移行が本番に入ったら、この行とシークレットを消す
           ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
 
+      # 管理画面は check のジョブ（ci.yml）がビルドしたものを使う。ここではビルドし直さない。
+      # 置き場所は apps/api/wrangler.toml の [assets] directory（../admin/dist）と合わせる
+      - name: Download admin build
+        uses: actions/download-artifact@v8
+        with:
+          name: admin-dist
+          path: apps/admin/dist
+
       - name: Deploy admin + API
         working-directory: apps/api
         env:
@@ -54,10 +70,10 @@ jobs:
           # 任意。「アクセス解析」用のサービスアカウントの鍵（JSON）。未登録なら渡さず、その機能だけが「未設定」になる
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
-          pnpm --filter @wiki/admin build
+          test -f ../admin/dist/index.html
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
             SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET EXPORT_TOKEN CRON_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
-          npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
+          pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker
         working-directory: apps/worker
@@ -70,4 +86,4 @@ jobs:
         run: |
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/worker-secrets.json" \
             CRON_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?" "CLOUDFLARE_ACCOUNT_ID?" "CLOUDFLARE_ANALYTICS_TOKEN?"
-          npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"
+          pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"

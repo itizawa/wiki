@@ -375,6 +375,17 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 
 `main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
 
+どちらも、関係するファイルが変わったときだけ動く。
+
+| 動くもの | 動かない変更 | 決めている場所 |
+|---|---|---|
+| GitHub Actions の「Deploy」 | `*.md` と `.claude/` の中**だけ**を変えた push（1つでもほかのファイルが変わっていれば動く。マイグレーションのファイルだけの変更でも動く） | `deploy.yml` の `paths-ignore` |
+| 公開サイトのビルド（Workers Builds） | `apps/site/`、`packages/shared/`、`pnpm-lock.yaml` のどれも変えていない push | Cloudflare のダッシュボードの Build watch paths（下の「初回の準備」の手順5） |
+
+- 「Deploy」の手動実行（Actions → Deploy → Run workflow）と、記事の公開のあとのビルド（デプロイフック）は、変わったファイルに関係なく動く
+- `.md` や `.claude/` の中のファイルを、ビルドや実行時に読むようにしたら、`deploy.yml` の `paths-ignore` から外す（外さないと、その変更が本番に出ない）
+- `wrangler` はルートの `package.json` の devDependency で版を固定している。Actions も、手元の `pnpm --filter @wiki/api deploy` なども、Workers Builds の `npx wrangler deploy` も、その版を使う（`npx wrangler` は、版を付けなければ、リポジトリに入っている Wrangler を使う）。版を上げると3つの Worker のデプロイすべてに効く。Workers Builds が実際に使った版は、ビルドのログの先頭に出る
+
 | 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
@@ -409,6 +420,20 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    - wiki は `{key}.hatchery-works.com` で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルート `*.hatchery-works.com/*` で受ける（`apps/site/wrangler.toml`）。**DNS に、プロキシを有効にしたワイルドカードのレコード（`*.hatchery-works.com`）を1つ足す**（行き先は使われないので、`AAAA` で `100::` など）。wiki を作るたびに DNS や設定を足す必要は無い
    - このルートは `wiki-admin` など、ほかの Worker のサブドメインにも当たる。wiki の key として使えないホスト名（予約語）は、公開サイトの Worker がそのまま本来の Worker へ渡す。**新しい Worker を同じゾーンのサブドメインで出すときは、その名前を `RESERVED_WIKI_KEYS` に足す**
    - 閲覧数は、Workers Analytics Engine に貯める（`apps/site/wrangler.toml` の `[[analytics_engine_datasets]]`）。データセットは最初に書いたときに自動でできるので、作る手順は無い。アカウントでまだ Analytics Engine を使ったことが無ければ、先に Cloudflare のダッシュボードで Analytics Engine を有効にしておく（有効でないアカウントでは、バインディングのある Worker のデプロイが失敗することがある）。Worker の実行時のシークレットは要らない
+   - **Build watch paths**（Settings → Builds → Build watch paths）を次のとおりにする。既定（Include が `*`、Exclude が空）のままだと、管理画面や API だけを変えた push でも、全 wiki・全ページをビルドし直す
+
+     | 欄 | 入れるもの |
+     |---|---|
+     | Include paths | `apps/site/*`、`packages/shared/*`、`pnpm-lock.yaml` |
+     | Exclude paths | `*.md` |
+
+     - パスはリポジトリのルートから書く（ルートディレクトリの `apps/site` からではない）。`*` は0文字以上の文字に当たる。書き方は Cloudflare のドキュメントの例（`project-a/*`、`docs/README.md`）に合わせてあり、GitHub Actions の `**` は使わない
+     - Exclude が先に効く。`apps/site/README.md` だけの変更ではビルドしない
+     - `main` 以外のブランチのビルド（プレビュー）にも同じ設定が効く。プレビューが使うサンプルデータ（`apps/site/fixtures/`）と、ビルドのスクリプト（`apps/site/scripts/`）は `apps/site/*` に入っている
+     - デプロイフックからのビルド（記事の公開・非公開、wiki の設定の変更のあと）は、この設定に関係なく動くはず。watch paths は push に含まれるファイルを見て決めるもので、デプロイフックは push を伴わない「手動のビルド」として動く。ただし Cloudflare のドキュメントに「デプロイフックには効かない」と書いた箇所は無いので、設定したら下の3つを必ず確かめる
+     - 1回の push に 20 個以上のコミットか 3000 個以上のファイルの変更があると、パスに関係なくビルドされる
+     - 公開サイトのビルドが、ここに無い場所のファイルを読むようにしたら（`packages/` に新しいパッケージを足して `apps/site` から使う、など）、Include paths に足す
+     - 設定したあとに確かめる：README だけを変えた push でビルドが始まらない。`apps/site` を変えた push でビルドが始まる。**記事を1つ公開し直すとビルドが始まる**（始まらなければ、Include paths を `*` に戻す。戻さないと、記事の公開が公開サイトに出ない）
    - つないだらデプロイフック（Settings → Builds → Deploy Hooks、ブランチ `main`）を発行する
 6. GitHub の Settings → Secrets and variables → Actions に次を登録する
 
@@ -428,6 +453,7 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
+   - 管理画面は、検査のジョブがビルドしたものを、デプロイのジョブがそのまま使う（成果物 `admin-dist`。7日で消える）。それより前の実行の「デプロイのジョブだけ」をやり直すと、成果物が無くて止まるので、そのときは「Re-run all jobs」でやり直す
 8. 任意。管理画面の「アクセス解析」を使うなら、**Google のサービスアカウント**を作り、鍵を `GOOGLE_SERVICE_ACCOUNT_JSON` として登録する（Google Cloud で Google Analytics Data API と Google Search Console API を有効にする → サービスアカウントと鍵（JSON）を作る → 手順6の表のシークレットに登録する → 「Deploy」を実行する）。くわしくは上の「アクセス解析 → 使えるようにする」。あとから行ってもよい
 9. 任意。5分おきの Cron が、やることの無いときに DB を起こさないようにするなら、**Workers KV の名前空間**を作る（`npx wrangler kv namespace create wiki-cron-marks`）。出力された `id` を、`apps/api/wrangler.toml` と `apps/worker/wrangler.toml` の**両方**の `[[kv_namespaces]]`（コメントにしてある3行）に入れ、コメントを外す
    - ここに、Cron への印を置く（下の「既定として選んだこと → 編集の無い時間帯は、Cron が DB を起こさない」）
@@ -477,7 +503,7 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 4. **管理画面の「全体の管理」の「wiki」タブで、最初の wiki の表示名を、これまでの `SITE_NAME` と同じ名前に直す**。移行の直後の表示名はツリーの名前（`trees.name`。変えていなければ「メイン」）になっている。`SITE_NAME` は公開サイトのビルドの環境変数で、マイグレーションからは読めないため。表示名を直すと公開サイトがビルドし直される
 5. 公開サイト（`wiki-site`）のデプロイが済んだら、`wiki.hatchery-works.com` が今までどおり見られることを確かめる。カスタムドメイン `wiki.hatchery-works.com` の設定が Cloudflare に残っていれば外す（ルートに置き換わった）
 
-公開サイトは `main` に入るとすぐビルドされ、API のデプロイより先になることがある。そのときは wiki が1つだった頃の形のデータを、最初の wiki 1つ分としてビルドする（サイト名は「wiki」、テーマは既定。`apps/site/scripts/fetch-manifest.mjs`）ので、ビルドは失敗しない。逆に、API のデプロイのあと 4 より前にビルドされると、サイト名がツリーの名前で出る。気になる場合は、3 の前に Workers Builds を一時停止し、4 のあとで再開する。
+公開サイトは、`apps/site` か `packages/shared` を変えた push が `main` に入るとすぐビルドされ、API のデプロイより先になることがある。そのときは wiki が1つだった頃の形のデータを、最初の wiki 1つ分としてビルドする（サイト名は「wiki」、テーマは既定。`apps/site/scripts/fetch-manifest.mjs`）ので、ビルドは失敗しない。逆に、API のデプロイのあと 4 より前にビルドされると、サイト名がツリーの名前で出る。気になる場合は、3 の前に Workers Builds を一時停止し、4 のあとで再開する。
 
 ### ユーザーを DB で持つようになったときの移行
 

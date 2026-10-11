@@ -23,8 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # 変更したパッケージを、マージ先との差分から決める
-          fetch-depth: 0
+          # PR では、変更したパッケージをマージ先との差分から決めるので、履歴を全部取る（0）。
+          # デプロイの前の確認は全部を確かめるので、先頭のコミットだけでよい（1）。
+          # 式の中の 0 は偽として扱われるので、「PR なら 0」を && の右に置かない
+          fetch-depth: ${{ github.event_name != 'pull_request' && 1 || 0 }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -54,6 +56,19 @@ jobs:
         run: pnpm ${{ steps.scope.outputs.filter }} test
       - if: contains(steps.scope.outputs.affected, '@wiki/admin')
         run: pnpm --filter @wiki/admin build
+      # ビルドした管理画面を、デプロイのジョブ（deploy.yml）へ渡す。デプロイの前の確認は全部を確かめるので、必ずここを通る。
+      # ビルドに渡す環境変数は無い（vite.config.ts の API_ORIGIN は `pnpm dev` のプロキシ用）ので、どこでビルドしても同じものになる。
+      # 環境変数でビルドの中身を変えるようにしたら、deploy.yml から呼ぶときにも同じ値を渡す
+      - if: contains(steps.scope.outputs.affected, '@wiki/admin')
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-dist
+          path: apps/admin/dist
+          if-no-files-found: error
+          # 同じ実行の中で受け渡すだけなので、長くは残さない。デプロイのジョブだけを数日後にやり直せるぶんは残す
+          retention-days: 7
+          # 実行し直したときに、前の回のものと名前が重なっても止まらないようにする
+          overwrite: true
       # サンプルのマニフェストで公開サイトをビルドし、限定公開の漏れ等を検査する
       - if: contains(steps.scope.outputs.affected, '@wiki/site')
         run: pnpm --filter @wiki/site build:sample
