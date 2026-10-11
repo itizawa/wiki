@@ -310,7 +310,7 @@ export function ComposeMode(props: {
   );
 
   const blocked = behind
-    ? "本文が新しい版になりました。下の「最新の版に合わせる」を押すと、送信できます。"
+    ? `${conflict ? "送信できませんでした。" : ""}作成しているあいだに、ほかの人がこのページの新しい版を作りました。書いた提案は、そのまま残っています。「最新の版に合わせる」を押すと、新しい本文を読み込み、提案の箇所を探し直します。`
     : lost.length > 0
       ? "場所が見つからない提案を取り除くと、送信できます。"
       : placed.length === 0
@@ -351,13 +351,20 @@ export function ComposeMode(props: {
           <Button color="inherit" disabled={busy} onClick={() => void quit()}>
             やめる
           </Button>
-          <Button variant="contained" disabled={blocked !== null || busy} onClick={() => setSendOpen(true)} aria-describedby={blocked ? "compose-blocked" : undefined}>
-            送信する
-          </Button>
+          {behind ? (
+            // 版が進んだあいだは、送信の代わりに、読み直しを置く（本文をどこまで送っていても、ここから押せる）
+            <Button variant="contained" loading={catching} disabled={send.isPending} onClick={() => void catchUp()} aria-describedby="compose-blocked">
+              最新の版に合わせる
+            </Button>
+          ) : (
+            <Button variant="contained" disabled={blocked !== null || busy} onClick={() => setSendOpen(true)} aria-describedby={blocked ? "compose-blocked" : undefined}>
+              送信する
+            </Button>
+          )}
         </Box>
         {/* 送信できない理由は、ボタンのそばに、いつも出しておく */}
         {blocked && (
-          <Muted id="compose-blocked" sx={{ flexBasis: "100%", textAlign: { sm: "right" }, fontSize: "0.8rem" }}>
+          <Muted id="compose-blocked" role={behind ? "alert" : undefined} sx={{ flexBasis: "100%", textAlign: { sm: "right" }, fontSize: "0.8rem", ...(behind && { color: "text.primary" }) }}>
             {blocked}
           </Muted>
         )}
@@ -365,19 +372,6 @@ export function ComposeMode(props: {
 
       <Box sx={{ width: "100%", maxWidth: 780 + 64, mx: "auto", px: { xs: 2, md: 4 }, pt: 3, pb: 12 }}>
         <Stack spacing={3}>
-          {behind && (
-            <Alert
-              severity="warning"
-              action={
-                <Button color="inherit" loading={catching} onClick={() => void catchUp()} sx={{ whiteSpace: "nowrap" }}>
-                  最新の版に合わせる
-                </Button>
-              }
-            >
-              {conflict ? "送信できませんでした。" : ""}
-              作成しているあいだに、ほかの人がこのページの新しい版を作りました。書いた提案は、そのまま残っています。「最新の版に合わせる」を押すと、新しい本文を読み込み、提案の箇所を探し直します。
-            </Alert>
-          )}
           {caughtUp && "failed" in caughtUp && (
             <Alert severity="error">最新の版を読み込めませんでした。通信の状態を確かめて、もう一度「最新の版に合わせる」を押してください。</Alert>
           )}
