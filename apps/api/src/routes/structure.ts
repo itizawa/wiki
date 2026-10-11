@@ -1,4 +1,4 @@
-import { commitStructureInput, diffStructures } from "@wiki/shared";
+import { commitStructureInput, diffStructures, type StructureCommitDiff } from "@wiki/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { pages } from "../db/schema";
@@ -10,6 +10,7 @@ import {
   getCommit,
   getCommitParents,
   getPrimaryTree,
+  hasSnapshot,
   listHistory,
   loadCommit,
   MAIN_BRANCH,
@@ -67,11 +68,17 @@ export const structureRoutes = new Hono<AppEnv>()
     // 別の wiki のコミットは、無いものとして扱う
     const { wikiId: _wikiId, createdBy: _createdBy, ...commit } = await getCommit(db, c.get("wiki").id, id);
     const parents = await getCommitParents(db, id);
-    const after = await loadCommit(db, id);
-    const before = parents[0] ? (await loadCommit(db, parents[0])).state : { trees: {} };
+    // 古いコミットはスナップショットを間引いている。無いものを空のツリーとして比べると、うその差分になる
+    const diffAvailable = (await hasSnapshot(db, id)) && (!parents[0] || (await hasSnapshot(db, parents[0])));
+    let diff: StructureCommitDiff = { changes: [], diffAvailable: false };
+    if (diffAvailable) {
+      const after = await loadCommit(db, id);
+      const before = parents[0] ? (await loadCommit(db, parents[0])).state : { trees: {} };
+      diff = { changes: diffStructures(before, after.state), diffAvailable: true };
+    }
     return c.json({
-      commit: { ...commit, createdAt: commit.createdAt.toISOString(), parentIds: parents },
-      changes: diffStructures(before, after.state),
+      commit: { ...commit, createdAt: commit.createdAt.toISOString(), parentIds: parents, diffAvailable },
+      ...diff,
     });
   });
 

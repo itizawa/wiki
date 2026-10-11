@@ -296,7 +296,6 @@ export const treeNodes = pgTable(
     primaryKey({ columns: [t.snapshotId, t.nodeId] }),
     unique("tree_nodes_snapshot_page_unique").on(t.snapshotId, t.pageId),
     check("tree_nodes_page_check", sql`${t.nodeId} = ${t.pageId}`),
-    index("tree_nodes_page_id_idx").on(t.pageId),
   ],
 );
 

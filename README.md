@@ -23,7 +23,7 @@
 ```
 apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite）
 apps/api         API（Hono + Drizzle + PostgreSQL）
-apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の版の間引き
+apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引き（版と、構造のスナップショット）
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
@@ -147,6 +147,12 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - 認証はしない。非公開・限定公開のページに貼った画像も、URL を知っていればだれでも見られる
   - 手元の開発（`pnpm dev`）では `apps/api/.data/images`（`IMAGES_DIR` で変えられる）に置く
 - 構造：`trees` / `tree_snapshots` / `tree_nodes` / `structure_commits` / `structure_commit_parents` / `commit_trees` / `structure_branches`
+  - ツリーを変えるたびに、コミット（`structure_commits`）と、その時点のツリー全体の写し（スナップショット。`tree_snapshots` と `tree_nodes`）ができる
+  - 古いコミットのスナップショットは消す（版の間引きと同じ `/internal/versions/prune`、1日1回。`apps/api/src/structure/prune.ts`）。**消したスナップショットは戻せない**
+    - スナップショットを残すコミット：いまのツリー（head）、できてから30日以内のコミット、それらの1つ前のコミット（差分は1つ前と比べて出すため）。日数は `packages/shared` の `STRUCTURE_SNAPSHOT_KEEP_DAYS`
+    - それ以外のコミットは、`commit_trees` の行と、どのコミットも指さなくなった `tree_snapshots`・`tree_nodes` を消す。`structure_commits`（誰が・いつ・何をしたか）は消さないので、「構造の履歴」の一覧にはすべて出る
+    - スナップショットを消したコミットは、「構造の履歴」で差分を出せない（一覧に「差分は見られません」と出て、選ぶと案内が出る）。API は `diffAvailable: false` を返す
+    - 1回にスナップショットを外すのは300コミットまで（残りは次の日）。ゴミ箱やアーカイブ中の wiki も、同じ決まりで消す
   - すべての構造変更はコミットとして記録し、履歴と差分の確認に使う
   - 1つの wiki にツリーは1本（primary）だけを扱う。テーブルは複数ツリー・ブランチを前提にした形のまま残してあり、API と UI からは作れない
   - ノードはすべてページで `node_id = page_id`（ツリー内で移動してもURLが変わらない）

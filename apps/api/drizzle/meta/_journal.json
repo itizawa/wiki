@@ -183,6 +183,13 @@
       "when": 1791703153404,
       "tag": "0025_indexes_for_scans",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791704314309,
+      "tag": "0026_drop_tree_nodes_page_id_idx",
+      "breakpoints": true
     }
   ]
 }

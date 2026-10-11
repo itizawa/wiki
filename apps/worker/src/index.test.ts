@@ -26,7 +26,7 @@ const tickResponses = {
 
 describe("scheduled", () => {
   it("only prunes versions on the daily cron", async () => {
-    const { impl, calls } = fakeFetch({ [PRUNE_URL]: { deleted: 3 } });
+    const { impl, calls } = fakeFetch({ [PRUNE_URL]: { deleted: 3, structure: { commits: 2, snapshots: 2, nodes: 40 } } });
     await handleScheduled(PRUNE_CRON, env, impl);
     expect(calls).toEqual([{ url: PRUNE_URL, method: "POST", auth: "Bearer t" }]);
   });

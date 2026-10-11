@@ -21,7 +21,7 @@ import type {
   ScheduledAction,
   OAuthConsentRequest,
   OAuthGrantSummary,
-  StructureChange,
+  StructureCommitDiff,
   StructureOpInput,
   TrashedPage,
   TreeMeta,
@@ -131,6 +131,8 @@ export type CommitListItem = {
   via?: string | null;
   /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
   createdBy?: { id: string; name: string } | null;
+  /** 差分を出せるか。古いコミットは構造のスナップショットを消しているので false */
+  diffAvailable: boolean;
 };
 
 /** 監査ログの絞り込み。from / to は JST の日付（YYYY-MM-DD）。wiki はオーナーの一覧だけ（"global" は全体にかかわるもの） */
@@ -288,7 +290,7 @@ export const api = {
     request<{ commitId: string }>("POST", w("/structure/commits"), input),
   history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
   commitDetail: (id: string) =>
-    request<{ commit: CommitListItem; changes: StructureChange[] }>("GET", w(`/structure/commits/${id}`)),
+    request<{ commit: CommitListItem } & StructureCommitDiff>("GET", w(`/structure/commits/${id}`)),
 };
 
 const VISIBILITY_LABEL = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;
