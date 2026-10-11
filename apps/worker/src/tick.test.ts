@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CRON_MARK_KEYS, tick, type CronMarkStore, type Env, type TickResult } from "./tick";
+import { CRON_MARK_KEYS, CRON_RECHECK_KEY, tick, type CronMarkStore, type Env, type TickResult } from "./tick";
 
 const env: Env = {
   API_ORIGIN: "https://api.test",
@@ -189,8 +189,41 @@ describe("tick with marks in KV", () => {
     expect(calls.map((c) => c.url)).toEqual([TICK]);
     // 残りのある下書きは次の時刻に、残りの無いビルド待ちは消える。変わらない予約の印には触らない
     expect(kv.marks()).toEqual({ drafts: minutes(4).toISOString(), scheduled: minutes(60).toISOString() });
-    expect(kv.puts).toEqual([CRON_MARK_KEYS.drafts]);
+    expect(kv.puts.filter((key) => key !== CRON_RECHECK_KEY)).toEqual([CRON_MARK_KEYS.drafts]);
     expect(kv.deletes.sort()).toEqual([CRON_MARK_KEYS.build, CRON_MARK_KEYS.drafts]);
+  });
+
+  it("looks at the DB once more on the run after it cleared a mark, then stops (a write that read the cleared mark from KV's cache is not lost)", async () => {
+    const kv = fakeKv({ drafts: minutes(-1) });
+    const withKv = { ...env, CRON_MARKS: kv.store };
+    const { impl, calls } = fakeFetch({ [TICK]: idle });
+    await tick(withKv, impl, AT);
+    expect(kv.marks()).toEqual({});
+    // 消した直後（KV の読み出しが古いあいだ）に API が下書きを保存しても、印は「まだある」と読めて書かれない。
+    // その下書きは DB にあるので、次の回に印が無くても DB を見て拾う
+    expect((await tick(withKv, impl, minutes(5))).skipped).toBe(false);
+    // 見直しの回は何も消していないので、その次からは API を呼ばない
+    expect(await tick(withKv, impl, minutes(10))).toEqual({ skipped: true });
+    expect(await tick(withKv, impl, minutes(15))).toEqual({ skipped: true });
+    expect(calls.map((c) => c.url)).toEqual([TICK, TICK]);
+    expect(kv.data.size).toBe(0);
+  });
+
+  it("does not ask for another look after the hourly check, when it cleared nothing", async () => {
+    const kv = fakeKv({ scheduled: minutes(600) });
+    const { impl, calls } = fakeFetch({ [TICK]: { ...idle, next: { ...NO_NEXT, scheduled: minutes(600).toISOString() } } });
+    await tick({ ...env, CRON_MARKS: kv.store }, impl, minutes(55));
+    expect(await tick({ ...env, CRON_MARKS: kv.store }, impl, minutes(60))).toEqual({ skipped: true });
+    expect(calls).toHaveLength(1);
+    expect(kv.puts).toEqual([]);
+  });
+
+  it("keeps the look-again mark when the API call fails", async () => {
+    const kv = fakeKv();
+    kv.data.set(CRON_RECHECK_KEY, JSON.stringify({ at: minutes(-5).toISOString() }));
+    const failing = fakeFetch({}, [TICK]);
+    await expect(tick({ ...env, CRON_MARKS: kv.store }, failing.impl, AT)).rejects.toThrow();
+    expect(kv.data.has(CRON_RECHECK_KEY)).toBe(true);
   });
 
   it("clears the due marks before the API looks at the DB, so that a mark written meanwhile survives", async () => {
@@ -278,13 +311,14 @@ describe("tick with marks in KV", () => {
     expect(third.calls.map((c) => c.url)).toEqual([TICK, HOOK, "https://api.test/internal/builds/b/triggered"]);
     expect(kv.marks()).toEqual({ build: AT.toISOString() });
 
-    // 次の回に API が「変更なし」と答えて、印が消える。その次からは API を呼ばない
+    // 次の回に API が「変更なし」と答えて、印が消える。印を消したので、もう1回だけ DB を見て、そのあとは API を呼ばない
     const fourth = fakeFetch({ [TICK]: idle });
     await tick(withKv, fourth.impl, minutes(15));
     expect(fourth.calls.map((c) => c.url)).toEqual([TICK]);
     expect(kv.marks()).toEqual({});
-    expect(await tick(withKv, fourth.impl, minutes(20))).toEqual({ skipped: true });
-    expect(fourth.calls).toHaveLength(1);
+    await tick(withKv, fourth.impl, minutes(20));
+    expect(await tick(withKv, fourth.impl, minutes(25))).toEqual({ skipped: true });
+    expect(fourth.calls).toHaveLength(2);
   });
 
   it("keeps the build mark when the hook was called but the API could not be told", async () => {

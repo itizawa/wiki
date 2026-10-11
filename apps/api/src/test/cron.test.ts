@@ -273,7 +273,8 @@ describe("POST /internal/tick", () => {
   });
 
   it("does not count the scheduled actions of an archived wiki", async () => {
-    ctx = await setup();
+    const kv = fakeKv();
+    ctx = await setup({ cronMarks: kv.store });
     expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" })).status).toBe(201);
     const page = (await ctx.call("POST", "/admin/w/notes/pages", { title: "N", bodyMd: "x" })).body;
     const runAt = new Date(Date.now() + 60 * MIN).toISOString();
@@ -282,6 +283,13 @@ describe("POST /internal/tick", () => {
     expect((await runTick(ctx.db)).next.scheduled).not.toBeNull();
     expect((await ctx.call("POST", "/admin/wikis/notes/archive")).status).toBe(200);
     expect((await runTick(ctx.db)).next.scheduled).toBeNull();
+
+    // 戻したときは、予約の印を直接は書かない。公開イベント（wiki_unarchive）の「ビルド待ちあり」でワーカーが API を呼び、
+    // そこで次の予約の時刻が DB から求め直される
+    kv.data.clear();
+    expect((await ctx.call("POST", "/admin/wikis/notes/unarchive")).status).toBe(200);
+    expect(kv.at("build")).not.toBeNull();
+    expect((await runTick(ctx.db)).next.scheduled).toBe(runAt);
   });
 
   it("keeps the build pending until the worker reports that the deploy hook was called", async () => {

@@ -70,6 +70,9 @@ export async function collectCronMarks<T>(store: CronMarkStore, run: () => Promi
  * 印が無いか、いまの印より早い時刻のときだけ書く（遅い時刻では上書きしない）。
  * 下書きの自動保存のたびに書かないためでもある（KV は書き込みの回数に上限がある）。
  * KV の失敗で、もとの操作（保存・公開）は失敗させない。
+ *
+ * KV の読み出しは最大60秒ほど古いことがある。ワーカーが消した直後の印を「まだある」と読んで書かずに終わることがあるが、
+ * ワーカーは印を消した回の次の回にもう一度 DB を見る（apps/worker/src/tick.ts の `CRON_RECHECK_KEY`）ので、遅れは Cron 1回分まで。
  */
 async function writeCronMarks(store: CronMarkStore, marks: Map<CronMarkKind, number>): Promise<void> {
   await Promise.all(

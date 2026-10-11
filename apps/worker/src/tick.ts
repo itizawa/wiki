@@ -46,6 +46,14 @@ export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
 };
 const KINDS = Object.keys(CRON_MARK_KEYS) as CronMarkKind[];
 
+/**
+ * 「次の回は、印に関係なく DB を見る」の印。ワーカーだけが読み書きする（API は触らない）。値の形はほかの印と同じ。
+ * 印を消した回のあとに置く。KV の読み出しは最大60秒ほど古いことがあり、そのあいだに API が「消す前の印」を読むと、
+ * 印はもうあると思って書かずに終わる。その変更を、次の回（5分後）に DB を見て拾う。
+ * 見直しの回は、時刻の来た印が無ければ何も消さないので、見直しが続くことはない。
+ */
+export const CRON_RECHECK_KEY = "cron:recheck";
+
 /** API の `/internal/tick` の応答（apps/api/src/cron/tick.ts の `TickResult`） */
 type ApiTick = {
   drafts: PromoteDraftsResult | null;
@@ -80,8 +88,8 @@ export const isHourlyCheck = (scheduledAt: Date) => scheduledAt.getUTCMinutes() 
  * Cron Triggers の1回分。全 wiki のぶんをまとめて行う（アーカイブ中の wiki は API 側で飛ばす）。
  * 通知先は全体で1つなので、文面に wiki の名前を入れる。
  *
- * 0) 印（Workers KV）だけを見る。時刻の来た印が無く、1時間に1回の確認の回でもなければ、API を呼ばずに終わる
- *    （API を呼ぶと DB が起きる。編集の無い時間帯に、サーバーレスの DB を止めておくため）
+ * 0) 印（Workers KV）だけを見る。時刻の来た印が無く、1時間に1回の確認の回でも、印を消した回の次の回でもなければ、
+ *    API を呼ばずに終わる（API を呼ぶと DB が起きる。編集の無い時間帯に、サーバーレスの DB を止めておくため）
  * 1) API の `/internal/tick` を呼ぶ。API が、下書きを版にする → 期限の来た予約を実行する → ビルドを起動するか決める、を行う
  * 2) 応答の `next`（DB から求めた、次に見に行く時刻）で印を書き直す
  * 3) 予約の最終失敗があれば通知
@@ -114,15 +122,19 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
   const now = Math.max(Date.now(), scheduledAt.getTime());
   // 印を読めなければ（KV が無い・KV の失敗）、今までどおり毎回 API を呼ぶ
   const kv = env.IGNORE_CRON_MARKS ? undefined : env.CRON_MARKS;
-  const marks = kv ? await readMarks(kv) : null;
+  const read = kv ? await readMarks(kv) : null;
+  const marks = read?.marks ?? null;
   const store = marks && kv ? kv : null;
   const due = KINDS.filter((kind) => marks?.[kind] != null && marks[kind]! <= now);
+  const recheck = read?.recheck != null && read.recheck <= now;
   const hourly = isHourlyCheck(scheduledAt);
-  if (marks && due.length === 0 && !hourly) return { skipped: true };
+  if (marks && due.length === 0 && !hourly && !recheck) return { skipped: true };
 
   // 時刻の来た印は、API が DB を見る前に消す。消したあとにコミットされた変更は、API が印を書き直す
   // （API はコミットのあとに書く）ので、「印は無いが、DB にも見えなかった」変更を作らない。
-  if (store) await Promise.all(due.map((kind) => writeMark(store, kind, null)));
+  if (store) {
+    await Promise.all([...due.map((kind) => writeMark(store, CRON_MARK_KEYS[kind], null)), ...(recheck ? [writeMark(store, CRON_RECHECK_KEY, null)] : [])]);
+  }
 
   let result: ApiTick;
   try {
@@ -132,7 +144,10 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
     // 1時間に1回の確認が失敗したときは、次の確認を1時間待たずに済むよう、印の無い種類にも印を置く
     if (store) {
       const lost = KINDS.filter((kind) => due.includes(kind) || (hourly && marks![kind] == null));
-      await Promise.all(lost.map((kind) => writeMark(store, kind, marks![kind] ?? now)));
+      await Promise.all([
+        ...lost.map((kind) => writeMark(store, CRON_MARK_KEYS[kind], marks![kind] ?? now)),
+        ...(recheck ? [writeMark(store, CRON_RECHECK_KEY, read!.recheck)] : []),
+      ]);
     }
     throw err;
   }
@@ -141,15 +156,17 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
   // 起動できたビルドの印もここでは消さない。次の回に API が「変更なし」と答えたところで消える
   // （起動済みの知らせが届かなかったときにも、次の回に同じビルドをもう一度頼める）
   if (store) {
-    await Promise.all(
-      KINDS.map(async (kind) => {
+    await Promise.all([
+      ...KINDS.map(async (kind) => {
         const next = result.next[kind] === null ? null : Date.parse(result.next[kind]);
         if (next === null || Number.isNaN(next)) return;
         // 消さなかった印（まだ先の時刻）は、早まるときだけ書き直す
         const current = due.includes(kind) ? null : marks![kind];
-        if (current == null || next < current) await writeMark(store, kind, next);
+        if (current == null || next < current) await writeMark(store, CRON_MARK_KEYS[kind], next);
       }),
-    );
+      // 印を消した回のあとは、次の回にもう一度 DB を見る（CRON_RECHECK_KEY の説明）
+      ...(due.length > 0 ? [writeMark(store, CRON_RECHECK_KEY, now)] : []),
+    ]);
   }
 
   const { drafts, run, build } = result;
@@ -180,11 +197,14 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
   return { skipped: false, drafts, run, build, deployed };
 }
 
-/** 3つの印を読む（種類 → 時刻。印が無ければ null）。KV が失敗したら全体を null にする */
-async function readMarks(store: CronMarkStore): Promise<Record<CronMarkKind, number | null> | null> {
+/** 印を読む（種類 → 時刻。印が無ければ null）。KV が失敗したら全体を null にする */
+async function readMarks(store: CronMarkStore): Promise<{ marks: Record<CronMarkKind, number | null>; recheck: number | null } | null> {
   try {
-    const values = await Promise.all(KINDS.map((kind) => store.get(CRON_MARK_KEYS[kind])));
-    return Object.fromEntries(KINDS.map((kind, i) => [kind, parseMark(values[i]!)])) as Record<CronMarkKind, number | null>;
+    const [recheck, ...values] = await Promise.all([CRON_RECHECK_KEY, ...KINDS.map((kind) => CRON_MARK_KEYS[kind])].map((key) => store.get(key)));
+    return {
+      marks: Object.fromEntries(KINDS.map((kind, i) => [kind, parseMark(values[i]!)])) as Record<CronMarkKind, number | null>,
+      recheck: parseMark(recheck!),
+    };
   } catch (err) {
     console.error("cron marks were not read", err);
     return null;
@@ -203,11 +223,11 @@ function parseMark(value: string | null): number | null {
 }
 
 /** 印を書く（at が null なら消す）。KV の失敗で、この回の処理は止めない */
-async function writeMark(store: CronMarkStore, kind: CronMarkKind, at: number | null): Promise<void> {
+async function writeMark(store: CronMarkStore, key: string, at: number | null): Promise<void> {
   try {
-    if (at === null) await store.delete(CRON_MARK_KEYS[kind]);
-    else await store.put(CRON_MARK_KEYS[kind], JSON.stringify({ at: new Date(at).toISOString() }));
+    if (at === null) await store.delete(key);
+    else await store.put(key, JSON.stringify({ at: new Date(at).toISOString() }));
   } catch (err) {
-    console.error(`cron mark ${kind} was not written`, err);
+    console.error(`cron mark ${key} was not written`, err);
   }
 }
