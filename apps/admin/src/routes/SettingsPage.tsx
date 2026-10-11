@@ -61,7 +61,7 @@ export function savedMessage(before: WikiSettings, after: WikiSettings): string 
 const textSx = { maxWidth: 680 } as const;
 const stepsSx = { m: 0, pl: 2.75, fontSize: "0.9rem", "& > li": { mb: 0.75 }, ...textSx } as const;
 
-/** `/w/{key}/settings`：wiki ごとの設定。いまは、公開サイトの外部サービスとの連携（Google Analytics・サーチコンソール）。 */
+/** 「設定」の「連携」タブ（`/w/{key}/settings/integrations`）：公開サイトの外部サービスとの連携（Google Analytics・サーチコンソール）。 */
 export function SettingsPage() {
   const { wiki, isOwner } = useWiki();
   const settings = useQuery({ queryKey: ["wiki-settings"], queryFn: api.getSettings });
@@ -71,23 +71,14 @@ export function SettingsPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2" gutterBottom>
-          設定
-        </Typography>
-        <Muted>
-          「{wiki.name}」の公開サイト（<Mono>{wiki.origin}</Mono>）の設定です。wiki ごとに持ち、ほかの wiki には影響しません。
-        </Muted>
-      </Section>
-
-      <Box sx={{ pt: 1 }}>
-        <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>
+        <Typography variant="h6" component="h2">
           連携
         </Typography>
         <Muted sx={textSx}>
-          公開サイトを Google のサービスとつなぎます。限定公開のページ（<Mono>/u/...</Mono>）には、どちらのタグも入れません（限定公開の URL を外へ送らないため）。
+          「{wiki.name}」の公開サイト（<Mono>{wiki.origin}</Mono>）を Google のサービスとつなぎます。限定公開のページ（<Mono>/u/...</Mono>）には、どちらのタグも入れません（限定公開の URL を外へ送らないため）。
           つないだあとの数字は、<RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">「アクセス解析」</RouterLink>で見られます。
         </Muted>
-      </Box>
+      </Section>
 
       {!isOwner && <Alert severity="info">変更はオーナーだけが行えます。いまの値は、下で見られます。</Alert>}
       {settings.error && <Alert severity="error">{errorMessage(settings.error)}</Alert>}
@@ -354,7 +345,7 @@ function ReadOnlyValue({ label, value, unset = "未設定（公開サイトに�
 function IntegrationTitle({ name, connected }: { name: string; connected: boolean }) {
   return (
     <Row sx={{ mb: 0.5 }}>
-      <Typography variant="subtitle1" component="h4" sx={{ fontWeight: 600 }}>
+      <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>
         {name}
       </Typography>
       <Muted component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, color: connected ? "success.main" : "text.secondary" }}>
@@ -414,7 +405,7 @@ function CopyField({ label, value, what = "URL" }: { label: string; value: strin
 function ReadNumbers({ target, connection, blocked, children }: { target: AnalyticsTarget; connection: GoogleConnection | undefined; blocked: string | null; children: ReactNode }) {
   return (
     <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "divider" }}>
-      <Typography component="h5" sx={{ fontWeight: 600, fontSize: "0.9375rem" }}>
+      <Typography component="h4" sx={{ fontWeight: 600, fontSize: "0.9375rem" }}>
         数字を管理画面で見る（アクセス解析）
       </Typography>
       <Muted sx={textSx}>

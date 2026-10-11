@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
@@ -15,9 +15,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
 import { useComposition, useSearchTerm } from "../lib/searchTerm";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
-import { openFindBar } from "../editor/FindBar";
+import { openFindBar } from "../editor/findBarState";
 import { usePageActions } from "../lib/pageActions";
-import { useCreateFromTemplate } from "../routes/TemplatesPage";
+import { useCreateFromTemplate } from "../lib/createFromTemplate";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
@@ -122,26 +122,34 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     },
     { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
     { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
-    { id: "members", label: "「メンバー」を開く", keywords: ["members", "invite", "users"], icon: <Users size={18} />, run: go("/w/$wikiKey/members") },
+    { id: "members", label: "「メンバー」を開く", keywords: ["members", "invite", "users"], icon: <Users size={18} />, run: go("/w/$wikiKey/settings/members") },
     // 監査ログは管理者だけ
     ...(role === "admin"
-      ? [{ id: "audit", label: "「監査ログ」を開く", keywords: ["audit", "log", "kansa"], icon: <ClipboardList size={18} />, run: go("/w/$wikiKey/audit") }]
+      ? [{ id: "audit", label: "「監査ログ」を開く", keywords: ["audit", "log", "kansa"], icon: <ClipboardList size={18} />, run: go("/w/$wikiKey/settings/audit") }]
       : []),
     // 外観は管理者だけが開ける
     ...(role === "admin"
-      ? [{ id: "appearance", label: "「外観」を開く", keywords: ["appearance", "theme", "color", "logo", "favicon"], icon: <Palette size={18} />, run: go("/w/$wikiKey/appearance") }]
+      ? [{ id: "appearance", label: "「外観」を開く", keywords: ["appearance", "theme", "color", "logo", "favicon"], icon: <Palette size={18} />, run: go("/w/$wikiKey/settings/appearance") }]
       : []),
     // トップページ（公開サイトのトップの自由記述）も管理者だけ
     ...(role === "admin"
-      ? [{ id: "home", label: "「トップページ」を開く", keywords: ["home", "top", "intro", "toppage"], icon: <PanelsTopLeft size={18} />, run: go("/w/$wikiKey/home") }]
+      ? [{ id: "home", label: "「トップページ」を開く", keywords: ["home", "top", "intro", "toppage"], icon: <PanelsTopLeft size={18} />, run: go("/w/$wikiKey/settings/home") }]
       : []),
     { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },
     {
       id: "settings",
       label: "「設定」を開く",
-      keywords: ["settings", "analytics", "ga", "google", "search console", "settei"],
+      keywords: ["settings", "settei", "general", "name", "icon", "wiki"],
       icon: <SlidersHorizontal size={18} />,
       run: go("/w/$wikiKey/settings"),
+    },
+    // 連携（GA・サーチコンソール）は、設定の中のタブを直接開ける
+    {
+      id: "integrations",
+      label: "「連携」を開く",
+      keywords: ["integrations", "analytics", "ga", "google", "search console", "renkei"],
+      icon: <Plug size={18} />,
+      run: go("/w/$wikiKey/settings/integrations"),
     },
     // 探せるページと操作は、開いている wiki のものだけ。ほかの wiki へは、ここから切り替える
     ...wikis

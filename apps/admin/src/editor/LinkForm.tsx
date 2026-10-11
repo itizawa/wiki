@@ -15,7 +15,7 @@ import { useRef, useState } from "react";
 import { Tooltip } from "../components/Tooltip";
 import { Muted } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
-import { imageFileProblem } from "./imageUpload";
+import { imageFileProblem } from "./imageFile";
 
 /**
  * 入力されたリンク先を整える。`example.com` のようにスキームが無ければ https:// を補う。

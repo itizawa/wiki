@@ -117,9 +117,8 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <slot />
     </div>
     <footer class={s.footer}>© {SITE_NAME}</footer>
-  </body>
-</html>
 
+{/* </html> のあとに書くと、Astro 7 はそのまま </html> のあとに出力する（5 では </body> の前へ動かしていた）ので、<body> の中に置く */}
 <script>
   import { nextHeaderVisibility } from "../lib/headerVisibility";
 
@@ -153,3 +152,5 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
     header.addEventListener("focusin", () => apply({ hidden: false, anchorY: window.scrollY }));
   }
 </script>
+  </body>
+</html>

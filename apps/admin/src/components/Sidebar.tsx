@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, PanelsTopLeft, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -11,7 +11,11 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type Collision,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
+  type DragOverEvent,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import Alert from "@mui/material/Alert";
@@ -26,19 +30,22 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Snackbar from "@mui/material/Snackbar";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useNavigate, useParams } from "@tanstack/react-router";
+import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { childrenByParent, type StructureOpInput, type TreeNode, type Visibility } from "@wiki/shared";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
 import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
-import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
+import { createSelectStore, useSelect, type SelectStore } from "../lib/selectStore";
+import { dropTargetOf, flattenVisible, resolveDrop, ROOT_END_DROP_ID, rowDropAt, rowDropId, type FlatRow } from "../lib/tree";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { confirmDialog } from "./ConfirmDialog";
 import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
@@ -49,16 +56,16 @@ export const SIDEBAR_WIDTH = 264;
 const UNTITLED = "無題";
 /** これ以上動かしたらドラッグとみなす距離（px）。 */
 const DRAG_DISTANCE = 4;
+// ドラッグの始め方の設定は、作り直さない。作り直すと、dnd-kit が、つかめる行をすべて描き直す（サイドバーを描き直すたびに）
+const MOUSE_DRAG = { activationConstraint: { distance: DRAG_DISTANCE } } as const;
+const TOUCH_DRAG = { activationConstraint: { delay: 250, tolerance: 5 } } as const;
 
 /**
  * 並び替えのドラッグの始め方。マウスは少し動かしたら、タッチは長押ししたら始める。
  * タッチで「動かしたら始める」にすると、サイドバーのスクロールと取り合いになってドラッグできない。
  */
 function useDragSensors() {
-  return useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: DRAG_DISTANCE } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
-  );
+  return useSensors(useSensor(MouseSensor, MOUSE_DRAG), useSensor(TouchSensor, TOUCH_DRAG));
 }
 
 /** 指で操作する端末（スマホ・タブレット）。行と行の中のボタンを大きくして、押し間違いを減らす。 */
@@ -129,7 +136,6 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -170,6 +176,8 @@ export function Sidebar(props: {
   };
   const openMenuKey = menuOpen ? (menuTarget?.key ?? null) : null;
   const isEmpty = tree?.nodes.length === 0;
+  // ページが多いときに、ツリーの行を間引いて描くのに使う
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
 
   return (
     <Box
@@ -188,7 +196,7 @@ export function Sidebar(props: {
         )}
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 1, pb: 2 }}>
+      <Box ref={setScrollEl} sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 1, pb: 2 }}>
         <NavItem to="/w/$wikiKey/search" icon={<Search size={18} />} onClick={props.onNavigate}>
           検索
         </NavItem>
@@ -218,28 +226,10 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
           構造の履歴
         </NavItem>
-        <NavItem to="/w/$wikiKey/members" icon={<Users size={18} />} onClick={props.onNavigate}>
-          メンバー
-        </NavItem>
-        {role === "admin" && (
-          <NavItem to="/w/$wikiKey/audit" icon={<ClipboardList size={18} />} onClick={props.onNavigate}>
-            監査ログ
-          </NavItem>
-        )}
-        {role === "admin" && (
-          <NavItem to="/w/$wikiKey/appearance" icon={<Palette size={18} />} onClick={props.onNavigate}>
-            外観
-          </NavItem>
-        )}
-        {role === "admin" && (
-          <NavItem to="/w/$wikiKey/home" icon={<PanelsTopLeft size={18} />} onClick={props.onNavigate}>
-            トップページ
-          </NavItem>
-        )}
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
           ゴミ箱
         </NavItem>
-        {/* この wiki の設定（公開サイトの連携）。変えられるのはオーナーだけだが、いまの値はだれでも見られる */}
+        {/* この wiki の設定（一般・外観・トップページ・連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
         </NavItem>
@@ -275,6 +265,7 @@ export function Sidebar(props: {
               openMenuKey={openMenuKey}
               onOpenMenu={openMenu}
               onNavigate={props.onNavigate}
+              scrollEl={scrollEl}
             />
           )}
         </Box>
@@ -686,26 +677,66 @@ function StarredRow({ page, menuOpen, onOpenMenu, onNavigate }: { page: RowMenuP
   );
 }
 
-type TreeContext = {
+/**
+ * ツリーの行が読む値。行は、この中の自分に関わる所だけを読み（`useSelect`）、そこが変わったときだけ描き直す。
+ * props や1つのオブジェクトで配ると、メニューの開閉や現在のページが変わるたびに、すべての行を描き直すことになる。
+ */
+type TreeState = {
+  pages: StructureResponse["pages"];
   childrenOf: ReadonlyMap<string | null, TreeNode[]>;
-  label: (node: TreeNode) => string;
-  visibility: (node: TreeNode) => Visibility;
-  activePageId: string | undefined;
   collapsed: ReadonlySet<string>;
-  toggle: (nodeId: string) => void;
-  expand: (nodeId: string) => void;
-  onCreatePage: (parentNodeId: string) => void;
-  page: (node: TreeNode) => RowMenuPage | undefined;
+  activePageId: string | undefined;
   /** 「…」メニューを開いている行の名前（開いていなければ null） */
   openMenuKey: string | null;
-  onOpenMenu: OpenRowMenu;
-  onNavigate?: () => void;
+  /** ドラッグ中に、落とす先になっている行と、「前へ」か「このページの下へ」か（行の上に無ければ null） */
+  dropNodeId: string | null;
+  dropKind: "before" | "into" | null;
   /** 折りたたみの動きの長さ。OS の「視差効果を減らす」が有効なら 0 */
   motionMs: number;
 };
 
+/** 行に渡す、作り直さないもの（作り直すと、すべての行を描き直す）。 */
+type TreeContext = {
+  store: SelectStore<TreeState>;
+  toggle: (nodeId: string) => void;
+  onCreatePage: (parentNodeId: string) => void;
+  onOpenMenu: OpenRowMenu;
+  onNavigate: () => void;
+};
+
 /** ツリーの折りたたみの動きの長さ（ms）。 */
 const TREE_MOTION_MS = 160;
+/**
+ * ページがこの数を超えたら、見えている行とその前後だけを描く。
+ * 見えている行の数ではなく、ページの総数で決める（畳む・ひらくのたびに、描き方が入れ替わらないように）。
+ */
+const VIRTUALIZE_OVER = 500;
+const NO_DROP = { dropNodeId: null, dropKind: null } as const;
+const NO_KIDS: readonly TreeNode[] = [];
+
+/**
+ * ドラッグ中の当たり判定。ポインタの下にある落とし先を選ぶ（`pointerWithin`）。落とし先は行ごとに1つで、
+ * 行の中のどこにポインタがあるかから「前へ」か「このページの下へ」かを決めて添える（`rowDropAt`）。
+ * 行と行の境目ちょうどでは2つの行に当たるので、近いほうを先頭にする。
+ */
+const treeCollision: CollisionDetection = (args) => {
+  const pointer = args.pointerCoordinates;
+  if (!pointer) return [];
+  return pointerWithin(args)
+    .map((hit) => {
+      const rect = hit.id === ROOT_END_DROP_ID ? undefined : args.droppableRects.get(hit.id);
+      if (!rect) return hit;
+      const { kind, distance } = rowDropAt(pointer, rect);
+      return { ...hit, data: { ...hit.data, kind, value: distance } };
+    })
+    .sort((a, b) => (a.data?.value ?? 0) - (b.data?.value ?? 0));
+};
+
+/** 当たり判定の結果から、落とす先を求める。 */
+function dropTargetOfCollisions(collisions: readonly Collision[] | null) {
+  const hit = collisions?.[0];
+  return hit ? dropTargetOf(String(hit.id), hit.data?.kind as "before" | "into" | undefined) : null;
+}
 
 function DocumentTree(props: {
   tree: StructureTree;
@@ -716,6 +747,8 @@ function DocumentTree(props: {
   openMenuKey: string | null;
   onOpenMenu: OpenRowMenu;
   onNavigate?: () => void;
+  /** サイドバーの、縦に送れる枠。行を間引いて描くとき（`VIRTUALIZE_OVER`）に、どこまで送ったかを見る */
+  scrollEl: HTMLElement | null;
 }) {
   const { tree, data, run } = props;
   const { pageId: activePageId } = useParams({ strict: false });
@@ -727,62 +760,81 @@ function DocumentTree(props: {
   const sensors = useDragSensors();
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
-  const label = (n: TreeNode) => data.pages[n.pageId]?.title ?? n.pageId;
-  const visibility = (n: TreeNode) => (data.pages[n.pageId]?.visibility ?? "private") as Visibility;
-  const expand = (nodeId: string) => {
-    if (collapsed.has(nodeId)) setCollapsedIds(collapsedIds.filter((id) => id !== nodeId));
+  // 行が読む値。描いたあと、画面に出る前に入れ替える（変わった所を読んでいる行だけが、続けて描き直す）
+  const shown = { pages: data.pages, childrenOf, collapsed, activePageId, openMenuKey: props.openMenuKey, motionMs: reducedMotion ? 0 : TREE_MOTION_MS };
+  const [store] = useState(() => createSelectStore<TreeState>({ ...shown, ...NO_DROP }));
+  useLayoutEffect(() => store.set(shown));
+
+  // 行に渡す操作は作り直さず、呼ばれたときの最新の値で動かす
+  const latest = useRef({ collapsedIds, setCollapsedIds, props });
+  latest.current = { collapsedIds, setCollapsedIds, props };
+  const ctx = useMemo<TreeContext>(() => {
+    const setCollapsed = (nodeId: string, next: boolean) => {
+      const { collapsedIds: ids, setCollapsedIds: set } = latest.current;
+      if (ids.includes(nodeId) !== next) set(next ? [...ids, nodeId] : ids.filter((id) => id !== nodeId));
+    };
+    return {
+      store,
+      toggle: (nodeId) => setCollapsed(nodeId, !latest.current.collapsedIds.includes(nodeId)),
+      onCreatePage: (parentNodeId) => {
+        setCollapsed(parentNodeId, false);
+        latest.current.props.onCreatePage(parentNodeId);
+      },
+      onOpenMenu: (target) => latest.current.props.onOpenMenu(target),
+      onNavigate: () => latest.current.props.onNavigate?.(),
+    };
+  }, [store]);
+
+  /** 落とす先の目印（行の上の線・行の色）を、ポインタの下の行に出す */
+  const showDrop = (e: DragMoveEvent | DragOverEvent) => {
+    const target = dropTargetOfCollisions(e.collisions);
+    store.set(target && target.kind !== "root-end" ? { dropNodeId: target.nodeId, dropKind: target.kind } : NO_DROP);
+  };
+  const endDrag = () => {
+    setDragging(null);
+    store.set(NO_DROP);
   };
 
   const onDragEnd = (e: DragEndEvent) => {
-    setDragging(null);
-    const target = e.over ? decodeDropTarget(String(e.over.id)) : null;
+    endDrag();
+    const target = e.over ? dropTargetOfCollisions(e.collisions) : null;
     if (!target) return;
     const nodeId = String(e.active.id);
     const move = resolveDrop(tree.nodes, nodeId, target);
     if (!move) return;
-    if (move.newParentNodeId) expand(move.newParentNodeId);
+    // 落とした先が畳まれていたら、ひらく
+    if (move.newParentNodeId && collapsed.has(move.newParentNodeId)) setCollapsedIds(collapsedIds.filter((id) => id !== move.newParentNodeId));
     run([{ type: "move", treeId: tree.id, nodeId, ...move }]);
   };
 
-  const ctx: TreeContext = {
-    childrenOf,
-    label,
-    visibility,
-    activePageId,
-    collapsed,
-    toggle: (nodeId) =>
-      setCollapsedIds(collapsed.has(nodeId) ? collapsedIds.filter((id) => id !== nodeId) : [...collapsedIds, nodeId]),
-    expand,
-    onCreatePage: (parentNodeId) => {
-      expand(parentNodeId);
-      props.onCreatePage(parentNodeId);
-    },
-    page: (n) => data.pages[n.pageId],
-    openMenuKey: props.openMenuKey,
-    onOpenMenu: props.onOpenMenu,
-    onNavigate: props.onNavigate,
-    motionMs: reducedMotion ? 0 : TREE_MOTION_MS,
-  };
+  const treeSx = [props.busy && { opacity: 0.6, pointerEvents: "none" }];
+  const draggingNode = dragging ? tree.nodes.find((n) => n.nodeId === dragging) : undefined;
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={treeCollision}
       onDragStart={(e) => setDragging(String(e.active.id))}
-      onDragCancel={() => setDragging(null)}
+      onDragMove={showDrop}
+      onDragOver={showDrop}
+      onDragCancel={endDrag}
       onDragEnd={onDragEnd}
     >
-      <Box role="tree" aria-label="ドキュメント" sx={[props.busy && { opacity: 0.6, pointerEvents: "none" }]}>
-        {(childrenOf.get(null) ?? []).map((node) => (
-          <TreeRow key={node.nodeId} node={node} depth={0} ctx={ctx} />
-        ))}
-        {tree.nodes.length === 0 && <Muted sx={{ px: 1 }}>ページはまだありません。</Muted>}
-      </Box>
+      {tree.nodes.length > VIRTUALIZE_OVER ? (
+        <VirtualTree childrenOf={childrenOf} collapsed={collapsed} dragging={dragging} scrollEl={props.scrollEl} ctx={ctx} sx={treeSx} />
+      ) : (
+        <Box role="tree" aria-label="ドキュメント" sx={treeSx}>
+          {(childrenOf.get(null) ?? []).map((node) => (
+            <TreeRow key={node.nodeId} node={node} depth={0} ctx={ctx} />
+          ))}
+          {tree.nodes.length === 0 && <Muted sx={{ px: 1 }}>ページはまだありません。</Muted>}
+        </Box>
+      )}
       <RootEndZone active={dragging !== null} />
       <DragOverlay>
-        {dragging && (
+        {draggingNode && (
           <Paper variant="outlined" sx={{ px: 1, py: 0.5, fontSize: "0.9rem", borderColor: "primary.main", boxShadow: 3 }}>
-            {label(tree.nodes.find((n) => n.nodeId === dragging)!)}
+            {data.pages[draggingNode.pageId]?.title ?? draggingNode.pageId}
           </Paper>
         )}
       </DragOverlay>
@@ -790,77 +842,19 @@ function DocumentTree(props: {
   );
 }
 
-/** ドロップ判定用の領域。行の上35%で「前へ」、残りで「このページの下へ」 */
-const dropZone = { position: "absolute", left: 0, right: 0, pointerEvents: "none" } as const;
-
-function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: TreeContext }) {
-  const kids = ctx.childrenOf.get(node.nodeId) ?? [];
-  const isOpen = !ctx.collapsed.has(node.nodeId);
-  const isActive = node.pageId === ctx.activePageId;
-  const drag = useDraggable({ id: node.nodeId });
-  const before = useDroppable({ id: encodeDropTarget({ kind: "before", nodeId: node.nodeId }) });
-  const into = useDroppable({ id: encodeDropTarget({ kind: "into", nodeId: node.nodeId }) });
-  const title = ctx.label(node);
-  const visibility = ctx.visibility(node);
-  const page = ctx.page(node);
-  const menuKey = `tree:${node.nodeId}`;
-  const menuOpen = ctx.openMenuKey === menuKey;
-
-  // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
-  // 行の高さいっぱいを押せるようにする（文字の高さだけだと、行の上下の余白を押しても開かない）
-  const labelSx = { ...ellipsis, alignSelf: "stretch", display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
-
+/** ツリーの行と、その下の子ページの行（入れ子）。ページが少ないとき（`VIRTUALIZE_OVER` 以下）の描き方。 */
+const TreeRow = memo(function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: TreeContext }) {
+  const { store } = ctx;
+  const kids = useSelect(store, (s) => s.childrenOf.get(node.nodeId) ?? NO_KIDS);
+  const isOpen = useSelect(store, (s) => !s.collapsed.has(node.nodeId));
+  const isActive = useSelect(store, (s) => s.activePageId === node.pageId);
+  const motionMs = useSelect(store, (s) => s.motionMs);
   return (
     <Box role="treeitem" aria-expanded={kids.length > 0 ? isOpen : undefined} aria-selected={isActive}>
-      <Box
-        ref={drag.setNodeRef}
-        {...drag.listeners}
-        {...drag.attributes}
-        role={undefined}
-        tabIndex={undefined}
-        data-active={isActive}
-        sx={{
-          ...rowSx,
-          // 行のボタン（「…」「＋」）は、マウスで操作する端末では、マウスを乗せたとき・キーボードのフォーカスがあるとき・メニューが開いている間だけ出す
-          ...rowActionsSx,
-          position: "relative",
-          gap: 0.25,
-          pl: `${4 + depth * 16}px`,
-          pr: 0.5,
-          opacity: drag.isDragging ? 0.4 : 1,
-          boxShadow: (t) => (before.isOver ? `inset 0 2px 0 ${(t.vars ?? t).palette.primary.main}` : "none"),
-          ...(into.isOver && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
-        }}
-      >
-        <Box ref={before.setNodeRef} sx={{ ...dropZone, top: 0, height: "35%" }} />
-        <Box ref={into.setNodeRef} sx={{ ...dropZone, top: "35%", bottom: 0 }} />
-        <IconButton
-          size="small"
-          aria-label={isOpen ? "たたむ" : "ひらく"}
-          onClick={() => ctx.toggle(node.nodeId)}
-          sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: kids.length > 0 ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36, "&::after": { display: "none" } } }}
-        >
-          {/* 矢印の向きも、「視差効果を減らす」が有効なら動かさずに切り替える（子ページの行の出し入れと揃える） */}
-          <Box component={ChevronRight} size={18} sx={{ transition: ctx.motionMs > 0 ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
-        </IconButton>
-        <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
-          <Box component="span" sx={ellipsis}>
-            {title}
-          </Box>
-          <VisibilityMark visibility={visibility} />
-        </RouterLink>
-        <Box className="row-actions" data-open={menuOpen}>
-          {page && <PageRowMenuButton title={title} open={menuOpen} onOpen={(anchor) => ctx.onOpenMenu({ key: menuKey, page, anchor })} sx={rowButtonSx} />}
-          <Tooltip title="この下に新しいページ">
-            <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={rowButtonSx}>
-              <Plus size={18} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-      </Box>
+      <TreeRowBar node={node} depth={depth} ctx={ctx} />
       {kids.length > 0 && (
         // 子ページの行は、高さを動かして出し入れする。畳んでいる間は描画しない
-        <Collapse in={isOpen} timeout={ctx.motionMs} unmountOnExit role="group">
+        <Collapse in={isOpen} timeout={motionMs} unmountOnExit role="group">
           {kids.map((kid) => (
             <TreeRow key={kid.nodeId} node={kid} depth={depth + 1} ctx={ctx} />
           ))}
@@ -868,7 +862,158 @@ function TreeRow({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: Tre
       )}
     </Box>
   );
+});
+
+/**
+ * ページが多いとき（`VIRTUALIZE_OVER` を超える）のツリー。見えている行とその前後だけを、平らに並べて描く。
+ * 入れ子にしないので、階層は字下げと `aria-level` で伝える。子ページの行は、高さを動かさずにすぐ出し入れする。
+ */
+function VirtualTree(props: {
+  childrenOf: ReadonlyMap<string | null, TreeNode[]>;
+  collapsed: ReadonlySet<string>;
+  dragging: string | null;
+  scrollEl: HTMLElement | null;
+  ctx: TreeContext;
+  sx: SxProps<Theme>;
+}) {
+  const { scrollEl, ctx } = props;
+  const rows = useMemo(() => flattenVisible(props.childrenOf, props.collapsed), [props.childrenOf, props.collapsed]);
+  const coarse = useMediaQuery("(pointer: coarse)");
+  const top = useRef<HTMLDivElement>(null);
+  // サイドバーの縦に送れる枠の中での、ツリーの始まりの位置。上にあるスターの行が増減すると動くので、描くたびに測り直す
+  const [scrollMargin, setScrollMargin] = useState(0);
+  useLayoutEffect(() => {
+    if (!top.current || !scrollEl) return;
+    const margin = top.current.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+    if (Math.abs(margin - scrollMargin) > 0.5) setScrollMargin(margin);
+  });
+  // ドラッグしている行は、送って見えなくなっても描いたままにする（外すと、ドラッグが続かない）
+  const draggingIndex = props.dragging ? rows.findIndex((r) => r.node.nodeId === props.dragging) : -1;
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range);
+      return draggingIndex < 0 || indexes.includes(draggingIndex) ? indexes : [...indexes, draggingIndex].sort((a, b) => a - b);
+    },
+    [draggingIndex],
+  );
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => (coarse ? 40 : 30),
+    getItemKey: (i) => rows[i]!.node.nodeId,
+    overscan: 12,
+    scrollMargin,
+    rangeExtractor,
+  });
+  return (
+    <Box ref={top} role="tree" aria-label="ドキュメント" sx={props.sx} style={{ position: "relative", height: virtualizer.getTotalSize() }}>
+      {virtualizer.getVirtualItems().map((item) => (
+        <VirtualTreeRow key={item.key} row={rows[item.index]!} index={item.index} top={item.start - scrollMargin} measure={virtualizer.measureElement} ctx={ctx} />
+      ))}
+    </Box>
+  );
 }
+
+const VirtualTreeRow = memo(function VirtualTreeRow(props: { row: FlatRow; index: number; top: number; measure: (el: HTMLElement | null) => void; ctx: TreeContext }) {
+  const { node, depth, hasChildren, indexInParent, siblings } = props.row;
+  const { store } = props.ctx;
+  const isOpen = useSelect(store, (s) => !s.collapsed.has(node.nodeId));
+  const isActive = useSelect(store, (s) => s.activePageId === node.pageId);
+  return (
+    <Box
+      ref={props.measure}
+      data-index={props.index}
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-posinset={indexInParent}
+      aria-setsize={siblings}
+      aria-expanded={hasChildren ? isOpen : undefined}
+      aria-selected={isActive}
+      // 位置は transform ではなく top で決める（dnd-kit は、落とし先の位置を transform を外して測る）
+      style={{ position: "absolute", top: props.top, left: 0, right: 0 }}
+    >
+      <TreeRowBar node={node} depth={depth} ctx={props.ctx} />
+    </Box>
+  );
+});
+
+/** ツリーの行（1ページぶん）。ドラッグでつかむ所であり、落とす先でもある。 */
+const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNode; depth: number; ctx: TreeContext }) {
+  const { store } = ctx;
+  const menuKey = `tree:${node.nodeId}`;
+  const hasKids = useSelect(store, (s) => (s.childrenOf.get(node.nodeId)?.length ?? 0) > 0);
+  const isOpen = useSelect(store, (s) => !s.collapsed.has(node.nodeId));
+  const isActive = useSelect(store, (s) => s.activePageId === node.pageId);
+  const page = useSelect(store, (s) => s.pages[node.pageId]);
+  const menuOpen = useSelect(store, (s) => s.openMenuKey === menuKey);
+  // 行の上 35% に落とすと「前へ」、残りに落とすと「このページの下へ」（`rowDropAt`）
+  const dropKind = useSelect(store, (s) => (s.dropNodeId === node.nodeId ? s.dropKind : null));
+  const moves = useSelect(store, (s) => s.motionMs > 0);
+  const drag = useDraggable({ id: node.nodeId });
+  const drop = useDroppable({ id: rowDropId(node.nodeId) });
+  const setDragRef = drag.setNodeRef;
+  const setDropRef = drop.setNodeRef;
+  const setRef = useCallback(
+    (el: HTMLElement | null) => {
+      setDragRef(el);
+      setDropRef(el);
+    },
+    [setDragRef, setDropRef],
+  );
+  const title = page?.title ?? node.pageId;
+  const visibility = (page?.visibility ?? "private") as Visibility;
+
+  // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
+  // 行の高さいっぱいを押せるようにする（文字の高さだけだと、行の上下の余白を押しても開かない）
+  const labelSx = { ...ellipsis, alignSelf: "stretch", display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
+
+  return (
+    <Box
+      ref={setRef}
+      {...drag.listeners}
+      {...drag.attributes}
+      role={undefined}
+      tabIndex={undefined}
+      data-active={isActive}
+      sx={{
+        ...rowSx,
+        // 行のボタン（「…」「＋」）は、マウスで操作する端末では、マウスを乗せたとき・キーボードのフォーカスがあるとき・メニューが開いている間だけ出す
+        ...rowActionsSx,
+        position: "relative",
+        gap: 0.25,
+        pl: `${4 + depth * 16}px`,
+        pr: 0.5,
+        opacity: drag.isDragging ? 0.4 : 1,
+        boxShadow: (t) => (dropKind === "before" ? `inset 0 2px 0 ${(t.vars ?? t).palette.primary.main}` : "none"),
+        ...(dropKind === "into" && { bgcolor: (t) => `color-mix(in srgb, ${(t.vars ?? t).palette.primary.main} 15%, transparent)` }),
+      }}
+    >
+      <IconButton
+        size="small"
+        aria-label={isOpen ? "たたむ" : "ひらく"}
+        onClick={() => ctx.toggle(node.nodeId)}
+        sx={{ p: 0, width: 20, height: 20, flexShrink: 0, visibility: hasKids ? "visible" : "hidden", [TOUCH]: { width: 32, height: 36, "&::after": { display: "none" } } }}
+      >
+        {/* 矢印の向きも、「視差効果を減らす」が有効なら動かさずに切り替える（子ページの行の出し入れと揃える） */}
+        <Box component={ChevronRight} size={18} sx={{ transition: moves ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
+      </IconButton>
+      <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
+        <Box component="span" sx={ellipsis}>
+          {title}
+        </Box>
+        <VisibilityMark visibility={visibility} />
+      </RouterLink>
+      <Box className="row-actions" data-open={menuOpen}>
+        {page && <PageRowMenuButton title={title} open={menuOpen} onOpen={(anchor) => ctx.onOpenMenu({ key: menuKey, page, anchor })} sx={rowButtonSx} />}
+        <Tooltip title="この下に新しいページ">
+          <IconButton size="small" aria-label={`「${title}」の下に新しいページ`} onClick={() => ctx.onCreatePage(node.nodeId)} sx={rowButtonSx}>
+            <Plus size={18} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  );
+});
 
 /** 限定公開・非公開のページに付ける印。公開のページには何も付けない。 */
 export function VisibilityMark({ visibility }: { visibility: Visibility }) {
@@ -886,7 +1031,7 @@ export function VisibilityMark({ visibility }: { visibility: Visibility }) {
 
 /** ツリーの下の余白。ドラッグ中だけ「最上位の末尾へ」の落とし先として見せる。 */
 function RootEndZone({ active }: { active: boolean }) {
-  const drop = useDroppable({ id: encodeDropTarget({ kind: "root-end" }) });
+  const drop = useDroppable({ id: ROOT_END_DROP_ID });
   return (
     <Box
       ref={drop.setNodeRef}

@@ -1,46 +1,50 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
 import { HOME_INTRO_MAX, type WikiHome } from "@wiki/shared";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
-import { Muted, SkeletonEditor } from "../components/ui";
+import { Muted, Row, Section } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { useWiki } from "../lib/wiki";
-import { FULL_HEIGHT } from "./WikiLayout";
 
 /**
  * トップページ：公開サイトのトップ（`/`）の、新着記事の上に出す自由記述（wiki の管理者だけ）。
  * 本文はページと同じエディタで書く。保存するまで公開サイトには出さない。
  */
 export function HomeSettingsPage() {
-  const { role } = useWiki();
+  const { wiki, role } = useWiki();
   const home = useQuery({ queryKey: ["home"], queryFn: api.getHome, enabled: role === "admin" });
 
-  if (role !== "admin") {
-    return (
-      <Box sx={{ p: { xs: 2, md: 3 } }}>
+  return (
+    <Stack spacing={1.5}>
+      <Section>
+        <Typography variant="h6" component="h2">
+          トップページ
+        </Typography>
+        <Muted>
+          「{wiki.name}」の公開サイトのトップで、新着記事の上に出す紹介文などを書きます。保存するまで公開サイトには出ません。空にすると、トップには新着記事だけが出ます。
+        </Muted>
+      </Section>
+      {role !== "admin" ? (
         <Alert severity="info">トップページは、この wiki の管理者だけが変えられます。</Alert>
-      </Box>
-    );
-  }
-  if (home.error) {
-    return (
-      <Alert severity="error" sx={{ m: 3 }}>
-        {errorMessage(home.error)}
-      </Alert>
-    );
-  }
-  if (!home.data) return <SkeletonEditor />;
-  return <HomeEditor saved={home.data} />;
+      ) : home.error ? (
+        <Alert severity="error">{errorMessage(home.error)}</Alert>
+      ) : !home.data ? (
+        <Muted>読み込み中…</Muted>
+      ) : (
+        <HomeEditor saved={home.data} />
+      )}
+    </Stack>
+  );
 }
 
 function HomeEditor({ saved }: { saved: WikiHome }) {
-  const { wiki } = useWiki();
   const qc = useQueryClient();
   const [introMd, setIntroMd] = useState(saved.introMd);
   const [justSaved, setJustSaved] = useState(false);
@@ -89,51 +93,45 @@ function HomeEditor({ saved }: { saved: WikiHome }) {
   });
 
   return (
-    <Box sx={{ minHeight: FULL_HEIGHT, display: "flex", flexDirection: "column" }}>
-      <Box component="header" sx={{ position: "sticky", top: 0, zIndex: 2, height: 48, display: "flex", alignItems: "center", gap: 1, px: 2, bgcolor: "background.paper" }}>
-        <Muted component="div" sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <Box component="span" sx={{ color: "text.primary" }}>
-            トップページ
-          </Box>
+    <Stack spacing={1.5}>
+      {/* 本文はページと同じエディタ。「設定」のタブの中に出すので、編集画面のような上の帯は付けず、保存はほかのタブと同じく下に置く */}
+      <Section>
+        <Typography variant="subtitle1" component="h3" sx={{ mb: 1.5 }}>
+          自由記述
+        </Typography>
+        <Box sx={{ maxWidth: 780 }}>
+          <MarkdownEditor value={introMd} onChange={setIntroMd} />
+        </Box>
+        <Muted sx={{ mt: 1.5, color: tooLong ? "error.main" : undefined }} role={tooLong ? "alert" : undefined}>
+          {tooLong
+            ? `${HOME_INTRO_MAX.toLocaleString()}文字までです（いま ${introMd.length.toLocaleString()}文字）`
+            : `${introMd.length.toLocaleString()} / ${HOME_INTRO_MAX.toLocaleString()}文字`}
         </Muted>
-        <Muted component="div" sx={{ flexShrink: 0, color: tooLong ? "error.main" : undefined, display: { xs: "none", sm: "block" } }}>
-          {introMd.length.toLocaleString()} / {HOME_INTRO_MAX.toLocaleString()}文字
-        </Muted>
-        {dirty && (
-          <Button disabled={save.isPending} onClick={() => setIntroMd(saved.introMd)} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-            変更を取り消す
-          </Button>
-        )}
-        <Button variant="contained" disabled={!canSave} onClick={() => save.mutate()} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-          {save.isPending ? "保存中…" : dirty ? "保存 (⌘S)" : "保存済み"}
-        </Button>
-      </Box>
+      </Section>
 
-      <Box sx={{ width: "100%", maxWidth: 780, mx: "auto", px: { xs: 2, md: 4 }, pt: 4, pb: 6 }}>
+      <Section>
+        <Row>
+          <Button variant="contained" size="medium" disabled={!canSave} onClick={() => save.mutate()}>
+            {save.isPending ? "保存中…" : dirty ? "保存する (⌘S)" : "保存済み"}
+          </Button>
+          {dirty && (
+            <Button size="medium" disabled={save.isPending} onClick={() => setIntroMd(saved.introMd)}>
+              変更を取り消す
+            </Button>
+          )}
+        </Row>
+        <Muted sx={{ mt: 1 }}>公開サイトへの反映には数分かかります。</Muted>
         {save.error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mt: 1 }}>
             {errorMessage(save.error)}
           </Alert>
         )}
-        {tooLong && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {HOME_INTRO_MAX.toLocaleString()}文字までです（いま {introMd.length.toLocaleString()}文字）。
-          </Alert>
-        )}
-        {justSaved && !dirty ? (
-          <Alert severity="success" sx={{ mb: 3 }} role="status">
+        {justSaved && !dirty && (
+          <Alert severity="success" sx={{ mt: 1 }} role="status">
             保存しました。数分後に公開サイトに反映されます。
           </Alert>
-        ) : (
-          <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
-            「{wiki.name}」の公開サイトのトップで、新着記事の上に出す紹介文などです。保存するまで公開サイトには出ません。空にすると、トップには新着記事だけが出ます。
-          </Alert>
         )}
-        <Typography variant="h4" component="h1" sx={{ mb: 2, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}>
-          トップページ
-        </Typography>
-        <MarkdownEditor value={introMd} onChange={setIntroMd} />
-      </Box>
-    </Box>
+      </Section>
+    </Stack>
   );
 }

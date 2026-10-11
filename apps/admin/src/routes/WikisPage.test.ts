@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { iconUrlProblem, keyChecks } from "./WikisPage";
+import { iconUrlProblem } from "../components/WikiIdentityForm";
+import { keyChecks } from "./WikisPage";
 
 const unmet = (key: string, taken: string[] = []) => keyChecks(key, taken).filter((c) => !c.ok).length;
 

@@ -70,7 +70,10 @@ export function isAllowedRedirectUri(raw: string): boolean {
 
 /** 許可の無いクライアントを残しておく時間。これを過ぎたら、次の登録のときに消す */
 export const UNUSED_CLIENT_TTL_SEC = 60 * 60 * 24;
-/** 許可の無いクライアントを持てる数。登録はログイン無しでできるので、表が際限なく増えないようにする */
+/**
+ * 許可の無いクライアントを持てる数。登録はログイン無しでできるので、表が際限なく増えないようにする。
+ * これを超えるぶんは、古いものから消す（断ると、外から登録を繰り返すだけで、正規の新しい接続を止められてしまう）
+ */
 export const MAX_UNUSED_CLIENTS = 200;
 
 const unused = sql`not exists (select 1 from "oauth_grants" g where g."client_id" = "oauth_clients"."id")`;
@@ -79,15 +82,15 @@ export async function registerClient(db: Db, input: { name: string; redirectUris
   await db
     .delete(oauthClients)
     .where(and(unused, sql`"oauth_clients"."created_at" < now() - make_interval(secs => ${UNUSED_CLIENT_TTL_SEC})`));
-  const [{ count } = { count: 0 }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(oauthClients)
-    .where(unused);
-  if (count >= MAX_UNUSED_CLIENTS) {
-    throw new OAuthError("temporarily_unavailable", "too many unused clients; try again later", 429);
-  }
   const id = `wc_${randomToken(16)}`;
   const [row] = await db.insert(oauthClients).values({ id, name: input.name, redirectUris: input.redirectUris }).returning();
+  // 許可の無いものは、新しい順に MAX_UNUSED_CLIENTS 件だけ残す（いま登録したものは残る）。許可のあるものは消さない
+  await db.execute(sql`
+    delete from "oauth_clients" where "id" in (
+      select "id" from "oauth_clients" where ${unused} and "id" <> ${id}
+      order by "created_at" desc, "id" desc offset ${MAX_UNUSED_CLIENTS - 1}
+    )
+  `);
   return row!;
 }
 
