@@ -51,7 +51,8 @@ export const structureRoutes = new Hono<AppEnv>()
   .post("/commits", async (c) => {
     const { db } = c.get("deps");
     const input = await parseJson(c, commitStructureInput);
-    const result = await commitOps(db, c.get("wiki").id, { ...input, createdBy: c.get("user").id });
+    // 公開中のページの並びや親子が変わったら、公開サイトをビルドし直す
+    const result = await commitOps(db, c.get("wiki").id, { ...input, createdBy: c.get("user").id, recordPublishEvent: true });
     return c.json({ commitId: result.commitId }, 201);
   })
   .get("/commits", async (c) => {

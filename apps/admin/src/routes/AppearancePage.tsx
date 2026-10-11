@@ -28,7 +28,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
-import { useWiki } from "../lib/wiki";
+import { useRefreshWikis, useWiki } from "../lib/wiki";
 
 const MODE_LABEL: Record<AccentMode, string> = { light: "ライト", dark: "ダーク" };
 
@@ -43,7 +43,7 @@ export function AppearancePage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h1">
+        <Typography variant="h6" component="h2">
           外観
         </Typography>
         <Muted>
@@ -65,6 +65,7 @@ export function AppearancePage() {
 
 function AppearanceForm({ saved }: { saved: WikiAppearance }) {
   const qc = useQueryClient();
+  const refreshWikis = useRefreshWikis();
   const [name, setName] = useState(saved.name);
   const [theme, setTheme] = useState<WikiTheme>(saved.theme);
   const [justSaved, setJustSaved] = useState(false);
@@ -77,7 +78,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
       setTheme(res.theme);
       setJustSaved(true);
       // サイト名は wiki の表示名なので、切り替えメニューなどにも出し直す
-      await qc.invalidateQueries({ queryKey: ["wikis"] });
+      await refreshWikis();
     },
   });
 
@@ -113,7 +114,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1fr)" }, gap: 1.5, alignItems: "start" }}>
       <Stack spacing={1.5}>
         <Section>
-          <Typography variant="subtitle1" component="h2" gutterBottom>
+          <Typography variant="subtitle1" component="h3" gutterBottom>
             サイト名
           </Typography>
           <TextField
@@ -129,13 +130,13 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
         </Section>
 
         <Section>
-          <Typography variant="subtitle1" component="h2">
+          <Typography variant="subtitle1" component="h3">
             アクセント色
           </Typography>
           <Muted sx={{ mb: 1.5 }}>
             リンクと、強調のコールアウトの色です。背景とのコントラスト比が {MIN_CONTRAST} : 1 以上（読みやすさの基準。WCAG）の色だけ保存できます。ライト用はライトの背景、ダーク用はダークの背景に対して確かめます。
           </Muted>
-          <Typography variant="subtitle2" component="h3" sx={{ mb: 0.5 }}>
+          <Typography variant="subtitle2" component="h4" sx={{ mb: 0.5 }}>
             色の見本
           </Typography>
           <Row sx={{ mb: 2 }}>
@@ -181,7 +182,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
         </Section>
 
         <Section>
-          <Typography variant="subtitle1" component="h2" gutterBottom>
+          <Typography variant="subtitle1" component="h3" gutterBottom>
             ロゴとファビコン
           </Typography>
           <Stack spacing={2.5}>
@@ -232,7 +233,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
       </Stack>
 
       <Section sx={{ position: { lg: "sticky" }, top: { lg: 16 } }}>
-        <Typography variant="subtitle1" component="h2">
+        <Typography variant="subtitle1" component="h3">
           プレビュー
         </Typography>
         <Muted sx={{ mb: 1.5 }}>保存するまでは、ここだけが変わります。</Muted>
@@ -255,7 +256,7 @@ function AccentField({ mode, value, onChange }: { mode: AccentMode; value: strin
 
   return (
     <Box>
-      <Typography variant="subtitle2" component="h3" sx={{ mb: 0.5 }}>
+      <Typography variant="subtitle2" component="h4" sx={{ mb: 0.5 }}>
         {MODE_LABEL[mode]}用
       </Typography>
       <Row sx={{ flexWrap: "nowrap" }}>
@@ -333,7 +334,7 @@ function ImageField(props: { label: string; help: string; value: string | null; 
 
   return (
     <Box>
-      <Typography variant="subtitle2" component="h3">
+      <Typography variant="subtitle2" component="h4">
         {props.label}
       </Typography>
       <Muted sx={{ mb: 1 }}>{props.help}</Muted>

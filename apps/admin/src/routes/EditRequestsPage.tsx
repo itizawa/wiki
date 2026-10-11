@@ -67,8 +67,9 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
       return next;
     });
     if (result.versionId === null) return;
-    // 版が増えた：編集画面の本文と下書き、版やタイトルを出している所を読み直す
-    for (const key of [["page", pageId], ["draft", pageId], ["versions", pageId], ["pages"], ["search"], ["schedule"]]) void qc.invalidateQueries({ queryKey: key });
+    // 版が増えた：編集画面の本文と下書き、版やタイトルを出している所を読み直す。
+    // ツリー（structure）はページの更新日時を持ち、30 秒は取り直さない（lib/queryStaleTime.ts）ので、ここで読み直す（編集画面で版を作ったときと同じ）
+    for (const key of [["page", pageId], ["draft", pageId], ["versions", pageId], ["pages"], ["search"], ["structure"], ["schedule"]]) void qc.invalidateQueries({ queryKey: key });
   };
 
   const decide = useMutation({

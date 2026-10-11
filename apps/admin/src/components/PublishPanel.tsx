@@ -23,7 +23,7 @@ import {
 } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { api, errorMessage } from "../lib/api";
-import { useWiki } from "../lib/wiki";
+import { useRefreshWikis, useWiki } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
 import { publicPageUrl } from "../lib/publicUrl";
 import { scheduleChoices, type ScheduleKind } from "../lib/scheduleKind";
@@ -65,6 +65,7 @@ export type EnsureVersion = () => Promise<PageDetail>;
  */
 export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail; dirty: boolean; ensureVersion: EnsureVersion }) {
   const qc = useQueryClient();
+  const refreshWikis = useRefreshWikis();
   const schedule = useQuery({ queryKey: ["schedule", page.id], queryFn: () => api.listSchedule({ pageId: page.id }) });
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const [picked, setVisibility] = useState<PublishVisibility>(page.visibility === "unlisted" ? "unlisted" : "public");
@@ -89,6 +90,8 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
     await qc.invalidateQueries({ queryKey: ["structure"] });
     await qc.invalidateQueries({ queryKey: ["schedule"] });
     await qc.invalidateQueries({ queryKey: ["pages"] });
+    // wiki の一覧に出す「公開中のページ」の件数
+    void refreshWikis();
   };
   const action = useMutation({ mutationFn: (fn: () => Promise<unknown>) => fn(), onSuccess: refresh });
 

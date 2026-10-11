@@ -1,5 +1,6 @@
 import {
   applyOps,
+  childrenByParent,
   isWithinParent,
   newTreeId,
   type StructureOp,
@@ -7,7 +8,7 @@ import {
   type TreeMeta,
   type TreeNode,
 } from "@wiki/shared";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { rowsOf, type Db } from "../db/client";
 import {
   commitTrees,
@@ -21,6 +22,8 @@ import {
   wikis,
 } from "../db/schema";
 import { HttpError, notFound } from "../errors";
+import { publicTreeNodes } from "../publishing/manifest";
+import { recordPublishEvent } from "../publishing/service";
 
 export const MAIN_BRANCH = "main";
 
@@ -123,6 +126,12 @@ export async function commitOps(
     checkVisibility?: boolean;
     /** 構造を変えた人。人の操作でなければ省く */
     createdBy?: string | null;
+    /**
+     * 公開サイトのツリー（並びと親子）が変わるなら、ビルドを起こす（`publish_events` に `structure` を記録する）。
+     * 並べ替え・移動で渡す。ページの作成（新しいページは非公開）と、ゴミ箱に入れる・元に戻す（呼び出し側が
+     * `delete` `restore` を記録する）では渡さない。
+     */
+    recordPublishEvent?: boolean;
   },
 ): Promise<CommitResult> {
   return db.transaction(async (tx) => {
@@ -171,8 +180,41 @@ export async function commitOps(
       .update(structureBranches)
       .set({ headCommitId: commitId })
       .where(and(eq(structureBranches.wikiId, wikiId), eq(structureBranches.name, MAIN_BRANCH)));
+    if (input.recordPublishEvent && (await publicTreeChanged(tx, wikiId, head.state, result.state))) {
+      await recordPublishEvent(tx, wikiId, "structure", { oauthGrantId: input.oauthGrantId });
+    }
     return { commitId, state: result.state };
   });
+}
+
+/**
+ * 公開サイトのツリーに出るもの（公開中のページの親子と並び）が、構造の変更の前後で違うか。
+ * 非公開のページだけを動かしたときは違わない。非公開のページを動かしても、その下に公開中のページがあれば、
+ * そのページが繰り上がる先や並びが変わるので違う。
+ */
+async function publicTreeChanged(db: Db, wikiId: string, before: StructureState, after: StructureState): Promise<boolean> {
+  const tree = await getPrimaryTree(db, wikiId);
+  // 公開サイトに出るページの条件は、マニフェスト（publishing/manifest.ts）と同じ
+  const rows = await db
+    .select({ id: pages.id })
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), isNull(pages.deletedAt), eq(pages.visibility, "public"), isNotNull(pages.publishedVersionId)));
+  if (rows.length === 0) return false;
+  const publicIds = new Set(rows.map((r) => r.id));
+  return publicTreeShape(before.trees[tree.id]?.nodes ?? [], publicIds) !== publicTreeShape(after.trees[tree.id]?.nodes ?? [], publicIds);
+}
+
+/**
+ * 公開サイトが組むツリーの形。親ごとの、子の並び。
+ * position の値そのものは比べない（振り直しで値だけ変わっても、公開サイトの並びは変わらない）。
+ */
+function publicTreeShape(nodes: readonly TreeNode[], publicIds: ReadonlySet<string>): string {
+  const children = childrenByParent(publicTreeNodes(nodes, publicIds));
+  return JSON.stringify(
+    [...children.entries()]
+      .map(([parent, list]) => [parent ?? "", list.map((n) => n.nodeId)] as const)
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
+  );
 }
 
 /**
