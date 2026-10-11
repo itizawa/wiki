@@ -11,18 +11,21 @@ import {
   type EditRequest,
   type EditRequestComment,
   type EditRequestItem,
+  type EditRequestList,
+  type EditRequestListItem,
+  type EditRequestListStatus,
   type EditRequestPerson,
   type EditRequestSkipped,
   type LineEdit,
   type PageEditRequests,
 } from "@wiki/shared";
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, isNull, not, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pages, pageVersions, users } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { createVersion } from "../pages/versions";
-import { findLivePage } from "../routes/pages";
+import { encodeCursor, findLivePage, type ListCursor } from "../routes/pages";
 
 /**
  * 編集リクエストの処理。管理画面の API（`routes/editRequests.ts`）と MCP の道具（`mcp/tools.ts`）が、どちらもここを通る。
@@ -255,6 +258,117 @@ export async function countOpenItems(db: Db, pageId: string): Promise<number> {
     .from(editRequestItems)
     .innerJoin(editRequests, eq(editRequests.id, editRequestItems.requestId))
     .where(and(eq(editRequests.pageId, pageId), eq(editRequestItems.status, "open")));
+  return Number(row?.count ?? 0);
+}
+
+// ---------------------------------------------------------------------------
+// wiki ごとの一覧と、サイドバーの件数
+// ---------------------------------------------------------------------------
+
+/** そのリクエストに、未対応の項目があるか（未対応だけの索引 `edit_request_items_open_idx` を1回引く）。数え方は `countOpenItems` と同じ */
+const hasOpenItem = exists(
+  sql`(select 1 from ${editRequestItems} where ${editRequestItems.requestId} = ${editRequests.id} and ${editRequestItems.status} = 'open')`,
+);
+/** ゴミ箱に入っていないページ */
+const livePage = isNull(pages.deletedAt);
+
+/**
+ * その wiki のリクエストの一覧（`status` で絞る。open: 未対応の項目がある、done: 未対応の項目が0件）。ゴミ箱のページのものは出さない。
+ *
+ * **並びは、出した日時（`created_at`）の新しい順**。日時が同じなら id の順。続きは「最後の行より後ろ」で取る（`GET /pages` と同じ形のカーソル）。
+ * 出した日時は変わらないので、続きを取っているあいだに採否や返信があっても、行の順番は動かない（抜けも重なりも出ない）。
+ * 「最後の動き」は並びに使わず、返す行にだけ付ける（複数のテーブルにまたがり、動きのたびに変わるため）。
+ *
+ * 項目の数・未対応の数・最後の動きは、返す行（`limit` 件まで）についてだけ数える。
+ */
+export async function listWikiEditRequests(
+  db: Db,
+  wikiId: string,
+  opts: { status: EditRequestListStatus; limit: number; after: ListCursor | null },
+): Promise<EditRequestList> {
+  const { limit, after } = opts;
+  const rest = after ? sql`(${editRequests.createdAt}, ${editRequests.id}) < (${after.at}::timestamptz, ${after.id}::uuid)` : undefined;
+  const rows = await db
+    .select({
+      request: editRequests,
+      // 日時はマイクロ秒まで持っている。カーソルには文字のまま使う（ページの一覧と同じ）
+      createdAtText: sql<string>`${editRequests.createdAt}::text`,
+      creatorName: personName,
+      via: oauthClients.name,
+      pageTitle: pages.title,
+      pageIcon: pages.icon,
+    })
+    .from(editRequests)
+    .innerJoin(pages, eq(pages.id, editRequests.pageId))
+    .innerJoin(users, eq(users.id, editRequests.createdBy))
+    .leftJoin(oauthGrants, eq(oauthGrants.id, editRequests.oauthGrantId))
+    .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
+    .where(and(eq(editRequests.wikiId, wikiId), livePage, opts.status === "open" ? hasOpenItem : not(hasOpenItem), rest))
+    .orderBy(desc(editRequests.createdAt), desc(editRequests.id))
+    // 1件多く取って、続きがあるかを見る
+    .limit(limit + 1);
+  const shown = rows.slice(0, limit);
+  const ids = shown.map((r) => r.request.id);
+
+  const itemStats =
+    ids.length === 0
+      ? []
+      : await db
+          .select({
+            requestId: editRequestItems.requestId,
+            items: sql<number>`count(*)::int`,
+            open: sql<number>`count(*) filter (where ${editRequestItems.status} = 'open')::int`,
+            // 未対応に戻した項目は、決めた日時が消える（戻したこと自体は、動きに数えない）
+            decidedAt: sql<Date | string | null>`max(${editRequestItems.decidedAt})`,
+          })
+          .from(editRequestItems)
+          .where(inArray(editRequestItems.requestId, ids))
+          .groupBy(editRequestItems.requestId);
+  const replyStats =
+    ids.length === 0
+      ? []
+      : await db
+          .select({ requestId: editRequestItems.requestId, repliedAt: sql<Date | string | null>`max(${editRequestComments.createdAt})` })
+          .from(editRequestComments)
+          .innerJoin(editRequestItems, eq(editRequestItems.id, editRequestComments.itemId))
+          .where(inArray(editRequestItems.requestId, ids))
+          .groupBy(editRequestItems.requestId);
+  const statsOf = new Map(itemStats.map((s) => [s.requestId, s]));
+  const repliedAtOf = new Map(replyStats.map((s) => [s.requestId, s.repliedAt]));
+  const time = (value: Date | string | null | undefined) => (value ? new Date(value).getTime() : 0);
+
+  const last = shown[shown.length - 1];
+  return {
+    requests: shown.map(({ request, creatorName, via, pageTitle, pageIcon }): EditRequestListItem => {
+      const stats = statsOf.get(request.id);
+      return {
+        id: request.id,
+        pageId: request.pageId,
+        pageTitle,
+        pageIcon,
+        comment: request.comment,
+        createdBy: { id: request.createdBy, name: creatorName },
+        via: via ?? null,
+        createdAt: request.createdAt.toISOString(),
+        itemCount: Number(stats?.items ?? 0),
+        openCount: Number(stats?.open ?? 0),
+        lastActivityAt: new Date(Math.max(request.createdAt.getTime(), time(stats?.decidedAt), time(repliedAtOf.get(request.id)))).toISOString(),
+      };
+    }),
+    nextCursor: rows.length > limit && last ? encodeCursor({ at: last.createdAtText, id: last.request.id }) : null,
+  };
+}
+
+/**
+ * その wiki で、未対応の項目があるページの数（サイドバーに出す。項目の数でも、リクエストの数でもない）。ゴミ箱のページは数えない。
+ * 未対応かどうかは `countOpenItems` と同じ（種類を問わず `status = 'open'`）。
+ */
+export async function countPagesWithOpenEditRequests(db: Db, wikiId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(distinct ${editRequests.pageId})::int` })
+    .from(editRequests)
+    .innerJoin(pages, eq(pages.id, editRequests.pageId))
+    .where(and(eq(editRequests.wikiId, wikiId), livePage, hasOpenItem));
   return Number(row?.count ?? 0);
 }
 

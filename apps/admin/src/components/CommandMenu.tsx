@@ -1,4 +1,5 @@
 import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -104,6 +105,13 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       },
     },
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    {
+      id: "requests",
+      label: "「編集リクエスト」を開く",
+      keywords: ["requests", "edit requests", "review", "suggestion", "teian", "henshu"],
+      icon: <GitPullRequestArrow size={18} />,
+      run: go("/w/$wikiKey/requests"),
+    },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
     {
       id: "analytics",

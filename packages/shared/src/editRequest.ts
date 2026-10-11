@@ -331,6 +331,50 @@ export type CreatedEditRequest = { id: string; itemIds: string[] };
 /** `GET /pages/:id/edit-requests/count` */
 export type EditRequestCount = { open: number };
 
+/**
+ * wiki ごとの一覧の絞り込み。リクエストに状態の列は無く、項目から決まる。
+ * - open: 未対応の項目が1件以上ある
+ * - done: 未対応の項目が0件（採用・却下・解決済みで片付いたもの。取り下げだけで0件になったものも入る）
+ */
+export const EDIT_REQUEST_LIST_STATUSES = ["open", "done"] as const;
+export type EditRequestListStatus = (typeof EDIT_REQUEST_LIST_STATUSES)[number];
+export const isEditRequestListStatus = (value: unknown): value is EditRequestListStatus =>
+  (EDIT_REQUEST_LIST_STATUSES as readonly unknown[]).includes(value);
+
+/** wiki ごとの一覧の1行（リクエスト1件）。項目の中身は持たない（読むのは、ページのレビュー画面） */
+export type EditRequestListItem = {
+  id: string;
+  pageId: string;
+  pageTitle: string;
+  /** ページのアイコン（絵文字） */
+  pageIcon: string | null;
+  /** 全体へのひとこと */
+  comment: string | null;
+  /** 出した人。外部のアプリ（MCP）から出したものは、許可した人 */
+  createdBy: EditRequestPerson;
+  /** 外部のアプリ（MCP）から出したものなら、そのアプリの名前 */
+  via: string | null;
+  createdAt: string;
+  /** 項目の数と、そのうち未対応の数（数え方は `isOpenEditRequestItem` と同じ） */
+  itemCount: number;
+  openCount: number;
+  /**
+   * 最後の動きの日時：出した日時、項目の採否を決めた日時（採用・却下・解決済み・取り下げ）、返信の日時のうち、いちばん新しいもの。
+   * 一覧の並びには使わない（並びは出した日時の新しい順）
+   */
+  lastActivityAt: string;
+};
+
+/** `GET /edit-requests?status=open|done&limit=&cursor=`：その wiki のリクエスト（出した日時の新しい順）。ゴミ箱のページのものは入らない */
+export type EditRequestList = {
+  requests: EditRequestListItem[];
+  /** 続きがあれば、次の呼び出しの `cursor` に渡す値。無ければ null */
+  nextCursor: string | null;
+};
+
+/** `GET /edit-requests/count`：未対応の項目があるページの数（項目の数でも、リクエストの数でもない）。ゴミ箱のページは数えない */
+export type EditRequestPageCount = { pages: number };
+
 /** 採用で、かけられなかった項目。draft_conflict は、編集中の人の下書きで元の文面が見つからなかったもの */
 export type EditRequestSkipped = {
   itemId: string;

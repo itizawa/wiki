@@ -85,20 +85,20 @@ const PAGE_LIMIT_DEFAULT = 50;
 const PAGE_LIMIT_MAX = 100;
 
 /** `limit` を 1〜100 に丸める。数でなければ既定の件数にする。 */
-function clampPageLimit(value: string | undefined): number {
+export function clampPageLimit(value: string | undefined): number {
   const n = Number.parseInt(value ?? "", 10);
   if (Number.isNaN(n)) return PAGE_LIMIT_DEFAULT;
   return Math.min(Math.max(n, 1), PAGE_LIMIT_MAX);
 }
 
 /** 一覧の続きの位置。最後に返した行の日時（ページは更新日時、版は作った日時。DB の文字のまま）と id。 */
-type ListCursor = { at: string; id: string };
+export type ListCursor = { at: string; id: string };
 
-const encodeCursor = (cursor: ListCursor): string =>
+export const encodeCursor = (cursor: ListCursor): string =>
   btoa(JSON.stringify([cursor.at, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 /** 壊れたカーソルは 400 にする（DB に渡してから失敗させない）。`idPattern` は、その一覧の id の形。 */
-function decodeCursor(value: string, idPattern?: RegExp): ListCursor {
+export function decodeCursor(value: string, idPattern?: RegExp): ListCursor {
   try {
     const parsed: unknown = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/")));
     if (Array.isArray(parsed) && parsed.length === 2) {

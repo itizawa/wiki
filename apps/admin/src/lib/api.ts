@@ -6,6 +6,9 @@ import type {
   CreateEditRequestInput,
   EditRequestComment,
   EditRequestCount,
+  EditRequestList,
+  EditRequestListStatus,
+  EditRequestPageCount,
   PageEditRequests,
   ConnectionCheck,
   GoogleConnection,
@@ -249,6 +252,14 @@ export const api = {
   /** 自分が出したリクエストの、未対応の項目をまとめて取り下げる。出した本人でなければ 403（`not_requester`） */
   withdrawEditRequest: (pageId: string, requestId: string) =>
     request<{ withdrawn: number }>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/withdraw`)),
+  /** この wiki の編集リクエストの一覧を、続きから取る（出した日時の新しい順）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
+  listWikiEditRequests: (input: { status: EditRequestListStatus; cursor?: string | null; limit: number }) => {
+    const params = new URLSearchParams({ status: input.status, limit: String(input.limit) });
+    if (input.cursor) params.set("cursor", input.cursor);
+    return request<EditRequestList>("GET", w(`/edit-requests?${params}`));
+  },
+  /** この wiki で、未対応の編集リクエストがあるページの数（サイドバーに出す） */
+  countEditRequestPages: () => request<EditRequestPageCount>("GET", w("/edit-requests/count")),
 
   /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
