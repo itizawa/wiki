@@ -7,8 +7,10 @@ compatibility_flags = ["global_fetch_strictly_public"]
 # 予約公開の許容遅延 = Cron間隔 + デバウンス + ビルド時間（既定：5分 + 2分 + ビルド）
 # 5分おきの方は、まず下の KV（印）だけを見て、やることが無ければ API を呼ばずに終わる。毎時0分の回だけは、印に関係なく API を呼ぶ
 # 1日1回（18:00 UTC = JST の午前3時）の方は、自動でできた版の間引きだけを行う（src/prune.ts の PRUNE_CRON と同じ文字列にする）
+# 1時間に1回（毎時0分）の方は、公開サイトが貯めた閲覧数の集計だけを行う（src/views.ts の VIEWS_CRON と同じ文字列にする）。
+# 毎時0分は、5分おきの方が印に関係なく API を呼ぶ回でもある。同じ時刻にそろえて、DB を起こす回数を増やさない
 [triggers]
-crons = ["*/5 * * * *", "0 18 * * *"]
+crons = ["*/5 * * * *", "0 18 * * *", "0 * * * *"]
 
 # 「やることがある」の印（Workers KV）。API（apps/api/wrangler.toml）が書き、このワーカーが読む。
 # 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
@@ -29,3 +31,5 @@ BUILD_DEBOUNCE_SEC = "120"
 # INTERNAL_TOKEN        API の /internal/* 用トークン
 # SITE_DEPLOY_HOOK_URL  公開サイト（wiki-site）の Workers Builds のデプロイフックURL
 # NOTIFY_WEBHOOK_URL    予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook（任意）
+# CLOUDFLARE_ACCOUNT_ID       閲覧数の集計で Workers Analytics Engine の SQL API を呼ぶアカウント（任意。無ければ集計を飛ばす）
+# CLOUDFLARE_ANALYTICS_TOKEN  その SQL API 用の API トークン。権限は Account → Account Analytics → Read だけ（任意。無ければ集計を飛ばす）

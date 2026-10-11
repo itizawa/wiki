@@ -26,16 +26,14 @@ const notFound = () => new Response("Not Found", { status: 404, headers: { "cont
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
  * - `POST /_v`：記事の閲覧数を数える（worker/views.ts）
  */
-type Ctx = { waitUntil(promise: Promise<unknown>): void };
-
 export default {
-  async fetch(request: Request, env: Env, ctx?: Ctx): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const target = resolveWiki(request, url, env);
     // wiki ではないサブドメイン（管理画面など、ほかの Worker のもの）は、そのまま本来の行き先へ渡す
     if (target === "passthrough") return fetch(request);
     if (target instanceof Response) return withSecurityHeaders(target);
-    return withSecurityHeaders(await serve(request, url, env, target, ctx));
+    return withSecurityHeaders(await serve(request, url, env, target));
   },
 };
 
@@ -58,7 +56,7 @@ function withSecurityHeaders(res: Response): Response {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
-async function serve(request: Request, url: URL, env: Env, target: string, ctx: Ctx | undefined): Promise<Response> {
+async function serve(request: Request, url: URL, env: Env, target: string): Promise<Response> {
   if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
   if (url.pathname.startsWith("/images/")) return image(url.pathname, env);
 
@@ -69,7 +67,7 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
     return assetUrl;
   };
   if (url.pathname === VIEW_PATH && request.method === "POST") {
-    return recordView(request, env, ctx, target, async () => {
+    return recordView(request, env, target, async () => {
       const res = await env.ASSETS.fetch(asset("/page-routes.json"));
       return res.ok ? ((await res.json()) as PublicRoutes) : null;
     });

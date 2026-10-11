@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from "hono";
-import { recordViewInput } from "@wiki/shared";
+import { viewTotalsInput } from "@wiki/shared";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { runTick } from "../cron/tick";
@@ -8,7 +8,7 @@ import { pruneVersions } from "../pages/prune";
 import { markBuildTriggered } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
 import { parseJson } from "../validation";
-import { recordView } from "./views";
+import { applyViewTotals } from "./views";
 
 /** ワーカー・サイトのビルドからの呼び出し。`Authorization: Bearer $INTERNAL_TOKEN` */
 export const requireInternalToken: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -38,7 +38,7 @@ export const exportRoutes = new Hono<AppEnv>().use("*", requireInternalToken).ge
   return c.json(await buildManifest(c.get("deps").db));
 });
 
-/** /internal/*：Cron Triggers のワーカーと、公開サイトの Worker（閲覧数）から呼ぶ */
+/** /internal/*：Cron Triggers のワーカーから呼ぶ */
 export const internalRoutes = new Hono<AppEnv>()
   .use("*", requireInternalToken)
   // 5分おきの Cron の1回分：下書きを版にする → 期限の来た予約を実行する → 公開ビルドを起動するか決める。
@@ -59,9 +59,9 @@ export const internalRoutes = new Hono<AppEnv>()
     }
     return c.json({ ok: true });
   })
-  // 公開サイトの Worker が、Bot の判定と記事の確認をしてから渡す閲覧1回。数えない記事でも同じ応答にする
-  .post("/views", async (c) => {
-    const input = await parseJson(c, recordViewInput);
-    await recordView(c.get("deps").db, input);
-    return c.body(null, 204);
+  // 1時間に1回、ワーカーが Workers Analytics Engine に貯めた閲覧を集計して渡す。
+  // 受け取るのは記事と日ごとの合計で、何度受け取っても数は変わらない。数えない記事の行は飛ばす
+  .post("/views/totals", async (c) => {
+    const input = await parseJson(c, viewTotalsInput);
+    return c.json(await applyViewTotals(c.get("deps").db, input.rows));
   });

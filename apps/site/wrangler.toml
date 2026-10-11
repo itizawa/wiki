@@ -34,9 +34,13 @@ SITE_BASE_DOMAIN = "hatchery-works.com"
 # Host で wiki が決まらないとき（プレビューの *.workers.dev、手元の `pnpm preview`）に表示する wiki。
 # `?wiki={key}` を付けて開くと、その wiki に切り替わる
 DEFAULT_WIKI = "wiki"
-# 閲覧数（`POST /_v`）を渡す先。管理画面と API の Worker（wiki-admin）のオリジン。
-# あわせて secret の INTERNAL_TOKEN（API と同じ値）が要る。どちらかが無ければ数えない（README「デプロイ」）
-API_ORIGIN = "https://wiki-admin.hatchery-works.com"
+# 閲覧数（`POST /_v`）を貯める先（Workers Analytics Engine）。閲覧1回ごとに1行書くだけで、API も DB も呼ばない。
+# 1時間に1回、Cron のワーカー（apps/worker/src/views.ts）がここから集計して DB に反映する。
+# dataset は packages/shared の VIEW_DATASET、apps/worker/src/views.ts の VIEW_DATASET と同じ文字列にする。
+# データセットは、最初に書いたときに自動でできる（先に作る手順は無い）。アカウントで Analytics Engine を有効にしておく（README「デプロイ」）
+[[analytics_engine_datasets]]
+binding = "PAGE_VIEWS"
+dataset = "wiki_page_views"
 
 # 閲覧数の記録用の経路（`POST /_v`）の回数の制限。接続元ごとに 60 秒で 30 回まで（超えたぶんは数えない）。
 # namespace_id はアカウントの中で重ならない数字なら何でもよい
