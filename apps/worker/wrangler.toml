@@ -5,9 +5,20 @@ compatibility_date = "2026-10-01"
 compatibility_flags = ["global_fetch_strictly_public"]
 
 # 予約公開の許容遅延 = Cron間隔 + デバウンス + ビルド時間（既定：5分 + 2分 + ビルド）
+# 5分おきの方は、まず下の KV（印）だけを見て、やることが無ければ API を呼ばずに終わる。毎時0分の回だけは、印に関係なく API を呼ぶ
 # 1日1回（18:00 UTC = JST の午前3時）の方は、自動でできた版の間引きだけを行う（src/prune.ts の PRUNE_CRON と同じ文字列にする）
 [triggers]
 crons = ["*/5 * * * *", "0 18 * * *"]
+
+# 「やることがある」の印（Workers KV）。API（apps/api/wrangler.toml）が書き、このワーカーが読む。
+# 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
+# 下の3行のコメントを外し、出力された id を入れる。apps/api/wrangler.toml にも同じ id で同じブロックを入れる
+# （こちらだけに入れると、API が印を書かないので、下書き・予約・ビルドが最大1時間遅れる）。
+# id が実在しない名前空間のままコメントを外すと、wrangler deploy が失敗する。
+# コメントのあいだは、今までどおり5分おきに API を呼ぶ。
+# [[kv_namespaces]]
+# binding = "CRON_MARKS"
+# id = "<wrangler kv namespace create の出力の id>"
 
 [vars]
 # apps/api/wrangler.toml の ADMIN_ORIGIN と同じ値（/internal/* を呼ぶ）

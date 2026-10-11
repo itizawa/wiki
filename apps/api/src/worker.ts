@@ -2,6 +2,7 @@ import { reportingFromConfig } from "./analytics/google";
 import { createApp } from "./app";
 import { createGoogleOidc } from "./auth/google";
 import { loadConfig } from "./config";
+import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
 import { createPostgresDb } from "./db/postgres";
 import { r2ImageStore, type R2BucketLike } from "./images/store";
@@ -11,6 +12,8 @@ export type WorkerEnv = {
   HYPERDRIVE: { connectionString: string };
   /** アップロードした画像（R2）。無ければアップロードできない */
   IMAGES?: R2BucketLike;
+  /** Cron のワーカーへの印（Workers KV）。無ければ印を書かない（ワーカーは毎回 DB を見に行く） */
+  CRON_MARKS?: CronMarkStore;
   [key: string]: unknown;
 };
 
@@ -50,7 +53,14 @@ export function createWorker(connect: Connect) {
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const { db, close } = connect(env);
       try {
-        return await createApp({ db, config, google, images: env.IMAGES ? r2ImageStore(env.IMAGES) : null, reporting: reportingFromConfig(config) }).fetch(appRequest);
+        return await createApp({
+          db,
+          config,
+          google,
+          images: env.IMAGES ? r2ImageStore(env.IMAGES) : null,
+          reporting: reportingFromConfig(config),
+          cronMarks: env.CRON_MARKS ?? null,
+        }).fetch(appRequest);
       } finally {
         ctx.waitUntil(close());
       }

@@ -104,6 +104,18 @@ export async function keepVersion(db: Db, versionId: string): Promise<void> {
     .where(and(eq(pageVersions.id, versionId), eq(pageVersions.keep, false)));
 }
 
+/**
+ * 版にできる下書きの条件（時刻を除く）。`page_drafts` に `pages` と `wikis` を結合した問い合わせで使う。
+ * ワーカーに返す「次に版にできる時刻」（`cron/tick.ts`）も同じ条件で数える。
+ */
+export const promotableDraft = () =>
+  and(
+    isNull(pages.deletedAt),
+    isNull(wikis.archivedAt),
+    eq(pageDrafts.baseVersionId, pages.headVersionId),
+    sql`btrim(${pageDrafts.title}) <> ''`,
+  );
+
 export type PromoteDraftsResult = {
   /** 版にしたページの ID */
   promoted: string[];
@@ -117,7 +129,7 @@ const isDue = (draft: { createdAt: Date; updatedAt: Date }, now: Date) =>
   draft.updatedAt.getTime() < now.getTime() - DRAFT_IDLE_MS || draft.createdAt.getTime() < now.getTime() - DRAFT_MAX_AGE_MS;
 
 /**
- * 編集が一段落した下書きを版にする（Cron のワーカーが5分おきに呼ぶ）。
+ * 編集が一段落した下書きを版にする（Cron のワーカーが `/internal/tick` で呼ぶ）。
  * 版にするのは、ページが削除されておらず、wiki がアーカイブ中でなく、下書きがいまの head をもとにしていて、タイトルが空でないものだけ。
  * 当てはまらない下書きは、消さずに残す（古い版をもとにした下書きを勝手に版にすると、あいだにできた版の変更を黙って上書きしてしまう）。
  * 下書きごとに1トランザクションで、1件の失敗はほかを止めない。
@@ -132,10 +144,7 @@ export async function promoteDrafts(db: Db, now = new Date()): Promise<PromoteDr
     .where(
       and(
         or(lt(pageDrafts.updatedAt, new Date(now.getTime() - DRAFT_IDLE_MS)), lt(pageDrafts.createdAt, new Date(now.getTime() - DRAFT_MAX_AGE_MS))),
-        isNull(pages.deletedAt),
-        isNull(wikis.archivedAt),
-        eq(pageDrafts.baseVersionId, pages.headVersionId),
-        sql`btrim(${pageDrafts.title}) <> ''`,
+        promotableDraft(),
       ),
     )
     .orderBy(asc(pageDrafts.updatedAt))

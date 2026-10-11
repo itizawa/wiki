@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { authRoutes, requireAccess, requireUser } from "./auth/routes";
 import { appearanceRoutes } from "./routes/appearance";
 import { homeRoutes } from "./routes/home";
+import { collectCronMarks } from "./cron/marks";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
@@ -38,6 +39,12 @@ export function createApp(deps: Deps) {
   app.use("*", async (c, next) => {
     c.set("deps", deps);
     await next();
+  });
+  // Cron のワーカーへの印（下書きあり・予約あり・ビルド待ちあり）を、応答ができたあと（コミットのあと）に書く。
+  // /internal/* はワーカー自身の呼び出しで、印はワーカーが応答を見て書き直すので、ここでは書かない
+  app.use("*", async (c, next) => {
+    if (!deps.cronMarks || c.req.path.startsWith("/internal/")) return next();
+    await collectCronMarks(deps.cronMarks, next);
   });
   // 応答に付けるセキュリティヘッダー。経路が自分で付けたもの（画像の CSP など）は上書きしない
   app.use("*", async (c, next) => {

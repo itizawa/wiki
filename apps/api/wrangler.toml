@@ -27,6 +27,15 @@ id = "24df08d8191143e5aae33847792525cc"
 binding = "IMAGES"
 bucket_name = "wiki-images"
 
+# Cron ワーカー（wiki-worker）への「やることがある」の印（Workers KV）。API が書き、ワーカーが読む。
+# 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
+# 下の3行のコメントを外し、出力された id を入れる。apps/worker/wrangler.toml にも同じ id で同じブロックを入れる。
+# id が実在しない名前空間のままコメントを外すと、wrangler deploy が失敗する。
+# コメントのあいだは印を書かない（ワーカーも、バインディングが無ければ今までどおり5分おきに API を呼ぶ）。
+# [[kv_namespaces]]
+# binding = "CRON_MARKS"
+# id = "<wrangler kv namespace create の出力の id>"
+
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする
 NODE_ENV = "production"

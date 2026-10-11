@@ -1,11 +1,16 @@
 import { newUnlistedKey, type PublishVisibility } from "@wiki/shared";
 import { and, eq, isNull } from "drizzle-orm";
+import { markCronWork } from "../cron/marks";
 import type { Db } from "../db/client";
 import { pages, pageVersions, publishEvents } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { keepVersion } from "../pages/versions";
 import { assertWithinParent, descendantIds, descendantsWider, livePages, loadTreeIndex, widerThan } from "./hierarchy";
 
+/**
+ * 公開サイトに出る内容が変わったことを記録する。Cron のワーカーがこれを見て、公開サイトをビルドし直す。
+ * あわせて「ビルド待ちあり」の印を頼む（書くのはコミットのあと。`cron/marks.ts`）。
+ */
 export async function recordPublishEvent(
   db: Db,
   wikiId: string,
@@ -19,6 +24,7 @@ export async function recordPublishEvent(
     scheduledActionId: refs.scheduledActionId,
     oauthGrantId: refs.oauthGrantId,
   });
+  markCronWork("build");
 }
 
 /** 指定の wiki のページだけを返す（別の wiki のページ ID は、無いものとして扱う）。 */

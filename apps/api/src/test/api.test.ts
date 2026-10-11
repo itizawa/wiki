@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { issueSession, SESSION_COOKIE, signSession } from "../auth/session";
 import { sessions } from "../db/schema";
-import { DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS } from "../pages/versions";
+import { DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS, promoteDrafts } from "../pages/versions";
 import { adoptUnplacedPages } from "../structure/repo";
 import { ADMIN, addLegacyTree, setup, W } from "./harness";
 
@@ -12,8 +12,6 @@ afterEach(async () => {
   ctx = undefined as unknown as typeof ctx;
 });
 
-const internal = (method: string, path: string, body?: unknown) =>
-  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
 
 async function structure() {
   const res = await ctx.call("GET", `${W}/structure`);
@@ -350,8 +348,7 @@ describe("pages", () => {
     await ctx.call("PUT", `${W}/pages/${c.id}/draft`, { baseVersionId: c.headVersionId, title: "C", bodyMd: "typing" });
 
     // 保存したばかりの下書きは版にしない
-    expect((await ctx.app.request("/internal/drafts/promote", { method: "POST" })).status).toBe(401);
-    expect((await internal("POST", "/internal/drafts/promote")).body).toEqual({ promoted: [], skipped: 0, failed: [] });
+    expect((await promoteDrafts(ctx.db))).toEqual({ promoted: [], skipped: 0, failed: [] });
 
     // 境目：最後の自動保存から5分、始めてから30分
     const age = (pageId: string, updated: number, created: number) =>
@@ -362,7 +359,7 @@ describe("pages", () => {
     await age(a.id, DRAFT_IDLE_MS / 1000 + 5, DRAFT_IDLE_MS / 1000 + 5); // 一段落した
     await age(b.id, 10, DRAFT_MAX_AGE_MS / 1000 + 5); // 打ち続けているが、始めてから30分たった
     await age(c.id, DRAFT_IDLE_MS / 1000 - 30, DRAFT_MAX_AGE_MS / 1000 - 30); // どちらもまだ
-    const run = (await internal("POST", "/internal/drafts/promote")).body;
+    const run = (await promoteDrafts(ctx.db));
     expect(run.promoted.sort()).toEqual([a.id, b.id].sort());
     expect(run.failed).toEqual([]);
 
@@ -383,7 +380,7 @@ describe("pages", () => {
     expect((await ctx.call("GET", `${W}/pages/${c.id}/draft`)).body.draft.bodyMd).toBe("typing");
     expect((await ctx.call("GET", `${W}/pages/${c.id}/versions`)).body.versions).toHaveLength(1);
     // もう一度呼んでも増えない
-    expect((await internal("POST", "/internal/drafts/promote")).body.promoted).toEqual([]);
+    expect((await promoteDrafts(ctx.db)).promoted).toEqual([]);
   });
 
   it("leaves drafts that must not become versions: stale base, empty title, deleted page, archived wiki", async () => {
@@ -414,11 +411,11 @@ describe("pages", () => {
     await ctx.client.query(`update page_drafts set updated_at = now() - interval '7 minutes' where user_id = $1 and page_id = $2`, [ctx.owner.id, shared.id]);
     expect(await draftCount()).toBe(5);
 
-    const run = (await internal("POST", "/internal/drafts/promote")).body;
+    const run = (await promoteDrafts(ctx.db));
     expect(run).toEqual({ promoted: [shared.id], skipped: 1, failed: [] });
     expect((await ctx.call("GET", `${W}/pages/${shared.id}`)).body.head.bodyMd).toBe("mine");
     // ほかの人の下書きは消えず、次の回でも版にならない（あいだにできた版を黙って上書きしない）
-    expect((await internal("POST", "/internal/drafts/promote")).body).toEqual({ promoted: [], skipped: 0, failed: [] });
+    expect((await promoteDrafts(ctx.db))).toEqual({ promoted: [], skipped: 0, failed: [] });
     expect((await ctx.call("GET", `${W}/pages/${shared.id}/draft`, undefined, otherCookie)).body.draft).toEqual(
       expect.objectContaining({ baseVersionId: shared.headVersionId, bodyMd: "theirs" }),
     );
@@ -430,7 +427,7 @@ describe("pages", () => {
     // タイトルを入れると、次の回で版になる
     await ctx.call("PUT", `${W}/pages/${untitled.id}/draft`, { baseVersionId: untitled.headVersionId, title: "U2", bodyMd: "no title" });
     await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes' where page_id = $1`, [untitled.id]);
-    expect((await internal("POST", "/internal/drafts/promote")).body.promoted).toEqual([untitled.id]);
+    expect((await promoteDrafts(ctx.db)).promoted).toEqual([untitled.id]);
   });
 
   it("keeps typing in an open tab after the worker made a version from the own draft, but not after someone else's version", async () => {
@@ -443,7 +440,7 @@ describe("pages", () => {
     const url = `${W}/pages/${page.id}/draft`;
     const promote = async () => {
       await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes'`);
-      return (await internal("POST", "/internal/drafts/promote")).body;
+      return (await promoteDrafts(ctx.db));
     };
 
     await ctx.call("PUT", url, { baseVersionId: base, title: "A", bodyMd: "x1" });
@@ -491,7 +488,7 @@ describe("pages", () => {
     const autoVersion = async (page: { id: string; headVersionId: string }, bodyMd: string) => {
       await ctx.call("PUT", `${W}/pages/${page.id}/draft`, { baseVersionId: page.headVersionId, title: "T", bodyMd });
       await ctx.client.query(`update page_drafts set updated_at = now() - interval '6 minutes'`);
-      expect((await internal("POST", "/internal/drafts/promote")).body.promoted).toEqual([page.id]);
+      expect((await promoteDrafts(ctx.db)).promoted).toEqual([page.id]);
       const head = (await ctx.call("GET", `${W}/pages/${page.id}`)).body.headVersionId as string;
       expect(await keepOf(head)).toBe(false);
       return head;
