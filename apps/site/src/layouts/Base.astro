@@ -16,9 +16,14 @@ interface Props {
   noindex?: boolean;
   /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す */
   notFound?: boolean;
+  /**
+   * ツリーナビ（NavDrawer）を置いたページだけ渡す、ツリーの一覧ページ（/t/{key}/）のパス。
+   * 渡すと、狭い画面のヘッダーに「階層を開く」を出す（スクリプトが動かなければ、このパスへのリンクのまま）
+   */
+  nav?: string;
 }
 
-const { wiki, title, description, canonical, noindex = false, notFound = false } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false, nav } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
@@ -87,6 +92,15 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
   </head>
   <body>
     <header class={s.header} data-site-header>
+      {
+        nav && (
+          <a class={s.navToggle} href={nav} data-nav-toggle aria-label="階層を開く">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </a>
+        )
+      }
       <a class={s.brand} href="/">
         {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
       </a>

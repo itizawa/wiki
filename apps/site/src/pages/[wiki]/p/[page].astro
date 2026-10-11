@@ -2,6 +2,7 @@
 import layout from "../../../styles/page.module.css";
 import type { ManifestPage } from "@wiki/shared";
 import Article from "../../../components/Article.astro";
+import NavDrawer from "../../../components/NavDrawer.astro";
 import TreeNav from "../../../components/TreeNav";
 import Base from "../../../layouts/Base.astro";
 import { allWikis, siteData } from "../../../lib/manifest";
@@ -25,7 +26,7 @@ const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
 const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && `/t/${primaryTree.key}/`}>
   <div class={layout.withNav}>
     <main data-pagefind-body>
       {
@@ -55,9 +56,9 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
     </main>
     {
       primaryTree && (
-        <aside data-pagefind-ignore>
+        <NavDrawer>
           <TreeNav client:idle items={navItems(primaryTree, titleOf, iconOf)} current={inPrimary ? page.id : undefined} />
-        </aside>
+        </NavDrawer>
       )
     }
   </div>
