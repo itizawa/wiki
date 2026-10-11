@@ -5,7 +5,7 @@ import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import { IMAGE_LIMIT_LABEL, IMAGE_TYPES } from "@wiki/shared";
 import { useRef, useState } from "react";
-import { imageFileProblem } from "../editor/imageUpload";
+import { imageFileProblem } from "../editor/imageFile";
 import { api, errorMessage } from "../lib/api";
 import { Muted } from "./ui";
 

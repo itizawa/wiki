@@ -3,11 +3,12 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { sessions, users } from "../db/schema";
-import { and, eq, gt, ne } from "drizzle-orm";
-import { ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, userForInviteLogin, type LoginIdentity, type UserRow } from "../users/service";
+import { and, eq, ne } from "drizzle-orm";
+import { ensureOwnerByEmail, findSessionUser, findUserForLogin, hasAccess, userForInviteLogin, type LoginIdentity, type UserRow } from "../users/service";
 import { requestMeta, userActor, writeAudit, type RequestMeta } from "../audit/service";
 import type { Db } from "../db/client";
 import {
+  cookieName,
   OAUTH_COOKIE,
   randomToken,
   SESSION_COOKIE,
@@ -20,42 +21,60 @@ import {
 } from "./session";
 
 /** Cookie のセッションを読む（署名と期限だけ。行があるかは見ない）。 */
-async function sessionClaims(c: Context<AppEnv>): Promise<SessionClaims | null> {
-  const token = getCookie(c, SESSION_COOKIE);
-  return token ? verifySession(c.get("deps").config.sessionSecret, token) : null;
+export async function sessionClaims(c: Context<AppEnv>): Promise<SessionClaims | null> {
+  const { config } = c.get("deps");
+  const token = getCookie(c, cookieName(SESSION_COOKIE, config.secureCookies));
+  return token ? verifySession(config.sessionSecret, token) : null;
 }
+
+/**
+ * `__Host-` を付ける前の名前の Cookie が送られてきたら、中身を読まずに消す（`Max-Age=0` で返す）。
+ * 古い Cookie を持っていた人は、新しい名前の Cookie が無いのでログイン画面に戻り、ログインし直す。
+ * http（手元の開発）では、いまも同じ名前を使っているので何もしない。
+ */
+export const clearLegacyCookies: MiddlewareHandler<AppEnv> = async (c, next) => {
+  await next();
+  if (!c.get("deps").config.secureCookies) return;
+  for (const name of [SESSION_COOKIE, OAUTH_COOKIE]) {
+    if (getCookie(c, name) !== undefined) deleteCookie(c, name, { path: "/" });
+  }
+};
 
 /**
  * セッションの人を DB から引く。セッションが無い・壊れている・セッションの行が無い（ログアウトした）・期限切れ・ユーザーの行が無いなら null。
  */
 export async function currentUser(c: Context<AppEnv>): Promise<UserRow | null> {
   const claims = await sessionClaims(c);
-  if (!claims) return null;
-  const { db } = c.get("deps");
-  const [row] = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(and(eq(sessions.id, claims.sessionId), eq(sessions.userId, claims.userId), gt(sessions.expiresAt, new Date())));
-  return row ? findUser(db, claims.userId) : null;
+  return claims ? findSessionUser(c.get("deps").db, claims) : null;
 }
 
-/** ログインしている人だけを通す。ユーザーはリクエストのたびに DB で引く。 */
+export const unauthenticated = () => new HttpError(401, "unauthenticated", "login required");
+
+/** どの wiki のメンバーでもない人に返す。招待制であることと、ログイン中のメールアドレスを伝える。 */
+export const inviteOnly = (user: UserRow) =>
+  new HttpError(403, "invite_only", "you are not a member of any wiki", { email: user.email });
+
+/**
+ * ログインしている人だけを通す。ユーザーはリクエストのたびに DB で引く。
+ * wiki の経路では、先に `resolveWiki` が同じ確かめを済ませて user を入れているので、引き直さない。
+ */
 export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const user = await currentUser(c);
-  if (!user) throw new HttpError(401, "unauthenticated", "login required");
-  c.set("user", user);
+  if (!c.get("user")) {
+    const user = await currentUser(c);
+    if (!user) throw unauthenticated();
+    c.set("user", user);
+  }
   await next();
 };
 
 /**
  * /admin/* の保護。オーナーか、どれかの wiki のメンバーだけを通す（メンバーから外せば、次のリクエストから通らない）。
  * どの wiki のメンバーでもない人には、招待制であることとログイン中のメールアドレスを返す。
+ * wiki の経路で `resolveWiki` がロールを引けていれば、開いている wiki に入れる人なので、確かめ直さない。
  */
 export const requireAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user = c.get("user");
-  if (!(await hasAccess(c.get("deps").db, user))) {
-    throw new HttpError(403, "invite_only", "you are not a member of any wiki", { email: user.email });
-  }
+  if (!c.get("role") && !(await hasAccess(c.get("deps").db, user))) throw inviteOnly(user);
   await next();
 };
 
@@ -74,7 +93,7 @@ async function startGoogleLogin(c: Context<AppEnv>, back: { invite?: string; nex
   if (!google) throw new HttpError(400, "google_not_configured", "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set");
   const state = randomToken();
   const nonce = randomToken();
-  setCookie(c, OAUTH_COOKIE, await signOAuthState(config.sessionSecret, { state, nonce, ...back }), {
+  setCookie(c, cookieName(OAUTH_COOKIE, config.secureCookies), await signOAuthState(config.sessionSecret, { state, nonce, ...back }), {
     httpOnly: true,
     secure: config.secureCookies,
     sameSite: "Lax",
@@ -96,8 +115,9 @@ export const authRoutes = new Hono<AppEnv>()
   .get("/google/callback", async (c) => {
     const { config, google } = c.get("deps");
     if (!google) throw new HttpError(400, "google_not_configured", "google login is not configured");
-    const cookie = getCookie(c, OAUTH_COOKIE);
-    deleteCookie(c, OAUTH_COOKIE, { path: "/" });
+    const oauthCookie = cookieName(OAUTH_COOKIE, config.secureCookies);
+    const cookie = getCookie(c, oauthCookie);
+    deleteCookie(c, oauthCookie, { path: "/", secure: config.secureCookies });
     const saved = cookie ? await verifyOAuthState(config.sessionSecret, cookie) : null;
     const code = c.req.query("code");
     if (!saved || !code || c.req.query("state") !== saved.state) {
@@ -151,12 +171,12 @@ export const authRoutes = new Hono<AppEnv>()
   })
   // この端末のセッションの行を消す。Cookie の値が漏れていても、ここから先は通らない
   .post("/logout", async (c) => {
-    const { db } = c.get("deps");
+    const { config, db } = c.get("deps");
     const user = await currentUser(c);
     const claims = await sessionClaims(c);
     if (claims) await db.delete(sessions).where(eq(sessions.id, claims.sessionId));
     if (user) await writeAudit(db, { wikiId: null, actor: userActor(user), action: "logout", detail: {} });
-    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    deleteCookie(c, cookieName(SESSION_COOKIE, config.secureCookies), { path: "/", secure: config.secureCookies });
     return c.json({ ok: true });
   })
   // この端末はログインしたまま、同じ人のほかの端末のセッションをすべて切る
@@ -204,7 +224,7 @@ export function safeNextPath(next: string | undefined): string | undefined {
 
 async function startSession(c: Context<AppEnv>, userId: string) {
   const { config, db } = c.get("deps");
-  setCookie(c, SESSION_COOKIE, await issueSession(db, config.sessionSecret, userId), {
+  setCookie(c, cookieName(SESSION_COOKIE, config.secureCookies), await issueSession(db, config.sessionSecret, userId), {
     httpOnly: true,
     secure: config.secureCookies,
     sameSite: "Lax",

@@ -13,6 +13,7 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { Mono, Muted, RouterLink, Row, Section, SkeletonEditor, SkeletonSection } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
+import { useCreateFromTemplate } from "../lib/createFromTemplate";
 import { formatDateTime } from "../lib/format";
 import { pageLink, screenLink, templateLink } from "../lib/wiki";
 import { FULL_HEIGHT } from "./WikiLayout";
@@ -26,20 +27,6 @@ const confirmDelete = (title: string) =>
     cancelLabel: "削除しない",
     danger: true,
   });
-
-/** テンプレートからページを作り、そのページを開く。 */
-export function useCreateFromTemplate() {
-  const qc = useQueryClient();
-  const navigate = useNavigate();
-  return useMutation({
-    mutationFn: (input: { templateId: string; title?: string; parentPageId?: string | null }) => api.createPage(input),
-    onSuccess: async (page) => {
-      void qc.invalidateQueries({ queryKey: ["structure"] });
-      void qc.invalidateQueries({ queryKey: ["pages"] });
-      await navigate(pageLink(page.id));
-    },
-  });
-}
 
 /** 作るときに置き換える変数の説明。 */
 export function TemplateVariables() {

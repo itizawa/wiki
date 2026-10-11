@@ -1,11 +1,11 @@
 import { newUnlistedKey, type PublishVisibility } from "@wiki/shared";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { markCronWork } from "../cron/marks";
 import type { Db } from "../db/client";
 import { pages, pageVersions, publishEvents } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { keepVersion } from "../pages/versions";
-import { assertWithinParent, descendantIds, descendantsWider, livePages, loadTreeIndex, widerThan } from "./hierarchy";
+import { assertWithinParent, descendantIds, descendantsWider, livePages, loadTreeIndex, widerThan, type TreeIndex } from "./hierarchy";
 
 /**
  * 公開サイトに出る内容が変わったことを記録する。Cron のワーカーがこれを見て、公開サイトをビルドし直す。
@@ -24,6 +24,21 @@ export async function recordPublishEvent(
     scheduledActionId: refs.scheduledActionId,
     oauthGrantId: refs.oauthGrantId,
   });
+  markCronWork("build");
+}
+
+/** 同じ種類の記録を、複数のページにまとめて残す（1回の INSERT）。並びは `pageIds` の順。`recordPublishEvent` と同じく「ビルド待ちあり」の印を頼む。 */
+export async function recordPublishEvents(
+  db: Db,
+  wikiId: string,
+  kind: string,
+  pageIds: readonly string[],
+  refs: { scheduledActionId?: string; oauthGrantId?: string } = {},
+): Promise<void> {
+  if (pageIds.length === 0) return;
+  await db
+    .insert(publishEvents)
+    .values(pageIds.map((pageId) => ({ wikiId, kind, pageId, scheduledActionId: refs.scheduledActionId, oauthGrantId: refs.oauthGrantId })));
   markCronWork("build");
 }
 
@@ -48,6 +63,8 @@ export type PublishInput = {
   scheduledActionId?: string;
   /** 外部のアプリ（MCP）からの操作なら、その許可 */
   oauthGrantId?: string;
+  /** 同じトランザクションで読んであるツリー（予約の実行が、同じ wiki のツリーを1回だけ読むために渡す）。無ければここで読む */
+  treeIndex?: TreeIndex;
 };
 
 /**
@@ -68,7 +85,7 @@ export async function publishPage(db: Db, input: PublishInput): Promise<PublishR
   if (!version) throw new HttpError(400, "invalid_version", "the version does not belong to this page");
   // 公開に使った版は、自動でできた版でも間引かない
   await keepVersion(db, input.versionId);
-  const index = await loadTreeIndex(db, input.wikiId);
+  const index = input.treeIndex ?? (await loadTreeIndex(db, input.wikiId));
   await assertWithinParent(db, input.wikiId, index, page, input.visibility);
   const descendants = await livePages(db, input.wikiId, descendantIds(index, page.id));
   if (!input.applyToDescendants) {
@@ -91,23 +108,30 @@ export async function publishPage(db: Db, input: PublishInput): Promise<PublishR
     oauthGrantId: input.oauthGrantId,
   });
   if (input.applyToDescendants) {
-    for (const d of descendants.values()) {
-      if (d.publishedVersionId === null || d.visibility === "private" || d.visibility === input.visibility) continue;
-      const [row] = await db.select({ unlistedKey: pages.unlistedKey }).from(pages).where(eq(pages.id, d.id)).for("update");
-      await db
-        .update(pages)
-        .set({
-          visibility: input.visibility,
-          unlistedKey: input.visibility === "unlisted" ? (row?.unlistedKey ?? newUnlistedKey()) : row?.unlistedKey,
-          updatedAt: new Date(),
-        })
-        .where(eq(pages.id, d.id));
-      await recordPublishEvent(db, input.wikiId, "publish", {
-        pageId: d.id,
+    const targets = [...descendants.values()]
+      .filter((d) => d.publishedVersionId !== null && d.visibility !== "private" && d.visibility !== input.visibility)
+      .map((d) => d.id);
+    if (targets.length > 0) {
+      if (input.visibility === "unlisted") {
+        // 限定公開のキーは、まだ無いページにだけ付ける（あるものは変えない）。ページごとに別の値なので、(ページ, キー) の組を渡して1回で更新する
+        const values = sql.join(
+          targets.map((id) => sql`(${id}::text, ${newUnlistedKey()}::text)`),
+          sql`, `,
+        );
+        await db.execute(sql`
+          update "pages" p
+          set "visibility" = 'unlisted', "unlisted_key" = coalesce(p."unlisted_key", v."key"), "updated_at" = ${new Date().toISOString()}::timestamptz
+          from (values ${values}) as v("id", "key")
+          where p."id" = v."id"
+        `);
+      } else {
+        await db.update(pages).set({ visibility: input.visibility, updatedAt: new Date() }).where(inArray(pages.id, targets));
+      }
+      await recordPublishEvents(db, input.wikiId, "publish", targets, {
         scheduledActionId: input.scheduledActionId,
         oauthGrantId: input.oauthGrantId,
       });
-      changed++;
+      changed = targets.length;
     }
   }
   return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: changed };
@@ -129,24 +153,25 @@ export async function unpublishPage(
   db: Db,
   wikiId: string,
   pageId: string,
-  options: { scheduledActionId?: string; applyToDescendants?: boolean; oauthGrantId?: string } = {},
+  options: {
+    scheduledActionId?: string;
+    applyToDescendants?: boolean;
+    oauthGrantId?: string;
+    /** 同じトランザクションで読んであるツリー。無ければここで読む */
+    treeIndex?: TreeIndex;
+  } = {},
 ): Promise<PublishResult> {
   const page = await lockLivePage(db, wikiId, pageId);
-  const index = await loadTreeIndex(db, wikiId);
+  const index = options.treeIndex ?? (await loadTreeIndex(db, wikiId));
   const descendants = await livePages(db, wikiId, descendantIds(index, page.id));
   const wider = widerThan(descendants.values(), "private");
   if (wider.length > 0 && !options.applyToDescendants) throw descendantsWider(page, wider);
-  for (const id of [pageId, ...wider]) {
-    await db
-      .update(pages)
-      .set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() })
-      .where(eq(pages.id, id));
-    await recordPublishEvent(db, wikiId, "unpublish", {
-      pageId: id,
-      scheduledActionId: options.scheduledActionId,
-      oauthGrantId: options.oauthGrantId,
-    });
-  }
+  const ids = [pageId, ...wider];
+  await db.update(pages).set({ publishedVersionId: null, visibility: "private", updatedAt: new Date() }).where(inArray(pages.id, ids));
+  await recordPublishEvents(db, wikiId, "unpublish", ids, {
+    scheduledActionId: options.scheduledActionId,
+    oauthGrantId: options.oauthGrantId,
+  });
   return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: wider.length };
 }
 

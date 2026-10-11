@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import type { ImageStore } from "./store";
+import { readBodyUpTo } from "./upload";
 
 function requireStore(store: ImageStore | null | undefined): ImageStore {
   if (!store) throw new HttpError(503, "images_not_configured", "image storage is not configured");
@@ -16,10 +17,7 @@ function requireStore(store: ImageStore | null | undefined): ImageStore {
 export const imageUploadRoutes = new Hono<AppEnv>().post("/", async (c) => {
   const store = requireStore(c.get("deps").images);
   const tooLarge = () => new HttpError(413, "image_too_large", `images must be ${IMAGE_MAX_BYTES} bytes or smaller`, { maxBytes: IMAGE_MAX_BYTES });
-  // 中身を読む前に、申告された大きさで断る
-  if (Number(c.req.header("content-length") ?? 0) > IMAGE_MAX_BYTES) throw tooLarge();
-  const body = new Uint8Array(await c.req.arrayBuffer());
-  if (body.byteLength > IMAGE_MAX_BYTES) throw tooLarge();
+  const body = await readBodyUpTo(c.req.raw, IMAGE_MAX_BYTES, tooLarge);
   const type = sniffImageType(body);
   if (!type) throw new HttpError(415, "unsupported_image_type", "only PNG, JPEG, WebP and GIF images are accepted");
   const name = newImageName(type);

@@ -174,9 +174,10 @@ function AnalyticsSkeleton() {
 
 const stepsSx = { m: 0, mt: 1.5, pl: 2.75, fontSize: "0.9rem", "& > li": { mb: 0.75 }, ...textSx } as const;
 
+/** 「設定」の「連携」タブ（GA・サーチコンソール）へのリンク */
 function SettingsLink({ children = "「設定」を開く" }: { children?: ReactNode }) {
   return (
-    <RouterLink {...screenLink("/w/$wikiKey/settings")} underline="always">
+    <RouterLink {...screenLink("/w/$wikiKey/settings/integrations")} underline="always">
       {children}
     </RouterLink>
   );

@@ -45,8 +45,8 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
   return (
     <Stack spacing={1.5}>
       <Box>
-        {/* すべての wiki のものは「全体の管理」の枠（GlobalAdminLayout）の中に出すので、見出しは h2（戻るリンクと h1 は枠にある） */}
-        <Typography variant="h6" component={scope === "all" ? "h2" : "h1"}>
+        {/* どちらも枠（「設定」のタブ・「全体の管理」）の中に出すので、見出しは h2（h1 と戻るリンクは枠にある） */}
+        <Typography variant="h6" component="h2">
           {scope === "all" ? "監査ログ（すべての wiki）" : "監査ログ"}
         </Typography>
         <Muted>

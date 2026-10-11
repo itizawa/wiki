@@ -9,10 +9,10 @@ import {
   type AuditLogQuery,
   type AuditTargetType,
 } from "@wiki/shared";
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
-import { auditLogs, pages, wikis } from "../db/schema";
+import { auditLogs, pages, users, wikiMembers, wikis } from "../db/schema";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 
@@ -188,18 +188,27 @@ function toEntry(log: typeof auditLogs.$inferSelect, wiki: { key: string; name: 
   } as AuditLogEntry;
 }
 
-/** 絞り込みの「人」に出す、記録に残っている人（最後に残っている名前）。 */
+/**
+ * 絞り込みの「人」に出す候補（いまの名前）。監査ログは増え続けるので、ログからは作らない。
+ * wiki の一覧では、その wiki のメンバーとオーナー（オーナーはメンバーの行が無くても、すべての wiki に入れる）。
+ * 全体の一覧では、管理画面に入れる人すべて（`users` の行は消さないので、外した人も残る）。
+ * wiki から外したメンバーは、その wiki の候補には出ない（その人の記録は、絞り込まない一覧に残る）。
+ */
 export async function listAuditActors(db: Db, scope: { wikiId: string } | "all"): Promise<AuditActorOption[]> {
-  const rows = await db
-    .selectDistinctOn([auditLogs.actorUserId], {
-      userId: auditLogs.actorUserId,
-      label: auditLogs.actorLabel,
-      email: auditLogs.actorEmail,
-    })
-    .from(auditLogs)
-    .where(and(isNotNull(auditLogs.actorUserId), scope === "all" ? undefined : eq(auditLogs.wikiId, scope.wikiId)))
-    .orderBy(auditLogs.actorUserId, desc(auditLogs.createdAt));
+  const inWiki =
+    scope === "all"
+      ? undefined
+      : or(
+          eq(users.isOwner, true),
+          exists(
+            db
+              .select({ one: sql`1` })
+              .from(wikiMembers)
+              .where(and(eq(wikiMembers.wikiId, scope.wikiId), eq(wikiMembers.userId, users.id))),
+          ),
+        );
+  const rows = await db.select({ userId: users.id, name: users.name, email: users.email }).from(users).where(inWiki);
   return rows
-    .map((r) => ({ userId: r.userId!, label: r.label, email: r.email }))
+    .map((r) => ({ userId: r.userId, label: r.name ?? r.email, email: r.email }))
     .sort((a, b) => a.label.localeCompare(b.label, "ja"));
 }

@@ -1,5 +1,6 @@
 import {
   applyOps,
+  childrenByParent,
   isWithinParent,
   newTreeId,
   type StructureOp,
@@ -7,7 +8,7 @@ import {
   type TreeMeta,
   type TreeNode,
 } from "@wiki/shared";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { rowsOf, type Db } from "../db/client";
 import {
   commitTrees,
@@ -21,6 +22,8 @@ import {
   wikis,
 } from "../db/schema";
 import { HttpError, notFound } from "../errors";
+import { publicTreeNodes } from "../publishing/manifest";
+import { recordPublishEvent } from "../publishing/service";
 
 export const MAIN_BRANCH = "main";
 
@@ -57,6 +60,20 @@ export async function loadCommit(db: Db, commitId: string): Promise<LoadedCommit
     }
   }
   return { commitId, state, snapshots };
+}
+
+/**
+ * コミットがスナップショット（その時点のツリー）を持っているか。
+ * 古いコミットは間引きでスナップショットを消す（`structure/prune.ts`）。消したコミットを `loadCommit` で読むと
+ * 空のツリーが返るので、head 以外のコミットを読む前にこれで確かめる。
+ */
+export async function hasSnapshot(db: Db, commitId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ commitId: commitTrees.commitId })
+    .from(commitTrees)
+    .where(eq(commitTrees.commitId, commitId))
+    .limit(1);
+  return row !== undefined;
 }
 
 function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
@@ -109,6 +126,12 @@ export async function commitOps(
     checkVisibility?: boolean;
     /** 構造を変えた人。人の操作でなければ省く */
     createdBy?: string | null;
+    /**
+     * 公開サイトのツリー（並びと親子）が変わるなら、ビルドを起こす（`publish_events` に `structure` を記録する）。
+     * 並べ替え・移動で渡す。ページの作成（新しいページは非公開）と、ゴミ箱に入れる・元に戻す（呼び出し側が
+     * `delete` `restore` を記録する）では渡さない。
+     */
+    recordPublishEvent?: boolean;
   },
 ): Promise<CommitResult> {
   return db.transaction(async (tx) => {
@@ -125,6 +148,8 @@ export async function commitOps(
     }
 
     const head = await loadCommit(tx, branch.headCommitId);
+    // head のスナップショットは間引かない。無いまま進めると、空のツリーに操作を当てて全ページを外してしまう
+    if (head.snapshots.size === 0) throw new Error(`head commit ${branch.headCommitId} has no snapshot`);
     const referenced = [...new Set(input.ops.flatMap(referencedPageIds))];
     const livePages = new Set(
       referenced.length === 0
@@ -155,8 +180,41 @@ export async function commitOps(
       .update(structureBranches)
       .set({ headCommitId: commitId })
       .where(and(eq(structureBranches.wikiId, wikiId), eq(structureBranches.name, MAIN_BRANCH)));
+    if (input.recordPublishEvent && (await publicTreeChanged(tx, wikiId, head.state, result.state))) {
+      await recordPublishEvent(tx, wikiId, "structure", { oauthGrantId: input.oauthGrantId });
+    }
     return { commitId, state: result.state };
   });
+}
+
+/**
+ * 公開サイトのツリーに出るもの（公開中のページの親子と並び）が、構造の変更の前後で違うか。
+ * 非公開のページだけを動かしたときは違わない。非公開のページを動かしても、その下に公開中のページがあれば、
+ * そのページが繰り上がる先や並びが変わるので違う。
+ */
+async function publicTreeChanged(db: Db, wikiId: string, before: StructureState, after: StructureState): Promise<boolean> {
+  const tree = await getPrimaryTree(db, wikiId);
+  // 公開サイトに出るページの条件は、マニフェスト（publishing/manifest.ts）と同じ
+  const rows = await db
+    .select({ id: pages.id })
+    .from(pages)
+    .where(and(eq(pages.wikiId, wikiId), isNull(pages.deletedAt), eq(pages.visibility, "public"), isNotNull(pages.publishedVersionId)));
+  if (rows.length === 0) return false;
+  const publicIds = new Set(rows.map((r) => r.id));
+  return publicTreeShape(before.trees[tree.id]?.nodes ?? [], publicIds) !== publicTreeShape(after.trees[tree.id]?.nodes ?? [], publicIds);
+}
+
+/**
+ * 公開サイトが組むツリーの形。親ごとの、子の並び。
+ * position の値そのものは比べない（振り直しで値だけ変わっても、公開サイトの並びは変わらない）。
+ */
+function publicTreeShape(nodes: readonly TreeNode[], publicIds: ReadonlySet<string>): string {
+  const children = childrenByParent(publicTreeNodes(nodes, publicIds));
+  return JSON.stringify(
+    [...children.entries()]
+      .map(([parent, list]) => [parent ?? "", list.map((n) => n.nodeId)] as const)
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
+  );
 }
 
 /**
@@ -315,6 +373,7 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     created_by: string | null;
     created_by_name: string | null;
     via: string | null;
+    diff_available: boolean;
   };
   const result = await db.execute(sql`
     with recursive history(id, depth) as (
@@ -331,7 +390,14 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
          from structure_commit_parents p where p.commit_id = c.id) as parent_ids,
       -- 外部のアプリ（MCP）からの操作なら、そのアプリの名前
       (select oc.name from oauth_grants g join oauth_clients oc on oc.id = g.client_id
-         where g.id = c.oauth_grant_id) as via
+         where g.id = c.oauth_grant_id) as via,
+      -- 差分は第1親と比べて出す。このコミットか第1親のスナップショットを間引いていると出せない
+      (exists (select 1 from commit_trees t where t.commit_id = c.id)
+        and not exists (
+          select 1 from structure_commit_parents p
+          where p.commit_id = c.id and p.ordinal = 0
+            and not exists (select 1 from commit_trees t where t.commit_id = p.parent_commit_id)
+        )) as diff_available
     from history h join structure_commits c on c.id = h.id
     left join users u on u.id = c.created_by
     order by h.depth
@@ -345,6 +411,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
     createdBy: r.created_by && r.created_by_name ? { id: r.created_by, name: r.created_by_name } : null,
     via: r.via,
+    /** 差分を出せるか（スナップショットを間引いたコミットは false） */
+    diffAvailable: r.diff_available,
   }));
 }
 
