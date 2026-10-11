@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { inArray } from "drizzle-orm";
+import { pages, publishEvents } from "../db/schema";
 import { publicTreeNodes } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
 import { setup, W, wikiManifest } from "./harness";
@@ -91,6 +93,41 @@ describe("visibility hierarchy", () => {
     expect(all.status).toBe(200);
     for (const p of [parent, child, grandchild]) expect(await visibilityOf(p.id)).toBe("private");
     expect((await wikiManifest(ctx.db)).pages).toHaveLength(0);
+  });
+
+  it("gives each descendant its own unlisted key when narrowing together, and keeps a key that already exists", async () => {
+    ctx = await setup();
+    const parent = await newPage("親");
+    const a = await newPage("子A", parent.id);
+    const b = await newPage("子B", parent.id);
+    const c = await newPage("子C", parent.id);
+    const all = [parent, a, b, c];
+    await publish(parent, "public");
+    // A は前に限定公開にしたことがあり、キーを持っている
+    await publish(a, "unlisted");
+    const keyOf = async (id: string) => (await ctx.call("GET", `${W}/pages/${id}`)).body.unlistedKey as string | null;
+    const keyOfA = await keyOf(a.id);
+    expect(keyOfA).not.toBeNull();
+    for (const p of [a, b, c]) expect((await publish(p, "public")).status).toBe(200);
+    await ctx.db.delete(publishEvents);
+
+    expect((await publish(parent, "unlisted", true)).status).toBe(200);
+    for (const p of all) expect(await visibilityOf(p.id)).toBe("unlisted");
+    expect(await keyOf(a.id)).toBe(keyOfA);
+    const keys = await Promise.all(all.map((p) => keyOf(p.id)));
+    expect(keys.every((k) => typeof k === "string" && k.length >= 22)).toBe(true);
+    expect(new Set(keys).size).toBe(4);
+    // ページごとに、公開の記録が残る（ビルドのきっかけ）
+    const published = await ctx.db.select().from(publishEvents);
+    expect(published.map((e) => `${e.kind}:${e.pageId}`).sort()).toEqual(all.map((p) => `publish:${p.id}`).sort());
+
+    // 配下もまとめて非公開に：公開版も外れ、ページごとに記録が残る
+    await ctx.db.delete(publishEvents);
+    expect((await ctx.call("POST", `${W}/pages/${parent.id}/unpublish`, { applyToDescendants: true })).status).toBe(200);
+    const rows = await ctx.db.select().from(pages).where(inArray(pages.id, all.map((p) => p.id)));
+    expect(rows.map((r) => [r.visibility, r.publishedVersionId])).toEqual(Array(4).fill(["private", null]));
+    const unpublished = await ctx.db.select().from(publishEvents);
+    expect(unpublished.map((e) => `${e.kind}:${e.pageId}`).sort()).toEqual(all.map((p) => `unpublish:${p.id}`).sort());
   });
 
   it("refuses to move a page under a parent narrower than it", async () => {

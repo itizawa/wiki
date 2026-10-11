@@ -93,6 +93,17 @@ export type PageVersion = {
   createdAt: string;
 };
 
+/** 版履歴の一覧の1行（本文は入れない）。via は、外部のアプリ（MCP）から保存した版なら、そのアプリの名前 */
+export type VersionListItem = Pick<PageVersion, "id" | "baseVersionId" | "title" | "authorType" | "createdBy" | "keep" | "createdAt"> & {
+  via: string | null;
+};
+
+/**
+ * 版履歴の一覧（`GET /pages/:id/versions?limit=&cursor=`）。新しい順に、1回に `limit` 件（既定 50、最大 100）。
+ * `nextCursor` を次の呼び出しの `cursor` に渡すと続きが返る。null なら、そこで終わり
+ */
+export type PageVersionList = { versions: VersionListItem[]; nextCursor: string | null };
+
 export type PageDetail = PageSummary & { head: PageVersion };
 
 /** ゴミ箱の1行。いっしょにゴミ箱に入れたページのまとまりを、削除で選んだページ（先頭）で表す。 */
