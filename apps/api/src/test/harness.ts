@@ -27,7 +27,8 @@ export const testConfig: AppConfig = {
   google: null,
   secureCookies: false,
   siteBaseDomain: "site.test",
-  internalToken: "internal-token",
+  exportToken: "export-token",
+  cronToken: "cron-token",
   googleServiceAccount: null,
 };
 

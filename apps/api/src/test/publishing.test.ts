@@ -17,8 +17,9 @@ async function newPage(title: string, bodyMd = "") {
   return res.body;
 }
 
-const internal = (method: string, path: string, body?: unknown) =>
-  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
+const withToken = (token: string, method: string, path: string, body?: unknown) =>
+  ctx.call(method, path, body, { authorization: `Bearer ${token}`, cookie: "" });
+const internal = (method: string, path: string, body?: unknown) => withToken("cron-token", method, path, body);
 
 describe("publish / unpublish", () => {
   it("publishes the chosen version only and keeps later edits out of the manifest", async () => {
@@ -118,12 +119,44 @@ describe("manifest", () => {
     expect(m.trees.map((t) => t.key)).toEqual(["main"]);
   });
 
-  it("is served at /export/public only with the internal token", async () => {
+  it("is served at /export/public only with the token of the site build", async () => {
     ctx = await setup();
     expect((await ctx.app.request("/export/public")).status).toBe(401);
-    const res = await internal("GET", "/export/public");
+    const res = await withToken("export-token", "GET", "/export/public");
     expect(res.status).toBe(200);
     expect(res.body.contentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("the tokens of the site build and the cron worker", () => {
+  /** いまある /internal/* の経路と、まだ無い経路（あとで足されても、同じ守りが掛かることを確かめる） */
+  const INTERNAL_PATHS = [
+    "/internal/tick",
+    "/internal/versions/prune",
+    "/internal/views/totals",
+    "/internal/builds/00000000-0000-4000-8000-000000000000/triggered",
+    "/internal/added-later",
+  ];
+
+  it("does not let the token of the site build call /internal/*", async () => {
+    ctx = await setup();
+    for (const path of INTERNAL_PATHS) {
+      expect((await withToken("export-token", "POST", path, {})).status, path).toBe(401);
+      expect((await ctx.app.request(path, { method: "POST" })).status, path).toBe(401);
+    }
+    expect((await withToken("cron-token", "POST", "/internal/tick", {})).status).toBe(200);
+    expect((await withToken("cron-token", "POST", "/internal/versions/prune")).status).toBe(200);
+  });
+
+  it("does not let the token of the cron worker read /export/public", async () => {
+    ctx = await setup();
+    expect((await withToken("cron-token", "GET", "/export/public")).status).toBe(401);
+  });
+
+  it("does not accept one token where the other is not set", async () => {
+    ctx = await setup({ config: { cronToken: undefined } });
+    expect((await withToken("export-token", "POST", "/internal/tick", {})).status).toBe(404);
+    expect((await withToken("export-token", "GET", "/export/public")).status).toBe(200);
   });
 });
 

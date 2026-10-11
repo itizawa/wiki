@@ -32,7 +32,8 @@ async function worker(env: Partial<WorkerEnv> = {}) {
     SESSION_SECRET: ctx.config.sessionSecret,
     ADMIN_ORIGIN: ORIGIN,
     SITE_BASE_DOMAIN: "example.com",
-    INTERNAL_TOKEN: "internal-token",
+    EXPORT_TOKEN: "export-token",
+    CRON_TOKEN: "cron-token",
     ...env,
   } as WorkerEnv;
   const cookie = `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, ctx.owner.id)}`;
@@ -70,10 +71,9 @@ describe("worker entry", () => {
 
   it("serves /export and /internal without the prefix, for the site build and the cron worker", async () => {
     const w = await worker();
-    const authorization = "Bearer internal-token";
-    expect((await w.fetch("/export/public", { headers: { authorization } })).status).toBe(200);
+    expect((await w.fetch("/export/public", { headers: { authorization: "Bearer export-token" } })).status).toBe(200);
     expect((await w.fetch("/export/public")).status).toBe(401);
-    const run = await w.fetch("/internal/tick", { method: "POST", headers: { authorization }, body: "{}" });
+    const run = await w.fetch("/internal/tick", { method: "POST", headers: { authorization: "Bearer cron-token" }, body: "{}" });
     expect(run.status).toBe(200);
   });
 

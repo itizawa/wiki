@@ -51,5 +51,6 @@ enabled = true
 # SESSION_SECRET        セッションCookieの署名鍵（32文字以上）
 # GOOGLE_CLIENT_ID      Google OAuth クライアント
 # GOOGLE_CLIENT_SECRET
-# INTERNAL_TOKEN        /export/public と /internal/* 用トークン（ワーカー・サイトのビルドと同じ値）
+# EXPORT_TOKEN          /export/public 用トークン（wiki-site のビルドの環境変数 EXPORT_TOKEN と同じ値）
+# CRON_TOKEN            /internal/* 用トークン（wiki-worker の CRON_TOKEN と同じ値。EXPORT_TOKEN とは別の値にする）
 # GOOGLE_SERVICE_ACCOUNT_JSON  任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読むサービスアカウントの鍵（JSON そのまま）。無ければその機能だけが「未設定」になる

@@ -28,7 +28,7 @@ API_ORIGIN = "https://wiki-admin.hatchery-works.com"
 BUILD_DEBOUNCE_SEC = "120"
 
 # secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
-# INTERNAL_TOKEN        API の /internal/* 用トークン
+# CRON_TOKEN            API の /internal/* 用トークン（wiki-admin の CRON_TOKEN と同じ値）
 # SITE_DEPLOY_HOOK_URL  公開サイト（wiki-site）の Workers Builds のデプロイフックURL
 # NOTIFY_WEBHOOK_URL    予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook（任意）
 # CLOUDFLARE_ACCOUNT_ID       閲覧数の集計で Workers Analytics Engine の SQL API を呼ぶアカウント（任意。無ければ集計を飛ばす）

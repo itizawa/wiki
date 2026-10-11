@@ -8,7 +8,7 @@ afterEach(async () => {
   ctx = undefined as unknown as typeof ctx;
 });
 
-const internal = (method: string, path: string) => ctx.call(method, path, undefined, { authorization: "Bearer internal-token", cookie: "" });
+const internal = (method: string, path: string) => ctx.call(method, path, undefined, { authorization: "Bearer cron-token", cookie: "" });
 
 /** 間引きを動かす時刻。JST では 2026-06-20 12:00（日付の変わり目から遠い） */
 const NOW = new Date("2026-06-20T03:00:00.000Z");

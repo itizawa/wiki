@@ -10,14 +10,21 @@ import { buildManifest } from "../publishing/manifest";
 import { parseJson } from "../validation";
 import { applyViewTotals } from "./views";
 
-/** ワーカー・サイトのビルドからの呼び出し。`Authorization: Bearer $INTERNAL_TOKEN` */
-export const requireInternalToken: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const token = c.get("deps").config.internalToken;
-  if (!token) throw new HttpError(404, "not_found", "not found");
-  const header = c.req.header("authorization") ?? "";
-  if (!(await timingSafeEqual(header, `Bearer ${token}`))) throw new HttpError(401, "unauthenticated", "invalid token");
-  await next();
-};
+/**
+ * `Authorization: Bearer <トークン>` を確かめる。トークンは呼ぶ側ごとに分けてあり、片方が漏れても、もう片方の経路は通らない。
+ * - `exportToken`（`EXPORT_TOKEN`）：公開サイトのビルドが `/export/public` を読む
+ * - `cronToken`（`CRON_TOKEN`）：Cron のワーカーが `/internal/*` を呼ぶ
+ * 未設定のトークンの経路は無効（404）
+ */
+const requireToken =
+  (which: "exportToken" | "cronToken"): MiddlewareHandler<AppEnv> =>
+  async (c, next) => {
+    const token = c.get("deps").config[which];
+    if (!token) throw new HttpError(404, "not_found", "not found");
+    const header = c.req.header("authorization") ?? "";
+    if (!(await timingSafeEqual(header, `Bearer ${token}`))) throw new HttpError(401, "unauthenticated", "invalid token");
+    await next();
+  };
 
 /** 長さも漏らさないよう、両方を SHA-256 にしてから定数時間で比べる */
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
@@ -33,14 +40,14 @@ const tickInput = z.object({
   maxWaitSec: z.number().int().min(0).max(86400).optional(),
 });
 
-/** /export/public：公開ビルド用マニフェスト（mainのみ） */
-export const exportRoutes = new Hono<AppEnv>().use("*", requireInternalToken).get("/public", async (c) => {
+/** /export/public：公開ビルド用マニフェスト（mainのみ）。限定公開の本文と key を含むので、`EXPORT_TOKEN` だけが通る */
+export const exportRoutes = new Hono<AppEnv>().use("*", requireToken("exportToken")).get("/public", async (c) => {
   return c.json(await buildManifest(c.get("deps").db));
 });
 
-/** /internal/*：Cron Triggers のワーカーから呼ぶ */
+/** /internal/*：Cron Triggers のワーカーから呼ぶ。この下に足す経路は、どれも `CRON_TOKEN` だけが通る（経路ごとには指定しない） */
 export const internalRoutes = new Hono<AppEnv>()
-  .use("*", requireInternalToken)
+  .use("*", requireToken("cronToken"))
   // 5分おきの Cron の1回分：下書きを版にする → 期限の来た予約を実行する → 公開ビルドを起動するか決める。
   // 応答の next（種類ごとの、次に DB を見に行く時刻）を、ワーカーが印（Workers KV）に書き直す
   .post("/tick", async (c) => {

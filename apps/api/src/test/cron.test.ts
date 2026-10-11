@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 const internal = (method: string, path: string, body?: unknown) =>
-  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
+  ctx.call(method, path, body, { authorization: "Bearer cron-token", cookie: "" });
 
 /** Workers KV の代わり。puts に、書いたキーを順に残す */
 function fakeKv() {

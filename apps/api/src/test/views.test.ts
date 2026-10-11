@@ -19,7 +19,7 @@ async function newPage(title: string, visibility?: "public" | "unlisted", base =
   return res.body.id as string;
 }
 
-const totals = (rows: unknown, headers: Record<string, string> = { authorization: "Bearer internal-token" }) =>
+const totals = (rows: unknown, headers: Record<string, string> = { authorization: "Bearer cron-token" }) =>
   ctx.call("POST", "/internal/views/totals", { rows }, { cookie: "", origin: "", ...headers });
 
 const wikiId = async (key = "wiki") => (await ctx.client.query<{ id: string }>("select id from wikis where key = $1", [key])).rows[0]!.id;
@@ -32,12 +32,13 @@ const stored = async () =>
   ).rows;
 
 describe("applying the totals of views (/internal/views/totals)", () => {
-  it("cannot be called without the internal token", async () => {
+  it("cannot be called without the token of the cron worker", async () => {
     ctx = await setup();
     const id = await newPage("記事", "public");
     const rows = [{ wiki: "wiki", pageId: id, day: "2026-10-10", count: 1 }];
     expect((await totals(rows, {})).status).toBe(401);
     expect((await totals(rows, { authorization: "Bearer wrong-token-xx" })).status).toBe(401);
+    expect((await totals(rows, { authorization: "Bearer export-token" })).status).toBe(401);
     expect(await stored()).toEqual([]);
   });
 

@@ -3,7 +3,7 @@ import { CRON_MARK_KEYS, CRON_RECHECK_KEY, tick, type CronMarkStore, type Env, t
 
 const env: Env = {
   API_ORIGIN: "https://api.test",
-  INTERNAL_TOKEN: "t",
+  CRON_TOKEN: "t",
   SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy",
   NOTIFY_WEBHOOK_URL: "https://hooks.test/notify",
 };

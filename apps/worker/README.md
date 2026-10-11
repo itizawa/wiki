@@ -37,5 +37,5 @@ API の `/internal/versions/prune` で、自動でできた版を間引く（24�
 
 ## 設定
 
-設定は `wrangler.toml` の `[vars]` と `[[kv_namespaces]]`（印を置く名前空間。API の `wrangler.toml` と同じ `id` にする。作り方はルートの README「デプロイ → 初回の準備」）、シークレットの `INTERNAL_TOKEN` / `SITE_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL` / `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_ANALYTICS_TOKEN`（デプロイ時に GitHub Actions が入れる。手順はルートの README「デプロイ」。後ろの2つは閲覧数の集計用で、トークンの権限は Account Analytics の読み取りだけ）。
+設定は `wrangler.toml` の `[vars]` と `[[kv_namespaces]]`（印を置く名前空間。API の `wrangler.toml` と同じ `id` にする。作り方はルートの README「デプロイ → 初回の準備」）、シークレットの `CRON_TOKEN`（API の `/internal/*` 用。`/export/public` は読めない） / `SITE_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL` / `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_ANALYTICS_TOKEN`（デプロイ時に GitHub Actions が入れる。手順はルートの README「デプロイ」。後ろの2つは閲覧数の集計用で、トークンの権限は Account Analytics の読み取りだけ）。
 ローカルでは `pnpm dev` 後に `curl "http://localhost:8787/__scheduled"` で5分おきの1回分を実行できる。手元の API（Node）は印を書かないので、`pnpm dev` は `IGNORE_CRON_MARKS` を渡して、印を見ずに毎回 API を呼ぶ。間引きの方は `curl "http://localhost:8787/__scheduled?cron=0+18+*+*+*"`、閲覧数の集計の方は `curl "http://localhost:8787/__scheduled?cron=0+*+*+*+*"`（手元ではシークレットが無いので、飛ばしたことだけがログに出る）。

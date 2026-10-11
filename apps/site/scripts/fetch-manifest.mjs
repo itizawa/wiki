@@ -1,15 +1,22 @@
 // ビルドの最初にマニフェストを1回だけ取得して保存する（ページ生成と _redirects 等で同じ内容を使うため）。
+// どこから持ってくるか（MANIFEST_PATH のファイル・サンプルデータ・API）は scripts/manifest-source.mjs が決める。
 // MANIFEST_PATH が指定されていれば何もしない。
-import { writeFile } from "node:fs/promises";
+import { copyFile, writeFile } from "node:fs/promises";
+import { resolveManifestSource, SAMPLE_MANIFEST_PATH } from "./manifest-source.mjs";
 
-if (!process.env.MANIFEST_PATH) {
-  const { API_ORIGIN, INTERNAL_TOKEN } = process.env;
-  if (!API_ORIGIN || !INTERNAL_TOKEN) {
-    console.error("set MANIFEST_PATH, or API_ORIGIN and INTERNAL_TOKEN");
-    process.exit(1);
-  }
-  const res = await fetch(new URL("/export/public", API_ORIGIN), {
-    headers: { authorization: `Bearer ${INTERNAL_TOKEN}` },
+const source = resolveManifestSource(process.env);
+if (source.kind === "error") {
+  console.error(source.message);
+  process.exit(1);
+}
+if (source.kind === "sample") {
+  // 続きの処理（astro build、pagefind）は別のプロセスで、MANIFEST_PATH が無ければ .manifest.json を読む。そこへ写す
+  await copyFile(SAMPLE_MANIFEST_PATH, ".manifest.json");
+  console.log(`manifest: branch "${source.branch}" is a preview build; using the sample data (${SAMPLE_MANIFEST_PATH}), not the API`);
+}
+if (source.kind === "api") {
+  const res = await fetch(new URL("/export/public", source.origin), {
+    headers: { authorization: `Bearer ${source.token}` },
   });
   if (!res.ok) {
     console.error(`failed to fetch manifest: ${res.status}`);

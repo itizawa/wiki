@@ -14,8 +14,10 @@ export type AppConfig = {
   secureCookies: boolean;
   /** 公開サイトのドメインの共通部分。wiki は `{key}.{siteBaseDomain}` で公開する */
   siteBaseDomain: string;
-  /** /export/public と /internal/* 用のトークン（ワーカー・サイトのビルドが使う）。未設定なら無効 */
-  internalToken?: string;
+  /** /export/public 用のトークン（公開サイトのビルドだけが持つ）。未設定なら、その経路は無効 */
+  exportToken?: string;
+  /** /internal/* 用のトークン（Cron のワーカーだけが持つ）。未設定なら、その経路は無効 */
+  cronToken?: string;
   /**
    * 「アクセス解析」が Google Analytics とサーチコンソールの数字を読むためのサービスアカウント。
    * null：未設定（この機能は無効）。"invalid"：登録してあるが、鍵の JSON として読めない
@@ -60,7 +62,8 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     devLoginEmail: isProduction ? undefined : env.DEV_LOGIN_EMAIL?.toLowerCase(),
     secureCookies: isProduction || adminOrigin.startsWith("https://"),
     siteBaseDomain: env.SITE_BASE_DOMAIN ?? "localhost:4321",
-    internalToken: env.INTERNAL_TOKEN || undefined,
+    exportToken: env.EXPORT_TOKEN || undefined,
+    cronToken: env.CRON_TOKEN || undefined,
     googleServiceAccount: parseServiceAccount(env.GOOGLE_SERVICE_ACCOUNT_JSON),
   };
 }

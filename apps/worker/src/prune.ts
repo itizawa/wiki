@@ -11,7 +11,7 @@ export async function prune(env: Env, fetchImpl: typeof fetch = fetch): Promise<
   try {
     const res = await fetchImpl(new URL("/internal/versions/prune", env.API_ORIGIN), {
       method: "POST",
-      headers: { authorization: `Bearer ${env.INTERNAL_TOKEN}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${env.CRON_TOKEN}`, "content-type": "application/json" },
       body: "{}",
     });
     if (!res.ok) throw new Error(`/internal/versions/prune failed: ${res.status}`);

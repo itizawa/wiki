@@ -5,9 +5,15 @@
 ## ビルド
 
 ```sh
-pnpm build          # API_ORIGIN と INTERNAL_TOKEN で /export/public を取得してビルド → Pagefind
+pnpm build          # API_ORIGIN と EXPORT_TOKEN で /export/public を取得してビルド → Pagefind
 pnpm build:sample   # fixtures/manifest.sample.json でビルドし、scripts/verify-build.mjs で検査
 ```
+
+マニフェストをどこから持ってくるかは、`scripts/manifest-source.mjs` が次の順で決める。
+
+1. `MANIFEST_PATH` があれば、そのファイル（`build:sample`）
+2. Workers Builds の、`main` 以外のブランチのビルド（プレビュー。`WORKERS_CI_BRANCH` が `main` でない）なら、サンプルデータ（`fixtures/manifest.sample.json`）。**`EXPORT_TOKEN` が渡っていても、API は呼ばない**（プレビューの URL に、本番の限定公開の内容を残さないため）
+3. それ以外（本番のビルド、手元）は、API の `/export/public`。`API_ORIGIN` か `EXPORT_TOKEN` が無ければ失敗する（本番がサンプルデータで出ることは無い）
 
 1回のビルドで全 wiki のぶんを作る。ページはすべて `src/pages/[wiki]/` の下にあり、wiki ごとのディレクトリに出力する。
 
@@ -107,6 +113,6 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 ## デプロイ
 
-デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`INTERNAL_TOKEN` `SITE_BASE_DOMAIN`（`hatchery-works.com`）。手順はルートの README「デプロイ」。
+デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`EXPORT_TOKEN`（`/export/public` だけを読めるトークン）`SITE_BASE_DOMAIN`（`hatchery-works.com`）。Worker の実行時のシークレットは無い。手順はルートの README「デプロイ」。
 
 `pnpm preview` で、ビルド結果を Workers のランタイムで確認できる。
