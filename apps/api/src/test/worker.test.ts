@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cookieName, issueSession, SESSION_COOKIE } from "../auth/session";
 import { createWorker, type WorkerEnv } from "../worker";
 import { ADMIN, setup } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await ctx?.close();
   ctx = undefined as unknown as typeof ctx;
 });
@@ -111,6 +112,66 @@ describe("worker entry", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+  });
+
+  it("answers an image from the edge cache without the database or R2, and caches only images that exist", async () => {
+    const stored = new Map<string, Response>();
+    const cache = {
+      match: vi.fn(async (key: string) => stored.get(key)?.clone()),
+      put: vi.fn(async (key: string, res: Response) => void stored.set(key, res)),
+    };
+    vi.stubGlobal("caches", { default: cache });
+    const name = "abcdefghijklmnopqrstuvwx.png";
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const reads: string[] = [];
+    const IMAGES = {
+      async put() {},
+      async get(key: string) {
+        reads.push(key);
+        return key === name ? { body: new Response(png as BodyInit).body!, httpMetadata: { contentType: "image/png" } } : null;
+      },
+    };
+    const w = await worker({ IMAGES });
+
+    // ログインしている人が最初に開く。入れる応答に Cookie は付かない
+    const first = await w.fetch(`/images/${name}?v=1`, { headers: { cookie: w.cookie } });
+    expect(first.status).toBe(200);
+    await w.settled();
+    expect([...stored.keys()]).toEqual([`${ORIGIN}/images/${name}`]);
+    expect(stored.get(`${ORIGIN}/images/${name}`)!.headers.get("set-cookie")).toBeNull();
+    expect(w.stats().connections).toBe(1);
+
+    // 2つ目のブラウザ（ログインしていない）。DB にも R2 にも触らない
+    const second = await w.fetch(`/images/${name}`);
+    expect(second.status).toBe(200);
+    expect(second.headers.get("content-type")).toBe("image/png");
+    expect(second.headers.get("cache-control")).toContain("immutable");
+    expect(second.headers.get("content-security-policy")).toContain("sandbox");
+    expect(new Uint8Array(await second.arrayBuffer())).toEqual(png);
+    expect(reads).toEqual([name]);
+    expect(w.stats().connections).toBe(1);
+
+    // 無い画像と、画像ではない経路は入れない（キャッシュを見にいくのも画像の GET だけ）
+    expect((await w.fetch("/images/zzzzzzzzzzzzzzzzzzzzzzzz.png")).status).toBe(404);
+    expect((await w.fetch("/api/health")).status).toBe(200);
+    expect((await w.fetch("/api/admin/me", { headers: { cookie: w.cookie } })).status).toBe(200);
+    await w.settled();
+    expect(stored.size).toBe(1);
+    expect(cache.match).toHaveBeenCalledTimes(3);
+  });
+
+  it("serves images from R2 every time when the cache fails", async () => {
+    vi.stubGlobal("caches", { default: { match: () => Promise.reject(new Error("down")), put: () => Promise.reject(new Error("down")) } });
+    const name = "abcdefghijklmnopqrstuvwx.png";
+    const IMAGES = {
+      async put() {},
+      async get() {
+        return { body: new Response("png").body!, httpMetadata: { contentType: "image/png" } };
+      },
+    };
+    const w = await worker({ IMAGES });
+    for (let i = 0; i < 2; i++) expect(await (await w.fetch(`/images/${name}`)).text()).toBe("png");
+    await w.settled();
   });
 
   it("does not expose the admin API outside /api", async () => {

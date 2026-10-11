@@ -20,6 +20,20 @@ dist/
 
 `worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404 になる。
 
+Worker を通さないのは `/_astro/*` だけ（`wrangler.toml` の `run_worker_first = ["/*", "!/_astro/*"]`）。どの wiki にも共通で、名前にハッシュが入るので、静的アセットからそのまま返し、ブラウザに1年キャッシュさせる。Worker の呼び出しにも数えられない。
+
+- Worker を通さないパスは、どの wiki のサブドメインからも同じものが読める。`/_astro/` に wiki ごとの内容（限定公開を含む）が出ていないことは、`build:sample` の検査が確かめる。wiki ごとの内容を `/_astro/` に出すような変更（ページの内容をスクリプトに埋め込んで別ファイルに出す、など）をしない
+- `favicon.svg` も共通だが、Worker を通したままにしている。ゾーンのルートは管理画面（`wiki-admin`）のホストにも当たり、管理画面にも `/favicon.svg` があるため（通さなくすると、管理画面にこちらのファイルが返る）
+
+キャッシュ（`Cache-Control`）は次のとおり。HTML には付けない（公開・非公開がすぐ反映されなくなる）。
+
+| パス | `Cache-Control` | 付ける場所 |
+|---|---|---|
+| `/_astro/*` | `public, max-age=31536000, immutable` | `_headers`（`src/integrations/public-files.mjs`）。Worker を通らないので、ここでしか付けられない |
+| `/pagefind/fragment/*` `/pagefind/index/*`（名前にハッシュが入る、検索の索引の断片） | 同上 | `worker/index.ts`。見つかったときだけ付ける（`_headers` に書くと、無いファイルの 404 にも付く） |
+| `/images/{name}` | 同上 | `worker/index.ts`。エッジのキャッシュ（`caches.default`）にも入れる |
+| ほか（HTML、`pagefind.js`、`feed.xml` など） | 静的アセットの既定（`public, max-age=0, must-revalidate`） | — |
+
 検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。アクセント色（`--accent`）・ロゴ・ファビコンも wiki ごとのテーマ（マニフェストの `theme`）から出し分ける（`src/layouts/Base.astro`）。
 
 `build:sample` の検査は、限定公開の漏れに加えて、ある wiki の内容（テーマを含む）が別の wiki の出力に混ざっていないことも確かめる。
@@ -45,7 +59,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
 | `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから API の `/internal/views` へ渡す。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |
-| `/images/{name}` | アップロードした画像。R2 のバケット（バインディング `IMAGES`）から返す。どの wiki でも同じ（`worker/index.ts`） |
+| `/images/{name}` | アップロードした画像。R2 のバケット（バインディング `IMAGES`）から返す。どの wiki でも同じ（`worker/index.ts`）。2回目からはエッジのキャッシュから返し、R2 を読まない（キーは Host を含む URL。プレビューの `*.workers.dev` ではキャッシュが働かず、毎回 R2 から返す） |
 
 別の wiki のページへのリンクは、外部リンクと同じ扱いになる（`/p/{id}` と書いても、その wiki に無いページなのでテキストだけになる）。
 
@@ -109,4 +123,4 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`INTERNAL_TOKEN` `SITE_BASE_DOMAIN`（`hatchery-works.com`）。手順はルートの README「デプロイ」。
 
-`pnpm preview` で、ビルド結果を Workers のランタイムで確認できる。
+`pnpm preview` で、ビルド結果を Workers のランタイムで確認できる。そのままだと `wrangler.toml` の `routes` のホスト（本番）へ問い合わせてしまうので、`pnpm preview --port 4321 --local-upstream localhost:4321` のように、手元を指す `--local-upstream` を付ける。Worker を通ったかどうかは、応答の `x-frame-options`（Worker が付ける）の有無で見分けられる。

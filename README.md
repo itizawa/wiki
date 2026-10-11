@@ -135,6 +135,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - wiki の画像（「全体の管理」の「wiki」タブの「表示名と画像」）も、同じ仕組みでアップロードできる（ファイルの選択か、枠へのドラッグ）。管理画面で画像を1枚アップロードする部品は `apps/admin/src/components/ImageUploader.tsx`
   - 置き場所は Cloudflare R2 のバケット `wiki-images`。名前はランダムな24文字で、本文には相対パス `/images/{name}` と書く。管理画面（`wiki-admin`）と公開サイト（`wiki-site`、どの wiki のサブドメインでも）が、同じバケットからこのパスで配る
   - 認証はしない。非公開・限定公開のページに貼った画像も、URL を知っていればだれでも見られる
+  - 名前が同じなら中身も同じなので、ブラウザに1年キャッシュさせ（`immutable`）、Cloudflare のエッジのキャッシュ（`caches.default`）にも入れる。2回目からは、初めて来るブラウザにも R2 を読まずに返す（管理画面は `apps/api/src/worker.ts`、公開サイトは `apps/site/worker/index.ts`）。キーは URL（クエリを除く）で、入れるのは見つかった画像だけ。R2 から画像を手で消しても、キャッシュに残っている間は返り続ける
   - 手元の開発（`pnpm dev`）では `apps/api/.data/images`（`IMAGES_DIR` で変えられる）に置く
 - 構造：`trees` / `tree_snapshots` / `tree_nodes` / `structure_commits` / `structure_commit_parents` / `commit_trees` / `structure_branches`
   - すべての構造変更はコミットとして記録し、履歴と差分の確認に使う
@@ -391,6 +392,8 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    - ビルドの環境変数：`API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`INTERNAL_TOKEN` `SITE_BASE_DOMAIN`（`hatchery-works.com`）。サイト名とオリジンは、wiki の表示名と key から決まる
    - wiki は `{key}.hatchery-works.com` で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルート `*.hatchery-works.com/*` で受ける（`apps/site/wrangler.toml`）。**DNS に、プロキシを有効にしたワイルドカードのレコード（`*.hatchery-works.com`）を1つ足す**（行き先は使われないので、`AAAA` で `100::` など）。wiki を作るたびに DNS や設定を足す必要は無い
    - このルートは `wiki-admin` など、ほかの Worker のサブドメインにも当たる。wiki の key として使えないホスト名（予約語）は、公開サイトの Worker がそのまま本来の Worker へ渡す。**新しい Worker を同じゾーンのサブドメインで出すときは、その名前を `RESERVED_WIKI_KEYS` に足す**
+   - ルートは、同じホスト名のカスタムドメインより先に当たる（[Routes](https://developers.cloudflare.com/workers/configuration/routing/routes/)）。そのままだと、管理画面へのリクエストはどれも `wiki-site` を経てから `wiki-admin` に届き、Worker の呼び出しが2回になる。**`wiki-admin` のホストをルートから外すには、ダッシュボードの `hatchery-works.com` → Workers Routes で、ルート `wiki-admin.hatchery-works.com/*` を Worker なし（None）で足す**（より細かいルートが優先され、Worker の付いていないルートは、粗いルートを打ち消す）。足したあと、管理画面が今までどおり開けることを確かめる
+   - `/_astro/*`（Astro のスクリプトとスタイル）だけは、Worker を通さずに静的アセットから返す（`apps/site/wrangler.toml` の `run_worker_first`）。Worker の呼び出しに数えられず、ブラウザに1年キャッシュさせる。ここに足したパスは Host による wiki の振り分けを通らず、管理画面のホスト（上のルートを外していないとき）でも `wiki-site` のファイルが返るので、wiki ごとの内容が出るパスと、ほかの Worker が使うパスは足さない
    - 閲覧数のために、Worker の実行時のシークレット `INTERNAL_TOKEN`（手順6と同じ値）を入れる（Settings → Variables and Secrets、または `apps/site` で `npx wrangler secret put INTERNAL_TOKEN`）。ビルドの環境変数とは別に要る（ビルドの環境変数は Worker からは読めない）。渡す先の `API_ORIGIN` は `apps/site/wrangler.toml` の `[vars]` にある。どちらかが無い間は数えない（記事の表示には影響しない）
    - つないだらデプロイフック（Settings → Builds → Deploy Hooks、ブランチ `main`）を発行する
 6. GitHub の Settings → Secrets and variables → Actions に次を登録する

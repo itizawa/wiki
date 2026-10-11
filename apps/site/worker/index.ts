@@ -13,18 +13,27 @@ export type Env = ViewEnv & {
 
 const FIRST_WIKI = "wiki";
 const WIKI_COOKIE = "wiki";
-/** どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon）。ビルド結果の直下にある */
+/**
+ * どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon）。ビルド結果の直下にある。
+ * `/_astro/*` は、ファイルがあればここを通らずに返る（wrangler.toml の run_worker_first）。ここに来るのは無いファイルのときだけ
+ */
 const SHARED = /^\/(_astro\/|favicon\.svg$)/;
+/** Pagefind の索引のうち、名前にハッシュが入るもの（中身が変われば名前も変わる）。wiki のディレクトリを除いたパスで見る */
+const PAGEFIND_HASHED = /^\/pagefind\/(fragment|index)\/[^/]+$/;
+/** 名前が同じなら中身も同じファイルのキャッシュ。`/_astro/*` に付ける `_headers`（src/integrations/public-files.mjs）と同じ値 */
+const IMMUTABLE = "public, max-age=31536000, immutable";
 
 const notFound = () => new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
 
 /**
  * 公開サイトの Worker。ビルド結果（dist）は wiki ごとのディレクトリ（`/{key}/...`）に分かれていて、
  * `Host` のサブドメインから wiki を決め、その wiki のディレクトリから返す。アセットより先にここを通る（run_worker_first）。
+ * 通らないのは、どの wiki にも共通の `/_astro/*` だけ。
  * - ほかの wiki のディレクトリは、パスを直接指定しても開けない（必ず自分の wiki のディレクトリの下として読む）
  * - 知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
  * - `POST /_v`：記事の閲覧数を数える（worker/views.ts）
+ * - `/images/{name}`：アップロードした画像。エッジのキャッシュにあれば、R2 を読まずに返す
  */
 type Ctx = { waitUntil(promise: Promise<unknown>): void };
 
@@ -60,7 +69,7 @@ function withSecurityHeaders(res: Response): Response {
 
 async function serve(request: Request, url: URL, env: Env, target: string, ctx: Ctx | undefined): Promise<Response> {
   if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
-  if (url.pathname.startsWith("/images/")) return image(url.pathname, env);
+  if (url.pathname.startsWith("/images/")) return image(request, url, env, ctx);
 
   const prefix = `/${target}`;
   const asset = (pathname: string) => {
@@ -76,6 +85,7 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
   }
   const res = withoutPrefix(await env.ASSETS.fetch(new Request(asset(url.pathname), request)), url, prefix);
   if (url.pathname.startsWith("/u/")) return unlisted(res);
+  if (PAGEFIND_HASHED.test(url.pathname)) return immutable(res);
   if (res.status !== 404 || !url.pathname.startsWith("/p/")) return res;
 
   const routesRes = await env.ASSETS.fetch(asset("/page-routes.json"));
@@ -132,20 +142,48 @@ function withoutPrefix(res: Response, url: URL, prefix: string): Response {
 
 /**
  * アップロードした画像。本文には `/images/{name}` と書くので、どの wiki のサブドメインでも同じバケットから返す。
- * 名前は変わらないので長くキャッシュさせる。
+ * 名前は変わらないので長くキャッシュさせる。ブラウザに加えて、エッジのキャッシュ（`caches.default`）にも入れ、
+ * 2回目からは R2 を読まずに返す。
+ * - キーは URL（Host を含む）。同じ画像でも wiki のサブドメインごとに別に入る
+ * - 入れるのは 200 の応答だけ。無い画像の 404 は入れない（名前を決めてから保存するので、あとから現れることがある）
+ * - キャッシュが無い環境（Node のテスト）と、キャッシュが働かない環境（*.workers.dev のプレビュー）では、毎回 R2 から返す
  */
-async function image(pathname: string, env: Env): Promise<Response> {
-  const name = imageNameFromPath(pathname);
-  const obj = name && env.IMAGES ? await env.IMAGES.get(name) : null;
+async function image(request: Request, url: URL, env: Env, ctx: Ctx | undefined): Promise<Response> {
+  const name = imageNameFromPath(url.pathname);
+  if (!name || !env.IMAGES) return notFound();
+
+  // 名前だけで決まるので、クエリは捨てる（`?x=1` を付け替えて、キャッシュに無い要求を作らせない）
+  const cacheKey = `${url.origin}${url.pathname}`;
+  const cache = request.method === "GET" ? edgeCache() : null;
+  const cached = await cache?.match(cacheKey).catch(() => undefined);
+  if (cached) return cached;
+
+  const obj = await env.IMAGES.get(name);
   if (!obj) return notFound();
-  return new Response(obj.body, {
+  const res = new Response(obj.body, {
     headers: {
       "content-type": obj.httpMetadata?.contentType ?? "application/octet-stream",
-      "cache-control": "public, max-age=31536000, immutable",
+      "cache-control": IMMUTABLE,
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     },
   });
+  // 入れ終わるのは応答を返したあと。失敗しても応答は返す
+  if (cache && ctx) ctx.waitUntil(cache.put(cacheKey, res.clone()).catch(() => undefined));
+  return res;
+}
+
+/** エッジのキャッシュ。Workers のランタイムにだけある */
+function edgeCache(): Cache | null {
+  return typeof caches === "undefined" ? null : (caches.default ?? null);
+}
+
+/** 名前にハッシュの入るファイル：見つかったときだけ、長くキャッシュさせる（404 のページには付けない）。 */
+function immutable(res: Response): Response {
+  if (res.status !== 200 && res.status !== 304) return res;
+  const headers = new Headers(res.headers);
+  headers.set("cache-control", IMMUTABLE);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 /** 限定公開ページ：検索エンジンに載せず、リンク先へ URL を渡さない。 */
