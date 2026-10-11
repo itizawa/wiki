@@ -54,6 +54,21 @@ describe("worker entry", () => {
     expect(await me.json()).toMatchObject({ email: ADMIN, isOwner: true });
   });
 
+  it("hands the rate limit bindings to the routes that anyone can call", async () => {
+    const refuse = { limit: async () => ({ success: false }) };
+    const w = await worker({ OAUTH_REGISTER_LIMITER: refuse, OAUTH_LIMITER: refuse, MCP_LIMITER: refuse });
+    const register = await w.fetch("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://client.example/callback"] }),
+    });
+    expect(register.status).toBe(429);
+    expect((await w.fetch("/oauth/token", { method: "POST", body: new URLSearchParams({ client_id: "nope" }) })).status).toBe(429);
+    expect((await w.fetch("/mcp", { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" })).status).toBe(429);
+    // バインディングの無い経路はそのまま
+    expect((await w.fetch("/api/health")).status).toBe(200);
+  });
+
   it("keeps the query string and the body when stripping /api", async () => {
     const w = await worker();
     const created = await w.fetch("/api/admin/w/wiki/pages", {

@@ -3,6 +3,7 @@ import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
 import type { GoogleReporting } from "./analytics/google";
 import type { ImageStore } from "./images/store";
+import type { RateLimiters } from "./rate-limit";
 import type { wikis } from "./db/schema";
 import type { WikiRole } from "@wiki/shared";
 import type { UserRow } from "./users/service";
@@ -15,6 +16,8 @@ export type Deps = {
   images?: ImageStore | null;
   /** Google Analytics とサーチコンソールの数字を読むもの。無ければ「アクセス解析」は未設定として出す */
   reporting?: GoogleReporting | null;
+  /** ログインせずに叩ける経路（/oauth/*・/mcp）の、接続元ごとの回数の制限。無ければ制限しない */
+  rateLimits?: RateLimiters | null;
 };
 
 export type AppEnv = {

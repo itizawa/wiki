@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { safeNextPath } from "../auth/routes";
-import { setup, W } from "./harness";
+import { fakeRateLimiter, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -126,20 +126,37 @@ describe("authorization", () => {
     expect((await register(["http://127.0.0.1:3333/cb"])).status).toBe(201);
   });
 
-  it("cleans up unused clients and caps how many can pile up", async () => {
+  it("cleans up unused clients, and drops the oldest one instead of refusing when they pile up", async () => {
     ctx = await setup();
     const old = (await register()).body.client_id;
     await ctx.client.query(`update oauth_clients set created_at = now() - interval '2 days' where id = $1`, [old]);
+    // 許可のあるクライアント。どれよりも古いが、消さない
+    const { client: granted } = await connect();
+    await ctx.client.query(`update oauth_clients set created_at = now() - interval '3 days' where id = $1`, [granted.client_id]);
     await ctx.client.query(
-      `insert into oauth_clients (id, name, redirect_uris) select 'wc_fill_' || i, 'x', '[]'::jsonb from generate_series(1, 199) i`,
+      `insert into oauth_clients (id, name, redirect_uris, created_at)
+       select 'wc_fill_' || i, 'x', '[]'::jsonb, now() - (i || ' minutes')::interval from generate_series(1, 199) i`,
     );
-    // 古い、許可の無いクライアントは消えるので、まだ登録できる
+    const unusedCount = async () =>
+      (await ctx.client.query<{ n: number }>(
+        `select count(*)::int as n from oauth_clients c where not exists (select 1 from oauth_grants g where g.client_id = c.id)`,
+      )).rows[0]!.n;
+    const exists = async (id: string) => (await ctx.client.query(`select 1 from oauth_clients where id = $1`, [id])).rows.length === 1;
+
+    // 1日たった、許可の無いクライアントは消える。これで許可の無いものが 200 件になる
     expect((await register()).status).toBe(201);
-    expect((await ctx.client.query(`select 1 from oauth_clients where id = $1`, [old])).rows).toEqual([]);
-    // 許可の無いクライアントが上限に達すると断る
+    expect(await exists(old)).toBe(false);
+    expect(await unusedCount()).toBe(200);
+    expect(await exists("wc_fill_199")).toBe(true);
+
+    // 200 件あっても断らず、いちばん古い許可の無いものを消して受け入れる
     const res = await register();
-    expect(res.status).toBe(429);
-    expect(res.body.error).toBe("temporarily_unavailable");
+    expect(res.status).toBe(201);
+    expect(await exists(res.body.client_id)).toBe(true);
+    expect(await unusedCount()).toBe(200);
+    expect(await exists("wc_fill_199")).toBe(false);
+    expect(await exists("wc_fill_198")).toBe(true);
+    expect(await exists(granted.client_id)).toBe(true);
   });
 
   it("does not redirect to an unregistered redirect_uri", async () => {
@@ -650,5 +667,93 @@ describe("login return path", () => {
     const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
     const back = await ctx.app.request(`/auth/google/callback?code=c&state=${state}`, { headers: { cookie } });
     expect(back.headers.get("location")).toBe("http://admin.test/consent?request=r");
+  });
+});
+
+describe("rate limits by client address", () => {
+  const registerFrom = (ip: string) =>
+    ctx.app.request("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+      body: JSON.stringify({ client_name: "テストのアプリ", redirect_uris: [REDIRECT] }),
+    });
+
+  it("refuses registrations over the limit from one address, and still accepts another address", async () => {
+    const oauthRegister = fakeRateLimiter(2);
+    ctx = await setup({ rateLimits: { oauthRegister } });
+    expect((await registerFrom("203.0.113.1")).status).toBe(201);
+    expect((await registerFrom("203.0.113.1")).status).toBe(201);
+    const refused = await registerFrom("203.0.113.1");
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(await refused.json()).toMatchObject({ error: "temporarily_unavailable" });
+    // 断ったぶんは登録されていない
+    expect((await ctx.client.query(`select 1 from oauth_clients`)).rows).toHaveLength(2);
+
+    expect((await registerFrom("203.0.113.2")).status).toBe(201);
+  });
+
+  it("limits /oauth/authorize, /oauth/token and /oauth/revoke, each on its own count", async () => {
+    const oauth = fakeRateLimiter(1);
+    ctx = await setup({ rateLimits: { oauth } });
+    const headers = { "cf-connecting-ip": "203.0.113.1", "content-type": "application/x-www-form-urlencoded" };
+    const token = () => ctx.app.request("/oauth/token", { method: "POST", headers, body: "grant_type=refresh_token&client_id=nope" });
+    const authorize = () => ctx.app.request("/oauth/authorize?client_id=nope", { headers });
+    const revoke = () => ctx.app.request("/oauth/revoke", { method: "POST", headers, body: "token=nope" });
+
+    expect((await token()).status).toBe(401);
+    const refused = await token();
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(await refused.json()).toMatchObject({ error: "temporarily_unavailable" });
+
+    // 経路ごとに別々に数える。/authorize は、超えたときも redirect_uri へは戻さない
+    expect((await authorize()).status).toBe(400);
+    const again = await authorize();
+    expect(again.status).toBe(429);
+    expect(again.headers.get("location")).toBeNull();
+    expect((await revoke()).status).toBe(200);
+    expect((await revoke()).status).toBe(429);
+    expect(oauth.calls).toEqual([
+      "token:203.0.113.1",
+      "token:203.0.113.1",
+      "authorize:203.0.113.1",
+      "authorize:203.0.113.1",
+      "revoke:203.0.113.1",
+      "revoke:203.0.113.1",
+    ]);
+  });
+
+  it("stops looking up tokens for /mcp once an address is over the limit", async () => {
+    const limiter = fakeRateLimiter(2);
+    ctx = await setup({ rateLimits: { mcp: limiter } });
+    const { tokens } = await connect();
+    const from = (ip: string) => ({ "cf-connecting-ip": ip });
+
+    expect((await mcp("wat_nope", "tools/list", undefined, from("203.0.113.1"))).status).toBe(401);
+    expect((await mcp("wat_nope", "tools/list", undefined, from("203.0.113.1"))).status).toBe(401);
+    const refused = await mcp("wat_nope", "tools/list", undefined, from("203.0.113.1"));
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("60");
+    expect(refused.body.error.code).toBe("rate_limited");
+    // 超えたあとは、正しいトークンでも DB を引かない（許可ごとの回数が進まない）
+    expect((await mcp(tokens.access_token, "tools/list", undefined, from("203.0.113.1"))).status).toBe(429);
+    expect((await ctx.client.query(`select rate_window_count from oauth_grants`)).rows).toEqual([{ rate_window_count: 0 }]);
+
+    // 別の接続元からは通る
+    expect((await mcp(tokens.access_token, "tools/list", undefined, from("203.0.113.2"))).status).toBe(200);
+    // トークンの無いリクエストは DB を引かないので、数えない
+    const before = limiter.calls.length;
+    const bare = await ctx.app.request("/mcp", { method: "POST", headers: from("203.0.113.1"), body: "{}" });
+    expect(bare.status).toBe(401);
+    expect(limiter.calls.length).toBe(before);
+  });
+
+  it("lets requests through when counting fails", async () => {
+    const broken = { limit: () => Promise.reject(new Error("down")) };
+    ctx = await setup({ rateLimits: { oauthRegister: broken, mcp: broken } });
+    expect((await registerFrom("203.0.113.1")).status).toBe(201);
+    const { tokens } = await connect();
+    expect((await mcp(tokens.access_token, "tools/list")).status).toBe(200);
   });
 });
