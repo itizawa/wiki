@@ -9,7 +9,7 @@ import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
 import { analyticsRoutes } from "./routes/analytics";
-import { editRequestRoutes } from "./routes/editRequests";
+import { editRequestRoutes, wikiEditRequestRoutes } from "./routes/editRequests";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
@@ -95,6 +95,7 @@ export function createApp(deps: Deps) {
   wiki.route("/pages", pageRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/pages", editRequestRoutes);
+  wiki.route("/edit-requests", wikiEditRequestRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);

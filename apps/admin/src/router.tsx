@@ -1,5 +1,5 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
-import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
+import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays, type EditRequestListStatus } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
@@ -10,6 +10,7 @@ import { AuditLogPage } from "./routes/AuditLogPage";
 import { CalendarPage } from "./routes/CalendarPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
+import { EditRequestListPage } from "./routes/EditRequestListPage";
 import { EditRequestsPage } from "./routes/EditRequestsPage";
 import { EditorPage } from "./routes/EditorPage";
 import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
@@ -91,6 +92,21 @@ const editRequestsRoute = createRoute({
   component: function EditRequests() {
     const { pageId } = editRequestsRoute.useParams();
     return <EditRequestsPage key={pageId} pageId={pageId} />;
+  },
+});
+// この wiki の編集リクエストの一覧。?status=done：完了したもの（既定の「未対応」は付けない）。再読み込みや URL の共有で同じ絞り込みが開く
+const editRequestListRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "requests",
+  validateSearch: (search: Record<string, unknown>): { status?: "done" } => (search.status === "done" ? { status: "done" } : {}),
+  component: function EditRequestList() {
+    const { status = "open" } = editRequestListRoute.useSearch();
+    const navigate = editRequestListRoute.useNavigate();
+    return (
+      <PageBody>
+        <EditRequestListPage status={status} onStatusChange={(next: EditRequestListStatus) => void navigate({ search: next === "done" ? { status: next } : {} })} />
+      </PageBody>
+    );
   },
 });
 const searchRoute = createRoute({
@@ -176,6 +192,7 @@ const routeTree = rootRoute.addChildren([
     pagesRoute,
     editorRoute,
     editRequestsRoute,
+    editRequestListRoute,
     searchRoute,
     calendarRoute,
     analyticsRoute,

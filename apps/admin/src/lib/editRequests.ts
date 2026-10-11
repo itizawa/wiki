@@ -1,18 +1,27 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequest, type EditRequestItem } from "@wiki/shared";
+import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequest, type EditRequestItem, type EditRequestListStatus } from "@wiki/shared";
 import { api, currentWikiKey } from "./api";
+import { screenLink } from "./wiki";
 
 /**
  * 編集リクエストの、画面をまたいで使うもの（クエリのキー、レビュー画面へのリンク、件数、手元の内容への取り込み）。
  *
- * クエリのキーは、どれも `["edit-requests", pageId, ...]`。採否を決めたあとは `invalidateEditRequests` で、
- * そのページの一覧と件数をまとめて読み直す。
+ * クエリのキーは、ページごとのものが `["edit-requests", pageId, ...]`、wiki ごとのもの（一覧と、サイドバーの件数）が
+ * `["edit-requests", "@wiki", ...]`。採否を決めたあとは `invalidateEditRequests` で、そのページの一覧と件数に加えて、
+ * wiki ごとのものもまとめて読み直す。
  */
+/** wiki ごとのキーの2つ目。ページの ID（英数字だけ）とは重ならない */
+const WIKI_SCOPE = "@wiki";
+
 export const editRequestKeys = {
   /** そのページの編集リクエストのすべて（一覧と件数）。読み直すときは、これで指す */
   page: (pageId: string) => ["edit-requests", pageId] as const,
   list: (pageId: string) => ["edit-requests", pageId, "list"] as const,
   count: (pageId: string) => ["edit-requests", pageId, "count"] as const,
+  /** 開いている wiki の一覧と、サイドバーの件数のすべて。読み直すときは、これで指す */
+  wiki: () => ["edit-requests", WIKI_SCOPE] as const,
+  wikiList: (status: EditRequestListStatus) => ["edit-requests", WIKI_SCOPE, "list", status] as const,
+  wikiPageCount: () => ["edit-requests", WIKI_SCOPE, "page-count"] as const,
 };
 
 /**
@@ -29,12 +38,40 @@ export function itemCountLabel(items: readonly { kind: EditRequestItem["kind"] }
   return parts.length > 0 ? parts.join("・") : "0 件";
 }
 
-/** 採否を決めたあと・返信したあとに、そのページの一覧と件数を読み直す。 */
-export const invalidateEditRequests = (qc: QueryClient, pageId: string) => qc.invalidateQueries({ queryKey: editRequestKeys.page(pageId) });
+/**
+ * 採否を決めたあと・返信したあと・出したあとに、そのページの一覧と件数を読み直す。
+ * wiki ごとの一覧と、サイドバーの件数も読み直す（最後の項目を片付けると、サイドバーの件数が減る）。
+ */
+export const invalidateEditRequests = (qc: QueryClient, pageId: string) => {
+  void qc.invalidateQueries({ queryKey: editRequestKeys.wiki() });
+  return qc.invalidateQueries({ queryKey: editRequestKeys.page(pageId) });
+};
 
 /** 開いている wiki の、ページのレビュー画面（編集リクエスト）へのリンク。`<RouterLink {...editRequestsLink(id)}>` のように使う。 */
 export function editRequestsLink(pageId: string) {
   return { to: "/w/$wikiKey/pages/$pageId/requests", params: { wikiKey: currentWikiKey(), pageId } } as const;
+}
+
+/** 開いている wiki の、編集リクエストの一覧へのリンク。「完了」で絞った状態は `?status=done` */
+export function editRequestListLink(status: EditRequestListStatus = "open") {
+  return { ...screenLink("/w/$wikiKey/requests"), search: status === "done" ? { status } : {} } as const;
+}
+
+/** サイドバーの件数を取り直す間隔（ミリ秒）。ほかの人や外部のアプリ（MCP）が出した・採否を決めたものは、この間隔で追いつく */
+export const EDIT_REQUEST_PAGE_COUNT_INTERVAL = 60_000;
+
+/**
+ * 開いている wiki で、未対応の編集リクエストがあるページの数（サイドバーに出す）。読み込み中と失敗のあいだは undefined（件数なしで出す）。
+ * 自分の操作のあとは `invalidateEditRequests` が読み直す。それ以外は、一定の間隔で取り直す
+ * （タブが裏にあるあいだは止まり、表に戻ったときに取り直す）。
+ */
+export function useOpenEditRequestPageCount(): number | undefined {
+  return useQuery({
+    queryKey: editRequestKeys.wikiPageCount(),
+    queryFn: api.countEditRequestPages,
+    refetchInterval: EDIT_REQUEST_PAGE_COUNT_INTERVAL,
+    refetchOnWindowFocus: true,
+  }).data?.pages;
 }
 
 /** ページの、未対応の項目の数。読み込み中と失敗のあいだは undefined（入口は、件数なしで出す）。 */

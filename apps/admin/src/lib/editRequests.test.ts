@@ -1,5 +1,6 @@
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { editRequestKeys, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
+import { editRequestKeys, invalidateEditRequests, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
 
 const step = (versionId: string, edits: [string, string][]) => ({
   versionId,
@@ -56,6 +57,35 @@ describe("editRequestKeys", () => {
     const page = editRequestKeys.page("p1");
     expect(editRequestKeys.list("p1").slice(0, page.length)).toEqual([...page]);
     expect(editRequestKeys.count("p1").slice(0, page.length)).toEqual([...page]);
+  });
+});
+
+describe("invalidateEditRequests（採否・返信・送信のあとの読み直し）", () => {
+  it("wiki ごとの一覧とサイドバーの件数のキーは、wiki のキーで始まり、どれも edit-requests で始まる", () => {
+    const wiki = editRequestKeys.wiki();
+    for (const key of [editRequestKeys.wikiList("open"), editRequestKeys.wikiList("done"), editRequestKeys.wikiPageCount()]) {
+      expect(key.slice(0, wiki.length)).toEqual([...wiki]);
+      expect(key[0]).toBe("edit-requests");
+    }
+    // ページごとのキーとは重ならない（ページの ID は英数字だけ）
+    expect(wiki[1]).toMatch(/[^0-9a-z]/);
+  });
+
+  it("そのページのものに加えて、wiki ごとの一覧とサイドバーの件数も読み直す。ほかのページのものは読み直さない", async () => {
+    const qc = new QueryClient();
+    const keys = {
+      list: editRequestKeys.list("p1"),
+      count: editRequestKeys.count("p1"),
+      wikiOpen: editRequestKeys.wikiList("open"),
+      wikiDone: editRequestKeys.wikiList("done"),
+      sidebar: editRequestKeys.wikiPageCount(),
+      otherPage: editRequestKeys.count("p2"),
+      pages: ["pages"],
+    };
+    for (const key of Object.values(keys)) qc.setQueryData(key, {});
+    await invalidateEditRequests(qc, "p1");
+    const invalidated = Object.fromEntries(Object.entries(keys).map(([name, key]) => [name, qc.getQueryState(key)!.isInvalidated]));
+    expect(invalidated).toEqual({ list: true, count: true, wikiOpen: true, wikiDone: true, sidebar: true, otherPage: false, pages: false });
   });
 });
 

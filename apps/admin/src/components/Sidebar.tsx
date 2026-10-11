@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, PanelsTopLeft, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, ClipboardList, Command, GitPullRequestArrow, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, PanelsTopLeft, Palette, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Users } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +34,7 @@ import { childrenByParent, type StructureOpInput, type TreeNode, type Visibility
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
+import { useOpenEditRequestPageCount } from "../lib/editRequests";
 import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { decodeDropTarget, encodeDropTarget, resolveDrop } from "../lib/tree";
@@ -202,6 +203,7 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey" exact icon={<House size={18} />} onClick={props.onNavigate}>
           すべてのページ
         </NavItem>
+        <EditRequestsNavItem onClick={props.onNavigate} />
         <NavItem to="/w/$wikiKey/calendar" icon={<Calendar size={18} />} onClick={props.onNavigate}>
           編集カレンダー
         </NavItem>
@@ -539,14 +541,65 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void }) {
+function NavItem(props: { to: WikiScreen; exact?: boolean; icon: ReactNode; children: ReactNode; onClick?: () => void; badge?: ReactNode }) {
   return (
     <RouterLink {...screenLink(props.to)} activeOptions={{ exact: props.exact }} onClick={props.onClick} underline="none" sx={rowSx}>
       {props.icon}
       <Box component="span" sx={ellipsis}>
         {props.children}
       </Box>
+      {props.badge}
     </RouterLink>
+  );
+}
+
+/** 画面には出さず、読み上げにだけ出す文字 */
+const visuallyHidden = { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap" } as const;
+
+/**
+ * 「編集リクエスト」（この wiki の一覧）。未対応のリクエストがあるページの数を、右に出す（0 のあいだと、読み込めないあいだは出さない）。
+ * 数は、自分の操作のあとと、一定の間隔で取り直す（`useOpenEditRequestPageCount`）。
+ */
+function EditRequestsNavItem({ onClick }: { onClick?: () => void }) {
+  const count = useOpenEditRequestPageCount();
+  return (
+    <NavItem
+      to="/w/$wikiKey/requests"
+      icon={<GitPullRequestArrow size={18} />}
+      onClick={onClick}
+      badge={
+        count !== undefined && count > 0 ? (
+          <>
+            <Box
+              component="span"
+              // 数字だけでは何の数か伝わらないので、ツールチップと読み上げ（すぐ下）には言葉で出す
+              aria-hidden
+              title={`未対応のリクエストがあるページ ${count} 件`}
+              sx={{
+                flexShrink: 0,
+                minWidth: 20,
+                px: 0.75,
+                borderRadius: 5,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                lineHeight: "20px",
+                textAlign: "center",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {count > 99 ? "99+" : count}
+            </Box>
+            <Box component="span" sx={visuallyHidden}>
+              （未対応のリクエストがあるページ {count} 件）
+            </Box>
+          </>
+        ) : undefined
+      }
+    >
+      編集リクエスト
+    </NavItem>
   );
 }
 

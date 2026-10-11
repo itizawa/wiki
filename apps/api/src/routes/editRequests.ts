@@ -1,11 +1,14 @@
 import {
   createEditRequestInput,
   editRequestCommentInput,
+  isEditRequestListStatus,
   type AcceptEditRequestResult,
   type AppliedEditRequests,
   type CreatedEditRequest,
   type EditRequestComment,
   type EditRequestCount,
+  type EditRequestList,
+  type EditRequestPageCount,
   type PageEditRequests,
 } from "@wiki/shared";
 import { Hono, type Context } from "hono";
@@ -14,17 +17,19 @@ import {
   addEditRequestComment,
   appliedEditRequestsSince,
   countOpenItems,
+  countPagesWithOpenEditRequests,
   createEditRequest,
   listEditRequests,
+  listWikiEditRequests,
   rejectEditRequestItem,
   reopenEditRequestItem,
   resolveEditRequestItem,
   withdrawEditRequest,
 } from "../editRequests/service";
 import type { AppEnv } from "../env";
-import { notFound } from "../errors";
+import { HttpError, notFound } from "../errors";
 import { parseJson } from "../validation";
-import { findLivePage } from "./pages";
+import { clampPageLimit, decodeCursor, findLivePage } from "./pages";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -129,4 +134,29 @@ export const editRequestRoutes = new Hono<AppEnv>()
       withdrawEditRequest(tx, { wikiId: c.get("wiki").id, pageId: c.req.param("id"), requestId, actor: { userId: c.get("user").id } }),
     );
     return c.json(result);
+  });
+
+/**
+ * `/admin/w/{key}/edit-requests`：その wiki のリクエストの一覧と、サイドバーに出す件数。wiki のメンバーならだれでも使える。
+ * ゴミ箱のページのものは出さない・数えない。アーカイブ中の wiki は、手前の `resolveWiki` が 404 にする。
+ * ページごとの経路（上の `editRequestRoutes`）とは別に掛ける（`/pages/edit-requests` は、ページの ID として読まれてしまう）。
+ */
+export const wikiEditRequestRoutes = new Hono<AppEnv>()
+  // ?status=open|done（省くと open）&limit=&cursor=：出した日時の新しい順。`nextCursor` を次の呼び出しに渡す（`GET /pages` と同じ形）
+  .get("/", async (c) => {
+    const { db } = c.get("deps");
+    const status = c.req.query("status") ?? "open";
+    if (!isEditRequestListStatus(status)) throw new HttpError(400, "invalid_status", "status must be open or done");
+    const cursorParam = c.req.query("cursor");
+    const list = await listWikiEditRequests(db, c.get("wiki").id, {
+      status,
+      limit: clampPageLimit(c.req.query("limit")),
+      after: cursorParam === undefined ? null : decodeCursor(cursorParam, UUID_PATTERN),
+    });
+    return c.json(list satisfies EditRequestList);
+  })
+  // 未対応の項目があるページの数。サイドバーが出ているあいだ、くり返し呼ばれる
+  .get("/count", async (c) => {
+    const { db } = c.get("deps");
+    return c.json({ pages: await countPagesWithOpenEditRequests(db, c.get("wiki").id) } satisfies EditRequestPageCount);
   });
