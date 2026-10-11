@@ -3,8 +3,8 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AppEnv } from "../env";
 import { HttpError } from "../errors";
 import { sessions, users } from "../db/schema";
-import { and, eq, gt, ne } from "drizzle-orm";
-import { ensureOwnerByEmail, findUser, findUserForLogin, hasAccess, userForInviteLogin, type LoginIdentity, type UserRow } from "../users/service";
+import { and, eq, ne } from "drizzle-orm";
+import { ensureOwnerByEmail, findSessionUser, findUserForLogin, hasAccess, userForInviteLogin, type LoginIdentity, type UserRow } from "../users/service";
 import { requestMeta, userActor, writeAudit, type RequestMeta } from "../audit/service";
 import type { Db } from "../db/client";
 import {
@@ -21,7 +21,7 @@ import {
 } from "./session";
 
 /** Cookie のセッションを読む（署名と期限だけ。行があるかは見ない）。 */
-async function sessionClaims(c: Context<AppEnv>): Promise<SessionClaims | null> {
+export async function sessionClaims(c: Context<AppEnv>): Promise<SessionClaims | null> {
   const { config } = c.get("deps");
   const token = getCookie(c, cookieName(SESSION_COOKIE, config.secureCookies));
   return token ? verifySession(config.sessionSecret, token) : null;
@@ -45,32 +45,36 @@ export const clearLegacyCookies: MiddlewareHandler<AppEnv> = async (c, next) => 
  */
 export async function currentUser(c: Context<AppEnv>): Promise<UserRow | null> {
   const claims = await sessionClaims(c);
-  if (!claims) return null;
-  const { db } = c.get("deps");
-  const [row] = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(and(eq(sessions.id, claims.sessionId), eq(sessions.userId, claims.userId), gt(sessions.expiresAt, new Date())));
-  return row ? findUser(db, claims.userId) : null;
+  return claims ? findSessionUser(c.get("deps").db, claims) : null;
 }
 
-/** ログインしている人だけを通す。ユーザーはリクエストのたびに DB で引く。 */
+export const unauthenticated = () => new HttpError(401, "unauthenticated", "login required");
+
+/** どの wiki のメンバーでもない人に返す。招待制であることと、ログイン中のメールアドレスを伝える。 */
+export const inviteOnly = (user: UserRow) =>
+  new HttpError(403, "invite_only", "you are not a member of any wiki", { email: user.email });
+
+/**
+ * ログインしている人だけを通す。ユーザーはリクエストのたびに DB で引く。
+ * wiki の経路では、先に `resolveWiki` が同じ確かめを済ませて user を入れているので、引き直さない。
+ */
 export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const user = await currentUser(c);
-  if (!user) throw new HttpError(401, "unauthenticated", "login required");
-  c.set("user", user);
+  if (!c.get("user")) {
+    const user = await currentUser(c);
+    if (!user) throw unauthenticated();
+    c.set("user", user);
+  }
   await next();
 };
 
 /**
  * /admin/* の保護。オーナーか、どれかの wiki のメンバーだけを通す（メンバーから外せば、次のリクエストから通らない）。
  * どの wiki のメンバーでもない人には、招待制であることとログイン中のメールアドレスを返す。
+ * wiki の経路で `resolveWiki` がロールを引けていれば、開いている wiki に入れる人なので、確かめ直さない。
  */
 export const requireAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user = c.get("user");
-  if (!(await hasAccess(c.get("deps").db, user))) {
-    throw new HttpError(403, "invite_only", "you are not a member of any wiki", { email: user.email });
-  }
+  if (!c.get("role") && !(await hasAccess(c.get("deps").db, user))) throw inviteOnly(user);
   await next();
 };
 

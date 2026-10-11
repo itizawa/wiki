@@ -81,6 +81,9 @@ export function createApp(deps: Deps) {
 
   // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
+  // wiki の経路は、セッションの人・wiki・ロールを1本のクエリで引く。下の2つよりも先に掛け、同じことを引き直させない。
+  // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
+  admin.use("/w/:wikiKey/*", resolveWiki);
   admin.use("*", requireUser, requireAccess);
   admin.get("/me", (c) => {
     const user = c.get("user");
@@ -91,9 +94,7 @@ export function createApp(deps: Deps) {
   admin.route("/audit-logs", globalAuditRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
-  // wiki の内容は、すべて wiki を経路に入れて扱う。ページの ID だけを指定する経路でも、その wiki のものかを確かめる
   const wiki = new Hono<AppEnv>();
-  wiki.use("*", resolveWiki);
   wiki.route("/pages", pageRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/schedule", scheduleRoutes);
