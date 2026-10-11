@@ -59,6 +59,20 @@ export async function loadCommit(db: Db, commitId: string): Promise<LoadedCommit
   return { commitId, state, snapshots };
 }
 
+/**
+ * コミットがスナップショット（その時点のツリー）を持っているか。
+ * 古いコミットは間引きでスナップショットを消す（`structure/prune.ts`）。消したコミットを `loadCommit` で読むと
+ * 空のツリーが返るので、head 以外のコミットを読む前にこれで確かめる。
+ */
+export async function hasSnapshot(db: Db, commitId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ commitId: commitTrees.commitId })
+    .from(commitTrees)
+    .where(eq(commitTrees.commitId, commitId))
+    .limit(1);
+  return row !== undefined;
+}
+
 function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
   return {
     nodeId: n.nodeId,
@@ -125,6 +139,8 @@ export async function commitOps(
     }
 
     const head = await loadCommit(tx, branch.headCommitId);
+    // head のスナップショットは間引かない。無いまま進めると、空のツリーに操作を当てて全ページを外してしまう
+    if (head.snapshots.size === 0) throw new Error(`head commit ${branch.headCommitId} has no snapshot`);
     const referenced = [...new Set(input.ops.flatMap(referencedPageIds))];
     const livePages = new Set(
       referenced.length === 0
@@ -315,6 +331,7 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     created_by: string | null;
     created_by_name: string | null;
     via: string | null;
+    diff_available: boolean;
   };
   const result = await db.execute(sql`
     with recursive history(id, depth) as (
@@ -331,7 +348,14 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
          from structure_commit_parents p where p.commit_id = c.id) as parent_ids,
       -- 外部のアプリ（MCP）からの操作なら、そのアプリの名前
       (select oc.name from oauth_grants g join oauth_clients oc on oc.id = g.client_id
-         where g.id = c.oauth_grant_id) as via
+         where g.id = c.oauth_grant_id) as via,
+      -- 差分は第1親と比べて出す。このコミットか第1親のスナップショットを間引いていると出せない
+      (exists (select 1 from commit_trees t where t.commit_id = c.id)
+        and not exists (
+          select 1 from structure_commit_parents p
+          where p.commit_id = c.id and p.ordinal = 0
+            and not exists (select 1 from commit_trees t where t.commit_id = p.parent_commit_id)
+        )) as diff_available
     from history h join structure_commits c on c.id = h.id
     left join users u on u.id = c.created_by
     order by h.depth
@@ -345,6 +369,8 @@ export async function listHistory(db: Db, headCommitId: string, limit: number) {
     /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
     createdBy: r.created_by && r.created_by_name ? { id: r.created_by, name: r.created_by_name } : null,
     via: r.via,
+    /** 差分を出せるか（スナップショットを間引いたコミットは false） */
+    diffAvailable: r.diff_available,
   }));
 }
 

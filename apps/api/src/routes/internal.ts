@@ -8,6 +8,7 @@ import { promoteDrafts } from "../pages/versions";
 import { markBuildTriggered, requestBuild } from "../publishing/builds";
 import { buildManifest } from "../publishing/manifest";
 import { runDueActions } from "../publishing/scheduler";
+import { pruneStructure } from "../structure/prune";
 import { parseJson } from "../validation";
 import { recordView } from "./views";
 
@@ -46,9 +47,11 @@ export const internalRoutes = new Hono<AppEnv>()
   .post("/drafts/promote", async (c) => {
     return c.json(await promoteDrafts(c.get("deps").db));
   })
-  // 自動でできた版を、古いほど粗く間引く（1日1回）
+  // 1日1回の間引き：自動でできた版を古いほど粗く間引き（`deleted`）、古いコミットの構造のスナップショットを消す（`structure`）
   .post("/versions/prune", async (c) => {
-    return c.json(await pruneVersions(c.get("deps").db));
+    const { db } = c.get("deps");
+    const versions = await pruneVersions(db);
+    return c.json({ ...versions, structure: await pruneStructure(db) });
   })
   .post("/scheduled/run", async (c) => {
     return c.json(await runDueActions(c.get("deps").db));
