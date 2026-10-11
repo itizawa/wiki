@@ -323,10 +323,12 @@ function RequestSummary(props: {
         <Muted component="span">
           未対応 {open.length} 件{stale > 0 && `（うち ${stale} 件は古くなっていて、採用できません）`}
         </Muted>
-        {/* 何件をまとめて採用するのかを、押す前に分かるようにする */}
-        <Button variant="outlined" size="small" disabled={acceptable === 0 || props.disabled} loading={props.busy} onClick={props.onAcceptAll} sx={{ ml: { sm: "auto" }, [TOUCH]: { minHeight: 40 } }}>
-          採用できる {acceptable} 件をすべて採用する
-        </Button>
+        {/* 何件をまとめて採用するのかを、押す前に分かるようにする。採用できるものが無ければ出さない（理由は、すぐ左に出している） */}
+        {acceptable > 0 && (
+          <Button variant="outlined" size="small" disabled={props.disabled} loading={props.busy} onClick={props.onAcceptAll} sx={{ ml: { sm: "auto" }, [TOUCH]: { minHeight: 40 } }}>
+            採用できる {acceptable} 件をすべて採用する
+          </Button>
+        )}
       </Box>
       {props.error ? (
         <Alert severity="error">まとめて採用できませんでした。{errorMessage(props.error)}</Alert>

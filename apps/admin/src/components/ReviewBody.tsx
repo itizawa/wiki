@@ -152,6 +152,8 @@ export function ReviewBody({ bodyMd, slots }: { bodyMd: string; slots: readonly 
           "& pre.review-target::before, & tr.review-target::before": { display: "none" },
           "& tr.review-target > *": { bgcolor: "action.hover" },
           "& .review-slot": { my: 1 },
+          // 差し込んだものの中のリンクは、この画面の中の移動。別のタブの印は付けない
+          "& .review-slot a::after": { content: "none" },
           // リストの項目の中に出すときは、項目の文字と左端をそろえる
           "& li .review-slot": { my: 0.5 },
         },

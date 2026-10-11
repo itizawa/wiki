@@ -494,7 +494,11 @@ function AcceptedNotice(props: { accepted: AppliedEditRequests; canTakeIn: boole
   const count = props.accepted.steps.reduce((n, s) => n + s.edits.length, 0);
   const who = names.length > 0 ? `${names.join("、")} さんが` : "ほかの人が";
   return (
-    <Alert severity={props.canTakeIn ? "info" : "warning"} sx={{ mb: 2, "& .MuiAlert-message": { minWidth: 0 } }}>
+    <Alert
+      severity={props.canTakeIn ? "info" : "warning"}
+      // 選ぶまで自動保存が止まるので、本文の下のほうを書いていても見えるよう、画面の上に留める
+      sx={{ mb: 2, position: "sticky", top: { xs: 8, md: 56 }, zIndex: 1, boxShadow: 3, "& .MuiAlert-message": { minWidth: 0 } }}
+    >
       {who}、このページの編集リクエストの提案を {count} 件採用し、新しい版ができました。
       {props.canTakeIn
         ? "手元の内容はそのまま残っています。採用された変更を取り込むと、手元の内容に同じ置き換えをかけて、そのまま編集を続けられます。"
