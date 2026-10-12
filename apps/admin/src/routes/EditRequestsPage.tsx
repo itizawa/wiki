@@ -15,7 +15,7 @@ import { EditRequestItemCard, requesterLabel, type ItemNotice } from "../compone
 import { ReviewBody, type ReviewSlot } from "../components/ReviewBody";
 import { LoadingRegion, Muted, RouterLink, Section, SkeletonLines } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
-import { invalidateEditRequests, editRequestKeys, itemCountLabel, placeOfAccepted } from "../lib/editRequests";
+import { invalidateEditRequests, editRequestKeys, groupEditRequestItems, itemCountLabel } from "../lib/editRequests";
 import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
@@ -127,30 +127,7 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
   };
 
   const data = list.data;
-  const view = useMemo(() => {
-    if (!data) return null;
-    const head = { versionId: data.headVersionId, bodyMd: data.headBodyMd };
-    const inline: { request: EditRequest; item: EditRequestItem; range: Range; highlight: boolean }[] = [];
-    const unplaced: { request: EditRequest; item: EditRequestItem }[] = [];
-    const done: { request: EditRequest; item: EditRequestItem }[] = [];
-    for (const request of data.requests) {
-      for (const item of request.items) {
-        const known = recent[item.id];
-        if (item.status === "open") {
-          if (item.current) inline.push({ request, item, range: item.current, highlight: true });
-          else unplaced.push({ request, item });
-        } else if (known === undefined) {
-          done.push({ request, item });
-        } else {
-          // この画面で決めた項目は、結果をその場所に出す
-          const range = item.status === "accepted" ? placeOfAccepted(item, head, known === true ? undefined : known) : item.current;
-          if (range) inline.push({ request, item, range, highlight: false });
-          else unplaced.push({ request, item });
-        }
-      }
-    }
-    return { inline, unplaced, done, pendingRequests: data.requests.filter((r) => r.items.some((i) => i.status === "open")) };
-  }, [data, recent]);
+  const view = useMemo(() => (data ? groupEditRequestItems({ data, recent }) : null), [data, recent]);
 
   const card = (request: EditRequest, item: EditRequestItem, where: "inline" | "unplaced" | "done" = "inline") => (
     <EditRequestItemCard
