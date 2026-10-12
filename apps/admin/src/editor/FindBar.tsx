@@ -7,6 +7,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import { useEditorState, type Editor } from "@tiptap/react";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { TOUCH } from "../theme";
 import { clampFindBarOffset, FIND_BAR_TOP, type Offset } from "./findBarPosition";
 import { isFindBarOpen, setFindBarOpen, subscribeFindBar } from "./findBarState";
 import { Tooltip } from "../components/Tooltip";
@@ -16,7 +17,22 @@ import { createFindPlugin, findKey, replaceAll, replaceCurrent, selectCurrent, s
 const KEY_STEP = 16;
 const NO_OFFSET: Offset = { x: 0, y: 0 };
 
-const inputSx = { flex: 1, minWidth: 0, px: 1, height: 30, fontSize: "0.9rem", borderRadius: 1, border: 1, borderColor: "divider" } as const;
+// 狭い幅（sm 未満）では、入力欄だけで 1 段使う（ボタンは次の段へ回す）。
+// 指で操作する端末では、iOS の Safari が入力欄にフォーカスしたときに画面を拡大しないよう、文字を 16px にする
+const inputSx = {
+  flex: 1,
+  minWidth: 0,
+  px: 1,
+  height: 30,
+  fontSize: "0.9rem",
+  borderRadius: 1,
+  border: 1,
+  borderColor: "divider",
+  flexBasis: { xs: "100%", sm: 0 },
+  [TOUCH]: { fontSize: 16, height: 40 },
+} as const;
+// 前の一致・次の一致・閉じる。指で操作する端末では 40px にする
+const barButtonSx = { [TOUCH]: { width: 40, height: 40, "&::after": { display: "none" } } } as const;
 
 /**
  * 検索バーを動かせる範囲。`data-find-bar-bounds` をつけた祖先（本文の列）のうち、画面に見えている部分。
@@ -148,7 +164,7 @@ export function FindBar({ editor }: { editor: Editor }) {
         role="search"
         aria-label="本文の検索と置換"
         style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
-        sx={{ width: 400, maxWidth: "100%", height: "fit-content", p: 1, pl: 0, display: "flex" }}
+        sx={{ width: { xs: "100%", sm: 400 }, maxWidth: "100%", height: "fit-content", p: 1, pl: 0, display: "flex" }}
       >
         <Tooltip title="ドラッグで移動（ダブルクリックで元の位置に戻す）">
           <Box
@@ -199,7 +215,7 @@ export function FindBar({ editor }: { editor: Editor }) {
           </Box>
         </Tooltip>
         <Stack spacing={0.75} sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" sx={{ alignItems: "center", gap: 0.5 }}>
+          <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, flexWrap: { xs: "wrap", sm: "nowrap" } }}>
             <InputBase
               autoFocus
               inputRef={queryRef}
@@ -210,30 +226,30 @@ export function FindBar({ editor }: { editor: Editor }) {
               inputProps={{ "aria-label": "検索する文字" }}
               sx={inputSx}
             />
-            <Muted aria-live="polite" sx={{ minWidth: 64, textAlign: "center", fontSize: "0.8rem", fontVariantNumeric: "tabular-nums" }}>
+            <Muted aria-live="polite" sx={{ minWidth: 64, flex: { xs: 1, sm: "none" }, textAlign: { xs: "left", sm: "center" }, pl: { xs: 0.5, sm: 0 }, fontSize: "0.8rem", fontVariantNumeric: "tabular-nums" }}>
               {query === "" ? "" : found.count === 0 ? "一致なし" : `${found.index + 1} / ${found.count}`}
             </Muted>
             <Tooltip title="前の一致 (Shift+Enter)">
               <span>
-                <IconButton size="small" aria-label="前の一致" disabled={found.count === 0} onClick={() => run(step(editor.state, -1))}>
+                <IconButton size="small" aria-label="前の一致" disabled={found.count === 0} sx={barButtonSx} onClick={() => run(step(editor.state, -1))}>
                   <ChevronUp size={18} />
                 </IconButton>
               </span>
             </Tooltip>
             <Tooltip title="次の一致 (Enter)">
               <span>
-                <IconButton size="small" aria-label="次の一致" disabled={found.count === 0} onClick={() => run(step(editor.state, 1))}>
+                <IconButton size="small" aria-label="次の一致" disabled={found.count === 0} sx={barButtonSx} onClick={() => run(step(editor.state, 1))}>
                   <ChevronDown size={18} />
                 </IconButton>
               </span>
             </Tooltip>
             <Tooltip title="検索を閉じる (Esc)">
-              <IconButton size="small" aria-label="検索を閉じる" onClick={close} sx={{ ml: 0.5 }}>
+              <IconButton size="small" aria-label="検索を閉じる" onClick={close} sx={{ ml: 0.5, ...barButtonSx }}>
                 <X size={18} />
               </IconButton>
             </Tooltip>
           </Stack>
-          <Stack direction="row" sx={{ alignItems: "center", gap: 0.5 }}>
+          <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, flexWrap: { xs: "wrap", sm: "nowrap" } }}>
             <InputBase
               value={replacement}
               onChange={(e) => setReplacement(e.target.value)}
@@ -242,10 +258,10 @@ export function FindBar({ editor }: { editor: Editor }) {
               inputProps={{ "aria-label": "置き換える文字" }}
               sx={inputSx}
             />
-            <Button variant="outlined" disabled={found.count === 0} onClick={() => run(replaceCurrent(editor.state, replacement))}>
+            <Button variant="outlined" sx={{ whiteSpace: "nowrap", [TOUCH]: { minHeight: 40 } }} disabled={found.count === 0} onClick={() => run(replaceCurrent(editor.state, replacement))}>
               置換
             </Button>
-            <Button variant="outlined" disabled={found.count === 0} onClick={() => run(replaceAll(editor.state, replacement))}>
+            <Button variant="outlined" sx={{ whiteSpace: "nowrap", [TOUCH]: { minHeight: 40 } }} disabled={found.count === 0} onClick={() => run(replaceAll(editor.state, replacement))}>
               すべて置換
             </Button>
           </Stack>
