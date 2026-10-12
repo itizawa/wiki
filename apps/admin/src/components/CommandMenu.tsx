@@ -18,6 +18,7 @@ import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/findBarState";
 import { usePageActions } from "../lib/pageActions";
 import { useCreateFromTemplate } from "../lib/createFromTemplate";
+import { invalidatePageLists } from "../lib/invalidatePageLists";
 import { markJustCreated } from "../lib/newPage";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
@@ -54,9 +55,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const create = useMutation({
     mutationFn: () => api.createPage({ title: q || "無題" }),
     onSuccess: async (page) => {
-      void qc.invalidateQueries({ queryKey: ["structure"] });
-      void qc.invalidateQueries({ queryKey: ["pages"] });
-      void qc.invalidateQueries({ queryKey: ["search"] });
+      invalidatePageLists(qc);
       onClose();
       markJustCreated(page.id);
       await navigate(pageLink(page.id));
