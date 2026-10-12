@@ -3,17 +3,13 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { OAUTH_SCOPES, type OAuthGrantSummary } from "@wiki/shared";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
-import { Mono, Muted, RouterLink, Section, SkeletonTableRows } from "../components/ui";
+import { Mono, Muted, RouterLink, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 
@@ -47,6 +43,42 @@ export function ConnectionsPage() {
     });
     if (ok) revoke.mutate(g.id);
   };
+  const columns: DataListColumn<OAuthGrantSummary>[] = [
+    {
+      key: "client",
+      header: "アプリ",
+      width: "minmax(200px, 1fr)",
+      render: (g) => (
+        <Box>
+          {g.clientName}
+          <Muted sx={{ fontSize: "0.75rem" }}>戻り先：{g.redirectHosts.join(", ")}</Muted>
+        </Box>
+      ),
+    },
+    {
+      key: "scopes",
+      header: "できること",
+      render: (g) => <span title={g.scopes.map((s) => OAUTH_SCOPES[s].label).join("\n")}>{g.scopes.map((s) => SHORT_LABEL[s] ?? s).join("・")}</span>,
+    },
+    { key: "createdAt", header: "許可した日時", sx: { whiteSpace: "nowrap" }, render: (g) => formatDateTime(g.createdAt) },
+    {
+      key: "lastUsedAt",
+      header: "最後に使った日時",
+      sx: { whiteSpace: "nowrap" },
+      render: (g) => (g.lastUsedAt ? formatDateTime(g.lastUsedAt) : "まだ使っていない"),
+    },
+    { key: "expiresAt", header: "期限", sx: { whiteSpace: "nowrap" }, render: (g) => formatDateTime(g.expiresAt) },
+    {
+      key: "actions",
+      width: "max-content",
+      align: "right",
+      render: (g) => (
+        <Button color="error" disabled={revoke.isPending} onClick={() => confirmRevoke(g)} sx={{ whiteSpace: "nowrap" }}>
+          取り消す
+        </Button>
+      ),
+    },
+  ];
   const mcpUrl = `${location.origin}/mcp`;
 
   return (
@@ -86,47 +118,16 @@ export function ConnectionsPage() {
           許可しているアプリ
         </Typography>
         {revoke.error && <Alert severity="error">{errorMessage(revoke.error)}</Alert>}
-        {grants.error && <Alert severity="error">{errorMessage(grants.error)}</Alert>}
-        {grants.data && grants.data.grants.length === 0 && <Muted>許可しているアプリはありません。</Muted>}
-        {/* 表の見出しは読み込み中から出し、行だけを Skeleton にする */}
-        {(grants.isPending || (grants.data && grants.data.grants.length > 0)) && (
-          <Box sx={{ overflowX: "auto" }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>アプリ</TableCell>
-                  <TableCell>できること</TableCell>
-                  <TableCell>許可した日時</TableCell>
-                  <TableCell>最後に使った日時</TableCell>
-                  <TableCell>期限</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {grants.isPending && <SkeletonTableRows columns={6} rows={3} height={GRANT_ROW_HEIGHT} />}
-                {grants.data?.grants.map((g) => (
-                  <TableRow key={g.id}>
-                    <TableCell>
-                      {g.clientName}
-                      <Muted sx={{ fontSize: "0.75rem" }}>戻り先：{g.redirectHosts.join(", ")}</Muted>
-                    </TableCell>
-                    <TableCell title={g.scopes.map((s) => OAUTH_SCOPES[s].label).join("\n")}>
-                      {g.scopes.map((s) => SHORT_LABEL[s] ?? s).join("・")}
-                    </TableCell>
-                    <TableCell>{formatDateTime(g.createdAt)}</TableCell>
-                    <TableCell>{g.lastUsedAt ? formatDateTime(g.lastUsedAt) : "まだ使っていない"}</TableCell>
-                    <TableCell>{formatDateTime(g.expiresAt)}</TableCell>
-                    <TableCell align="right">
-                      <Button color="error" disabled={revoke.isPending} onClick={() => confirmRevoke(g)}>
-                        取り消す
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Box>
-        )}
+        <DataList
+          label="許可しているアプリ"
+          columns={columns}
+          rows={grants.data?.grants}
+          rowKey={(g) => g.id}
+          error={grants.error}
+          empty="許可しているアプリはありません。"
+          rowHeight={GRANT_ROW_HEIGHT}
+          skeletonRows={3}
+        />
       </Section>
 
     </Stack>
