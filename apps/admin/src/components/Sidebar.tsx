@@ -200,15 +200,6 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/search" icon={<Search size={18} />} onClick={props.onNavigate}>
           検索
         </NavItem>
-        <Box component="button" type="button" onClick={props.onOpenCommands} sx={{ ...rowSx, width: "100%", border: 0, bgcolor: "transparent", font: "inherit", fontSize: "0.9rem", textAlign: "left" }}>
-          <Command size={18} />
-          <Box component="span" sx={ellipsis}>
-            コマンドメニュー
-          </Box>
-          <Box component="kbd" sx={{ px: 0.5, border: 1, borderColor: "divider", borderRadius: 0.5, bgcolor: "background.paper", fontFamily: "inherit", fontSize: "0.7rem" }}>
-            ⌘K
-          </Box>
-        </Box>
         <NavItem to="/w/$wikiKey" exact icon={<House size={18} />} onClick={props.onNavigate}>
           すべてのページ
         </NavItem>
@@ -286,7 +277,7 @@ export function Sidebar(props: {
       )}
 
       <Box sx={{ display: "flex", px: 1, borderTop: 1, borderColor: "divider" }}>
-        <UserMenu email={props.email} onLogout={props.onLogout} onNavigate={props.onNavigate} />
+        <UserMenu email={props.email} onOpenCommands={props.onOpenCommands} onLogout={props.onLogout} onNavigate={props.onNavigate} />
       </Box>
     </Box>
   );
@@ -296,10 +287,10 @@ const MenuItemLink = createLink(MenuItem);
 
 /**
  * 左下のユーザーメニュー。ログイン中のメールアドレスを出し、押すとメニューが上に開く。
- * キーボードショートカットと記法のガイド、外部アプリ連携（wiki ごとではなく、ログインしている人の設定）への入口、ログアウトはここから行う。
+ * コマンドメニュー（⌘K）、キーボードショートカットと記法のガイド、外部アプリ連携（wiki ごとではなく、ログインしている人の設定）への入口、ログアウトはここから行う。
  * 押せる範囲は、行の高さいっぱいに取る。
  */
-function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: () => void; onNavigate?: () => void }) {
+function UserMenu({ email, onOpenCommands, onLogout, onNavigate }: { email: string; onOpenCommands: () => void; onLogout: () => void; onNavigate?: () => void }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const logoutOthers = useLogoutOthers();
   return (
@@ -349,6 +340,21 @@ function UserMenu({ email, onLogout, onNavigate }: { email: string; onLogout: ()
           {email}
         </ListSubheader>
         <Divider />
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onOpenCommands();
+          }}
+        >
+          <ListItemIcon>
+            <Command size={18} />
+          </ListItemIcon>
+          <ListItemText>コマンドメニュー</ListItemText>
+          {/* キーでも開けることを示す */}
+          <Typography variant="body2" sx={{ ml: 2, color: "text.disabled" }}>
+            ⌘K
+          </Typography>
+        </MenuItem>
         <MenuItem
           onClick={() => {
             setAnchor(null);
