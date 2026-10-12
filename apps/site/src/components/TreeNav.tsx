@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { initiallyOpen, type NavData, type NavItem } from "../lib/nav";
 import s from "./TreeNav.module.css";
@@ -75,7 +76,7 @@ function Node({ item, current, depth, load, onLoad }: { item: NavItem; current?:
       <div className={item.nodeId === current ? s.current : s.item}>
         {hasChildren ? (
           <button className={s.twisty} aria-expanded={open} aria-label={open ? "閉じる" : "開く"} onClick={toggle}>
-            {open ? "▾" : "▸"}
+            {open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
           </button>
         ) : (
           <span className={s.twisty} />

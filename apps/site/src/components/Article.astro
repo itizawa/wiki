@@ -37,8 +37,6 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
     {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
     {sponsored && <span class={s.adNotice}>広告を含みます</span>}
-    {/* スクリプトが、スライドが2枚以上になる記事でだけ見えるようにする（スクリプトが動かなければ出ない） */}
-    <button type="button" class={s.presentOpen} hidden data-presentation-open data-pagefind-ignore>プレゼンモードで表示</button>
   </div>
   {
     showToc && (

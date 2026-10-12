@@ -55,6 +55,16 @@ describe("site worker", () => {
     expect(e.requested).toEqual(["/wiki/p/abcdefghij"]);
   });
 
+  it("redirects the retired tree index pages to the top, but leaves the pages under a tree", async () => {
+    for (const path of ["/t/main", "/t/main/"]) {
+      const res = await wiki(path);
+      expect(res.status).toBe(301);
+      expect(res.headers.get("location")).toBe("https://wiki.site.test/");
+    }
+    const e = env({ ...files, "/wiki/t/main/abcdefghij": "<h1>ツリー経由</h1>" });
+    expect((await wiki("/t/main/abcdefghij", e)).status).toBe(200);
+  });
+
   it("serves the tree nav data of the host's wiki only", async () => {
     const e = env(files);
     const own = await wiki("/nav.json", e);

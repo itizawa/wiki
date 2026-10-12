@@ -35,7 +35,7 @@ const crumbs = ancestors(tree, page.id).slice(0, -1);
 const nav = await pageNav(wiki, tree, page.id);
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={`/t/${tree.key}/`}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav="/">
   <div class={layout.withNav}>
     <main data-pagefind-ignore>
       <nav class={layout.breadcrumbs}>

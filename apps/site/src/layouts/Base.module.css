@@ -1,6 +1,6 @@
 .header {
-  display: flex; align-items: center; gap: 16px; padding: 12px 16px;
-  border-bottom: 1px solid var(--border); max-width: 1200px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: var(--paper); max-width: 1200px; margin: 0 auto;
   /* ページ遷移のフェードから外す（global.css） */
   view-transition-name: site-header;
 }
@@ -9,7 +9,7 @@
 @media (max-width: 800px) {
   .header {
     position: sticky; top: 0; z-index: 10; min-height: var(--header-height);
-    background: var(--bg); transition: transform 0.2s ease;
+    background: var(--paper); transition: transform 0.2s ease;
   }
   /* キーボードで中のリンクにフォーカスが入ったら、隠れていても出す */
   .header[data-hidden]:not(:focus-within) { transform: translateY(-100%); }
@@ -21,16 +21,42 @@
    広い画面ではツリーが左の列に出ているので出さず、列を閉じている間だけ「サイドバーを開く」として出す（下の .hasNav） */
 .navToggle {
   display: none; align-items: center; justify-content: center; width: 40px; height: 40px; margin: -8px -4px -8px -8px;
-  border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer;
+  border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer;
 }
-.navToggle:hover { background: var(--border); }
+.navToggle:hover { background: var(--bg); color: var(--text); }
 @media (max-width: 800px) {
   .navToggle { display: inline-flex; }
 }
 .brand { display: flex; align-items: center; font-weight: 700; color: var(--text); text-decoration: none; }
 /* ロゴは高さ 32px にそろえ、横長の画像は幅を成り行きにする */
 .logo { display: block; height: 32px; width: auto; max-width: min(240px, 50vw); }
-.nav { display: flex; gap: 14px; margin-left: auto; font-size: 0.9rem; }
+/* 右端の「…」メニュー（管理画面のページのメニューと同じ）。ボタンは右に寄せ、中身は top layer に出る popover。
+   中に見える項目が無いページ（限定公開で、スライドにならない記事など）では、ボタンごと出さない */
+.menuWrap { margin-left: auto; }
+.menuWrap:not(:has(a, [data-presentation-open]:not([hidden]))) { display: none; }
+.menuButton {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer;
+  anchor-name: --site-menu-button;
+}
+.menuButton:hover, .menuButton[aria-expanded="true"] { background: var(--bg); color: var(--text); }
+.menu {
+  /* ボタンの下に、右端をそろえて開く。anchor positioning が使えないブラウザでは、ヘッダーの右下 */
+  position: fixed; inset: auto; top: calc(var(--header-height) - 4px); right: 8px; margin: 0; min-width: 200px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--paper); color: var(--text);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+}
+@supports (top: anchor(bottom)) {
+  .menu { position-anchor: --site-menu-button; top: calc(anchor(bottom) + 4px); right: anchor(right); }
+}
+.menu:popover-open { display: flex; flex-direction: column; }
+.menu :is(a, button) {
+  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--radius);
+  background: none; color: var(--text); font: inherit; font-size: 0.9rem; text-align: left; text-decoration: none; cursor: pointer;
+}
+.menu :is(a, button):hover { background: var(--bg); }
+.menu button[hidden] { display: none; }
+.menu svg { color: var(--muted); flex: none; }
 .body { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
 .footer { max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }
 

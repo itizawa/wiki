@@ -89,8 +89,8 @@ check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 
 // ---- 狭い画面のドロワー（ヘッダーの「階層を開く」と、ツリーナビの列）
 const hasDrawer = (html) => html.includes("data-nav-toggle") && html.includes('id="site-nav"');
-check(hasDrawer(iconPage) && iconPage.includes('href="/t/main/" data-nav-toggle'), "an article page has the tree button (a link to the tree without JavaScript) and the drawer");
-check(hasDrawer(tPage) && tPage.includes('href="/t/by-theme/" data-nav-toggle'), "a page viewed through a tree opens that tree in the drawer");
+check(hasDrawer(iconPage) && iconPage.includes('href="/" data-nav-toggle'), "an article page has the tree button (a link to the tree without JavaScript) and the drawer");
+check(hasDrawer(tPage) && tPage.includes('href="/" data-nav-toggle'), "a page viewed through a tree opens that tree in the drawer");
 check(/<aside[^>]*id="site-nav"[^>]*data-pagefind-ignore/.test(iconPage), "the tree nav column is left out of the search index");
 const topPage = await read("wiki/index.html");
 check(hasDrawer(topPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(topPage), "the top shows the tree nav next to the new posts");
