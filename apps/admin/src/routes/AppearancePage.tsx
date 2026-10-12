@@ -209,7 +209,7 @@ function ThemeField({ mode, value, onChange }: { mode: ThemeMode; value: string;
       <Typography variant="subtitle2" component="legend" sx={{ mb: 0.5, p: 0 }}>
         {MODE_LABEL[mode]}用
       </Typography>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 1 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 1 }}>
         {presets.map((p) => (
           <ThemeCard key={p.key} preset={p} groupName={name} selected={p.key === selectedKey} onSelect={() => onChange(p.key)} />
         ))}
