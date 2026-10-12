@@ -28,11 +28,13 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 ---
 
 <article class={s.article}>
-  <h1>
+  {/* タイトルは検索結果の見出し（meta）として渡し、本文の抜粋には入れない */}
+  <h1 data-pagefind-meta="title" data-pagefind-ignore="index">
     {/* 飾りなので読み上げず、検索の見出しにも入れない */}
     {icon && <span class={s.icon} aria-hidden="true" data-pagefind-ignore>{icon}</span>}{title}
   </h1>
-  <div class={s.meta}>
+  {/* 日付は検索の抜粋に入れない */}
+  <div class={s.meta} data-pagefind-ignore>
     {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
     {sponsored && <span class={s.adNotice}>広告を含みます</span>}
