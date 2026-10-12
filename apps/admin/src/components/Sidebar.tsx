@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -136,6 +136,8 @@ export function Sidebar(props: {
   /** Google アカウントの画像の URL。無ければ null（表示名の頭文字を出す） */
   pictureUrl: string | null;
   onCollapse?: () => void;
+  /** 重ねて一時的に開いているとき、「常に開く」に切り替える */
+  onPin?: () => void;
   onNavigate?: () => void;
   /** コマンドメニュー（⌘K）を開く */
   onOpenCommands: () => void;
@@ -194,6 +196,13 @@ export function Sidebar(props: {
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
               <ChevronsLeft size={18} />
+            </IconButton>
+          </Tooltip>
+        )}
+        {props.onPin && (
+          <Tooltip title="サイドバーを常に開く (⌘.)">
+            <IconButton size="small" aria-label="サイドバーを常に開く" onClick={props.onPin}>
+              <Pin size={18} />
             </IconButton>
           </Tooltip>
         )}
