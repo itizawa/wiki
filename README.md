@@ -469,9 +469,11 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 - **テーマは `packages/shared/src/theme.ts` の `THEME_PRESETS`**（名前・ライトかダークか・`global.css` の色の変数一式）に定義する。テーマを足すときは、この配列に1件足す。管理画面の見本・API の検証・公開サイトの CSS は、これを見て動く。文字とリンクの色が背景に対してコントラスト比 4.5:1 以上（WCAG）であることを、`theme.test.ts` が全テーマで確かめる
   - 保存できるのは、定義にあるテーマの key だけ（ライト用にはライトのテーマ、ダーク用にはダークのテーマ）。公開サイトも、知らない key は既定のテーマに戻して読む
   - 古い形の `theme`（アクセント色 `accentLight` / `accentDark` だけが入っているもの）は、既定のテーマとして読む（アクセント色は引き継がない）
+- **テーマに付く背景画像と飾り**：「手書きノート風」（方眼）・「パステル」（水玉）・「宇宙」（星）は背景画像を、「フクロウ」は画面の右下に飾り（フクロウのアイコン）を持つ。画像は、テーマの定義（`background` / `ornament`）の中に、**この wiki のために描いた SVG**として持つ（外部の素材は使っていない。出どころ・ライセンスの確認は要らない）。公開サイトは CSS の変数（`--bg-image` `--ornament-image` ほか）に `data:` の URL で入れ、本文の後ろに固定で敷く（`global.css` の `.theme-backdrop` `.theme-ornament`。`aria-hidden`・`pointer-events: none`、飾りは幅 800px 以下と印刷では出さず、背景画像も印刷では出さない）。画像は色の上に薄く重ねるので、定義に「いちばん濃い色（`ink`）と不透明度（`alpha`）」を書き、その重なりでも文字とリンクが 4.5:1 以上になることを `theme.test.ts` が確かめる（SVG の不透明度が `alpha` を超えていないことも確かめる）
+- **wiki が自分で入れる背景画像**（ライト用・ダーク用。`wikis.theme` の `backgroundLight` / `backgroundDark`）は、PNG・JPEG・WebP、2MB まで（`POST /admin/w/{key}/appearance/background-images`。置き場所と配り方はロゴと同じ）。入れると、テーマの背景画像の代わりに、そのテーマの背景色を 82% で重ねて（`CUSTOM_BACKGROUND_VEIL`、固定）画面いっぱいに出す。自分で入れた画像は読みやすさを確かめられないので、管理画面の「背景画像」の「i」に、読みにくくなることがあると書いてある。取り消すとテーマの画像（無いテーマは単色）に戻る
 - **ロゴとファビコン**は PNG・WebP、1ファイル 512KB まで（SVG は受け付けない）。置き場所は本文の画像と同じ R2 のバケットで、`/images/{name}` で配る
 - **保存するまで公開サイトには反映しない**。保存すると `publish_events` に記録し、いつものデバウンスを通して公開サイトをビルドし直す（反映には数分かかる）。公開サイトは、ビルドのときに wiki ごとのテーマの色（CSS の変数一式）・ロゴ・ファビコン・名前を出し分け、表示のたびに設定を取りに行くことはしない
-- データ：`wikis.theme`（jsonb：`presetLight` / `presetDark` / `logo` / `favicon`）。null や欠けた項目は既定として読む。公開用のデータ（`/export/public`）に、wiki ごとの `theme` として入る
+- データ：`wikis.theme`（jsonb：`presetLight` / `presetDark` / `logo` / `favicon` / `backgroundLight` / `backgroundDark`）。null や欠けた項目は既定として読む。公開用のデータ（`/export/public`）に、wiki ごとの `theme` として入る
 - サイト名を変えたときは、「wiki の管理」から名前を変えたときと同じく監査ログに残す（変更前と変更後の名前）。テーマ（色・ロゴ・ファビコン）の変更は、いまは監査ログに残さない。前の設定に戻す機能（履歴）は無い
 
 ## 公開サイトのトップページ
