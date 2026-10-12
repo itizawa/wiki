@@ -23,6 +23,7 @@ import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
+import { TOUCH } from "../theme";
 import { Center, Loading, useSession, useWikis } from "./Layout";
 
 /** 閉じたサイドバーの幅（開くボタンだけが残る）。 */
@@ -180,7 +181,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
             }}
           >
             <Tooltip title="サイドバーを開く (⌘.)" placement="right">
-              <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setOpen(true)}>
+              <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setOpen(true)} sx={{ [TOUCH]: { width: 40, height: 40 } }}>
                 <Menu size={18} />
               </IconButton>
             </Tooltip>
@@ -190,7 +191,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         // 狭い画面では横に列を取らず、上に細い帯を置く（左に空きを作らず、本文に幅を使う）
         <Box component="header" sx={{ flexShrink: 0, height: NARROW_BAR_HEIGHT, viewTransitionName: "admin-bar", px: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
           <Tooltip title="サイドバーを開く (⌘.)" placement="bottom">
-            <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setDrawer(true)}>
+            <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setDrawer(true)} sx={{ [TOUCH]: { width: 40, height: 40 } }}>
               <Menu size={18} />
             </IconButton>
           </Tooltip>

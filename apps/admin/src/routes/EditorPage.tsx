@@ -582,11 +582,23 @@ function RestoredDraftNotice({ draft, onDiscard }: { draft: PageDraft; onDiscard
   );
 }
 
-/** 本文の文字数と読む時間の目安。書いている間、画面の右下に出し続ける。 */
+/** 本文の文字数と読む時間の目安。広い画面では、書いている間、画面の右下に出し続ける。md 未満では本文の下に置く。 */
 function EditingStats({ bodyMd }: { bodyMd: string }) {
   const stats = useMemo(() => textStats(bodyMd), [bodyMd]);
   return (
-    <Box sx={{ position: "sticky", bottom: 0, mt: "auto", display: "flex", justifyContent: "flex-end", p: 1, pointerEvents: "none" }}>
+    <Box
+      sx={(t) => ({
+        position: "sticky",
+        bottom: 0,
+        mt: "auto",
+        display: "flex",
+        justifyContent: "flex-end",
+        p: 1,
+        pointerEvents: "none",
+        // 狭い画面では、書いている行に重なるので固定せず、本文の下の余白に置く
+        [t.breakpoints.down("md")]: { position: "static" },
+      })}
+    >
       <Muted
         aria-live="off"
         sx={{ px: 1, py: 0.25, borderRadius: 1, border: 1, borderColor: "divider", bgcolor: "background.paper", fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}

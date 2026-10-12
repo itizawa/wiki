@@ -36,6 +36,7 @@ import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { useStars } from "../lib/stars";
 import { templateLink } from "../lib/wiki";
+import { TOUCH } from "../theme";
 import { Presentation } from "./Presentation";
 import { PublishSheet, usePublishState } from "./PublishMenu";
 import type { EnsureVersion } from "./PublishPanel";
@@ -146,7 +147,7 @@ export function PageMenu(props: {
   return (
     <>
       <Tooltip title="その他の操作">
-        <IconButton ref={menuButton} size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)}>
+        <IconButton ref={menuButton} size="small" aria-label="その他の操作" aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => setAnchor(e.currentTarget)} sx={{ [TOUCH]: { width: 40, height: 40 } }}>
           <Ellipsis size={18} />
         </IconButton>
       </Tooltip>

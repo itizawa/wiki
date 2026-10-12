@@ -362,37 +362,37 @@ function InsertMenu({ editor }: { editor: Editor }) {
           },
         }}
       >
-        <MenuItem onClick={insert(() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}>
           <ListItemIcon>
             <Table size={18} />
           </ListItemIcon>
           <ListItemText>表</ListItemText>
         </MenuItem>
-        <MenuItem onClick={insert(() => setImageOpen(true))}>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => setImageOpen(true))}>
           <ListItemIcon>
             <Image size={18} />
           </ListItemIcon>
           <ListItemText>画像…</ListItemText>
         </MenuItem>
-        <MenuItem onClick={insert(() => chain().toggleCodeBlock().run())}>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
             <Braces size={18} />
           </ListItemIcon>
           <ListItemText>コードブロック</ListItemText>
         </MenuItem>
-        <MenuItem onClick={insert(() => chain().setBlockquote().setCalloutType("note").run())}>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().setBlockquote().setCalloutType("note").run())}>
           <ListItemIcon>
             <Megaphone size={18} />
           </ListItemIcon>
           <ListItemText>コールアウト（目立たせる注意書き）</ListItemText>
         </MenuItem>
-        <MenuItem onClick={insert(() => insertToggle(editor))}>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => insertToggle(editor))}>
           <ListItemIcon>
             <ChevronRight size={18} />
           </ListItemIcon>
           <ListItemText>トグル（クリックで開閉する折りたたみ）</ListItemText>
         </MenuItem>
-        <MenuItem onClick={insert(() => chain().setHorizontalRule().run())}>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().setHorizontalRule().run())}>
           <ListItemIcon>
             <Minus size={18} />
           </ListItemIcon>
