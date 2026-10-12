@@ -28,3 +28,4 @@ export * from "./editRequest";
 export * from "./googleMap";
 export * from "./children";
 export * from "./linkCard";
+export * from "./excerpt";

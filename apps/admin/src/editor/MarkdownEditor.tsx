@@ -20,6 +20,7 @@ import { insertToggle } from "./toggle";
 import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
+import { LinkHoverPreview } from "./LinkHoverPreview";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -226,6 +227,7 @@ export function MarkdownEditor(props: {
       <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
       <ImageMenu editor={editor} />
+      <LinkHoverPreview editor={editor} />
       <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
