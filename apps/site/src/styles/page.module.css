@@ -31,13 +31,16 @@
   .withNav { display: contents; }
   /* 本文の幅は、サイドバーを開いていても閉じていても同じ（1行が長くなりすぎない）。空いた分は左右に余らせる */
   .withNav > main { grid-area: main; justify-self: center; width: 100%; max-width: var(--main-width); min-width: 0; padding: 24px clamp(16px, 3vw, 32px); }
-  .withNav > aside { grid-area: nav; background: var(--sidebar-bg); border-right: 1px solid var(--border); }
+  /* 閉じるときは列の幅が 0 になる（Base.module.css）ので、はみ出す中身は切る（列が 0 になっても枠の 1px は残るので、背景は枠の下に敷かない）。clip なら、中身（.navInner）の position: sticky は効いたまま */
+  .withNav > aside { grid-area: nav; min-width: 0; overflow-x: clip; background: var(--sidebar-bg); background-clip: padding-box; border-right: 1px solid var(--border); }
   /* 列はページの下端まで伸ばし、中身だけを画面に張り付ける。中身が長ければ、列の中でスクロールする */
-  .navInner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 24px 16px; }
+  .navInner { position: sticky; top: 0; box-sizing: border-box; width: calc(var(--sidebar-width) - 1px); max-height: 100vh; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 24px 16px; }
   .drawerHead { min-height: 48px; margin-bottom: 4px; background: var(--sidebar-bg); color: var(--muted); font-size: 0.85rem; }
   .drawerClose { display: none; }
   .sidebarClose { display: inline-flex; margin-right: -4px; }
-  :global(html[data-sidebar-closed]) .withNav > aside { display: none; }
+  /* 閉じている間は、見えず、中のリンクにフォーカスも入らない。開閉の動き（html[data-sidebar-animating]）の間は、列が縮み切るまで中身を見せたまま薄くする */
+  :global(html[data-sidebar-closed]) .withNav > aside { visibility: hidden; opacity: 0; border-right-color: transparent; }
+  :global(html[data-sidebar-animating]) .withNav > aside { transition: opacity 0.18s ease, visibility 0.18s, border-color 0.18s ease; }
 }
 /* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「ページ一覧を開く」で開く。NavDrawer.astro）。
    閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
