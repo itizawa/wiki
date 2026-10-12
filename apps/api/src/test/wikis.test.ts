@@ -39,7 +39,7 @@ describe("wikis", () => {
     const res = await ctx.call("GET", "/admin/wikis");
     expect(res.body.baseDomain).toBe("site.test");
     expect(res.body.wikis).toEqual([
-      expect.objectContaining({ key: "wiki", origin: "https://wiki.site.test", archivedAt: null, publishedPages: 0, faviconUrl: null }),
+      expect.objectContaining({ key: "wiki", origin: "https://wiki.site.test", archivedAt: null, publishedPages: 0, faviconUrl: null, themePreset: "simple" }),
     ]);
   });
 

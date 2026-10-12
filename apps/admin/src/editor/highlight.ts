@@ -14,6 +14,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { createLowlight } from "lowlight";
+import { type HighlightName } from "../lib/highlightColors";
 
 /**
  * 編集中のコードブロックの色分け。言語は CodeBlockMenu で選べるものだけを読み込む（全部入れると大きくなるため）。
@@ -23,21 +24,7 @@ export const lowlight = createLowlight({ bash, css, diff, go, javascript, json, 
 // highlight.js に TSX・JSX の定義は無いので、近い言語で色分けする
 lowlight.registerAlias({ typescript: ["tsx"], javascript: ["jsx"] });
 
-/** 色分けの配色（GitHub の配色に合わせる。公開サイトも同じ系統）。[ライト, ダーク] */
-const COLORS = {
-  comment: ["#6a737d", "#8b949e"],
-  keyword: ["#d73a49", "#ff7b72"],
-  string: ["#032f62", "#a5d6ff"],
-  number: ["#005cc5", "#79c0ff"],
-  title: ["#6f42c1", "#d2a8ff"],
-  tag: ["#22863a", "#7ee787"],
-  attr: ["#005cc5", "#79c0ff"],
-  variable: ["#e36209", "#ffa657"],
-  addition: ["#22863a", "#7ee787"],
-  deletion: ["#b31d28", "#ffa198"],
-} as const;
-
-const SELECTORS: Record<keyof typeof COLORS, string> = {
+const SELECTORS: Record<HighlightName, string> = {
   comment: "& .hljs-comment, & .hljs-quote, & .hljs-meta",
   keyword: "& .hljs-keyword, & .hljs-selector-tag, & .hljs-doctag, & .hljs-template-tag, & .hljs-type",
   string: "& .hljs-string, & .hljs-regexp, & .hljs-meta .hljs-string",
@@ -50,12 +37,9 @@ const SELECTORS: Record<keyof typeof COLORS, string> = {
   deletion: "& .hljs-deletion",
 };
 
-const scheme = (index: 0 | 1) => Object.fromEntries((Object.keys(COLORS) as (keyof typeof COLORS)[]).map((k) => [SELECTORS[k], { color: COLORS[k][index] }]));
-
-/** エディタの `pre` に当てるスタイル。配色は OS の設定に追従する（theme.ts と同じ）。 */
+/** エディタの `pre` に当てるスタイル。色は `:root` の `--hl-*`（theme.ts が、選んだテーマのライト・ダークに合わせて置く）。 */
 export const highlightSx = {
-  ...scheme(0),
-  "@media (prefers-color-scheme: dark)": scheme(1),
+  ...Object.fromEntries((Object.keys(SELECTORS) as HighlightName[]).map((k) => [SELECTORS[k], { color: `var(--hl-${k})` }])),
   "& .hljs-emphasis": { fontStyle: "italic" },
   "& .hljs-strong": { fontWeight: 700 },
 };

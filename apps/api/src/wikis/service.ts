@@ -73,7 +73,9 @@ export async function listWikis(
     .orderBy(asc(wikis.createdAt), asc(wikis.key));
   return rows.flatMap((r) => {
     const role = opts.roles ? opts.roles.get(r.wiki.id) : "admin";
-    return role ? [{ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages), role, faviconUrl: resolveTheme(r.wiki.theme).favicon }] : [];
+    if (!role) return [];
+    const theme = resolveTheme(r.wiki.theme);
+    return [{ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages), role, faviconUrl: theme.favicon, themePreset: theme.preset }];
   });
 }
 
