@@ -13,6 +13,7 @@ import { GeneralSettingsPage } from "./routes/GeneralSettingsPage";
 import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
 import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
+import { NotFoundPage } from "./routes/NotFoundPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
@@ -77,6 +78,7 @@ const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/w/$wikiKey",
+  notFoundComponent: NotFoundPage,
   component: function Wiki() {
     const { wikiKey } = wikiRoute.useParams();
     // wiki を切り替えたら、画面の状態と読み込み済みのデータを持ち越さない
@@ -261,7 +263,7 @@ const pageTransition =
     ? { types: ({ fromLocation, pathChanged }: { fromLocation?: unknown; pathChanged: boolean }) => (fromLocation && pathChanged ? ["page"] : false) }
     : false;
 
-export const router = createRouter({ routeTree, defaultViewTransition: pageTransition });
+export const router = createRouter({ routeTree, defaultNotFoundComponent: NotFoundPage, defaultViewTransition: pageTransition });
 
 declare module "@tanstack/react-router" {
   interface Register {
