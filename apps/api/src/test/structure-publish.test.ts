@@ -148,3 +148,16 @@ describe("並べ替え・移動と公開サイトのビルド", () => {
     expect(await kinds()).toEqual(["delete", "delete", "restore", "restore"]);
   });
 });
+
+describe("GET /structure のページの情報", () => {
+  it("設定した絵文字アイコンを返し、外すと null に戻る", async () => {
+    ctx = await setup();
+    const a = await newPage("A");
+    const iconOf = async () => (await ctx.call("GET", `${W}/structure`)).body.pages[a.id].icon;
+    expect(await iconOf()).toBeNull();
+    expect((await ctx.call("PUT", `${W}/pages/${a.id}/icon`, { icon: "📚" })).status).toBe(200);
+    expect(await iconOf()).toBe("📚");
+    expect((await ctx.call("PUT", `${W}/pages/${a.id}/icon`, { icon: null })).status).toBe(200);
+    expect(await iconOf()).toBeNull();
+  });
+});

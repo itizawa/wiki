@@ -688,7 +688,7 @@ function StarredRow({ page, menuOpen, onOpenMenu, onNavigate }: { page: RowMenuP
           underline="none"
           sx={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", gap: 0.75, color: "inherit" }}
         >
-          <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />
+          {page.icon ? <RowEmoji icon={page.icon} /> : <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />}
           <EllipsisText>{page.title}</EllipsisText>
         </RouterLink>
         {/* 「…」を押しても、行のドラッグ（並べ替え）が始まらないようにする */}
@@ -899,6 +899,7 @@ function DocumentTree(props: {
 
   const treeSx = [props.busy && { opacity: 0.6, pointerEvents: "none" }];
   const draggingNode = dragging ? tree.nodes.find((n) => n.nodeId === dragging) : undefined;
+  const draggingIcon = draggingNode ? data.pages[draggingNode.pageId]?.icon : null;
 
   return (
     <DndContext
@@ -924,6 +925,7 @@ function DocumentTree(props: {
       <DragOverlay>
         {draggingNode && (
           <Paper variant="outlined" sx={{ px: 1, py: 0.5, fontSize: "0.9rem", borderColor: "primary.main", boxShadow: 3 }}>
+            {draggingIcon && <RowEmoji icon={draggingIcon} sx={{ mr: 0.75 }} />}
             {data.pages[draggingNode.pageId]?.title ?? draggingNode.pageId}
           </Paper>
         )}
@@ -992,6 +994,15 @@ function useTreeItemProps(ctx: TreeContext, node: TreeNode) {
     return page ? treeItemLabel(page.title, (page.visibility ?? "private") as Visibility) : node.pageId;
   });
   return { "data-node-id": node.nodeId, tabIndex: tabStop ? 0 : -1, "aria-label": label, sx: treeItemSx };
+}
+
+/** 行のタイトルの左に出す、ページに設定した絵文字。飾りなので読み上げない。幅は縮めない（タイトルの省略は `EllipsisText` が受け持つ） */
+function RowEmoji({ icon, sx }: { icon: string; sx?: SxProps<Theme> }) {
+  return (
+    <Box component="span" aria-hidden="true" sx={[{ flexShrink: 0, lineHeight: 1, fontSize: "1rem" }, ...(Array.isArray(sx) ? sx : [sx])]}>
+      {icon}
+    </Box>
+  );
 }
 
 /**
@@ -1149,7 +1160,7 @@ const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNo
   const title = page?.title ?? node.pageId;
   const visibility = (page?.visibility ?? "private") as Visibility;
 
-  // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
+  // 行のアイコンは、絵文字を設定したページだけタイトルの左に出す（どのページにも同じ印を付けても見分ける手がかりにならず、タイトルの幅を狭めるだけのため）
   // 行の高さいっぱいを押せるようにする（文字の高さだけだと、行の上下の余白を押しても開かない）
   const labelSx = { ...ellipsis, alignSelf: "stretch", display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
 
@@ -1187,6 +1198,7 @@ const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNo
         <Box component={ChevronRight} size={18} sx={{ transition: moves ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
       </IconButton>
       <RouterLink {...pageLink(node.pageId)} draggable={false} tabIndex={-1} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
+        {page?.icon && <RowEmoji icon={page.icon} sx={{ mr: 0.5 }} />}
         <EllipsisText>{title}</EllipsisText>
         <VisibilityMark visibility={visibility} />
       </RouterLink>
