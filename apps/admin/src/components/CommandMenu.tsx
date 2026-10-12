@@ -20,6 +20,7 @@ import { usePageActions } from "../lib/pageActions";
 import { useCreateFromTemplate } from "../lib/createFromTemplate";
 import { invalidatePageLists } from "../lib/invalidatePageLists";
 import { markJustCreated } from "../lib/newPage";
+import { UNTITLED_TITLE } from "../lib/untitled";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
@@ -53,7 +54,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const term = useSearchTerm(q, composing);
   const pages = useQuery({ queryKey: ["search", term], queryFn: () => api.search(term), enabled: open, placeholderData: keepPreviousData });
   const create = useMutation({
-    mutationFn: () => api.createPage({ title: q || "無題" }),
+    mutationFn: () => api.createPage({ title: q || UNTITLED_TITLE }),
     onSuccess: async (page) => {
       invalidatePageLists(qc);
       onClose();
