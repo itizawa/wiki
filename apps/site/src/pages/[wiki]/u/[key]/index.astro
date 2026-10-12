@@ -11,11 +11,11 @@ export async function getStaticPaths() {
 
 const { page } = Astro.props as { page: ManifestUnlistedPage };
 const { wiki } = Astro.params;
-const { publicPaths, origin, pagesById, linkPreviews } = await siteData(wiki);
+const { publicPaths, origin, pagesById, linkPreviews, previewOf } = await siteData(wiki);
 ---
 
 <Base wiki={wiki} title={page.title} noindex>
   <main data-pagefind-ignore="all">
-    <Article title={page.title} icon={page.icon} bodyMd={page.bodyMd} revisedAt={page.revisedAt} publicPaths={publicPaths} origin={origin} titleOf={(id) => pagesById.get(id)?.title} linkPreviews={linkPreviews} />
+    <Article title={page.title} icon={page.icon} bodyMd={page.bodyMd} revisedAt={page.revisedAt} publicPaths={publicPaths} origin={origin} titleOf={(id) => pagesById.get(id)?.title} linkPreviews={linkPreviews} previewOf={previewOf} />
   </main>
 </Base>

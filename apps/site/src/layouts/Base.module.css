@@ -57,6 +57,17 @@
 .menu :is(a, button):hover { background: var(--bg); }
 .menu button[hidden] { display: none; }
 .menu svg { color: var(--muted); flex: none; }
+/* リンクのプレビュー（本文のリンクにカーソルを載せる・フォーカスしたとき）。位置はスクリプトが left / top に入れる。押せない（下の文字を選べる）。画像は出さない */
+.linkPreview {
+  position: fixed; inset: auto; margin: 0; width: min(360px, calc(100vw - 16px)); padding: 10px 12px; pointer-events: none;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--paper); color: var(--text);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15); font-size: 0.875rem; line-height: 1.5;
+}
+.linkPreview:popover-open { display: flex; flex-direction: column; gap: 2px; }
+.linkPreview [hidden] { display: none; }
+.previewSite { color: var(--muted); font-size: 0.75rem; }
+.previewTitle { display: flex; gap: 6px; overflow-wrap: anywhere; }
+.previewText { color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .body { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
 .footer { max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }
 

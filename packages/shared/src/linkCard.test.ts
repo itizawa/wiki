@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linkCardOfParagraph, linkCardUrls, pageIdOfHref } from "./linkCard";
+import { inlineLinkUrls, linkCardOfParagraph, linkCardUrls, linkPreviewUrls, pageIdOfHref } from "./linkCard";
 
 describe("linkCardOfParagraph", () => {
   it("URL だけの段落は URL を返す", () => {
@@ -40,5 +40,17 @@ describe("pageIdOfHref", () => {
   it("ページでないパスは null", () => {
     expect(pageIdOfHref("/p/short")).toBeNull();
     expect(pageIdOfHref("https://x.com")).toBeNull();
+  });
+});
+
+describe("inlineLinkUrls", () => {
+  it("文中の [文字](URL) の外部リンクを、重複なしで返す", () => {
+    expect(inlineLinkUrls("見て [a](https://a.com/x) と [b](<https://b.com>) と [c](/p/abcdefghij) [a](https://a.com/x)")).toEqual(["https://a.com/x", "https://b.com"]);
+  });
+  it("画像・コードの中・マップは読まない", () => {
+    expect(inlineLinkUrls("![i](https://i.com/a.png)\n\n`[x](https://x.com)`\n\n```\n[y](https://y.com)\n```\n\n[m](https://maps.app.goo.gl/abc) [ok](https://ok.com)")).toEqual(["https://ok.com"]);
+  });
+  it("linkPreviewUrls は段落の URL と合わせる", () => {
+    expect(linkPreviewUrls("https://a.com\n\n[b](https://b.com) [a](https://a.com)")).toEqual(["https://a.com", "https://b.com"]);
   });
 });
