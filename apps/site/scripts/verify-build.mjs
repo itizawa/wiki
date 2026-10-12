@@ -100,7 +100,16 @@ check(withDrawer.length === 0, `search, 404 and unlisted pages have no tree butt
 const fragmentTexts = await Promise.all(
   (await readdir(join(dist, "wiki/pagefind/fragment")).catch(() => [])).map(async (f) => gunzipSync(await readFile(join(dist, "wiki/pagefind/fragment", f))).toString("utf8").replaceAll("\u200b", "")),
 );
-check(fragmentTexts.length > 0 && fragmentTexts.every((t) => t.includes("設計メモ") && !t.includes("階層を閉じる") && !t.includes("階層を開く")), "the search index holds no text of the tree button or drawer");
+check(fragmentTexts.length > 0 && fragmentTexts.every((t) => t.includes("設計メモ") && !t.includes("階層を閉じる") && !t.includes("階層を開く") && !t.includes("サイドバーを")), "the search index holds no text of the tree button or drawer");
+
+// ---- 広い画面のサイドバー（閉じる・開く）
+const hasSidebarState = (html) => html.includes('localStorage.getItem(key) === closed') && html.includes('"wiki:sidebar"');
+check(
+  [iconPage, tPage, topPage].every((html) => hasSidebarState(html) && /<button[^>]*data-sidebar-close[^>]*\bhidden\b[^>]*aria-label="サイドバーを閉じる"/.test(html)),
+  "pages with the tree nav restore the closed sidebar before drawing, and have the close button (hidden until the script runs)",
+);
+const withSidebar = Object.entries(noDrawer).filter(([, html]) => html.includes("data-sidebar-close ") || html.includes("サイドバーを閉じる") || html.includes("wiki:sidebar"));
+check(withSidebar.length === 0, `search, 404 and unlisted pages have no sidebar script or button${withSidebar.length ? ` (${withSidebar.map(([k]) => k).join(", ")})` : ""}`);
 
 const publicHtml = [await read("wiki/index.html"), await read("wiki/p/aaaaaaaaa1.html"), await read("wiki/sitemap.xml"), await read("wiki/feed.xml")];
 check(publicHtml.every((h) => !h.includes(key)), "unlisted key does not appear in public pages, sitemap or RSS");

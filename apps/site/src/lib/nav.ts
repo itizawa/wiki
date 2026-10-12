@@ -20,6 +20,13 @@ export type NavData = { trees: Record<string, NavItem[]> };
 /** ツリー全体（`NavData`）を置く場所。Worker が Host から wiki を決め、その wiki のディレクトリのものを返す */
 export const NAV_DATA_PATH = "/nav.json";
 
+/**
+ * 広い画面で、左の列（サイドバー）を閉じたことを覚える localStorage のキー。閉じている間だけ `SIDEBAR_CLOSED` が入る。
+ * 描く前に読むのは Base.astro、書くのは NavDrawer.astro
+ */
+export const SIDEBAR_STORAGE_KEY = "wiki:sidebar";
+export const SIDEBAR_CLOSED = "closed";
+
 /** そのノードか、その下のどこかに nodeId があるか。 */
 export function containsNode(item: NavItem, nodeId: string | undefined): boolean {
   return item.nodeId === nodeId || item.children.some((c) => containsNode(c, nodeId));
