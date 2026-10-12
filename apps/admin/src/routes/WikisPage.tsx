@@ -1,4 +1,4 @@
-import { Circle, CircleCheck, ExternalLink } from "lucide-react";
+import { Circle, CircleCheck, ExternalLink, Plus } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -19,7 +19,6 @@ import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
-import { useWikiIdentityForm } from "../components/WikiIdentityForm";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useSession, useWikis } from "./Layout";
@@ -35,12 +34,16 @@ export function keyChecks(key: string, taken: readonly string[]): { label: strin
 /** 「使用中の wiki」の行の高さ（読み込み中の行も、この高さで出す）。 */
 const WIKI_ROW_HEIGHT = 54;
 
-/** wiki の一覧・作成・表示名と画像の変更・アーカイブ・戻す。オーナーにだけ出す。 */
+/**
+ * wiki の一覧と、一覧に対する操作（作成・アーカイブ・戻す）。オーナーにだけ出す。
+ * 一覧を先頭に置き、作成は見出しの横のボタンから開く。表示名と画像は、その wiki の「設定」（GeneralSettingsPage）だけで変える。
+ */
 export function WikisPage() {
   const session = useSession();
   const wikis = useWikis();
   const [done, setDone] = useState<string | null>(null);
-  const [editing, setEditing] = useState<WikiSummary | null>(null);
+  // 作成のフォームを開いているか。null は、まだ開け閉めしていない（使用中の wiki が無ければ、開いて出す）
+  const [creating, setCreating] = useState<boolean | null>(null);
   const [archiving, setArchiving] = useState<WikiSummary | null>(null);
 
   const activeColumns: DataListColumn<WikiSummary>[] = [
@@ -64,11 +67,11 @@ export function WikisPage() {
       render: (w) => (
         // 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く
         <Row sx={{ flexWrap: "nowrap" }}>
-          <Button variant="outlined" onClick={() => setEditing(w)}>
-            表示名と画像
-          </Button>
-          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3 }}>
-            アーカイブ
+          <RouterLink to="/w/$wikiKey/settings" params={{ wikiKey: w.key }} underline="always" sx={{ whiteSpace: "nowrap" }}>
+            設定を開く
+          </RouterLink>
+          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3, whiteSpace: "nowrap" }}>
+            アーカイブする
           </Button>
         </Row>
       ),
@@ -78,19 +81,25 @@ export function WikisPage() {
   const all = wikis.data?.wikis ?? [];
   const active = all.filter((w) => w.archivedAt === null);
   const archived = all.filter((w) => w.archivedAt !== null);
+  const canCreate = session.isOwner && wikis.data !== undefined;
+  const createOpen = canCreate && (creating ?? active.length === 0);
 
   return (
     <Stack spacing={1.5}>
       {/* 「wiki の画面に戻る」とページの見出し（h1）は、「全体の管理」の枠（GlobalAdminLayout）にある */}
-      <Box>
+      <Row sx={{ justifyContent: "space-between" }}>
         <HelpHeading variant="h6" component="h2" help="wiki ごとに、ページ・ツリー・予約を分け、それぞれ別のサブドメインで公開します。">
           wiki
         </HelpHeading>
-      </Box>
+        {canCreate && (
+          <Button variant="contained" size="medium" startIcon={<Plus size={18} />} onClick={() => setCreating(true)}>
+            wiki を作成する
+          </Button>
+        )}
+      </Row>
 
       {!session.isOwner && <Alert severity="info">wiki の作成・アーカイブは、オーナーだけが行えます。</Alert>}
       {wikis.error && <Alert severity="error">{errorMessage(wikis.error)}</Alert>}
-      {session.isOwner && wikis.data && <CreateWiki baseDomain={wikis.data.baseDomain} taken={all.map((w) => w.key)} />}
 
       {session.isOwner && (
         <Section>
@@ -110,7 +119,7 @@ export function WikisPage() {
               rows={wikis.data ? active : undefined}
               rowKey={(w) => w.key}
               rowLink={(w) => ({ to: "/w/$wikiKey", params: { wikiKey: w.key } })}
-              empty="使用中の wiki はありません。上の「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。"
+              empty="使用中の wiki はありません。「wiki を作成する」から作るか、下のアーカイブ中の wiki を元に戻してください。"
               rowHeight={WIKI_ROW_HEIGHT}
               skeletonRows={3}
             />
@@ -120,20 +129,7 @@ export function WikisPage() {
 
       {session.isOwner && archived.length > 0 && <ArchivedWikis wikis={archived} />}
 
-      {editing && (
-        <EditDialog
-          wiki={editing}
-          onClose={() => setEditing(null)}
-          onDone={(before, w) => {
-            setEditing(null);
-            setDone(
-              before.name !== w.name
-                ? `「${w.name}」を保存しました。表示名は、公開サイトに次のビルドで反映されます。`
-                : `「${w.name}」の画像を保存しました。`,
-            );
-          }}
-        />
-      )}
+      {createOpen && <CreateDialog baseDomain={wikis.data!.baseDomain} taken={all.map((w) => w.key)} onClose={() => setCreating(false)} />}
       {archiving && (
         <ArchiveDialog
           wiki={archiving}
@@ -173,7 +169,8 @@ function SiteLink({ origin }: { origin: string }) {
   );
 }
 
-function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[] }) {
+/** wiki を作成するフォーム。作成できたら、その wiki を開く。 */
+function CreateDialog({ baseDomain, taken, onClose }: { baseDomain: string; taken: string[]; onClose: () => void }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -190,115 +187,94 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
   const keyTaken = create.error instanceof ApiError && create.error.code === "wiki_key_taken";
 
   return (
-    <Section>
-      <HelpHeading variant="subtitle1" component="h3" help="作った wiki には、空のツリーを1本用意します。" sx={{ mb: 1 }}>
-        wiki を作成する
-      </HelpHeading>
-      <Stack
-        component="form"
-        spacing={2}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (valid && !create.isPending) create.mutate();
-        }}
-        sx={{ maxWidth: 560 }}
-      >
-        <TextField
-          label="表示名"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="例：開発ノート"
-          slotProps={{
-            htmlInput: { maxLength: SITE_NAME_MAX },
-            inputLabel: { shrink: true },
-            input: {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <HelpTip about="表示名">公開サイトの名前になります。あとから変えられます。</HelpTip>
-                </InputAdornment>
-              ),
-            },
-          }}
-          sx={{ maxWidth: 360 }}
-        />
-        <Box>
-          <TextField
-            label="key（公開サイトのサブドメイン）"
-            value={key}
-            onChange={(e) => {
-              setKey(e.target.value);
-              create.reset();
-            }}
-            placeholder="例：notes"
-            error={keyTaken}
-            slotProps={{
-              htmlInput: { maxLength: WIKI_KEY_MAX, autoCapitalize: "off", autoCorrect: "off", spellCheck: false, "aria-describedby": "wiki-key-rules" },
-              inputLabel: { shrink: true },
-              input: { endAdornment: <InputAdornment position="end">.{baseDomain}</InputAdornment>, sx: { fontFamily: "monospace" } },
-            }}
-            sx={{ width: "100%", maxWidth: 440 }}
-          />
-          {keyTaken && (
-            <Typography variant="body2" color="error" role="alert" sx={{ mt: 0.5 }}>
-              {errorMessage(create.error)}
-            </Typography>
-          )}
-          <Box id="wiki-key-rules" sx={{ mt: 1 }}>
-            <Alert severity="warning" sx={{ mb: 1 }}>
-              key は作成後に変えられません（公開サイトの URL がすべて変わるため）。
-            </Alert>
-            <Muted>公開 URL</Muted>
-            {/* 決まりを満たすまでは、できあがる URL の形だけを見せる */}
-            <Mono sx={{ display: "block", mb: 1, wordBreak: "break-all" }}>{wikiOrigin(checks.every((c) => c.ok) ? key : "{key}", baseDomain)}</Mono>
-            <Muted>key の決まり</Muted>
-            <Box component="ul" sx={{ m: 0, p: 0, listStyle: "none" }}>
-              {checks.map((c) => (
-                <Box component="li" key={c.label} sx={{ position: "relative", display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.875rem", color: c.ok ? "success.main" : "text.secondary" }}>
-                  {/* 満たしたかどうかは、色だけでなく印の形でも示す */}
-                  {c.ok ? <CircleCheck size={16} /> : <Circle size={16} />}
-                  <span>
-                    {c.label}
-                    <Box component="span" sx={{ position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
-                      {c.ok ? "（満たしています）" : "（まだ満たしていません）"}
-                    </Box>
-                  </span>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        </Box>
-        {create.error && !keyTaken && <Alert severity="error">{errorMessage(create.error)}</Alert>}
-        <Box>
-          <Button type="submit" variant="contained" size="medium" disabled={!valid || create.isPending}>
-            wiki を作成する
-          </Button>
-        </Box>
-      </Stack>
-    </Section>
-  );
-}
-
-function EditDialog({ wiki, onClose, onDone }: { wiki: WikiSummary; onClose: () => void; onDone: (before: WikiSummary, after: WikiSummary) => void }) {
-  const form = useWikiIdentityForm(wiki, { autoFocus: true, onSaved: (_, w) => onDone(wiki, w) });
-  return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="create-wiki-title">
       <Box
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          form.submit();
+          if (valid && !create.isPending) create.mutate();
         }}
       >
-        <DialogTitle>表示名と画像</DialogTitle>
+        <DialogTitle id="create-wiki-title" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          wiki を作成する
+          <HelpTip about="wiki を作成する">作った wiki には、空のツリーを1本用意します。</HelpTip>
+        </DialogTitle>
         <DialogContent>
-          <Box sx={{ pt: 1 }}>{form.fields}</Box>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="表示名"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例：開発ノート"
+              slotProps={{
+                htmlInput: { maxLength: SITE_NAME_MAX },
+                inputLabel: { shrink: true },
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <HelpTip about="表示名">公開サイトの名前になります。あとから変えられます。</HelpTip>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{ maxWidth: 360 }}
+            />
+            <Box>
+              <TextField
+                label="key（公開サイトのサブドメイン）"
+                value={key}
+                onChange={(e) => {
+                  setKey(e.target.value);
+                  create.reset();
+                }}
+                placeholder="例：notes"
+                error={keyTaken}
+                slotProps={{
+                  htmlInput: { maxLength: WIKI_KEY_MAX, autoCapitalize: "off", autoCorrect: "off", spellCheck: false, "aria-describedby": "wiki-key-rules" },
+                  inputLabel: { shrink: true },
+                  input: { endAdornment: <InputAdornment position="end">.{baseDomain}</InputAdornment>, sx: { fontFamily: "monospace" } },
+                }}
+                sx={{ width: "100%", maxWidth: 440 }}
+              />
+              {keyTaken && (
+                <Typography variant="body2" color="error" role="alert" sx={{ mt: 0.5 }}>
+                  {errorMessage(create.error)}
+                </Typography>
+              )}
+              <Box id="wiki-key-rules" sx={{ mt: 1 }}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  key は作成後に変えられません（公開サイトの URL がすべて変わるため）。
+                </Alert>
+                <Muted>公開 URL</Muted>
+                {/* 決まりを満たすまでは、できあがる URL の形だけを見せる */}
+                <Mono sx={{ display: "block", mb: 1, wordBreak: "break-all" }}>{wikiOrigin(checks.every((c) => c.ok) ? key : "{key}", baseDomain)}</Mono>
+                <Muted>key の決まり</Muted>
+                <Box component="ul" sx={{ m: 0, p: 0, listStyle: "none" }}>
+                  {checks.map((c) => (
+                    <Box component="li" key={c.label} sx={{ position: "relative", display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.875rem", color: c.ok ? "success.main" : "text.secondary" }}>
+                      {/* 満たしたかどうかは、色だけでなく印の形でも示す */}
+                      {c.ok ? <CircleCheck size={16} /> : <Circle size={16} />}
+                      <span>
+                        {c.label}
+                        <Box component="span" sx={{ position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+                          {c.ok ? "（満たしています）" : "（まだ満たしていません）"}
+                        </Box>
+                      </span>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </Box>
+            {create.error && !keyTaken && <Alert severity="error">{errorMessage(create.error)}</Alert>}
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button variant="text" onClick={onClose}>
-            変更しない
+            作成しない
           </Button>
-          <Button type="submit" variant="contained" disabled={!form.canSave}>
-            保存する
+          <Button type="submit" variant="contained" disabled={!valid || create.isPending}>
+            wiki を作成する
           </Button>
         </DialogActions>
       </Box>

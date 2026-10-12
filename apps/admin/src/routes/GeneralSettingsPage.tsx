@@ -13,7 +13,7 @@ import { useWiki } from "../lib/wiki";
 
 /**
  * 「設定」の「一般」タブ：wiki の表示名と画像（変えるのはオーナーだけ）と、変えられない key・公開サイトの URL。
- * 入力欄と確かめは「全体の管理」の「表示名と画像」と同じもの（useWikiIdentityForm）。
+ * 表示名と画像を変えるのは、この画面だけ（「全体の管理」の wiki の一覧からは、「設定を開く」でここへ来る）。
  */
 export function GeneralSettingsPage() {
   const { wiki, isOwner } = useWiki();
