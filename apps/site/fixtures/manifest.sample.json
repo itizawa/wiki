@@ -6,10 +6,12 @@
       "key": "notes",
       "name": "開発ノート",
       "theme": {
-        "presetLight": "simple-light",
-        "presetDark": "simple-dark",
+        "presetLight": "notebook-light",
+        "presetDark": "owl-dark",
         "logo": "/images/notes0logo0sample0000000.png",
-        "favicon": "/images/notes0favicon0sample0000.webp"
+        "favicon": "/images/notes0favicon0sample0000.webp",
+        "backgroundLight": null,
+        "backgroundDark": "/images/notes0background0dark000.jpg"
       },
       "gaMeasurementId": null,
       "searchConsoleVerification": null,

@@ -9,10 +9,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
 import {
   SITE_NAME_MAX,
+  THEME_BACKGROUND_LIMIT_LABEL,
+  THEME_BACKGROUND_MAX_BYTES,
+  THEME_BACKGROUND_TYPES,
   THEME_IMAGE_LIMIT_LABEL,
   THEME_IMAGE_MAX_BYTES,
   THEME_IMAGE_TYPES,
   THEME_PRESETS,
+  themeBackdrop,
+  themeOrnament,
   themePresetFor,
   type ThemeMode,
   type ThemePreset,
@@ -22,11 +27,34 @@ import {
 import { useEffect, useId, useRef, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
+import { ImageUploader } from "../components/ImageUploader";
+import type { ImageRule } from "../editor/imageFile";
 import { Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
 
 const MODE_LABEL: Record<ThemeMode, string> = { light: "ライト", dark: "ダーク" };
+
+/** 背景画像の条件（API の `/appearance/background-images` と同じ） */
+const BACKGROUND_RULE: ImageRule = { types: THEME_BACKGROUND_TYPES, maxBytes: THEME_BACKGROUND_MAX_BYTES, limitLabel: THEME_BACKGROUND_LIMIT_LABEL };
+
+/** テーマの背景画像（`custom` があればそれ）を、見本の枠に敷く sx。画像が無ければ空 */
+function backdropSx(preset: ThemePreset, custom: string | null) {
+  const b = themeBackdrop(preset, custom);
+  return b ? { backgroundImage: b.image, backgroundSize: b.size, backgroundRepeat: b.repeat, backgroundPosition: "center" } : {};
+}
+
+/** 見本の右下に置く飾り（公開サイトでは、画面の右下に固定で出るもの）。押せず、読み上げない */
+function OrnamentSample({ preset, scale }: { preset: ThemePreset; scale: number }) {
+  const o = themeOrnament(preset);
+  if (!o) return null;
+  return (
+    <Box
+      aria-hidden
+      sx={{ position: "absolute", right: 8, bottom: 8, width: o.size * scale, height: o.size * scale, pointerEvents: "none", background: `${o.image} no-repeat center / contain` }}
+    />
+  );
+}
 
 /**
  * 外観：公開サイトのサイト名・テーマ・ロゴ・ファビコン（wiki の管理者だけ）。
@@ -128,7 +156,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <HelpHeading
             variant="subtitle1"
             component="h3"
-            help="公開サイトの背景・文字・リンクなどの色の組み合わせです。見る人の端末の設定がライトのときはライト用、ダークのときはダーク用が使われます。どのテーマも、文字とリンクの色が背景から読み取れる（コントラスト比 4.5 : 1 以上）ことを確かめてあります。"
+            help="公開サイトの背景・文字・リンクなどの色の組み合わせです。テーマによっては、薄い背景画像や飾りが付きます。見る人の端末の設定がライトのときはライト用、ダークのときはダーク用が使われます。どのテーマも、背景画像を重ねた状態で、文字とリンクの色が背景から読み取れる（コントラスト比 4.5 : 1 以上）ことを確かめてあります。"
             sx={{ mb: 1 }}
           >
             テーマ
@@ -136,6 +164,21 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <Stack spacing={2}>
             <ThemeField mode="light" value={theme.presetLight} onChange={(presetLight) => setTheme((t) => ({ ...t, presetLight }))} />
             <ThemeField mode="dark" value={theme.presetDark} onChange={(presetDark) => setTheme((t) => ({ ...t, presetDark }))} />
+          </Stack>
+        </Section>
+
+        <Section>
+          <HelpHeading
+            variant="subtitle1"
+            component="h3"
+            help="公開サイトの背景に敷く画像です。入れると、テーマに付いている背景画像の代わりに、そのテーマの背景色を薄く重ねて画面いっぱいに出します（重ね方は変えられません）。自分で入れた画像は、読みやすさを確かめられないので、文字やリンクが読みにくくなることがあります。公開サイトで確かめてください。取り消すと、テーマの画像（無いテーマは単色）に戻ります。"
+            sx={{ mb: 1 }}
+          >
+            背景画像
+          </HelpHeading>
+          <Stack spacing={2.5}>
+            <BackgroundField mode="light" theme={theme} onChange={(backgroundLight) => setTheme((t) => ({ ...t, backgroundLight }))} />
+            <BackgroundField mode="dark" theme={theme} onChange={(backgroundDark) => setTheme((t) => ({ ...t, backgroundDark }))} />
           </Stack>
         </Section>
 
@@ -236,7 +279,7 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
     >
       <Box component="input" type="radio" name={groupName} value={preset.key} checked={selected} onChange={onSelect} sx={{ position: "absolute", opacity: 0, width: 1, height: 1 }} />
       {/* 背景・文字・リンクの色が分かる見本 */}
-      <Box sx={{ bgcolor: c.bg, color: c.text, px: 1.25, py: 1, lineHeight: 1.6, fontSize: "0.8rem", borderBottom: `1px solid ${c.border}` }}>
+      <Box sx={{ position: "relative", minHeight: 64, bgcolor: c.bg, ...backdropSx(preset, null), color: c.text, px: 1.25, py: 1, lineHeight: 1.6, fontSize: "0.8rem", borderBottom: `1px solid ${c.border}` }}>
         <Box sx={{ fontWeight: 700 }}>見出し</Box>
         <Box>
           本文と
@@ -244,6 +287,7 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
             リンク
           </Box>
         </Box>
+        <OrnamentSample preset={preset} scale={0.4} />
       </Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.75, fontSize: "0.875rem", fontWeight: selected ? 700 : 400 }}>
         <Box component="span" sx={{ flex: 1 }}>
@@ -256,6 +300,41 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
           </Box>
         )}
       </Box>
+    </Box>
+  );
+}
+
+/**
+ * 背景画像の選択（ライト用・ダーク用）。自分で入れた画像があればそれを、無ければテーマの画像を使う。
+ * 入れた画像は「テーマの画像に戻す」で取り消す。条件（形式・大きさ）は、選ぶ前から枠の中に出る。
+ */
+function BackgroundField({ mode, theme, onChange }: { mode: ThemeMode; theme: WikiTheme; onChange: (value: string | null) => void }) {
+  const value = mode === "light" ? theme.backgroundLight : theme.backgroundDark;
+  const preset = themePresetFor(mode, mode === "light" ? theme.presetLight : theme.presetDark);
+  return (
+    <Box>
+      <Typography variant="subtitle2" component="h4">
+        {MODE_LABEL[mode]}用
+      </Typography>
+      <Row sx={{ my: 0.75 }}>
+        {value ? (
+          <>
+            <Box component="img" src={value} alt={`いまの${MODE_LABEL[mode]}用の背景画像`} sx={{ height: 48, width: 80, objectFit: "cover", border: 1, borderColor: "divider", borderRadius: 1 }} />
+            <Muted>自分で入れた画像を使っています。</Muted>
+            <Button color="error" startIcon={<X size={16} />} onClick={() => onChange(null)}>
+              テーマの画像に戻す
+            </Button>
+          </>
+        ) : (
+          <Muted>{preset.background ? `「${preset.name}」の背景画像を使っています。` : `「${preset.name}」は、単色の背景です。`}</Muted>
+        )}
+      </Row>
+      <ImageUploader
+        label={value ? "別の画像に変える…" : "画像を選んでアップロード…"}
+        rule={BACKGROUND_RULE}
+        upload={api.uploadBackgroundImage}
+        onUploaded={onChange}
+      />
     </Box>
   );
 }
@@ -339,7 +418,9 @@ function Preview({ mode, name, theme }: { mode: ThemeMode; name: string; theme: 
       role="img"
       aria-label={`${MODE_LABEL[mode]}のときの公開サイトの見本（${preset.name}）`}
       sx={{
+        position: "relative",
         bgcolor: c.bg,
+        ...backdropSx(preset, mode === "light" ? theme.backgroundLight : theme.backgroundDark),
         color: c.text,
         border: 1,
         borderColor: "divider",
@@ -382,7 +463,9 @@ function Preview({ mode, name, theme }: { mode: ThemeMode; name: string; theme: 
           <Box sx={{ fontSize: "0.8rem", fontWeight: 700, color: accent }}>重要</Box>
           <Box>強調のコールアウトも、同じ色で出ます。</Box>
         </Box>
+        <Box sx={{ minHeight: 40 }} />
       </Box>
+      <OrnamentSample preset={preset} scale={0.7} />
     </Box>
   );
 }

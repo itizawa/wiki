@@ -14,6 +14,12 @@
   --ok: #1f8a4c;
   --warn: #b7791f;
   --danger: #c93636;
+  /* テーマの背景画像と飾り（Base.astro が、画像のあるテーマだけ値を入れる）。無ければ何も出さない */
+  --bg-image: none;
+  --bg-size: auto;
+  --bg-repeat: repeat;
+  --ornament-image: none;
+  --ornament-size: 0px;
   /* ヘッダーの高さ（1行ぶん 1.8rem + 上下の余白 24px + 下の線 1px）。狭い画面で張り付くヘッダーと、見出しの scroll-margin-top が使う */
   --header-height: calc(1.8rem + 25px);
   /* ツリーナビのあるページの、広い画面での列の幅。サイドバーと、本文（左右の余白を含む） */
@@ -40,7 +46,27 @@
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); line-height: 1.8; }
+
+/* 背景画像と飾り：本文の後ろに固定で置く（スクロールしても動かない）。押せず、読み上げない（aria-hidden）。
+   画像は単色の背景（--bg）の上に薄く重ねる。z-index が負なので、ヘッダー・サイドバー・本文の下になる */
+.theme-backdrop, .theme-ornament { position: fixed; z-index: -1; pointer-events: none; }
+.theme-backdrop {
+  inset: 0;
+  background-image: var(--bg-image);
+  background-size: var(--bg-size);
+  background-repeat: var(--bg-repeat);
+  background-position: center;
+}
+.theme-ornament {
+  right: 16px; bottom: 16px;
+  width: var(--ornament-size); height: var(--ornament-size);
+  background: var(--ornament-image) no-repeat center / contain;
+}
+/* 飾りは、狭い幅では本文に重なるので出さない。印刷では、背景画像も飾りも出さない */
+@media (max-width: 800px) { .theme-ornament { display: none; } }
+@media print { .theme-backdrop, .theme-ornament { display: none; } }
+/* 背景色は html（:root）が持つ。body にも塗ると、後ろに置いた背景画像（.theme-backdrop）を隠してしまう */
+body { margin: 0; line-height: 1.8; }
 a { color: var(--accent); }
 
 /* ページ遷移のフェード（View Transitions API）。

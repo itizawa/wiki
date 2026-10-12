@@ -1,5 +1,5 @@
 ---
-import { resolveTheme, themeCssVars, themePresetFor } from "@wiki/shared";
+import { NO_DECORATION_CSS_VARS, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
@@ -33,7 +33,15 @@ const SITE_NAME = site.wiki.name;
 const theme = resolveTheme(site.wiki.theme);
 // wiki ごとのテーマの色の変数一式。global.css の :root より強い詳細度（html:root）で上書きし、読み込みの順番に頼らない。
 // ライトのテーマを先に出し、端末の設定がダークのときだけ、あとからダークのテーマで上書きする
-const themeCss = `html:root{${themeCssVars(themePresetFor("light", theme.presetLight).colors)}}@media (prefers-color-scheme: dark){html:root{${themeCssVars(themePresetFor("dark", theme.presetDark).colors)}}}`;
+const light = themePresetFor("light", theme.presetLight);
+const dark = themePresetFor("dark", theme.presetDark);
+// 背景画像と飾りの変数。テーマにも wiki の画像にも無いモードは、もう一方のモードの画像を打ち消す（どちらにも無ければ、何も出さない）
+const lightDecoration = themeDecorationCssVars(light, theme.backgroundLight);
+const darkDecoration = themeDecorationCssVars(dark, theme.backgroundDark) || (lightDecoration ? NO_DECORATION_CSS_VARS : "");
+const withDecoration = (colors: string, decoration: string) => (decoration ? `${colors};${decoration}` : colors);
+const themeCss = `html:root{${withDecoration(themeCssVars(light.colors), lightDecoration)}}@media (prefers-color-scheme: dark){html:root{${withDecoration(themeCssVars(dark.colors), darkDecoration)}}}`;
+// 背景画像と飾りの要素は、どちらかのモードに画像があるときだけ置く
+const hasBackdrop = Boolean(lightDecoration || darkDecoration);
 const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
@@ -136,6 +144,15 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <slot />
     </div>
     <footer class={s.footer}>© {SITE_NAME}</footer>
+    {
+      hasBackdrop && (
+        <>
+          {/* 背景画像と飾り。本文のあとに置き、後ろに固定する。押せず、読み上げず、印刷には出さない（global.css） */}
+          <div class="theme-backdrop" aria-hidden="true" />
+          <div class="theme-ornament" aria-hidden="true" />
+        </>
+      )
+    }
 
 {/* </html> のあとに書くと、Astro 7 はそのまま </html> のあとに出力する（5 では </body> の前へ動かしていた）ので、<body> の中に置く */}
 <script>

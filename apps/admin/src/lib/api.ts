@@ -331,6 +331,8 @@ export const api = {
   saveHome: (input: UpdateHomeInput) => request<WikiHome>("PUT", w("/home"), input),
   /** ロゴ・ファビコンをアップロードし、パス（`/images/{name}`）を返す。PNG・WebP の 512KB まで */
   uploadThemeImage: (file: Blob) => upload(w("/appearance/images"), file),
+  /** 背景画像をアップロードし、パス（`/images/{name}`）を返す。PNG・JPEG・WebP の 2MB まで */
+  uploadBackgroundImage: (file: Blob) => upload(w("/appearance/background-images"), file),
 
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
