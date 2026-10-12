@@ -49,6 +49,7 @@ import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { createSelectStore, useSelect, type SelectStore } from "../lib/selectStore";
 import { dropTargetOf, flattenVisible, resolveDrop, ROOT_END_DROP_ID, rowDropAt, rowDropId, treeKeyAction, type FlatRow } from "../lib/tree";
+import { UNTITLED_TITLE } from "../lib/untitled";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { confirmDialog } from "./ConfirmDialog";
 import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
@@ -56,7 +57,6 @@ import { WikiIcon } from "./WikiIcon";
 import { Muted, RouterLink, SkeletonRows } from "./ui";
 
 export const SIDEBAR_WIDTH = 264;
-const UNTITLED = "無題";
 /** これ以上動かしたらドラッグとみなす距離（px）。 */
 const DRAG_DISTANCE = 4;
 // ドラッグの始め方の設定は、作り直さない。作り直すと、dnd-kit が、つかめる行をすべて描き直す（サイドバーを描き直すたびに）
@@ -157,7 +157,7 @@ export function Sidebar(props: {
 
   // 親ページの指定があればその下、無ければ最上位の末尾に作る
   const create = useMutation({
-    mutationFn: (parentPageId: string | null) => api.createPage({ title: UNTITLED, parentPageId }),
+    mutationFn: (parentPageId: string | null) => api.createPage({ title: UNTITLED_TITLE, parentPageId }),
     onSettled: () => {
       invalidatePageLists(qc);
     },
