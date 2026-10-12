@@ -349,98 +349,73 @@ export function invalidInputMessage(details: unknown): string {
   return "入力内容に誤りがあります。各項目を確かめて、もう一度お試しください。";
 }
 
+/** `details` を使わず、`code` だけで決まる文言 */
+const MESSAGES: Record<string, string> = {
+  not_found: "見つかりません。ゴミ箱に入れられたか、URL が違います。",
+  invalid_request: "接続の依頼が見つからないか、期限が切れています。",
+  version_conflict: "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。",
+  edit_request_stale: "この箇所は、提案のあとに書き換えられたため、採用できません。",
+  not_open: "この提案は、すでに採用・却下・取り下げのどれかが済んでいます。最新の状態を読み込みました。",
+  not_requester: "取り下げられるのは、このリクエストを出した本人だけです。",
+  no_change: "元の文面と同じ提案が入っています。書き換えるか、取り除いてから送信してください。",
+  line_out_of_range: "提案の指している行が、本文の外にあります。最新の版に合わせてから、もう一度送信してください。",
+  not_rejected: "却下した提案だけを、未対応に戻せます。最新の状態を読み込みました。",
+  images_not_configured: "画像の置き場所が設定されていないため、アップロードできません。",
+  has_children: "子があるため外せません。先に子を移動してください。",
+  run_at_in_past: "過去の日時は指定できません。",
+  not_scheduled: "実行中または実行済みのため変更できません。",
+  wiki_key_taken: "この key はすでに使われています（アーカイブ中の wiki を含みます）。別の key を入力してください。",
+  wiki_not_found: "この wiki は見つかりません。アーカイブされたか、URL が違います。",
+  owner_only: "この操作は、オーナーだけが行えます。",
+  admin_only: "この操作は、この wiki の管理者だけが行えます。",
+  last_admin: "管理者が1人もいなくなるため、できません。先にほかのメンバーを管理者にしてください。",
+  last_owner: "最後のオーナーは解除できません。先にほかの人をオーナーにしてください。",
+  invite_used: "この招待リンクは、すでに使われています。",
+  invite_expired: "この招待リンクは、期限が切れています。",
+  invite_revoked: "この招待リンクは、無効にされています。",
+  invite_not_found: "この招待リンクは見つかりません。",
+  cycle: "自分自身や子孫の下には移動できません。",
+  x_not_configured: "この管理画面には、X の開発者アプリの設定がまだ登録されていないため、X と連携できません。",
+  sns_not_connected: "この wiki には、X のアカウントが連携されていません。先に「X と連携する」から連携してください。",
+  x_reauth_required: "X との連携が切れています（X の側で連携を外したか、許可の期限が切れました）。「X と連携し直す」から、もう一度許可してください。",
+  x_rate_limited: "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。",
+  x_payment_required: "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。",
+  x_unavailable: "X に届きませんでした。時間をおいて、もう一度お試しください。",
+};
+
+/** `details` を使って文言を組み立てる `code` */
+const DETAIL_MESSAGES: Record<string, (err: ApiError) => string> = {
+  invalid_input: (err) => invalidInputMessage(err.details),
+  draft_conflict: (err) => {
+    const editors = (err.details as { editors?: { name: string }[] } | undefined)?.editors ?? [];
+    const who = editors.length > 0 ? `${editors.map((e) => e.name).join("、")} さん` : "ほかの人";
+    return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
+  },
+  image_too_large: (err) => `画像が大きすぎます。${imageLimit(err)}です。`,
+  unsupported_image_type: (err) => `この形式の画像はアップロードできません。${imageLimit(err)}です。`,
+  x_rejected: (err) => {
+    const detail = (err.details as { detail?: unknown } | undefined)?.detail;
+    const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
+    return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
+  },
+  exceeds_parent: (err) => {
+    const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
+    const parent = d?.parentTitle ? `親ページ「${d.parentTitle}」` : "親ページ";
+    const label = d?.parentVisibility ? VISIBILITY_LABEL[d.parentVisibility] : "より狭い公開範囲";
+    return `${parent}が${label}のため、それより広い公開範囲にはできません。先に親ページを公開するか、このページの公開範囲を狭めてください。`;
+  },
+  descendants_wider: (err) => {
+    const count = (err.details as { count?: number } | undefined)?.count;
+    return `配下に、それより広い公開範囲のページが${count ? ` ${count} 件` : ""}あります。配下のページもまとめて変えるか、先に配下のページを狭めてください。`;
+  },
+};
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    switch (err.code) {
-      case "invalid_input":
-        return invalidInputMessage(err.details);
-      case "not_found":
-        return "見つかりません。ゴミ箱に入れられたか、URL が違います。";
-      case "invalid_request":
-        return "接続の依頼が見つからないか、期限が切れています。";
-      case "version_conflict":
-        return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
-      case "edit_request_stale":
-        return "この箇所は、提案のあとに書き換えられたため、採用できません。";
-      case "draft_conflict": {
-        const editors = (err.details as { editors?: { name: string }[] } | undefined)?.editors ?? [];
-        const who = editors.length > 0 ? `${editors.map((e) => e.name).join("、")} さん` : "ほかの人";
-        return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
-      }
-      case "not_open":
-        return "この提案は、すでに採用・却下・取り下げのどれかが済んでいます。最新の状態を読み込みました。";
-      case "not_requester":
-        return "取り下げられるのは、このリクエストを出した本人だけです。";
-      case "no_change":
-        return "元の文面と同じ提案が入っています。書き換えるか、取り除いてから送信してください。";
-      case "line_out_of_range":
-        return "提案の指している行が、本文の外にあります。最新の版に合わせてから、もう一度送信してください。";
-      case "not_rejected":
-        return "却下した提案だけを、未対応に戻せます。最新の状態を読み込みました。";
-      case "image_too_large":
-        return `画像が大きすぎます。${imageLimit(err)}です。`;
-      case "unsupported_image_type":
-        return `この形式の画像はアップロードできません。${imageLimit(err)}です。`;
-      case "images_not_configured":
-        return "画像の置き場所が設定されていないため、アップロードできません。";
-      case "has_children":
-        return "子があるため外せません。先に子を移動してください。";
-      case "run_at_in_past":
-        return "過去の日時は指定できません。";
-      case "not_scheduled":
-        return "実行中または実行済みのため変更できません。";
-      case "wiki_key_taken":
-        return "この key はすでに使われています（アーカイブ中の wiki を含みます）。別の key を入力してください。";
-      case "wiki_not_found":
-        return "この wiki は見つかりません。アーカイブされたか、URL が違います。";
-      case "owner_only":
-        return "この操作は、オーナーだけが行えます。";
-      case "admin_only":
-        return "この操作は、この wiki の管理者だけが行えます。";
-      case "last_admin":
-        return "管理者が1人もいなくなるため、できません。先にほかのメンバーを管理者にしてください。";
-      case "last_owner":
-        return "最後のオーナーは解除できません。先にほかの人をオーナーにしてください。";
-      case "invite_used":
-        return "この招待リンクは、すでに使われています。";
-      case "invite_expired":
-        return "この招待リンクは、期限が切れています。";
-      case "invite_revoked":
-        return "この招待リンクは、無効にされています。";
-      case "invite_not_found":
-        return "この招待リンクは見つかりません。";
-      case "cycle":
-        return "自分自身や子孫の下には移動できません。";
-      case "x_not_configured":
-        return "この管理画面には、X の開発者アプリの設定がまだ登録されていないため、X と連携できません。";
-      case "sns_not_connected":
-        return "この wiki には、X のアカウントが連携されていません。先に「X と連携する」から連携してください。";
-      case "x_reauth_required":
-        return "X との連携が切れています（X の側で連携を外したか、許可の期限が切れました）。「X と連携し直す」から、もう一度許可してください。";
-      case "x_rejected": {
-        const detail = (err.details as { detail?: unknown } | undefined)?.detail;
-        const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
-        return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
-      }
-      case "x_rate_limited":
-        return "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。";
-      case "x_payment_required":
-        return "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。";
-      case "x_unavailable":
-        return "X に届きませんでした。時間をおいて、もう一度お試しください。";
-      case "exceeds_parent": {
-        const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
-        const parent = d?.parentTitle ? `親ページ「${d.parentTitle}」` : "親ページ";
-        const label = d?.parentVisibility ? VISIBILITY_LABEL[d.parentVisibility] : "より狭い公開範囲";
-        return `${parent}が${label}のため、それより広い公開範囲にはできません。先に親ページを公開するか、このページの公開範囲を狭めてください。`;
-      }
-      case "descendants_wider": {
-        const count = (err.details as { count?: number } | undefined)?.count;
-        return `配下に、それより広い公開範囲のページが${count ? ` ${count} 件` : ""}あります。配下のページもまとめて変えるか、先に配下のページを狭めてください。`;
-      }
-      default:
-        return err.message;
-    }
+    const fixed = Object.hasOwn(MESSAGES, err.code) ? MESSAGES[err.code] : undefined;
+    if (fixed !== undefined) return fixed;
+    const detailed = Object.hasOwn(DETAIL_MESSAGES, err.code) ? DETAIL_MESSAGES[err.code] : undefined;
+    return detailed ? detailed(err) : err.message;
   }
   return err instanceof Error ? err.message : String(err);
 }
