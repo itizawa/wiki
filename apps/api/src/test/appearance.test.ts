@@ -11,7 +11,7 @@ afterEach(async () => {
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 2, 3]);
-const base = { presetLight: "simple-light", presetDark: "simple-dark", logo: null, favicon: null, backgroundLight: null, backgroundDark: null };
+const base = { preset: "simple", logo: null, favicon: null, backgroundLight: null, backgroundDark: null };
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
 
 async function events(kind = "wiki_theme") {
@@ -46,8 +46,7 @@ describe("appearance", () => {
     const manifest = await wikiManifest(ctx.db);
     expect(manifest.name).toBe("わたしの wiki");
     expect(manifest.theme).toEqual({ ...base, logo });
-    expect(manifest.theme.presetLight).toBe("simple-light");
-    expect(manifest.theme.presetDark).toBe("simple-dark");
+    expect(manifest.theme.preset).toBe("simple");
 
     // 変わっていなければ、ビルドし直さない
     await ctx.call("PUT", `${W}/appearance`, { name: "わたしの wiki", theme: { ...base, logo } });
@@ -71,14 +70,14 @@ describe("appearance", () => {
     expect(await faviconOf(editor)).toBeNull();
   });
 
-  it("accepts only the keys of defined themes, each for its own mode", async () => {
+  it("accepts only the keys of defined themes", async () => {
     ctx = await setup();
     for (const theme of [
-      { ...base, presetLight: "unknown" },
-      { ...base, presetDark: "unknown" },
-      { ...base, presetLight: "simple-dark" },
-      { ...base, presetDark: "simple-light" },
-      { ...base, presetLight: "simple-light;}a{color:red" },
+      { ...base, preset: "unknown" },
+      { ...base, preset: "simple-light" },
+      { ...base, preset: "simple;}a{color:red" },
+      // ライト用・ダーク用を別々に選ぶ古い形は、保存では受け付けない
+      { logo: null, favicon: null, presetLight: "simple-light", presetDark: "simple-dark" },
       { logo: null, favicon: null },
       // 古い形（アクセント色だけ）は、保存では受け付けない
       { accentLight: "#00716b", accentDark: "#4fd1c5", logo: null, favicon: null },
@@ -207,7 +206,7 @@ describe("appearance", () => {
     expect((await ctx.call("POST", `${W}/appearance/background-images`, mid)).status).toBe(201);
     expect((await ctx.call("POST", `${W}/appearance/images`, mid)).status).toBe(413);
 
-    const theme = { ...base, presetLight: "notebook-light", presetDark: "space-dark", backgroundLight: res.body.url, backgroundDark: png.body.url };
+    const theme = { ...base, preset: "simple", backgroundLight: res.body.url, backgroundDark: png.body.url };
     expect((await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme })).status).toBe(200);
     expect((await wikiManifest(ctx.db)).theme).toEqual(theme);
 

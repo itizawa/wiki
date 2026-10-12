@@ -329,7 +329,7 @@ const has = (name: string) => store().files.has(name);
 describe("cleaning up unreferenced images", () => {
   it("keeps every image that is referenced somewhere", async () => {
     ctx = await setup();
-    const green = { presetLight: "simple-light", presetDark: "simple-dark" };
+    const green = { preset: "simple" };
     const names = {
       head: image(60),
       oldVersion: image(60, "image/jpeg"),

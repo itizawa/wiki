@@ -2,22 +2,20 @@ import { z } from "zod";
 
 /**
  * 公開サイトの見た目（テーマ）。wiki ごとに持つ。
- * 変えられるのは、外観のテーマ（ライトの端末で使うものとダークの端末で使うものを1つずつ）とロゴ・ファビコンだけ。
+ * 変えられるのは、外観のテーマ（1つ）とロゴ・ファビコンだけ。テーマがライト版とダーク版の両方を持つなら、見る人の端末の設定に合わせて切り替わる。片方しか持たないテーマは、いつもその1つで出る。
  * 色は、読みやすさが崩れないよう確かめたテーマ（`THEME_PRESETS`）の中からだけ選ぶ。フォントは変えない。
  * サイト名は wiki の表示名（`wikis.name`）をそのまま使う。
  */
 export type WikiTheme = {
-  /** ライトの端末で使うテーマの key（`THEME_PRESETS` のうち、`mode` が light のもの） */
-  presetLight: string;
-  /** ダークの端末で使うテーマの key（`THEME_PRESETS` のうち、`mode` が dark のもの） */
-  presetDark: string;
+  /** テーマの key（`THEME_PRESETS` にあるもの） */
+  preset: string;
   /** ヘッダーのサイト名の位置に出す画像（`/images/{name}`）。null ならサイト名を文字で出す */
   logo: string | null;
   /** ブラウザのタブに出るアイコン（`/images/{name}`）。null なら既定のアイコン */
   favicon: string | null;
-  /** ライトのときの背景画像（`/images/{name}`）。あれば、テーマに付いている背景画像の代わりに使う。null ならテーマの画像 */
+  /** ライト版のときの背景画像（`/images/{name}`）。あれば、テーマに付いている背景画像の代わりに使う。null ならテーマの画像 */
   backgroundLight: string | null;
-  /** ダークのときの背景画像。使い方は `backgroundLight` と同じ */
+  /** ダーク版のときの背景画像。使い方は `backgroundLight` と同じ */
   backgroundDark: string | null;
 };
 
@@ -61,18 +59,26 @@ export type ThemeOrnament = Overlay & {
   size: number;
 };
 
-export type ThemePreset = {
-  key: string;
-  /** 管理画面に出す名前 */
-  name: string;
-  /** ライトの端末向けか、ダークの端末向けか */
-  mode: ThemeMode;
+/** テーマのライト版またはダーク版1つ分 */
+export type ThemeVariant = {
   colors: ThemeColors;
   /** 背景画像。無くてよい */
   background?: ThemeBackground;
   /** 飾り。無くてよい */
   ornament?: ThemeOrnament;
 };
+
+/** テーマ1つ。ライト版・ダーク版のどちらか、または両方を持つ（少なくとも1つ） */
+export type ThemePreset = {
+  key: string;
+  /** 管理画面に出す名前 */
+  name: string;
+  light?: ThemeVariant;
+  dark?: ThemeVariant;
+};
+
+/** 実際に使う版。`mode` は、どちらの版か（頼まれたモードの版が無いテーマでは、頼んだモードと違うことがある） */
+export type ResolvedVariant = ThemeVariant & { mode: ThemeMode };
 
 // ---------------------------------------------------------------------------
 // テーマに付く画像（自作の SVG）。出どころは、この wiki のリポジトリで描いたもので、外部の素材は使っていない。
@@ -138,59 +144,73 @@ const OWL_SVG = svgDoc(
  */
 export const THEME_PRESETS: readonly ThemePreset[] = [
   {
-    key: "simple-light",
-    name: "シンプルライト",
-    mode: "light",
-    colors: { bg: "#f6f7f9", paper: "#ffffff", text: "#1d2330", muted: "#6b7385", border: "#e2e5eb", accent: "#2257c5", mark: "#fff3a8", ok: "#1f8a4c", warn: "#b7791f", danger: "#c93636" },
+    key: "simple",
+    name: "シンプル",
+    light: {
+      colors: { bg: "#f6f7f9", paper: "#ffffff", text: "#1d2330", muted: "#6b7385", border: "#e2e5eb", accent: "#2257c5", mark: "#fff3a8", ok: "#1f8a4c", warn: "#b7791f", danger: "#c93636" },
+    },
+    dark: {
+      colors: { bg: "#14171d", paper: "#1c2028", text: "#e4e7ee", muted: "#949bad", border: "#2d3340", accent: "#7aa5ff", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
   },
   {
-    key: "simple-dark",
-    name: "シンプルダーク",
-    mode: "dark",
-    colors: { bg: "#14171d", paper: "#1c2028", text: "#e4e7ee", muted: "#949bad", border: "#2d3340", accent: "#7aa5ff", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
-  },
-  {
-    key: "notebook-light",
+    key: "notebook",
     name: "手書きノート風",
-    mode: "light",
-    colors: { bg: "#fbf7ea", paper: "#fffdf5", text: "#2b2a33", muted: "#645f50", border: "#e3dcc4", accent: "#1d4f9c", mark: "#ffeb99", ok: "#1d7a44", warn: "#9a6412", danger: "#b82e2e" },
-    background: { svg: NOTEBOOK_SVG, repeat: "tile", tileSize: 32, ink: "#6ea0d8", alpha: 0.3 },
+    light: {
+      colors: { bg: "#fbf7ea", paper: "#fffdf5", text: "#2b2a33", muted: "#645f50", border: "#e3dcc4", accent: "#1d4f9c", mark: "#ffeb99", ok: "#1d7a44", warn: "#9a6412", danger: "#b82e2e" },
+      background: { svg: NOTEBOOK_SVG, repeat: "tile", tileSize: 32, ink: "#6ea0d8", alpha: 0.3 },
+    },
   },
   {
-    key: "pastel-light",
+    key: "pastel",
     name: "パステル",
-    mode: "light",
-    colors: { bg: "#fdf0f6", paper: "#fffafc", text: "#3a2b3d", muted: "#6f5d73", border: "#f0d6e3", accent: "#8a2a78", mark: "#ffe3a3", ok: "#1d7a58", warn: "#98600f", danger: "#bd2f4d" },
-    background: { svg: PASTEL_SVG, repeat: "tile", tileSize: 96, ink: "#e8a3c4", alpha: 0.35 },
+    light: {
+      colors: { bg: "#fdf0f6", paper: "#fffafc", text: "#3a2b3d", muted: "#6f5d73", border: "#f0d6e3", accent: "#8a2a78", mark: "#ffe3a3", ok: "#1d7a58", warn: "#98600f", danger: "#bd2f4d" },
+      background: { svg: PASTEL_SVG, repeat: "tile", tileSize: 96, ink: "#e8a3c4", alpha: 0.35 },
+    },
   },
   {
-    key: "space-dark",
+    key: "space",
     name: "宇宙",
-    mode: "dark",
-    colors: { bg: "#0b1020", paper: "#131a2e", text: "#e6e9f5", muted: "#9aa3c0", border: "#27304d", accent: "#8fb4ff", mark: "#4d4510", ok: "#57c27a", warn: "#e3b341", danger: "#ff8080" },
-    background: { svg: SPACE_SVG, repeat: "tile", tileSize: 360, ink: "#ffffff", alpha: 0.2 },
+    dark: {
+      colors: { bg: "#0b1020", paper: "#131a2e", text: "#e6e9f5", muted: "#9aa3c0", border: "#27304d", accent: "#8fb4ff", mark: "#4d4510", ok: "#57c27a", warn: "#e3b341", danger: "#ff8080" },
+      background: { svg: SPACE_SVG, repeat: "tile", tileSize: 360, ink: "#ffffff", alpha: 0.2 },
+    },
   },
   {
-    key: "owl-dark",
+    key: "owl",
     name: "フクロウ",
-    mode: "dark",
-    colors: { bg: "#1a1612", paper: "#231d17", text: "#efe6d8", muted: "#aa9f8c", border: "#3a3128", accent: "#f0b35c", mark: "#5b4a14", ok: "#6cc58b", warn: "#e3b341", danger: "#ff8a7a" },
-    ornament: { svg: OWL_SVG, position: "bottom-right", size: 88, ink: "#d8b277", alpha: 0.3 },
+    dark: {
+      colors: { bg: "#1a1612", paper: "#231d17", text: "#efe6d8", muted: "#aa9f8c", border: "#3a3128", accent: "#f0b35c", mark: "#5b4a14", ok: "#6cc58b", warn: "#e3b341", danger: "#ff8a7a" },
+      ornament: { svg: OWL_SVG, position: "bottom-right", size: 88, ink: "#d8b277", alpha: 0.3 },
+    },
   },
 ];
 
-export const DEFAULT_THEME: WikiTheme = { presetLight: "simple-light", presetDark: "simple-dark", logo: null, favicon: null, backgroundLight: null, backgroundDark: null };
+export const DEFAULT_THEME: WikiTheme = { preset: "simple", logo: null, favicon: null, backgroundLight: null, backgroundDark: null };
 
 /** key からテーマを探す。無ければ null */
 export function findThemePreset(key: unknown): ThemePreset | null {
   return THEME_PRESETS.find((p) => p.key === key) ?? null;
 }
 
-/** そのモード向けのテーマ。key が無い・知らない・モードが違うときは、そのモードの既定のテーマ */
-export function themePresetFor(mode: ThemeMode, key: unknown): ThemePreset {
-  const found = findThemePreset(key);
-  if (found && found.mode === mode) return found;
-  return findThemePreset(mode === "light" ? DEFAULT_THEME.presetLight : DEFAULT_THEME.presetDark)!;
+/** key のテーマ。key が無い・知らないときは既定のテーマ */
+export function themePresetFor(key: unknown): ThemePreset {
+  return findThemePreset(key) ?? findThemePreset(DEFAULT_THEME.preset)!;
+}
+
+/** そのテーマが持つ版のモード（ライト・ダークの順） */
+export function themeModes(preset: ThemePreset): ThemeMode[] {
+  return (["light", "dark"] as const).filter((m) => preset[m]);
+}
+
+/**
+ * そのモードで使う版。そのモードの版が無いテーマは、持っている版を使う（ライト版しか無ければ、ダークの端末でもライト版。ダーク版しか無ければ、ライトの端末でもダーク版）。
+ * 返す `mode` は、実際に使う版のモード
+ */
+export function themeVariant(preset: ThemePreset, mode: ThemeMode): ResolvedVariant {
+  const actual: ThemeMode = preset[mode] ? mode : mode === "light" ? "dark" : "light";
+  return { ...preset[actual]!, mode: actual };
 }
 
 /** テーマの色を、CSS の変数の宣言（`--bg:#f6f7f9;--paper:...`）にする。色はこのファイルに書いた値だけなので、そのまま CSS に入れてよい */
@@ -217,7 +237,7 @@ export type ThemeBackdrop = { image: string; size: string; repeat: string };
  * そのテーマの背景。wiki が自分で入れた画像（`custom`）があれば、テーマの画像の代わりに、背景色のベールを重ねて画面いっぱいに出す。
  * どちらも無ければ null（単色）
  */
-export function themeBackdrop(preset: ThemePreset, custom: string | null): ThemeBackdrop | null {
+export function themeBackdrop(preset: ThemeVariant, custom: string | null): ThemeBackdrop | null {
   if (custom && isBackgroundImagePath(custom)) {
     const veil = `color-mix(in srgb, ${preset.colors.bg} ${CUSTOM_BACKGROUND_VEIL * 100}%, transparent)`;
     return { image: `linear-gradient(${veil}, ${veil}), url("${custom}")`, size: "cover", repeat: "no-repeat" };
@@ -229,7 +249,7 @@ export function themeBackdrop(preset: ThemePreset, custom: string | null): Theme
 }
 
 /** 飾りの CSS の値。無ければ null */
-export function themeOrnament(preset: ThemePreset): { image: string; size: number } | null {
+export function themeOrnament(preset: ThemeVariant): { image: string; size: number } | null {
   return preset.ornament ? { image: svgUrl(preset.ornament.svg), size: preset.ornament.size } : null;
 }
 
@@ -237,7 +257,7 @@ export function themeOrnament(preset: ThemePreset): { image: string; size: numbe
  * 背景画像と飾りを、CSS の変数の宣言にする（`--bg-image` `--bg-size` `--bg-repeat` `--ornament-image` `--ornament-size`）。
  * どちらも無いテーマは空の文字列（変数を出さない）。片方だけ無いときは、その変数を none にする。
  */
-export function themeDecorationCssVars(preset: ThemePreset, custom: string | null): string {
+export function themeDecorationCssVars(preset: ThemeVariant, custom: string | null): string {
   const backdrop = themeBackdrop(preset, custom);
   const ornament = themeOrnament(preset);
   if (!backdrop && !ornament) return "";
@@ -250,7 +270,7 @@ export function themeDecorationCssVars(preset: ThemePreset, custom: string | nul
   ].join(";");
 }
 
-/** 背景画像と飾りを打ち消す宣言（別のモードのテーマが付けた画像を、このモードでは出さない） */
+/** 背景画像と飾りを打ち消す宣言（別のモードの版が付けた画像を、このモードでは出さない） */
 export const NO_DECORATION_CSS_VARS = "--bg-image:none;--ornament-image:none";
 
 /** 文字・リンクと背景のコントラスト比の下限（WCAG 2.x の AA、通常の文字） */
@@ -319,8 +339,7 @@ export function isBackgroundImagePath(value: string): boolean {
 
 const themeImage = z.string().refine(isThemeImagePath, { message: "images must be an uploaded PNG or WebP" }).nullable();
 
-const presetKey = (mode: ThemeMode) =>
-  z.string().refine((key) => findThemePreset(key)?.mode === mode, { message: `must be the key of a ${mode} theme` });
+const presetKey = z.string().refine((key) => findThemePreset(key) !== null, { message: "must be the key of a theme" });
 
 const backgroundImage = z
   .string()
@@ -329,8 +348,7 @@ const backgroundImage = z
   .default(null);
 
 export const wikiThemeSchema = z.object({
-  presetLight: presetKey("light"),
-  presetDark: presetKey("dark"),
+  preset: presetKey,
   logo: themeImage,
   favicon: themeImage,
   backgroundLight: backgroundImage,
@@ -348,6 +366,7 @@ export type WikiAppearance = { name: string; theme: WikiTheme };
 
 /**
  * 保存してあるテーマ（`wikis.theme`）を読む。無い・正しくない・知らない key の項目は既定に戻す（古い形のアクセント色だけの `theme` は、既定のテーマになる）。
+ * ライトとダークで別々に選んでいた古い形（`presetLight` `presetDark`）は、ライト用に選んでいたテーマを使う（既定のままなら、ダーク用に選んでいたテーマ）。
  * 公開サイトのビルドもこれを通すので、CSS に入るのは `THEME_PRESETS` にある色だけになる。
  */
 export function resolveTheme(raw: unknown): WikiTheme {
@@ -355,11 +374,26 @@ export function resolveTheme(raw: unknown): WikiTheme {
   const image = (v: unknown) => (typeof v === "string" && isThemeImagePath(v) ? v : null);
   const background = (v: unknown) => (typeof v === "string" && isBackgroundImagePath(v) ? v : null);
   return {
-    presetLight: themePresetFor("light", value.presetLight).key,
-    presetDark: themePresetFor("dark", value.presetDark).key,
+    preset: presetFromSaved(value),
     logo: image(value.logo),
     favicon: image(value.favicon),
     backgroundLight: background(value.backgroundLight),
     backgroundDark: background(value.backgroundDark),
   };
+}
+
+/** 古い形のテーマの key（`simple-light` など）が指す、今のテーマの key */
+const LEGACY_PRESET_KEYS: Record<string, string> = {
+  "simple-light": "simple",
+  "simple-dark": "simple",
+  "notebook-light": "notebook",
+  "pastel-light": "pastel",
+  "space-dark": "space",
+  "owl-dark": "owl",
+};
+
+function presetFromSaved(value: Record<string, unknown>): string {
+  if (findThemePreset(value.preset)) return value.preset as string;
+  const legacy = [value.presetLight, value.presetDark].map((k) => (typeof k === "string" ? LEGACY_PRESET_KEYS[k] : undefined));
+  return legacy.find((k) => k && k !== DEFAULT_THEME.preset) ?? DEFAULT_THEME.preset;
 }
