@@ -65,7 +65,7 @@ describe("queries spent on authentication", () => {
 
     const member = await app.get(editor.user.id, "/admin/me");
     expect(member.status).toBe(200);
-    expect(member.body).toEqual({ id: editor.user.id, email: "editor@example.com", name: "editor", isOwner: false });
+    expect(member.body).toEqual({ id: editor.user.id, email: "editor@example.com", name: "editor", pictureUrl: null, isOwner: false });
     expect(member.queries).toHaveLength(2);
   });
 

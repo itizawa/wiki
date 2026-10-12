@@ -26,7 +26,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // ログイン
 // ---------------------------------------------------------------------------
 
-export type LoginIdentity = { sub: string; email: string; name: string | null };
+export type LoginIdentity = { sub: string; email: string; name: string | null; picture?: string | null };
 
 /**
  * Google でログインした人の行を探し、メールアドレスと名前を最新にする。
@@ -34,7 +34,7 @@ export type LoginIdentity = { sub: string; email: string; name: string | null };
  * 行が無ければ null（作らない。招待リンクからログインしたときだけ作る）。
  */
 export async function findUserForLogin(db: Db, identity: LoginIdentity, now = new Date()): Promise<UserRow | null> {
-  const update = { email: identity.email, name: identity.name, lastLoginAt: now };
+  const update = { email: identity.email, name: identity.name, pictureUrl: identity.picture ?? null, lastLoginAt: now };
   const [bySub] = await db.update(users).set(update).where(eq(users.googleSub, identity.sub)).returning();
   if (bySub) return bySub;
   // メールアドレスだけの行が複数あれば、オーナーの行を先に（締め出し用のスクリプトで付け直した行を取りこぼさない）
@@ -57,8 +57,11 @@ export async function findUserForLogin(db: Db, identity: LoginIdentity, now = ne
 async function createUserForLogin(db: Db, identity: LoginIdentity, now: Date): Promise<UserRow> {
   const [row] = await db
     .insert(users)
-    .values({ googleSub: identity.sub, email: identity.email, name: identity.name, lastLoginAt: now })
-    .onConflictDoUpdate({ target: users.googleSub, set: { email: identity.email, name: identity.name, lastLoginAt: now } })
+    .values({ googleSub: identity.sub, email: identity.email, name: identity.name, pictureUrl: identity.picture ?? null, lastLoginAt: now })
+    .onConflictDoUpdate({
+      target: users.googleSub,
+      set: { email: identity.email, name: identity.name, pictureUrl: identity.picture ?? null, lastLoginAt: now },
+    })
     .returning();
   return row!;
 }
