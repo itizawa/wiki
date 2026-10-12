@@ -96,7 +96,7 @@ export function createApp(deps: Deps) {
   admin.use("*", requireUser, requireAccess);
   admin.get("/me", (c) => {
     const user = c.get("user");
-    return c.json({ id: user.id, email: user.email, name: user.name, isOwner: user.isOwner });
+    return c.json({ id: user.id, email: user.email, name: user.name, pictureUrl: user.pictureUrl, isOwner: user.isOwner });
   });
   admin.route("/wikis", wikiRoutes);
   admin.route("/users", userRoutes);

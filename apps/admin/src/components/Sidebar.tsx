@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
@@ -128,6 +129,10 @@ const ellipsis = { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "elli
 /** 左サイドバー：検索、画面の切り替え、ドキュメントのツリー。 */
 export function Sidebar(props: {
   email: string;
+  /** Google アカウントの表示名。無ければ null（メールアドレスを出す） */
+  name: string | null;
+  /** Google アカウントの画像の URL。無ければ null（表示名の頭文字を出す） */
+  pictureUrl: string | null;
   onCollapse?: () => void;
   onNavigate?: () => void;
   /** コマンドメニュー（⌘K）を開く */
@@ -276,8 +281,8 @@ export function Sidebar(props: {
         </Alert>
       )}
 
-      <Box sx={{ display: "flex", px: 1, borderTop: 1, borderColor: "divider" }}>
-        <UserMenu email={props.email} onOpenCommands={props.onOpenCommands} onLogout={props.onLogout} onNavigate={props.onNavigate} />
+      <Box sx={{ display: "flex", borderTop: 1, borderColor: "divider" }}>
+        <UserMenu email={props.email} name={props.name} pictureUrl={props.pictureUrl} onOpenCommands={props.onOpenCommands} onLogout={props.onLogout} onNavigate={props.onNavigate} />
       </Box>
     </Box>
   );
@@ -290,16 +295,30 @@ const MenuItemLink = createLink(MenuItem);
  * コマンドメニュー（⌘K）、キーボードショートカットと記法のガイド、外部アプリ連携（wiki ごとではなく、ログインしている人の設定）への入口、ログアウトはここから行う。
  * 押せる範囲は、行の高さいっぱいに取る。
  */
-function UserMenu({ email, onOpenCommands, onLogout, onNavigate }: { email: string; onOpenCommands: () => void; onLogout: () => void; onNavigate?: () => void }) {
+function UserMenu({
+  email,
+  name,
+  pictureUrl,
+  onOpenCommands,
+  onLogout,
+  onNavigate,
+}: {
+  email: string;
+  name: string | null;
+  pictureUrl: string | null;
+  onOpenCommands: () => void; onLogout: () => void; onNavigate?: () => void }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const logoutOthers = useLogoutOthers();
+  const label = name ?? email;
+  // 名前があれば、メールアドレスも添えて、どのアカウントかを確かめられるようにする
+  const detail = name ? `${name}（${email}）` : email;
   return (
     <>
       <Box
         component="button"
         type="button"
-        title={email}
-        aria-label={`アカウントのメニューを開く（${email}）`}
+        title={detail}
+        aria-label={`アカウントのメニューを開く（${detail}）`}
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
         onClick={(e) => setAnchor(e.currentTarget)}
@@ -309,10 +328,10 @@ function UserMenu({ email, onOpenCommands, onLogout, onNavigate }: { email: stri
           minHeight: 46,
           display: "flex",
           alignItems: "center",
-          gap: 0.5,
-          px: 0.5,
+          gap: 1,
+          px: 2,
           border: 0,
-          borderRadius: 1,
+          borderRadius: 0,
           bgcolor: "transparent",
           color: "text.secondary",
           font: "inherit",
@@ -322,8 +341,12 @@ function UserMenu({ email, onOpenCommands, onLogout, onNavigate }: { email: stri
           "&:hover": { bgcolor: "action.hover" },
         }}
       >
+        {/* 画像は飾り（名前を隣に出している）ので alt は空。無い・読み込めないときは、MUI が頭文字を出す */}
+        <Avatar src={pictureUrl ?? undefined} alt="" slotProps={{ img: { referrerPolicy: "no-referrer" } }} sx={{ width: 24, height: 24, fontSize: "0.75rem", flexShrink: 0 }}>
+          {Array.from(label)[0]?.toUpperCase()}
+        </Avatar>
         <Box component="span" sx={ellipsis}>
-          {email}
+          {label}
         </Box>
         <Box component={ChevronsUpDown} size={18} sx={{ flexShrink: 0 }} />
       </Box>
@@ -335,9 +358,10 @@ function UserMenu({ email, onOpenCommands, onLogout, onNavigate }: { email: stri
         transformOrigin={{ vertical: "bottom", horizontal: "left" }}
         slotProps={{ list: { dense: true, sx: { minWidth: 240, maxWidth: 320 } } }}
       >
-        {/* 長いメールアドレスも省略せず、折り返して全体を出す */}
-        <ListSubheader disableSticky sx={{ py: 0.75, lineHeight: 1.5, fontSize: "0.75rem", fontWeight: 600, overflowWrap: "anywhere" }}>
-          {email}
+        {/* 長い名前・メールアドレスも省略せず、折り返して全体を出す */}
+        <ListSubheader disableSticky sx={{ py: 0.75, lineHeight: 1.5, fontSize: "0.75rem", overflowWrap: "anywhere" }}>
+          {name && <Box sx={{ fontWeight: 600, color: "text.primary" }}>{name}</Box>}
+          <Box sx={{ fontWeight: name ? 400 : 600 }}>{email}</Box>
         </ListSubheader>
         <Divider />
         <MenuItem

@@ -583,6 +583,8 @@ export const users = pgTable(
     /** 表示用。ログインのたびに Google から受け取ったもので更新する（小文字） */
     email: text("email").notNull(),
     name: text("name"),
+    /** Google アカウントの画像の URL（https のみ）。ログインのたびに更新する。無ければ空 */
+    pictureUrl: text("picture_url"),
     /** すべての wiki に管理者として入れ、wiki の作成・アーカイブとオーナーの追加・解除ができる */
     isOwner: boolean("is_owner").notNull().default(false),
     createdAt: createdAt(),

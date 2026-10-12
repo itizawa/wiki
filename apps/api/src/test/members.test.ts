@@ -232,7 +232,7 @@ describe("invites", () => {
   });
 
   it("brings someone who logs in from an invite back to the invite page without joining, and creates the user only then", async () => {
-    let identity = { sub: "g-new", email: "new@example.com", emailVerified: true, name: "New Person" };
+    let identity = { sub: "g-new", email: "new@example.com", emailVerified: true, name: "New Person", picture: "https://lh3.googleusercontent.com/a/new" as string | null };
     ctx = await setup({
       google: {
         authorizationUrl: ({ state }) => `https://accounts.example/auth?state=${state}`,
@@ -271,11 +271,11 @@ describe("invites", () => {
     expect((await call("POST", "/invites/inspect", { token })).body).toMatchObject({ status: "active", viewerEmail: "new@example.com", alreadyMember: false });
     expect(await ctx.db.select().from(wikiMembers)).toHaveLength(0);
     expect((await call("POST", "/invites/accept", { token })).body).toEqual({ wikiKey: "wiki", alreadyMember: false });
-    expect((await call("GET", "/admin/me")).body).toMatchObject({ email: "new@example.com", name: "New Person", isOwner: false });
+    expect((await call("GET", "/admin/me")).body).toMatchObject({ email: "new@example.com", name: "New Person", pictureUrl: "https://lh3.googleusercontent.com/a/new", isOwner: false });
 
     // 使用済みのリンクでログインした、まだ行の無い人：行を作らず、理由を招待の画面に出す
     const before = (await ctx.db.select().from(users)).length;
-    identity = { sub: "g-late", email: "late@example.com", emailVerified: true, name: "Late" };
+    identity = { sub: "g-late", email: "late@example.com", emailVerified: true, name: "Late", picture: null };
     const late = await loginVia(token);
     expect(late.headers.get("location")).toBe(`http://admin.test/invite#${token}`);
     expect(sessionOf(late)).toBeUndefined();
@@ -283,7 +283,7 @@ describe("invites", () => {
 
     // メールアドレスが未確認のアカウントは参加できない
     const fresh = await issueInvite("editor");
-    identity = { sub: "g-unverified", email: "unverified@example.com", emailVerified: false, name: "U" };
+    identity = { sub: "g-unverified", email: "unverified@example.com", emailVerified: false, name: "U", picture: null };
     const unverified = await loginVia(fresh.token);
     expect(unverified.headers.get("location")).toBe("http://admin.test/login?error=unverified");
     expect((await ctx.call("POST", "/invites/inspect", { token: fresh.token })).body.status).toBe("active");
