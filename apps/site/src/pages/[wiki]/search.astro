@@ -1,16 +1,29 @@
 ---
+import NavDrawer from "../../components/NavDrawer.astro";
 import Search from "../../components/Search";
+import TreeNav from "../../components/TreeNav";
 import Base from "../../layouts/Base.astro";
-import { allWikis } from "../../lib/manifest";
+import { allWikis, fullNav, siteData } from "../../lib/manifest";
+import page from "../../styles/page.module.css";
 
 export async function getStaticPaths() {
   return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
 }
 
 const { wiki } = Astro.params;
+const { wiki: manifest, primaryTree } = await siteData(wiki);
+// 記事のページと同じサイドバーにする。公開ページが1つも無いツリーは、ページ一覧を出さない
+const items = primaryTree ? await fullNav(manifest.key, primaryTree) : [];
 ---
 
-<Base wiki={wiki} title="検索" canonical="/search">
-  <h1>検索</h1>
-  <Search client:load />
+<Base wiki={wiki} title="検索" canonical="/search" nav="/">
+  <div class={page.withNav}>
+    <main>
+      <h1>検索</h1>
+      <Search client:load />
+    </main>
+    <NavDrawer current="search" list={items.length > 0}>
+      {items.length > 0 && <TreeNav client:idle items={items} />}
+    </NavDrawer>
+  </div>
 </Base>

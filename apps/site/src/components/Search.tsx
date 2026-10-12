@@ -1,3 +1,4 @@
+import { Search as SearchIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import s from "./Search.module.css";
 
@@ -51,15 +52,18 @@ export default function Search() {
 
   return (
     <div>
-      <input
-        type="search"
-        className={s.input}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="キーワードで検索"
-        aria-label="検索"
-        autoFocus
-      />
+      <div className={s.field}>
+        <SearchIcon size={18} className={s.fieldIcon} aria-hidden="true" />
+        <input
+          type="search"
+          className={s.input}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="キーワードで検索"
+          aria-label="検索"
+          autoFocus
+        />
+      </div>
       {error && <p className={s.muted}>{error}</p>}
       {results && results.length === 0 && <p className={s.muted}>「{query}」に一致する記事はありませんでした。</p>}
       {results && results.length > 0 && (

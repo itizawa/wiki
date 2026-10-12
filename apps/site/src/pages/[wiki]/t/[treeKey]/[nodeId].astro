@@ -34,7 +34,7 @@ const nav = await pageNav(wiki, tree, page.id);
 const navSrc = (await navFile(wiki)).path;
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={`/t/${tree.key}/`}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav="/">
   <div class={layout.withNav}>
     <main data-pagefind-ignore>
       <nav class={layout.breadcrumbs}>

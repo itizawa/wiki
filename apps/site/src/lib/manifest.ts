@@ -64,7 +64,7 @@ async function loadSiteData(wikiKey: string): Promise<SiteData> {
 
 const fullNavByTree = new WeakMap<ManifestTree, NavItem[]>();
 
-/** ツリー全体のナビ。`/nav.{hash}.json`（navFile）と、一覧のページ（トップ、/t/{key}/）に出す。公開ページだけが入る（マニフェストのツリーがそうなっている）。 */
+/** ツリー全体のナビ。`/nav.{hash}.json`（navFile）と、トップに出す。公開ページだけが入る（マニフェストのツリーがそうなっている）。 */
 export async function fullNav(wikiKey: string, tree: ManifestTree): Promise<NavItem[]> {
   let items = fullNavByTree.get(tree);
   if (!items) {

@@ -1,13 +1,16 @@
 .nav, .nav ul { list-style: none; margin: 0; padding: 0; }
 .nav ul { padding-left: 14px; }
-.item { display: flex; gap: 4px; align-items: baseline; }
-.item a { text-decoration: none; }
+.item { display: flex; gap: 2px; align-items: center; min-height: 32px; border-radius: var(--radius); }
+.item:hover { background: var(--bg); }
+.item a { flex: 1; min-width: 0; padding: 2px 6px 2px 0; color: var(--text); text-decoration: none; }
 .current { composes: item; }
-.current > a { font-weight: 700; color: var(--text); }
-.twisty { width: 16px; flex: none; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; font: inherit; }
+.current { background: var(--bg); }
+.current > a { font-weight: 600; color: var(--accent); }
+.twisty { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none; border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; padding: 0; font: inherit; }
+button.twisty:hover { color: var(--text); }
 /* 閉じていた枝を開いたが、その下をまだ読み込めていないときの1行（読み込み中・読み込めなかった）。タイトルの位置に揃える */
-.status { padding-left: 20px; color: var(--muted); }
-.retry { margin-left: 4px; padding: 0 8px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--text); font: inherit; cursor: pointer; }
-.retry:hover { background: var(--border); }
+.status { padding-left: 26px; color: var(--muted); }
+.retry { margin-left: 4px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--paper); color: var(--text); font: inherit; cursor: pointer; }
+.retry:hover { background: var(--bg); }
 /* ページのアイコン（絵文字）。タイトルとの間を少し空ける */
 .icon { margin-right: 4px; }

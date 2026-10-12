@@ -3,13 +3,6 @@
 .icon { margin-right: 0.25em; }
 .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .adNotice { font-size: 0.8rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; }
-/* 「プレゼンモードで表示」。hidden で出力し、スクリプトが見えるようにする（display は決めない。決めると hidden が効かなくなる） */
-.presentOpen {
-  min-height: 36px; padding: 2px 12px;
-  font: inherit; color: var(--text); background: var(--bg);
-  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
-}
-.presentOpen:hover { border-color: var(--muted); }
 /* プレゼンモード。画面いっぱいに重ねる（モーダルの dialog なので、張り付くヘッダーよりも手前に出る）。
    中身はスクリプトが作るので、data 属性で当てる。スライドには本文と同じ .body が付き、本文の見た目がそのまま当たる */
 .presentation {

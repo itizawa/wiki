@@ -17,6 +17,13 @@ export type NavItem = {
 /** `/nav.{hash}.json` の中身。wiki ごとに1つで、ツリーの key ごとにツリー全体を持つ。公開ページだけが入る。 */
 export type NavData = { trees: Record<string, NavItem[]> };
 
+/**
+ * 広い画面で、左の列（サイドバー）を閉じたことを覚える localStorage のキー。閉じている間だけ `SIDEBAR_CLOSED` が入る。
+ * 描く前に読むのは Base.astro、書くのは NavDrawer.astro
+ */
+export const SIDEBAR_STORAGE_KEY = "wiki:sidebar";
+export const SIDEBAR_CLOSED = "closed";
+
 /** そのノードか、その下のどこかに nodeId があるか。 */
 export function containsNode(item: NavItem, nodeId: string | undefined): boolean {
   return item.nodeId === nodeId || item.children.some((c) => containsNode(c, nodeId));
