@@ -502,7 +502,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             "&:hover": { bgcolor: "action.hover" },
           }}
         >
-          <WikiIcon wiki={wiki} />
+          <WikiIcon wiki={wiki} preferFavicon />
           <Box sx={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
             <Box component="strong" sx={{ ...ellipsis, display: "block", fontWeight: 600 }}>
               {wiki.name}
@@ -526,7 +526,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             onClick={close}
             sx={{ gap: 1.5, minHeight: 52, py: 0.75 }}
           >
-            <WikiIcon wiki={w} size={36} />
+            <WikiIcon wiki={w} size={36} preferFavicon />
             <ListItemText
               primary={w.name}
               secondary={w.key}
