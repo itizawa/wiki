@@ -7,7 +7,7 @@ export type CronMarkStore = {
 
 export type Env = {
   API_ORIGIN: string;
-  INTERNAL_TOKEN: string;
+  CRON_TOKEN: string;
   SITE_DEPLOY_HOOK_URL?: string;
   NOTIFY_WEBHOOK_URL?: string;
   BUILD_DEBOUNCE_SEC?: string;
@@ -109,7 +109,7 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
   const call = async <T>(path: string, body?: unknown): Promise<T> => {
     const res = await fetchImpl(new URL(path, env.API_ORIGIN), {
       method: "POST",
-      headers: { authorization: `Bearer ${env.INTERNAL_TOKEN}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${env.CRON_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify(body ?? {}),
     });
     if (!res.ok) throw new Error(`${path} failed: ${res.status}`);

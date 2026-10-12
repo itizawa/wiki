@@ -74,7 +74,7 @@ export async function syncViews(env: Env, fetchImpl: typeof fetch = fetch, sched
     const path = "/internal/views/totals";
     const post = await fetchImpl(new URL(path, env.API_ORIGIN), {
       method: "POST",
-      headers: { authorization: `Bearer ${env.INTERNAL_TOKEN}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${env.CRON_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify({ rows: rows.slice(i, i + VIEW_TOTALS_CHUNK) }),
     });
     if (!post.ok) throw new Error(`${path} failed: ${post.status}`);

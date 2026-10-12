@@ -49,24 +49,25 @@ jobs:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          EXPORT_TOKEN: ${{ secrets.EXPORT_TOKEN }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
           # 任意。「アクセス解析」用のサービスアカウントの鍵（JSON）。未登録なら渡さず、その機能だけが「未設定」になる
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           pnpm --filter @wiki/admin build
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
+            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET EXPORT_TOKEN CRON_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker
         working-directory: apps/worker
         env:
-          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
           SITE_DEPLOY_HOOK_URL: ${{ secrets.SITE_DEPLOY_HOOK_URL }}
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
           # 任意。閲覧数の集計が Workers Analytics Engine を読むトークン（Account Analytics の読み取りだけ）。未登録なら集計を飛ばす
           CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
         run: |
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/worker-secrets.json" \
-            INTERNAL_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?" "CLOUDFLARE_ACCOUNT_ID?" "CLOUDFLARE_ANALYTICS_TOKEN?"
+            CRON_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?" "CLOUDFLARE_ACCOUNT_ID?" "CLOUDFLARE_ANALYTICS_TOKEN?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"

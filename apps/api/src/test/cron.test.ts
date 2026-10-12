@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 const internal = (method: string, path: string, body?: unknown) =>
-  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
+  ctx.call(method, path, body, { authorization: "Bearer cron-token", cookie: "" });
 
 /** Workers KV の代わり。puts に、書いたキーを順に残す */
 function fakeKv() {
@@ -211,7 +211,7 @@ describe("POST /internal/tick", () => {
     next: { drafts: null, scheduled: null, build: null },
   };
 
-  it("needs the internal token, and reports nothing left when there is nothing to do", async () => {
+  it("needs the token of the cron worker, and reports nothing left when there is nothing to do", async () => {
     ctx = await setup();
     expect((await ctx.app.request("/internal/tick", { method: "POST" })).status).toBe(401);
     const res = await internal("POST", "/internal/tick");

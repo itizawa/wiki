@@ -28,7 +28,7 @@ export async function prune(env: Env, fetchImpl: typeof fetch = fetch, now: Date
   try {
     const res = await fetchImpl(new URL("/internal/versions/prune", env.API_ORIGIN), {
       method: "POST",
-      headers: { authorization: `Bearer ${env.INTERNAL_TOKEN}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${env.CRON_TOKEN}`, "content-type": "application/json" },
       body: JSON.stringify({ images: now.getUTCDay() === IMAGE_CLEANUP_UTC_DAY }),
     });
     if (!res.ok) throw new Error(`/internal/versions/prune failed: ${res.status}`);

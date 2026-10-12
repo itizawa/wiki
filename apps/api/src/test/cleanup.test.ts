@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 const internal = (method: string, path: string, body?: unknown) =>
-  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
+  ctx.call(method, path, body, { authorization: "Bearer cron-token", cookie: "" });
 
 const DAY = 24 * 60 * 60_000;
 const count = async (table: string) => Number((await ctx.client.query<{ n: number }>(`select count(*)::int as n from ${table}`)).rows[0]!.n);

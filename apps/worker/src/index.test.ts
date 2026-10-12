@@ -5,7 +5,7 @@ import { prune, PRUNE_CRON } from "./prune";
 import type { Env } from "./tick";
 import { VIEWS_CRON } from "./views";
 
-const env: Env = { API_ORIGIN: "https://api.test", INTERNAL_TOKEN: "t", SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy" };
+const env: Env = { API_ORIGIN: "https://api.test", CRON_TOKEN: "t", SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy" };
 const PRUNE_URL = "https://api.test/internal/versions/prune";
 
 function fakeFetch(responses: Record<string, unknown>, failing: string[] = []) {

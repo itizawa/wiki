@@ -49,7 +49,7 @@ async function settle() {
 
 /** 公開サイトが受け取るツリー（`/export/public`）の、親ごとの子の並び。 */
 async function exportedOrder(parent: string | null) {
-  const res = await ctx.call("GET", "/export/public", undefined, { authorization: "Bearer internal-token", cookie: "" });
+  const res = await ctx.call("GET", "/export/public", undefined, { authorization: "Bearer export-token", cookie: "" });
   expect(res.status).toBe(200);
   const nodes = res.body.wikis[0].trees[0].nodes as { nodeId: string; parentNodeId: string | null; position: string }[];
   return nodes

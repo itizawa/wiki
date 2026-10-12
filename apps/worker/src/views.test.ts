@@ -6,7 +6,7 @@ import { syncViews, VIEW_DATASET, VIEW_TOTALS_CHUNK, VIEWS_CRON, VIEWS_SQL } fro
 
 const env: Env = {
   API_ORIGIN: "https://api.test",
-  INTERNAL_TOKEN: "t",
+  CRON_TOKEN: "t",
   CLOUDFLARE_ACCOUNT_ID: "acct",
   CLOUDFLARE_ANALYTICS_TOKEN: "cf-token",
 };
@@ -136,7 +136,7 @@ describe("the hourly cron", () => {
     expect(error).toHaveBeenCalled();
     error.mockRestore();
     const { impl, calls } = fakeFetch([]);
-    await expect(handleScheduled(VIEWS_CRON, { API_ORIGIN: "https://api.test", INTERNAL_TOKEN: "t" }, impl, AT)).resolves.toBeUndefined();
+    await expect(handleScheduled(VIEWS_CRON, { API_ORIGIN: "https://api.test", CRON_TOKEN: "t" }, impl, AT)).resolves.toBeUndefined();
     expect(calls).toEqual([]);
   });
 
