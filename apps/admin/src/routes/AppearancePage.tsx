@@ -17,10 +17,13 @@ import {
   THEME_IMAGE_TYPES,
   THEME_PRESETS,
   themeBackdrop,
+  themeModes,
   themeOrnament,
   themePresetFor,
+  themeVariant,
   type ThemeMode,
   type ThemePreset,
+  type ThemeVariant,
   type WikiAppearance,
   type WikiTheme,
 } from "@wiki/shared";
@@ -33,6 +36,8 @@ import { Muted, Row, SaveNotice, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
 
+const visuallyHidden = { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap" } as const;
+
 /** 本文の幅がこれ以上なら、フォームとプレビューを2列にする（px） */
 const TWO_COLUMN_MIN = 800;
 
@@ -42,13 +47,13 @@ const MODE_LABEL: Record<ThemeMode, string> = { light: "ライト", dark: "ダ�
 const BACKGROUND_RULE: ImageRule = { types: THEME_BACKGROUND_TYPES, maxBytes: THEME_BACKGROUND_MAX_BYTES, limitLabel: THEME_BACKGROUND_LIMIT_LABEL };
 
 /** テーマの背景画像（`custom` があればそれ）を、見本の枠に敷く sx。画像が無ければ空 */
-function backdropSx(preset: ThemePreset, custom: string | null) {
+function backdropSx(preset: ThemeVariant, custom: string | null) {
   const b = themeBackdrop(preset, custom);
   return b ? { backgroundImage: b.image, backgroundSize: b.size, backgroundRepeat: b.repeat, backgroundPosition: "center" } : {};
 }
 
 /** 見本の右下に置く飾り（公開サイトでは、画面の右下に固定で出るもの）。押せず、読み上げない */
-function OrnamentSample({ preset, scale }: { preset: ThemePreset; scale: number }) {
+function OrnamentSample({ preset, scale }: { preset: ThemeVariant; scale: number }) {
   const o = themeOrnament(preset);
   if (!o) return null;
   return (
@@ -174,15 +179,12 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <HelpHeading
             variant="subtitle1"
             component="h3"
-            help="公開サイトの背景・文字・リンクなどの色の組み合わせです。テーマによっては、薄い背景画像や飾りが付きます。見る人の端末の設定がライトのときはライト用、ダークのときはダーク用が使われます。どのテーマも、背景画像を重ねた状態で、文字とリンクの色が背景から読み取れる（コントラスト比 4.5 : 1 以上）ことを確かめてあります。"
+            help="公開サイトの背景・文字・リンクなどの色の組み合わせです。テーマによっては、薄い背景画像や飾りが付きます。ライト版とダーク版の両方があるテーマは、見る人の端末の設定に合わせて切り替わります。片方しかないテーマは、いつもその版で出ます。どのテーマも、背景画像を重ねた状態で、文字とリンクの色が背景から読み取れる（コントラスト比 4.5 : 1 以上）ことを確かめてあります。"
             sx={{ mb: 1 }}
           >
             テーマ
           </HelpHeading>
-          <Stack spacing={2}>
-            <ThemeField mode="light" value={theme.presetLight} onChange={(presetLight) => setTheme((t) => ({ ...t, presetLight }))} />
-            <ThemeField mode="dark" value={theme.presetDark} onChange={(presetDark) => setTheme((t) => ({ ...t, presetDark }))} />
-          </Stack>
+          <ThemeField value={theme.preset} onChange={(preset) => setTheme((t) => ({ ...t, preset }))} />
         </Section>
 
         <Section sx={{ gridArea: "background" }}>
@@ -195,8 +197,14 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
             背景画像
           </HelpHeading>
           <Stack spacing={2.5}>
-            <BackgroundField mode="light" theme={theme} onChange={(backgroundLight) => setTheme((t) => ({ ...t, backgroundLight }))} />
-            <BackgroundField mode="dark" theme={theme} onChange={(backgroundDark) => setTheme((t) => ({ ...t, backgroundDark }))} />
+            {themeModes(themePresetFor(theme.preset)).map((mode) => (
+              <BackgroundField
+                key={mode}
+                mode={mode}
+                theme={theme}
+                onChange={(value) => setTheme((t) => ({ ...t, [mode === "light" ? "backgroundLight" : "backgroundDark"]: value }))}
+              />
+            ))}
           </Stack>
         </Section>
 
@@ -248,8 +256,9 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
             プレビュー
           </HelpHeading>
           <Stack spacing={1.5}>
-            <Preview mode="light" name={name.trim() || saved.name} theme={theme} />
-            <Preview mode="dark" name={name.trim() || saved.name} theme={theme} />
+            {themeModes(themePresetFor(theme.preset)).map((mode) => (
+              <Preview key={mode} mode={mode} name={name.trim() || saved.name} theme={theme} />
+            ))}
           </Stack>
         </Section>
       </Box>
@@ -257,18 +266,17 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
   );
 }
 
-/** テーマの選択：そのモード向けのテーマを、見本のカード（背景・文字・リンクの色）で並べる。選んでいるものは、枠・印・文字で示す。 */
-function ThemeField({ mode, value, onChange }: { mode: ThemeMode; value: string; onChange: (key: string) => void }) {
+/** テーマの選択：テーマを、見本のカード（ライト版・ダーク版それぞれの背景・文字・リンクの色）で並べる。選んでいるものは、枠・印・文字で示す。 */
+function ThemeField({ value, onChange }: { value: string; onChange: (key: string) => void }) {
   const name = useId();
-  const presets = THEME_PRESETS.filter((p) => p.mode === mode);
-  const selectedKey = themePresetFor(mode, value).key;
+  const selectedKey = themePresetFor(value).key;
   return (
     <Box component="fieldset" sx={{ m: 0, p: 0, border: 0, minWidth: 0 }}>
-      <Typography variant="subtitle2" component="legend" sx={{ mb: 0.5, p: 0 }}>
-        {MODE_LABEL[mode]}用
+      <Typography component="legend" sx={visuallyHidden}>
+        テーマ
       </Typography>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 1 }}>
-        {presets.map((p) => (
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 1 }}>
+        {THEME_PRESETS.map((p) => (
           <ThemeCard key={p.key} preset={p} groupName={name} selected={p.key === selectedKey} onSelect={() => onChange(p.key)} />
         ))}
       </Box>
@@ -276,8 +284,25 @@ function ThemeField({ mode, value, onChange }: { mode: ThemeMode; value: string;
   );
 }
 
+function ThemeSample({ variant, label }: { variant: ThemeVariant; label: string | null }) {
+  const c = variant.colors;
+  return (
+    <Box sx={{ position: "relative", flex: 1, minWidth: 0, minHeight: 64, bgcolor: c.bg, ...backdropSx(variant, null), color: c.text, px: 1.25, py: 1, lineHeight: 1.6, fontSize: "0.8rem", borderBottom: `1px solid ${c.border}` }}>
+      <Box sx={{ fontWeight: 700 }}>見出し</Box>
+      <Box>
+        本文と
+        <Box component="span" sx={{ color: c.accent, textDecoration: "underline" }}>
+          リンク
+        </Box>
+      </Box>
+      {label && <Box sx={{ fontSize: "0.7rem", color: c.muted }}>{label}</Box>}
+      <OrnamentSample preset={variant} scale={0.4} />
+    </Box>
+  );
+}
+
 function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePreset; groupName: string; selected: boolean; onSelect: () => void }) {
-  const c = preset.colors;
+  const modes = themeModes(preset);
   return (
     <Box
       component="label"
@@ -293,20 +318,16 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
       }}
     >
       <Box component="input" type="radio" name={groupName} value={preset.key} checked={selected} onChange={onSelect} sx={{ position: "absolute", opacity: 0, width: 1, height: 1 }} />
-      {/* 背景・文字・リンクの色が分かる見本 */}
-      <Box sx={{ position: "relative", minHeight: 64, bgcolor: c.bg, ...backdropSx(preset, null), color: c.text, px: 1.25, py: 1, lineHeight: 1.6, fontSize: "0.8rem", borderBottom: `1px solid ${c.border}` }}>
-        <Box sx={{ fontWeight: 700 }}>見出し</Box>
-        <Box>
-          本文と
-          <Box component="span" sx={{ color: c.accent, textDecoration: "underline" }}>
-            リンク
-          </Box>
-        </Box>
-        <OrnamentSample preset={preset} scale={0.4} />
+      {/* 背景・文字・リンクの色が分かる見本。ライト版・ダーク版を持つテーマは、左右に並べる */}
+      <Box sx={{ display: "flex" }}>
+        {modes.map((mode) => (
+          <ThemeSample key={mode} variant={themeVariant(preset, mode)} label={modes.length > 1 ? MODE_LABEL[mode] : null} />
+        ))}
       </Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1.25, py: 0.75, fontSize: "0.875rem", fontWeight: selected ? 700 : 400 }}>
         <Box component="span" sx={{ flex: 1 }}>
           {preset.name}
+          {modes.length === 1 && <Box component="span" sx={{ ml: 0.75, color: "text.secondary", fontSize: "0.75rem", fontWeight: 400 }}>（{MODE_LABEL[modes[0]!]}のみ）</Box>}
         </Box>
         {selected && (
           <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, color: "primary.main", fontSize: "0.75rem" }}>
@@ -325,11 +346,12 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
  */
 function BackgroundField({ mode, theme, onChange }: { mode: ThemeMode; theme: WikiTheme; onChange: (value: string | null) => void }) {
   const value = mode === "light" ? theme.backgroundLight : theme.backgroundDark;
-  const preset = themePresetFor(mode, mode === "light" ? theme.presetLight : theme.presetDark);
+  const preset = themePresetFor(theme.preset);
+  const variant = themeVariant(preset, mode);
   return (
     <Box>
       <Typography variant="subtitle2" component="h4">
-        {MODE_LABEL[mode]}用
+        {MODE_LABEL[mode]}版
       </Typography>
       <Row sx={{ my: 0.75 }}>
         {value ? (
@@ -341,7 +363,7 @@ function BackgroundField({ mode, theme, onChange }: { mode: ThemeMode; theme: Wi
             </Button>
           </>
         ) : (
-          <Muted>{preset.background ? `「${preset.name}」の背景画像を使っています。` : `「${preset.name}」は、単色の背景です。`}</Muted>
+          <Muted>{variant.background ? `「${preset.name}」の背景画像を使っています。` : `「${preset.name}」は、単色の背景です。`}</Muted>
         )}
       </Row>
       <ImageUploader
@@ -425,8 +447,9 @@ function ImageField(props: { label: string; help: string; condition: string; val
 
 /** 記事の見本（ヘッダー・リンク・強調のコールアウト）。選んだテーマの色で、公開サイトと同じ配色で描く */
 function Preview({ mode, name, theme }: { mode: ThemeMode; name: string; theme: WikiTheme }) {
-  const preset = themePresetFor(mode, mode === "light" ? theme.presetLight : theme.presetDark);
-  const c = preset.colors;
+  const preset = themePresetFor(theme.preset);
+  const variant = themeVariant(preset, mode);
+  const c = variant.colors;
   const accent = c.accent;
   return (
     <Box
@@ -435,7 +458,7 @@ function Preview({ mode, name, theme }: { mode: ThemeMode; name: string; theme: 
       sx={{
         position: "relative",
         bgcolor: c.bg,
-        ...backdropSx(preset, mode === "light" ? theme.backgroundLight : theme.backgroundDark),
+        ...backdropSx(variant, mode === "light" ? theme.backgroundLight : theme.backgroundDark),
         color: c.text,
         border: 1,
         borderColor: "divider",
@@ -480,7 +503,7 @@ function Preview({ mode, name, theme }: { mode: ThemeMode; name: string; theme: 
         </Box>
         <Box sx={{ minHeight: 40 }} />
       </Box>
-      <OrnamentSample preset={preset} scale={0.7} />
+      <OrnamentSample preset={variant} scale={0.7} />
     </Box>
   );
 }

@@ -6,8 +6,7 @@
       "key": "notes",
       "name": "開発ノート",
       "theme": {
-        "presetLight": "notebook-light",
-        "presetDark": "owl-dark",
+        "preset": "simple",
         "logo": "/images/notes0logo0sample0000000.png",
         "favicon": "/images/notes0favicon0sample0000.webp",
         "backgroundLight": null,

@@ -479,7 +479,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 - **wiki が自分で入れる背景画像**（ライト用・ダーク用。`wikis.theme` の `backgroundLight` / `backgroundDark`）は、PNG・JPEG・WebP、2MB まで（`POST /admin/w/{key}/appearance/background-images`。置き場所と配り方はロゴと同じ）。入れると、テーマの背景画像の代わりに、そのテーマの背景色を 82% で重ねて（`CUSTOM_BACKGROUND_VEIL`、固定）画面いっぱいに出す。自分で入れた画像は読みやすさを確かめられないので、管理画面の「背景画像」の「i」に、読みにくくなることがあると書いてある。取り消すとテーマの画像（無いテーマは単色）に戻る
 - **ロゴとファビコン**は PNG・WebP、1ファイル 512KB まで（SVG は受け付けない）。置き場所は本文の画像と同じ R2 のバケットで、`/images/{name}` で配る
 - **保存するまで公開サイトには反映しない**。保存すると `publish_events` に記録し、いつものデバウンスを通して公開サイトをビルドし直す（反映には数分かかる）。公開サイトは、ビルドのときに wiki ごとのテーマの色（CSS の変数一式）・ロゴ・ファビコン・名前を出し分け、表示のたびに設定を取りに行くことはしない
-- データ：`wikis.theme`（jsonb：`presetLight` / `presetDark` / `logo` / `favicon` / `backgroundLight` / `backgroundDark`）。null や欠けた項目は既定として読む。公開用のデータ（`/export/public`）に、wiki ごとの `theme` として入る
+- データ：`wikis.theme`（jsonb：`preset`（テーマの key。ライト版・ダーク版の両方を持つテーマは端末の設定に合わせて切り替わり、片方だけのテーマはいつもその版）/ `logo` / `favicon` / `backgroundLight` / `backgroundDark`）。null や欠けた項目は既定として読む。公開用のデータ（`/export/public`）に、wiki ごとの `theme` として入る
 - サイト名を変えたときは、「wiki の管理」から名前を変えたときと同じく監査ログに残す（変更前と変更後の名前）。テーマ（色・ロゴ・ファビコン）の変更は、いまは監査ログに残さない。前の設定に戻す機能（履歴）は無い
 
 ## 公開サイトのトップページ
