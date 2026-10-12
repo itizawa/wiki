@@ -13,10 +13,10 @@ export type Env = {
 const FIRST_WIKI = "wiki";
 const WIKI_COOKIE = "wiki";
 /**
- * どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon）。ビルド結果の直下にある。
+ * どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon、ページのカバー画像として用意した `/covers/{key}.svg`）。ビルド結果の直下にある。
  * `/_astro/*` は Worker を通らずに返る（wrangler.toml の run_worker_first）ので、ふつうはここに来ない。無いファイルの 404 も静的アセットの側が返す
  */
-const SHARED = /^\/(_astro\/|favicon\.svg$)/;
+const SHARED = /^\/(_astro\/|covers\/[a-z]+\.svg$|favicon\.svg$)/;
 /**
  * 名前にハッシュが入るもの（中身が変われば名前も変わる）。wiki のディレクトリを除いたパスで見る。
  * Pagefind の索引の断片と、ツリーナビの全体（`/nav.{hash}.json`。src/lib/manifest.ts の navFile）

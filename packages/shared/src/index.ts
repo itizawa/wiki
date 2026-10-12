@@ -1,6 +1,7 @@
 export * from "./ids";
 export * from "./paths";
 export * from "./emoji";
+export * from "./cover";
 export * from "./page";
 export * from "./publish";
 export * from "./redirect";

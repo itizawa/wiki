@@ -6,6 +6,8 @@ interface Props {
   title: string;
   /** アイコン（絵文字1つ）。タイトルの前に出す */
   icon?: string | null;
+  /** カバー画像のパス（`/images/{name}` か `/covers/{key}.svg`）。タイトルの上に出す */
+  cover?: string | null;
   bodyMd: string;
   firstPublishedAt?: string;
   revisedAt: string;
@@ -23,7 +25,7 @@ interface Props {
   previewOf?: RenderOptions["previewOf"];
 }
 
-const { title, icon, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin, childrenOf, titleOf, linkPreviews, previewOf } = Astro.props;
+const { title, icon, cover, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin, childrenOf, titleOf, linkPreviews, previewOf } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
 const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin, childrenOf, titleOf, linkPreviews, previewOf });
@@ -36,6 +38,8 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 ---
 
 <article class={s.article}>
+  {/* 飾りなので alt は空。高さは固定にして、読み込みで本文が下へずれないようにする */}
+  {cover && <img class={s.cover} src={cover} alt="" width="1600" height="400" loading="eager" decoding="async" data-pagefind-ignore />}
   {/* タイトルは検索結果の見出し（meta）として渡し、本文の抜粋には入れない */}
   <h1 data-pagefind-meta="title" data-pagefind-ignore="index">
     {/* 飾りなので読み上げず、検索の見出しにも入れない */}

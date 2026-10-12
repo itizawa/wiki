@@ -75,6 +75,8 @@ export const pages = pgTable(
     title: text("title").notNull(),
     /** アイコン（絵文字1つ）。nullなら付けていない。版には入れない */
     icon: text("icon"),
+    /** カバー画像のパス（アップロードした画像 `/images/{name}` か、用意した画像 `/covers/{key}.svg`）。nullなら付けていない。版には入れない */
+    cover: text("cover"),
     headVersionId: uuid("head_version_id").notNull(),
     /** nullなら未公開 */
     publishedVersionId: uuid("published_version_id"),

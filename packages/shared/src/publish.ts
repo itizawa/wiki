@@ -79,6 +79,8 @@ export type ManifestPage = {
   title: string;
   /** アイコン（絵文字1つ）。付けていなければ null */
   icon: string | null;
+  /** カバー画像のパス（`/images/{name}` か `/covers/{key}.svg`）。付けていなければ null。OGP の画像にも使える */
+  cover: string | null;
   bodyMd: string;
   firstPublishedAt: string;
   /** 公開版の作成日時（改訂日） */
@@ -92,6 +94,7 @@ export type ManifestUnlistedPage = {
   path: string;
   title: string;
   icon: string | null;
+  cover: string | null;
   bodyMd: string;
   revisedAt: string;
 };

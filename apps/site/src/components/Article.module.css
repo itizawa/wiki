@@ -1,6 +1,9 @@
 .article h1 { line-height: 1.4; margin: 0 0 4px; }
 /* ページのアイコン（絵文字）。タイトルとの間を少し空ける。プレゼンモードのタイトルのスライドでも同じ */
 .icon { margin-right: 0.25em; }
+/* カバー画像。高さを固定して、読み込みで本文が下へずれないようにする（切り抜きは中央） */
+.cover { display: block; width: 100%; height: 200px; object-fit: cover; object-position: center; border-radius: 8px; margin: 0 0 20px; }
+@media (min-width: 720px) { .cover { height: 240px; } }
 .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .adNotice { font-size: 0.8rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; }
 /* プレゼンモード。画面いっぱいに重ねる（モーダルの dialog なので、張り付くヘッダーよりも手前に出る）。

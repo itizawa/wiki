@@ -88,6 +88,7 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
         path: pagePath(page.id),
         title: version.title,
         icon: page.icon,
+        cover: page.cover,
         bodyMd: version.bodyMd,
         firstPublishedAt: (page.firstPublishedAt ?? version.createdAt).toISOString(),
         revisedAt: version.createdAt.toISOString(),
@@ -107,6 +108,7 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
         path: unlistedPath(page.unlistedKey!),
         title: version.title,
         icon: page.icon,
+        cover: page.cover,
         bodyMd: version.bodyMd,
         revisedAt: version.createdAt.toISOString(),
       };

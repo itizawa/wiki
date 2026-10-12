@@ -35,6 +35,8 @@ export type CleanupImagesResult = {
  *   未対応の提案の中でだけ使っている画像も、採用されるまで消さない）
  * - `wikis.icon_url`（wiki の画像）、`wikis.theme`（ロゴ・ファビコン）、`wikis.home`（トップページの自由記述）。アーカイブ中の wiki も含む
  *
+ * - `pages.cover`：ページのカバー画像。ゴミ箱のページも含む（元に戻すと、また出る）
+ *
  * ページのアイコン（`pages.icon`）は絵文字だけなので見ない。
  * 編集リクエストの、提案の理由（`edit_request_items.reason`）・指摘の本文（`note_body`）・返信（`edit_request_comments.body`）・
  * 全体へのひとこと（`edit_requests.comment`）も見ない。どれもプレーンテキストとして出すだけで、画像は描かない
@@ -51,6 +53,8 @@ export async function referencedImageNames(db: Db): Promise<Set<string>> {
         ${names(sql`"body_md"`, sql`"page_versions"`)}
         union all
         ${names(sql`"body_md"`, sql`"page_drafts"`)}
+        union all
+        ${names(sql`"cover"`, sql`"pages"`)}
         union all
         ${names(sql`"body_md"`, sql`"page_templates"`)}
         union all
