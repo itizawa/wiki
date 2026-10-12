@@ -50,7 +50,7 @@ export function WithSidebar({ sx, ...props }: BoxProps) {
     <Box
       {...props}
       sx={[
-        { display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1fr) 320px" }, gap: 2, alignItems: "start" },
+        { display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "minmax(0, 1fr) 320px" }, gap: 2, alignItems: "start" },
         ...sxList(sx),
       ]}
     />
