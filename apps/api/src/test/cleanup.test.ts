@@ -511,7 +511,6 @@ describe("POST /internal/versions/prune", () => {
     expect(daily.status).toBe(200);
     expect(daily.body).toEqual({
       deleted: 0,
-      structure: { commits: 0, snapshots: 0, nodes: 0 },
       oauth: { tokens: 1, codes: 0 },
       builds: { events: 0, builds: 0 },
       images: null,

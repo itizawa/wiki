@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pages, scheduledActions } from "../db/schema";
 import { HttpError } from "../errors";
-import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
+import { getPrimaryTree, loadStructure } from "../structure/repo";
 
 /**
  * 公開範囲の親子の決まり：配下のページには、親と同じか、より狭い公開範囲しか設定できない。
@@ -17,8 +17,7 @@ export type TreeIndex = {
 };
 
 export async function loadTreeIndex(db: Db, wikiId: string): Promise<TreeIndex> {
-  const main = await getBranch(db, wikiId, MAIN_BRANCH);
-  const { state } = await loadCommit(db, main.headCommitId);
+  const state = await loadStructure(db, wikiId);
   const tree = await getPrimaryTree(db, wikiId);
   return indexNodes(state.trees[tree.id]?.nodes ?? []);
 }

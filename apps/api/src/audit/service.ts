@@ -33,7 +33,7 @@ export function agentActor(agent: { user: { id: string; name: string | null; ema
   return { type: "user", userId: user.id, label: user.name ?? user.email, email: user.email, via: clientName };
 }
 
-/** 人の操作なら、その人の ID（版や構造の履歴の「作った人」に入れる）。 */
+/** 人の操作なら、その人の ID（版の「作った人」に入れる）。 */
 export function actorUserId(actor: AuditActor): string | null {
   return actor.type === "user" ? actor.userId : null;
 }

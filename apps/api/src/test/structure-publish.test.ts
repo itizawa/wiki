@@ -24,11 +24,10 @@ async function publish(...list: { id: string; headVersionId: string }[]) {
 /** ページを別の親の下（null なら最上位）の末尾へ移す。 */
 async function move(nodeId: string, newParentNodeId: string | null) {
   const s = (await ctx.call("GET", `${W}/structure`)).body;
-  const res = await ctx.call("POST", `${W}/structure/commits`, {
-    expectedHeadCommitId: s.headCommitId,
+  const res = await ctx.call("POST", `${W}/structure/ops`, {
     ops: [{ type: "move", treeId: s.trees[0].id, nodeId, newParentNodeId }],
   });
-  expect(res.status).toBe(201);
+  expect(res.status).toBe(204);
 }
 
 const kinds = async () =>

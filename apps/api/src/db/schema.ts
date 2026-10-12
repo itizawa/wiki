@@ -6,7 +6,6 @@ import {
   boolean,
   check,
   date,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -103,7 +102,7 @@ export const pages = pgTable(
     trashedPosition: text("trashed_position"),
     /**
      * 完全に削除した日時。版・下書きなどは消し、行だけを残す
-     * （公開したことがあるページを公開サイトで 410 にし続けるためと、構造の履歴がこの行を指しているため）
+     * （公開したことがあるページを公開サイトで 410 にし続けるため）
      */
     purgedAt: timestamp("purged_at", { withTimezone: true }),
   },
@@ -369,11 +368,11 @@ export const pageStars = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// 4.2 ツリーと構造の履歴
-// 運用するのは、wiki ごとに primary ツリー1本と main だけ。複数ツリー・ブランチ前提のテーブル形は変えずに残している。
+// 4.2 ツリー
+// 運用するのは、wiki ごとに primary ツリー1本だけ。複数ツリー前提のテーブル形は変えずに残している。
 // ---------------------------------------------------------------------------
 
-/** 存在宣言のみ。どのコミットにツリーが含まれるかは commit_trees で決まる。 */
+/** ツリーの存在宣言。ノードは tree_nodes に、現在の状態だけを持つ（過去の状態は残さない）。 */
 export const trees = pgTable("trees", {
   id: text("id").primaryKey(),
   wikiId: wikiId(),
@@ -389,21 +388,12 @@ export const trees = pgTable("trees", {
   uniqueIndex("trees_one_primary_idx").on(t.wikiId).where(sql`${t.isPrimary}`),
 ]);
 
-/** 1ツリーの状態（イミュータブル） */
-export const treeSnapshots = pgTable("tree_snapshots", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  treeId: text("tree_id")
-    .notNull()
-    .references(() => trees.id),
-  createdAt: createdAt(),
-});
-
 export const treeNodes = pgTable(
   "tree_nodes",
   {
-    snapshotId: uuid("snapshot_id")
+    treeId: text("tree_id")
       .notNull()
-      .references(() => treeSnapshots.id),
+      .references(() => trees.id),
     /** ノードはすべてページ。node_id = page_id */
     nodeId: text("node_id").notNull(),
     pageId: text("page_id")
@@ -415,77 +405,9 @@ export const treeNodes = pgTable(
     position: text("position").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.snapshotId, t.nodeId] }),
-    unique("tree_nodes_snapshot_page_unique").on(t.snapshotId, t.pageId),
+    primaryKey({ columns: [t.treeId, t.nodeId] }),
+    unique("tree_nodes_tree_page_unique").on(t.treeId, t.pageId),
     check("tree_nodes_page_check", sql`${t.nodeId} = ${t.pageId}`),
-  ],
-);
-
-/** コミット：全ツリーの状態をまとめて記録 */
-export const structureCommits = pgTable("structure_commits", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  wikiId: wikiId(),
-  message: text("message"),
-  authorType: text("author_type", { enum: ["human", "ai"] }).notNull().default("human"),
-  sourceProposalId: uuid("source_proposal_id"),
-  /** 構造を変えた人。これより前のコミットと、ルール・AI・システムによるものは null */
-  createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
-  /** 外部のアプリ（MCP）からの操作なら、その連携 */
-  oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
-  createdAt: createdAt(),
-});
-
-/** 親2つ = マージコミット */
-export const structureCommitParents = pgTable(
-  "structure_commit_parents",
-  {
-    commitId: uuid("commit_id")
-      .notNull()
-      .references(() => structureCommits.id),
-    parentCommitId: uuid("parent_commit_id").notNull(),
-    /** 0 = 第1親（ブランチの直前のhead）。マージ時は1がマージ元。 */
-    ordinal: integer("ordinal").notNull().default(0),
-  },
-  (t) => [
-    primaryKey({ columns: [t.commitId, t.parentCommitId] }),
-    // 自動生成名はPostgresの識別子上限（63文字）を超えるので明示する
-    foreignKey({ name: "structure_commit_parents_parent_fk", columns: [t.parentCommitId], foreignColumns: [structureCommits.id] }),
-  ],
-);
-
-export const commitTrees = pgTable(
-  "commit_trees",
-  {
-    commitId: uuid("commit_id")
-      .notNull()
-      .references(() => structureCommits.id),
-    treeId: text("tree_id")
-      .notNull()
-      .references(() => trees.id),
-    /** 変更のないツリーは親と同じsnapshotを指す */
-    snapshotId: uuid("snapshot_id")
-      .notNull()
-      .references(() => treeSnapshots.id),
-  },
-  (t) => [primaryKey({ columns: [t.commitId, t.treeId] })],
-);
-
-/** ブランチ（名前付きポインタ）。wiki ごとに main のみ運用。 */
-export const structureBranches = pgTable(
-  "structure_branches",
-  {
-    wikiId: wikiId(),
-    name: text("name").notNull(),
-    headCommitId: uuid("head_commit_id")
-      .notNull()
-      .references(() => structureCommits.id),
-    kind: text("kind", { enum: ["main", "manual", "ai_proposal"] }).notNull(),
-    createdAt: createdAt(),
-    mergedAt: timestamp("merged_at", { withTimezone: true }),
-  },
-  (t) => [
-    primaryKey({ columns: [t.wikiId, t.name] }),
-    check("structure_branches_kind_check", sql`${t.kind} in ('main', 'manual', 'ai_proposal')`),
   ],
 );
 

@@ -156,12 +156,6 @@ export async function addLegacyTree(client: PGlite, key = "by-theme") {
     `insert into trees (id, wiki_id, key, name, is_primary) select $1, id, $2, $3, false from wikis where key = 'wiki'`,
     [id, key, key],
   );
-  const snap = await client.query<{ id: string }>(`insert into tree_snapshots (tree_id) values ($1) returning id`, [id]);
-  await client.query(
-    `insert into commit_trees (commit_id, tree_id, snapshot_id)
-     select head_commit_id, $1, $2 from structure_branches where name = 'main' and wiki_id = (select id from wikis where key = 'wiki')`,
-    [id, snap.rows[0]!.id],
-  );
   return id;
 }
 

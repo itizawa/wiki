@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, History, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -40,7 +40,7 @@ import { createLink, useNavigate, useParams } from "@tanstack/react-router";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { childrenByParent, type StructureOpInput, type TreeNode, type Visibility } from "@wiki/shared";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type ReactNode } from "react";
-import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
+import { api, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
 import { markJustCreated } from "../lib/newPage";
@@ -147,14 +147,11 @@ export function Sidebar(props: {
 
   const refreshStructure = () => {
     void qc.invalidateQueries({ queryKey: ["structure"] });
-    void qc.invalidateQueries({ queryKey: ["history"] });
   };
 
   const commit = useMutation({
-    mutationFn: (ops: StructureOpInput[]) => api.commit({ expectedHeadCommitId: structure.data!.headCommitId, ops }),
-    onSettled: (_data, err) => {
-      if (!err || (err instanceof ApiError && err.code === "head_moved")) refreshStructure();
-    },
+    mutationFn: (ops: StructureOpInput[]) => api.changeStructure({ ops }),
+    onSettled: refreshStructure,
   });
 
   // 親ページの指定があればその下、無ければ最上位の末尾に作る
@@ -220,9 +217,6 @@ export function Sidebar(props: {
         </NavItem>
         <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
           テンプレート
-        </NavItem>
-        <NavItem to="/w/$wikiKey/history" icon={<History size={18} />} onClick={props.onNavigate}>
-          構造の履歴
         </NavItem>
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
           ゴミ箱

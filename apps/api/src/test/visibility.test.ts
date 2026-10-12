@@ -136,19 +136,17 @@ describe("visibility hierarchy", () => {
     const drafts = await newPage("下書き置き場");
     await publish(open, "public");
     const tree = (await ctx.call("GET", `${W}/structure`)).body;
-    const res = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: tree.headCommitId,
+    const res = await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "move", treeId: tree.trees[0].id, nodeId: open.id, newParentNodeId: drafts.id }],
     });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("exceeds_parent");
 
     // 非公開のページは、どこへでも移せる
-    const ok = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: tree.headCommitId,
+    const ok = await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "move", treeId: tree.trees[0].id, nodeId: drafts.id, newParentNodeId: open.id }],
     });
-    expect(ok.status).toBe(201);
+    expect(ok.status).toBe(204);
   });
 
   it("keeps existing pages that break the rule, and still lets them be deleted and restored", async () => {

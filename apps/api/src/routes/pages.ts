@@ -24,10 +24,10 @@ import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent, recordPublishEvents } from "../publishing/service";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
-import { commitOps, loadCommit, getBranch, getPrimaryTree, MAIN_BRANCH, opsToRemovePages } from "../structure/repo";
+import { changeStructure, getPrimaryTree, loadStructure, lockStructure, opsToRemovePages } from "../structure/repo";
 import { parseJson } from "../validation";
 import { findTemplate, renderTemplate } from "./templates";
-import { actorUserId, auditActor, writeAudit, type AuditActor } from "../audit/service";
+import { auditActor, writeAudit, type AuditActor } from "../audit/service";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
@@ -144,7 +144,7 @@ export async function createPage(
   wikiId: string,
   input: { title: string; bodyMd: string; parentPageId?: string | null; icon?: string | null },
   opts: {
-    /** 作った人（版と構造の履歴に残す）。シードなど人の操作でなければ無し */
+    /** 作った人（版に残す）。シードなど人の操作でなければ無し */
     createdBy?: string | null;
     oauthGrantId?: string;
   } = {},
@@ -163,9 +163,7 @@ export async function createPage(
   });
   await syncPageSearch(tx, id, input);
   await replaceLinks(tx, wikiId, id, input.bodyMd);
-  await commitOps(tx, wikiId, {
-    createdBy: opts.createdBy ?? null,
-    message: `「${input.title}」を追加`,
+  await changeStructure(tx, wikiId, {
     ops: [{ type: "add_to_tree", treeId: (await getPrimaryTree(tx, wikiId)).id, pageId: id, parentNodeId: input.parentPageId ?? null }],
     oauthGrantId: opts.oauthGrantId,
   });
@@ -234,8 +232,9 @@ export async function deletePage(
   opts: { actor: AuditActor; oauthGrantId?: string },
 ): Promise<{ trashedPageIds: string[] }> {
   const page = await findLivePage(tx, wikiId, id, true);
-  const main = await getBranch(tx, wikiId, MAIN_BRANCH);
-  const { state } = await loadCommit(tx, main.headCommitId);
+  // 配下を読んだあとにツリーが変わらないよう、先に wiki をロックする（配下に足されたページを取りこぼさない）
+  await lockStructure(tx, wikiId);
+  const state = await loadStructure(tx, wikiId);
   const nodes = state.trees[(await getPrimaryTree(tx, wikiId)).id]?.nodes ?? [];
   const nodeOf = new Map(nodes.map((n) => [n.pageId, n]));
   const ids = [id, ...descendantIds(indexNodes(nodes), id)];
@@ -247,13 +246,9 @@ export async function deletePage(
 
   const ops = opsToRemovePages(state, new Set(ids));
   if (ops.length > 0) {
-    await commitOps(tx, wikiId, {
-      // 配下を読んだあとにツリーが変わっていたら、やり直してもらう（配下に足されたページを取りこぼさない）
-      expectedHeadCommitId: main.headCommitId,
-      message: ids.length > 1 ? `「${page.title}」と配下の ${ids.length - 1} ページをゴミ箱に入れる` : `「${page.title}」をゴミ箱に入れる`,
+    await changeStructure(tx, wikiId, {
       ops,
       checkVisibility: false,
-      createdBy: actorUserId(opts.actor),
       oauthGrantId: opts.oauthGrantId,
     });
   }
@@ -370,8 +365,7 @@ export async function restorePage(
     .where(inArray(pages.id, ids));
 
   const tree = await getPrimaryTree(tx, wikiId);
-  const main = await getBranch(tx, wikiId, MAIN_BRANCH);
-  const placed = new Set(((await loadCommit(tx, main.headCommitId)).state.trees[tree.id]?.nodes ?? []).map((n) => n.pageId));
+  const placed = new Set(((await loadStructure(tx, wikiId)).trees[tree.id]?.nodes ?? []).map((n) => n.pageId));
   const parentPageId = root.trashedParentId !== null && placed.has(root.trashedParentId) ? root.trashedParentId : null;
 
   // 親から先に、兄弟は削除前の並び順に足す
@@ -395,11 +389,9 @@ export async function restorePage(
       queue.push(child.id);
     }
   }
-  await commitOps(tx, wikiId, {
-    message: ids.length > 1 ? `「${root.title}」と配下の ${ids.length - 1} ページをゴミ箱から元に戻す` : `「${root.title}」をゴミ箱から元に戻す`,
+  await changeStructure(tx, wikiId, {
     ops,
     checkVisibility: false,
-    createdBy: actorUserId(opts.actor),
     oauthGrantId: opts.oauthGrantId,
   });
   // 公開したことがあるページは、公開サイトで 410 を返すのをやめる（非公開なので 404 になる）
@@ -423,7 +415,7 @@ export async function restorePage(
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
  * 版・下書き・リンク・スター・予約・編集リクエストと、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
- * 構造の履歴（過去のツリー）がこの行を指しているため。監査ログに残す。トランザクション内で呼ぶ。
+ *監査ログに残す。トランザクション内で呼ぶ。
  */
 export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
   const { root, members } = await lockTrashGroup(tx, wikiId, id);

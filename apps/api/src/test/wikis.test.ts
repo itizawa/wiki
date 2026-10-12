@@ -136,13 +136,6 @@ describe("wiki isolation", () => {
     expect(scheduled.status).toBe(201);
     expect((await ctx.call("GET", `${W}/schedule`)).body.actions).toEqual([]);
     expect((await ctx.call("GET", `${N}/schedule`)).body.actions).toHaveLength(1);
-
-    const history = async (base: string) => (await ctx.call("GET", `${base}/structure/commits`)).body.commits;
-    expect((await history(W)).map((c: any) => c.message)).toEqual(["「最初の wiki のページ」を追加", "初期コミット"]);
-    const notesHead = (await history(N))[0];
-    expect(notesHead.message).toBe("「ノートのページ」を追加");
-    expect((await ctx.call("GET", `${N}/structure/commits/${notesHead.id}`)).status).toBe(200);
-    expect((await ctx.call("GET", `${W}/structure/commits/${notesHead.id}`)).status).toBe(404);
   });
 
   it("cannot read or change a page of another wiki by its id", async () => {
@@ -186,13 +179,11 @@ describe("wiki isolation", () => {
     const w = (await ctx.call("GET", `${W}/structure`)).body;
     const n = (await ctx.call("GET", `${N}/structure`)).body;
 
-    const foreignPage = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: w.headCommitId,
+    const foreignPage = await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "add_to_tree", treeId: w.trees[0].id, pageId: b.id, parentNodeId: null }],
     });
     expect(foreignPage.status).toBe(422);
-    const foreignTree = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: w.headCommitId,
+    const foreignTree = await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "move", treeId: n.trees[0].id, nodeId: b.id, newParentNodeId: null }],
     });
     expect(foreignTree.status).toBe(422);

@@ -14,7 +14,7 @@ import {
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pages, pageVersions, wikis } from "../db/schema";
-import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
+import { getPrimaryTree, loadStructure } from "../structure/repo";
 
 type WikiRow = typeof wikis.$inferSelect;
 
@@ -106,8 +106,7 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
     })
     .sort((a, b) => (a.key < b.key ? -1 : 1));
 
-  const main = await getBranch(db, wiki.id, MAIN_BRANCH);
-  const { state } = await loadCommit(db, main.headCommitId);
+  const state = await loadStructure(db, wiki.id);
   const tree = await getPrimaryTree(db, wiki.id);
   // ツリーは常に公開サイトに出す。出す・出さないは、ページごとの公開範囲で決まる
   const trees: ManifestTree[] = [{ key: tree.key, isPrimary: true, nodes: publicTreeNodes(state.trees[tree.id]?.nodes ?? [], publicIds) }];

@@ -76,7 +76,7 @@ export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・履歴・ゴミ箱・設定とそのタブ）へのリンク。 */
+/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・ゴミ箱・設定とそのタブ）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"
   | "/w/$wikiKey/requests"
@@ -84,7 +84,6 @@ export type WikiScreen =
   | "/w/$wikiKey/calendar"
   | "/w/$wikiKey/analytics"
   | "/w/$wikiKey/templates"
-  | "/w/$wikiKey/history"
   | "/w/$wikiKey/trash"
   | "/w/$wikiKey/settings"
   | "/w/$wikiKey/settings/appearance"

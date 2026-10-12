@@ -6,7 +6,7 @@ import { SNS_PROVIDER_LABELS, type SnsProvider } from "./sns";
 
 /**
  * 監査ログ：「誰が・いつ・何をしたか」を、あとから確かめるための記録。追記だけで、直したり消したりしない。
- * 本文の保存と、並べ替え・移動・ページの作成は、ここには入れない（版履歴と構造の履歴に「誰が」を残す）。
+ * 本文の保存と、並べ替え・移動・ページの作成は、ここには入れない（本文の保存は版履歴に「誰が」を残す。並べ替え・移動・作成は記録しない）。
  */
 
 export const AUDIT_CATEGORIES = ["login", "member", "publish", "page", "settings", "wiki"] as const;

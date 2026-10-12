@@ -3,7 +3,6 @@ import type { StructureResponse } from "./api";
 import { descendantImpact, pageHierarchy } from "./visibility";
 
 const data = {
-  headCommitId: "c",
   trees: [
     {
       id: "t",

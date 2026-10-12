@@ -627,41 +627,26 @@ describe("pages", () => {
   });
 });
 
-describe("structure commits", () => {
-  it("commits ops and records history", async () => {
+describe("structure ops", () => {
+  it("applies ops to the current tree", async () => {
     ctx = await setup();
     const page = (await ctx.call("POST", `${W}/pages`, { title: "p" })).body;
     const docs = (await ctx.call("POST", `${W}/pages`, { title: "Docs" })).body;
     const s = await structure();
     expect(s).not.toHaveProperty("branch");
+    expect(s).not.toHaveProperty("headCommitId");
     const treeId = s.trees[0].id;
 
-    const move = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: s.headCommitId,
+    const move = await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "move", treeId, nodeId: page.id, newParentNodeId: docs.id }],
     });
-    expect(move.status).toBe(201);
+    expect(move.status).toBe(204);
 
-    const history = await ctx.call("GET", `${W}/structure/commits`);
-    expect(history.body.commits.map((c: any) => c.message)).toEqual(["移動", "「Docs」を追加", "「p」を追加", "初期コミット"]);
-
-    const detail = await ctx.call("GET", `${W}/structure/commits/${move.body.commitId}`);
-    expect(detail.body.changes).toEqual([
-      expect.objectContaining({ kind: "node_moved", treeId, nodeId: page.id, from: null, to: docs.id }),
-    ]);
-  });
-
-  it("rejects commits based on a stale head", async () => {
-    ctx = await setup();
-    const page = (await ctx.call("POST", `${W}/pages`, { title: "p" })).body;
-    const s = await structure();
-    const other = (await ctx.call("POST", `${W}/pages`, { title: "q" })).body;
-    const res = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: s.headCommitId,
-      ops: [{ type: "move", treeId: s.trees[0].id, nodeId: page.id, newParentNodeId: other.id }],
-    });
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe("head_moved");
+    const nodes = (await structure()).trees[0].nodes as { pageId: string; parentNodeId: string | null }[];
+    expect(nodes.find((n) => n.pageId === page.id)?.parentNodeId).toBe(docs.id);
+    expect(nodes.find((n) => n.pageId === docs.id)?.parentNodeId).toBeNull();
+    // 履歴の API は無い
+    expect((await ctx.call("GET", `${W}/structure/commits`)).status).toBe(404);
   });
 
   it("rejects folder operations", async () => {
@@ -674,22 +659,21 @@ describe("structure commits", () => {
       { type: "rename_folder", treeId, nodeId: page.id, title: "F" },
       { type: "split_folder", treeId, nodeId: page.id, groups: [{ title: "G", nodeIds: [page.id] }] },
     ]) {
-      const res = await ctx.call("POST", `${W}/structure/commits`, { expectedHeadCommitId: s.headCommitId, ops: [op] });
+      const res = await ctx.call("POST", `${W}/structure/ops`, { ops: [op] });
       expect(res.status).toBe(400);
     }
-    expect((await structure()).headCommitId).toBe(s.headCommitId);
+    expect((await structure()).trees[0].nodes).toEqual(s.trees[0].nodes);
   });
 
   it("returns 422 for invalid operations and leaves main untouched", async () => {
     ctx = await setup();
     const s = await structure();
-    const res = await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: s.headCommitId,
+    const res = await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "add_to_tree", treeId: s.trees[0].id, pageId: "nopenopeno", parentNodeId: null }],
     });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe("page_not_found");
-    expect((await structure()).headCommitId).toBe(s.headCommitId);
+    expect((await structure()).trees[0].nodes).toEqual(s.trees[0].nodes);
   });
 
   it("rejects operations that create or delete trees", async () => {
@@ -699,10 +683,10 @@ describe("structure commits", () => {
       { type: "create_tree", treeKey: "second", name: "2nd" },
       { type: "delete_tree", treeId: s.trees[0].id },
     ]) {
-      const res = await ctx.call("POST", `${W}/structure/commits`, { expectedHeadCommitId: s.headCommitId, ops: [op] });
+      const res = await ctx.call("POST", `${W}/structure/ops`, { ops: [op] });
       expect(res.status).toBe(400);
     }
-    expect((await structure()).headCommitId).toBe(s.headCommitId);
+    expect((await structure()).trees[0].nodes).toEqual(s.trees[0].nodes);
   });
 
   it("exposes only the primary tree even when legacy trees remain", async () => {
@@ -735,8 +719,7 @@ describe("structure commits", () => {
     const kept = (await ctx.call("POST", `${W}/pages`, { title: "kept" })).body;
     const stray = (await ctx.call("POST", `${W}/pages`, { title: "stray" })).body;
     const s = await structure();
-    await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: s.headCommitId,
+    await ctx.call("POST", `${W}/structure/ops`, {
       ops: [{ type: "remove_node", treeId: s.trees[0].id, nodeId: stray.id }],
     });
     expect((await structure()).trees[0].nodes.map((n: any) => n.nodeId)).toEqual([kept.id]);
@@ -747,6 +730,6 @@ describe("structure commits", () => {
 
     // すべてツリーにあれば何もしない
     await adoptUnplacedPages(ctx.db);
-    expect((await structure()).headCommitId).toBe(after.headCommitId);
+    expect((await structure()).trees[0].nodes).toEqual(after.trees[0].nodes);
   });
 });

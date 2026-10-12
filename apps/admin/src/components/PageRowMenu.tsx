@@ -97,7 +97,7 @@ export function PageRowMenu(props: {
       return api.createPage({ title: copyTitle(head.title), bodyMd: head.bodyMd, parentPageId: parentPageId(props.nodes, page.id) });
     },
     onSettled: () => {
-      for (const key of ["structure", "history", "pages", "search"]) void qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["structure", "pages", "search"]) void qc.invalidateQueries({ queryKey: [key] });
     },
     onSuccess: async (created) => {
       setNotice(`「${created.title}」を作りました`);

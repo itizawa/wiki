@@ -29,7 +29,7 @@ const tickResponses = {
 
 describe("scheduled", () => {
   it("only prunes versions on the daily cron", async () => {
-    const { impl, calls } = fakeFetch({ [PRUNE_URL]: { deleted: 3, structure: { commits: 2, snapshots: 2, nodes: 40 } } });
+    const { impl, calls } = fakeFetch({ [PRUNE_URL]: { deleted: 3 } });
     await handleScheduled(PRUNE_CRON, env, impl);
     expect(calls).toEqual([{ url: PRUNE_URL, method: "POST", auth: "Bearer t" }]);
   });
@@ -67,7 +67,7 @@ describe("scheduled", () => {
 
   it("asks for the image cleanup only on Sundays (UTC), once a week", async () => {
     const asked: Record<string, unknown> = {};
-    const result = { deleted: 0, structure: { commits: 0, snapshots: 0, nodes: 0 }, oauth: { tokens: 4, codes: 1 }, builds: { events: 2, builds: 1 }, images: null };
+    const result = { deleted: 0, oauth: { tokens: 4, codes: 1 }, builds: { events: 2, builds: 1 }, images: null };
     for (let day = 4; day <= 11; day++) {
       const at = new Date(Date.UTC(2026, 9, day, 18, 0));
       const impl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
