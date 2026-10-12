@@ -30,7 +30,6 @@ import type {
   ScheduledAction,
   OAuthConsentRequest,
   OAuthGrantSummary,
-  StructureCommitDiff,
   StructureOpInput,
   TrashedPage,
   TreeMeta,
@@ -114,7 +113,6 @@ export type { PageVersionList, VersionListItem } from "@wiki/shared";
 
 export type StructureTree = TreeMeta & { nodes: TreeNode[] };
 export type StructureResponse = {
-  headCommitId: string;
   trees: StructureTree[];
   pages: Record<
     string,
@@ -129,20 +127,6 @@ export type StructureResponse = {
       updatedAt: string;
     }
   >;
-};
-
-export type CommitListItem = {
-  id: string;
-  message: string | null;
-  authorType: string;
-  createdAt: string;
-  parentIds: string[];
-  /** 外部のアプリ（MCP）からの操作なら、そのアプリの名前 */
-  via?: string | null;
-  /** 構造を変えた人（いまの名前）。これより前のコミットと、人の操作でないものは null */
-  createdBy?: { id: string; name: string } | null;
-  /** 差分を出せるか。古いコミットは構造のスナップショットを消しているので false */
-  diffAvailable: boolean;
 };
 
 /** 監査ログの絞り込み。from / to は JST の日付（YYYY-MM-DD）。wiki はオーナーの一覧だけ（"global" は全体にかかわるもの） */
@@ -335,11 +319,7 @@ export const api = {
   uploadBackgroundImage: (file: Blob) => upload(w("/appearance/background-images"), file),
 
   structure: () => request<StructureResponse>("GET", w("/structure")),
-  commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
-    request<{ commitId: string }>("POST", w("/structure/commits"), input),
-  history: () => request<{ commits: CommitListItem[] }>("GET", w("/structure/commits")),
-  commitDetail: (id: string) =>
-    request<{ commit: CommitListItem } & StructureCommitDiff>("GET", w(`/structure/commits/${id}`)),
+  changeStructure: (input: { ops: StructureOpInput[] }) => request<void>("POST", w("/structure/ops"), input),
 };
 
 const VISIBILITY_LABEL = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;
@@ -399,8 +379,6 @@ export function errorMessage(err: unknown): string {
         return `この形式の画像はアップロードできません。${imageLimit(err)}です。`;
       case "images_not_configured":
         return "画像の置き場所が設定されていないため、アップロードできません。";
-      case "head_moved":
-        return "ツリーが別の操作で更新されました。最新の状態を読み込みました。もう一度操作してください。";
       case "has_children":
         return "子があるため外せません。先に子を移動してください。";
       case "run_at_in_past":

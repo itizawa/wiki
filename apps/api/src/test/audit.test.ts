@@ -215,10 +215,6 @@ describe("audit log: what is recorded", () => {
     const versions = (await ctx.call("GET", `${W}/pages/${page.id}/versions`)).body.versions;
     expect(versions.map((v: any) => v.createdBy?.name)).toEqual(["minato", "minato"]);
     expect((await ctx.call("GET", `${W}/pages/${page.id}`)).body.head.createdBy).toEqual({ id: editor.user.id, name: "minato" });
-    const commits = (await ctx.call("GET", `${W}/structure/commits`)).body.commits;
-    expect(commits[0].createdBy).toEqual({ id: editor.user.id, name: "minato" });
-    // 人の操作ではない初期コミットは空のまま
-    expect(commits[commits.length - 1].createdBy).toBeNull();
     // 本文の保存とページの作成は、監査ログには入れない
     expect(await logs()).toEqual([]);
   });

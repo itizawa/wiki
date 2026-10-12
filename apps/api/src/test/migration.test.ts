@@ -474,3 +474,43 @@ describe("0027_page_search", () => {
     expect((await db.query<{ n: number }>(`select count(*)::int as n from page_search where body_md ilike '%いまの本文%'`)).rows[0]!.n).toBe(1);
   });
 });
+
+describe("0034_remove_structure_history", () => {
+  it("keeps only the nodes of main's head, as the rows of their tree, and drops the history tables", async () => {
+    const db = (client = new PGlite({ extensions: pgliteExtensions }));
+    const { readdir } = await import("node:fs/promises");
+    const tags = (await readdir(new URL("../../drizzle", import.meta.url))).filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)).sort();
+    for (const tag of tags.filter((t) => t < "0034")) await runMigration(db, tag);
+
+    await db.exec(`
+      insert into pages (id, wiki_id, title, head_version_id) values
+        ('pageaaaaa1', (select id from wikis where key = 'wiki'), 'one', gen_random_uuid()),
+        ('pageaaaaa2', (select id from wikis where key = 'wiki'), 'two', gen_random_uuid());
+      insert into trees (id, wiki_id, key, name, is_primary) select 't_main', id, 'main', 'メイン', true from wikis where key = 'wiki';
+      insert into tree_snapshots (id, tree_id) values
+        ('00000000-0000-0000-0000-000000000001', 't_main'),
+        ('00000000-0000-0000-0000-000000000002', 't_main');
+      insert into tree_nodes (snapshot_id, node_id, page_id, parent_node_id, position) values
+        ('00000000-0000-0000-0000-000000000001', 'pageaaaaa1', 'pageaaaaa1', null, 'a0'),
+        ('00000000-0000-0000-0000-000000000002', 'pageaaaaa1', 'pageaaaaa1', null, 'a0'),
+        ('00000000-0000-0000-0000-000000000002', 'pageaaaaa2', 'pageaaaaa2', 'pageaaaaa1', 'a1');
+      insert into structure_commits (id, wiki_id, message) select '00000000-0000-0000-0000-0000000000c1', id, '前' from wikis where key = 'wiki';
+      insert into structure_commits (id, wiki_id, message) select '00000000-0000-0000-0000-0000000000c2', id, '最新' from wikis where key = 'wiki';
+      insert into commit_trees (commit_id, tree_id, snapshot_id) values
+        ('00000000-0000-0000-0000-0000000000c1', 't_main', '00000000-0000-0000-0000-000000000001'),
+        ('00000000-0000-0000-0000-0000000000c2', 't_main', '00000000-0000-0000-0000-000000000002');
+      insert into structure_branches (wiki_id, name, head_commit_id, kind)
+        select id, 'main', '00000000-0000-0000-0000-0000000000c2', 'main' from wikis where key = 'wiki';
+    `);
+    await runMigration(db, "0034_remove_structure_history");
+
+    expect((await db.query(`select tree_id, node_id, parent_node_id, position from tree_nodes order by node_id`)).rows).toEqual([
+      { tree_id: "t_main", node_id: "pageaaaaa1", parent_node_id: null, position: "a0" },
+      { tree_id: "t_main", node_id: "pageaaaaa2", parent_node_id: "pageaaaaa1", position: "a1" },
+    ]);
+    const gone = (await db.query<{ table_name: string }>(
+      `select table_name from information_schema.tables where table_name in ('structure_commits', 'structure_commit_parents', 'structure_branches', 'commit_trees', 'tree_snapshots')`,
+    )).rows;
+    expect(gone).toEqual([]);
+  });
+});

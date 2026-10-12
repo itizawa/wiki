@@ -35,7 +35,6 @@ const EditRequestsPage = lazyScreen(() => import("./routes/EditRequestsPage"), "
 const TemplatesPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplatesPage", page);
 const TemplateEditorPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplateEditorPage", fullHeight);
 const HomeSettingsPage = lazyScreen(() => import("./routes/HomeSettingsPage"), "HomeSettingsPage", page);
-const HistoryPage = lazyScreen(() => import("./routes/HistoryPage"), "HistoryPage", page);
 const AnalyticsPage = lazyScreen(() => import("./routes/AnalyticsPage"), "AnalyticsPage", page);
 const AuditLogPage = lazyScreen(() => import("./routes/AuditLogPage"), "AuditLogPage", page);
 const CalendarPage = lazyScreen(() => import("./routes/CalendarPage"), "CalendarPage", page);
@@ -178,7 +177,6 @@ const templateEditorRoute = createRoute({
     return <TemplateEditorPage key={templateId} templateId={templateId} />;
   },
 });
-const historyRoute = createRoute({ getParentRoute: () => wikiRoute, path: "history", component: padded(HistoryPage) });
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 
 // wiki ごとの設定。見出しとタブ（WikiSettingsLayout）の下に、タブごとの画面を出す。タブごとに URL を分ける
@@ -229,7 +227,7 @@ const legacyEditorRoute = createRoute({
     throw redirect({ to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: FIRST_WIKI, pageId: params.pageId }, replace: true });
   },
 });
-const legacyScreen = (path: "/calendar" | "/history", to: `/w/$wikiKey${typeof path}`) =>
+const legacyScreen = (path: "/calendar", to: `/w/$wikiKey${typeof path}`) =>
   createRoute({
     getParentRoute: () => rootRoute,
     path,
@@ -255,7 +253,6 @@ const routeTree = rootRoute.addChildren([
     analyticsRoute,
     templatesRoute,
     templateEditorRoute,
-    historyRoute,
     trashRoute,
     settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
@@ -265,7 +262,6 @@ const routeTree = rootRoute.addChildren([
   ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),
-  legacyScreen("/history", "/w/$wikiKey/history"),
 ]);
 
 // 画面を移るとき、前の画面をフェードアウトさせ、次の画面をフェードインさせる（View Transitions API。見た目は theme.ts の MuiCssBaseline）。

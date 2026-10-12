@@ -30,7 +30,7 @@ import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restor
 import { cancelSchedule, createSchedule, listActions, publishAudited, unpublishAudited } from "../routes/publishing";
 import { agentActor } from "../audit/service";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
-import { commitOps, getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure/repo";
+import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
 import { roleIn, rolesByWiki } from "../users/service";
 import { findOpenWiki, listWikis } from "../wikis/service";
 
@@ -273,14 +273,13 @@ export const TOOLS = [
   tool({
     name: "get_tree",
     description:
-      "ページのツリーを返す（親子と並び順）。読めないページはタイトルを伏せる。move_page には、ここで返す headCommitId を expectedHeadCommitId として渡す。",
+      "ページのツリーを返す（親子と並び順）。読めないページはタイトルを伏せる。",
     scope: "wiki.read",
     input: z.object({ wiki: wikiKey }),
     inputSchema: schema(WIKI_PROP, ["wiki"]),
     async run({ db, agent }, input) {
       const wiki = await memberWiki(db, agent, input.wiki);
-      const branch = await getBranch(db, wiki.id, MAIN_BRANCH);
-      const { state } = await loadCommit(db, branch.headCommitId);
+      const state = await loadStructure(db, wiki.id);
       const tree = await getPrimaryTree(db, wiki.id);
       const nodes = state.trees[tree.id]?.nodes ?? [];
       const titles = new Map(
@@ -293,7 +292,6 @@ export const TOOLS = [
         ).map((p) => [p.id, p.title]),
       );
       return {
-        headCommitId: branch.headCommitId,
         nodes: nodes.map((n) => ({
           pageId: n.pageId,
           parentPageId: n.parentNodeId,
@@ -366,22 +364,20 @@ export const TOOLS = [
   tool({
     name: "move_page",
     description:
-      "ページを別の親の下（null なら最上位）の末尾へ移す。子ページも一緒に移る。expectedHeadCommitId が最新でなければエラーを返すので、get_tree で読み直してからやり直す。",
+      "ページを別の親の下（null なら最上位）の末尾へ移す。子ページも一緒に移る。",
     scope: "wiki.write",
     input: z.object({
       wiki: wikiKey,
       pageId,
       newParentPageId: pageId.nullable(),
-      expectedHeadCommitId: z.string().uuid(),
     }),
     inputSchema: schema(
       {
         ...WIKI_PROP,
         pageId: str("移すページの ID"),
         newParentPageId: { type: ["string", "null"], description: "新しい親ページの ID。null なら最上位" },
-        expectedHeadCommitId: str("get_tree で返した headCommitId"),
       },
-      ["wiki", "pageId", "newParentPageId", "expectedHeadCommitId"],
+      ["wiki", "pageId", "newParentPageId"],
     ),
     async run({ db, agent }, input) {
       const wiki = await memberWiki(db, agent, input.wiki);
@@ -389,14 +385,12 @@ export const TOOLS = [
       if (input.newParentPageId) await visiblePage(db, agent, wiki.id, input.newParentPageId);
       await assertSubtreeVisible(db, agent, wiki.id, input.pageId);
       const tree = await getPrimaryTree(db, wiki.id);
-      const result = await commitOps(db, wiki.id, {
-        expectedHeadCommitId: input.expectedHeadCommitId,
+      await changeStructure(db, wiki.id, {
         ops: [{ type: "move", treeId: tree.id, nodeId: input.pageId, newParentNodeId: input.newParentPageId }],
-        createdBy: agent.user.id,
         oauthGrantId: agent.grantId,
         recordPublishEvent: true,
       });
-      return { headCommitId: result.commitId };
+      return { ok: true };
     },
   }),
   tool({

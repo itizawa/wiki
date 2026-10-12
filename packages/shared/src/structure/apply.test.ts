@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { applyOps, StructureOpError, StructureValidationError } from "./apply";
-import { diffStructures } from "./diff";
 import { structureOpSchema, type StructureOpInput } from "./ops";
 import { childrenByParent, type StructureState, type TreeNode } from "./types";
 import { validateTree } from "./validate";
@@ -123,20 +122,5 @@ describe("validateTree", () => {
     const broken = base();
     broken.trees[T]!.nodes.push(page("x", "nope", "a0"));
     expect(() => applyOps(broken, ops({ type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b" }))).toThrow(StructureValidationError);
-  });
-});
-
-describe("diffStructures", () => {
-  it("reports moves, additions and removals", () => {
-    const { state } = applyOps(
-      base(),
-      ops(
-        { type: "move", treeId: T, nodeId: "a1", newParentNodeId: "b" },
-        { type: "add_to_tree", treeId: T, pageId: "c", parentNodeId: null },
-        { type: "remove_node", treeId: T, nodeId: "b1" },
-      ),
-    );
-    const kinds = diffStructures(base(), state).map((c) => `${c.kind}:${"nodeId" in c ? c.nodeId : "node" in c ? c.node.nodeId : c.treeId}`);
-    expect(kinds).toEqual(expect.arrayContaining(["node_moved:a1", "node_added:c", "node_removed:b1"]));
   });
 });

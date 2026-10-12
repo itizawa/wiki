@@ -239,6 +239,13 @@
       "when": 1791776348550,
       "tag": "0033_user_picture",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791777000000,
+      "tag": "0034_remove_structure_history",
+      "breakpoints": true
     }
   ]
 }

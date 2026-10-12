@@ -73,17 +73,17 @@ export function useDeletePage(options: { onLeave?: () => void; onError?: (err: E
         for (const id of pageIds) {
           for (const key of ["page", "draft", "versions", "version", "edit-requests"]) qc.removeQueries({ queryKey: [key, id] });
         }
-        for (const key of ["structure", "history", "pages", "search", "stars", "trash", "schedule"]) {
+        for (const key of ["structure", "pages", "search", "stars", "trash", "schedule"]) {
           void qc.invalidateQueries({ queryKey: [key] });
         }
         latest.current.options.onLeave?.();
         return;
       }
-      await Promise.all(["structure", "history", "pages", "search", "stars", "trash", "schedule"].map((key) => qc.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(["structure", "pages", "search", "stars", "trash", "schedule"].map((key) => qc.invalidateQueries({ queryKey: [key] })));
       afterRemoved?.();
     },
     onError: (err) => {
-      // ツリーが別の操作で変わっていたとき（head_moved）に、最新のツリーを出す
+      // 失敗したときは、ツリーを読み直して最新の状態を出す
       void qc.invalidateQueries({ queryKey: ["structure"] });
       latest.current.options.onError?.(err);
     },

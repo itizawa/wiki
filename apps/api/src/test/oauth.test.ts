@@ -399,29 +399,17 @@ describe("MCP", () => {
     const stale = await callTool(t, "update_page", { wiki: "wiki", pageId: child.data.id, baseVersionId: page.data.headVersionId, bodyMd: "b3" });
     expect(stale.data.error.code).toBe("version_conflict");
 
-    const tree = await callTool(t, "get_tree", { wiki: "wiki" });
     const moved = await callTool(t, "move_page", {
       wiki: "wiki",
       pageId: child.data.id,
       newParentPageId: parent.data.id,
-      expectedHeadCommitId: tree.data.headCommitId,
     });
     expect(moved.isError).toBe(false);
-    const staleMove = await callTool(t, "move_page", {
-      wiki: "wiki",
-      pageId: child.data.id,
-      newParentPageId: null,
-      expectedHeadCommitId: tree.data.headCommitId,
-    });
-    expect(staleMove.data.error.code).toBe("head_moved");
-
     const after = await callTool(t, "get_tree", { wiki: "wiki" });
     expect(after.data.nodes.find((n: { pageId: string }) => n.pageId === child.data.id).parentPageId).toBe(parent.data.id);
 
     const versions = await ctx.call("GET", `${W}/pages/${child.data.id}/versions`);
     expect(versions.body.versions.map((v: { via: string | null }) => v.via)).toEqual(["テストのアプリ", "テストのアプリ"]);
-    const commits = await ctx.client.query<{ n: number }>(`select count(*)::int as n from structure_commits where oauth_grant_id is not null`);
-    expect(commits.rows[0]!.n).toBe(3);
 
     const search = await callTool(t, "search_pages", { wiki: "wiki", query: "b2" });
     expect(search.data.pages.map((p: { id: string }) => p.id)).toEqual([child.data.id]);
@@ -441,14 +429,12 @@ describe("MCP", () => {
     const denied = await callTool(t, "create_page", { wiki: "wiki", title: "下に足す", parentPageId: secret.id });
     expect(denied.data.error.code).toBe("not_found");
     const after = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
-    expect(after.headCommitId).toBe(before.headCommitId);
     expect(after.nodes).toHaveLength(before.nodes.length);
     const top = await callTool(t, "create_page", { wiki: "wiki", title: "動かす" });
     const move = await callTool(t, "move_page", {
       wiki: "wiki",
       pageId: top.data.id,
       newParentPageId: secret.id,
-      expectedHeadCommitId: (await callTool(t, "get_tree", { wiki: "wiki" })).data.headCommitId,
     });
     expect(move.data.error).toEqual(denied.data.error);
 
@@ -529,10 +515,9 @@ describe("MCP", () => {
     await ctx.call("POST", `${W}/pages/${child.id}/publish`, { versionId: child.headVersionId, visibility: "unlisted" });
     const { tokens } = await connect({ scope: "wiki.read wiki.write wiki.publish wiki.delete" });
     const t = tokens.access_token;
-    const { headCommitId } = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
 
     const tries = [
-      await callTool(t, "move_page", { wiki: "wiki", pageId: parent.id, newParentPageId: null, expectedHeadCommitId: headCommitId }),
+      await callTool(t, "move_page", { wiki: "wiki", pageId: parent.id, newParentPageId: null }),
       await callTool(t, "unpublish_page", { wiki: "wiki", pageId: parent.id, applyToDescendants: true }),
       await callTool(t, "publish_page", { wiki: "wiki", pageId: parent.id, applyToDescendants: true }),
       await callTool(t, "delete_page", { wiki: "wiki", pageId: parent.id }),
@@ -567,8 +552,7 @@ describe("MCP", () => {
     for (const p of [parent, child]) expect((await callTool(t, "publish_page", { wiki: "wiki", pageId: p.data.id })).isError).toBe(false);
     await ctx.client.query(`delete from publish_events`);
     const moveTo = async (pageId: string, newParentPageId: string | null) => {
-      const { headCommitId } = (await callTool(t, "get_tree", { wiki: "wiki" })).data;
-      const res = await callTool(t, "move_page", { wiki: "wiki", pageId, newParentPageId, expectedHeadCommitId: headCommitId });
+      const res = await callTool(t, "move_page", { wiki: "wiki", pageId, newParentPageId });
       expect(res.isError).toBe(false);
     };
     const events = async () =>
@@ -674,11 +658,6 @@ describe("MCP", () => {
     const names = (await mcp(t, "tools/list")).body.result.tools.map((x: { name: string }) => x.name);
     expect(names).toEqual(expect.arrayContaining(["delete_page", "list_trash", "restore_page"]));
     expect(names.some((n: string) => /purge|permanent|empty/.test(n))).toBe(false);
-    // 構造の履歴に、どのアプリが戻したかが残る
-    const commits = await ctx.client.query<{ message: string; via: boolean }>(
-      `select message, oauth_grant_id is not null as via from structure_commits order by created_at desc limit 1`,
-    );
-    expect(commits.rows).toEqual([{ message: "「親」と配下の 1 ページをゴミ箱から元に戻す", via: true }]);
   });
 
   it("cannot see or restore trashed pages it cannot read", async () => {

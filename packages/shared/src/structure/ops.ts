@@ -41,9 +41,6 @@ export type StructureOpInput = z.input<typeof structureOpSchema>;
 export type StructureOpType = StructureOp["type"];
 
 export const commitStructureInput = z.object({
-  /** 楽観ロック。headがこの値と一致する場合のみコミットする。 */
-  expectedHeadCommitId: z.string().uuid(),
-  message: z.string().max(500).optional(),
   ops: z.array(structureOpSchema).min(1).max(1000),
 });
 export type CommitStructureInput = z.infer<typeof commitStructureInput>;

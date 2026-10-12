@@ -145,11 +145,10 @@ describe("marks for the cron worker", () => {
     expect(
       await marked(async () => {
         const s = (await ctx.call("GET", `${W}/structure`)).body;
-        return ctx.call("POST", `${W}/structure/commits`, {
-          expectedHeadCommitId: s.headCommitId,
+        return ctx.call("POST", `${W}/structure/ops`, {
           ops: [{ type: "move", treeId: s.trees[0].id, nodeId: other.id, newParentNodeId: parent.id }],
         });
-      }, 201),
+      }, 204),
     ).toBe(true);
     // 配下もまとめて公開範囲を変える
     expect(

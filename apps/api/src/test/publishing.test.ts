@@ -92,8 +92,7 @@ describe("manifest", () => {
     const child = await newPage("child");
     const s = (await ctx.call("GET", `${W}/structure`)).body;
     const treeId = s.trees[0].id;
-    await ctx.call("POST", `${W}/structure/commits`, {
-      expectedHeadCommitId: s.headCommitId,
+    await ctx.call("POST", `${W}/structure/ops`, {
       ops: [
         { type: "move", treeId, nodeId: pub.id, newParentNodeId: docs.id },
         { type: "move", treeId, nodeId: priv.id, newParentNodeId: docs.id },
@@ -371,7 +370,6 @@ describe("build requests", () => {
     expect(manifest.wikis).toHaveLength(1);
     expect(manifest.wikis[0].contentHash).toMatch(/^[0-9a-f]{64}$/);
     expect(manifest.wikis[0].contentHash).not.toBe(manifest.contentHash);
-    expect(manifest.wikis[0]).not.toHaveProperty("headCommitId");
     // 本文つきのマニフェストは今までどおり
     expect(manifest.wikis[0].pages[0].bodyMd).toBe("本文");
     expect(manifest.wikis[0].unlisted[0].bodyMd).toBe("ひみつ");
@@ -388,8 +386,8 @@ describe("build requests", () => {
     const commit = async (ops: (treeId: string, positionOf: (id: string) => string) => unknown[]) => {
       const s = (await ctx.call("GET", `${W}/structure`)).body;
       const positionOf = (id: string) => (s.trees[0].nodes as Node[]).find((n) => n.nodeId === id)!.position;
-      const res = await ctx.call("POST", `${W}/structure/commits`, { expectedHeadCommitId: s.headCommitId, ops: ops(s.trees[0].id, positionOf) });
-      expect(res.status).toBe(201);
+      const res = await ctx.call("POST", `${W}/structure/ops`, { ops: ops(s.trees[0].id, positionOf) });
+      expect(res.status).toBe(204);
     };
     const before = await hash();
 

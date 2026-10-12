@@ -9,7 +9,6 @@ import { pruneVersions } from "../pages/prune";
 import { markBuildTriggered } from "../publishing/builds";
 import { cleanupBuilds } from "../publishing/cleanup";
 import { buildManifest } from "../publishing/manifest";
-import { pruneStructure } from "../structure/prune";
 
 /**
  * `Authorization: Bearer <トークン>` を確かめる。トークンは呼ぶ側ごとに分けてあり、片方が漏れても、もう片方の経路は通らない。
@@ -62,7 +61,6 @@ export const internalRoutes = new Hono<AppEnv>()
   })
   // 1日1回の間引きと掃除。どれも消したものは戻せない。1回に消す数には上限があり、残りは次の回に回る
   // - `deleted`：自動でできた版を、古いほど粗く間引いた数
-  // - `structure`：古いコミットの構造のスナップショットを消した数
   // - `oauth`：役目を終えたトークンと認可コードを消した数
   // - `builds`：反映済みの古い公開イベントと、古いビルドの行を消した数
   // - `images`：参照されていない古い画像を消した数。本文で `images: true` を渡したときだけ行い、それ以外は null
@@ -70,7 +68,6 @@ export const internalRoutes = new Hono<AppEnv>()
     const { db, images: store } = c.get("deps");
     const input = pruneInput.parse(await c.req.json().catch(() => ({})));
     const versions = await pruneVersions(db);
-    const structure = await pruneStructure(db);
     const oauth = await cleanupOAuth(db);
     const builds = await cleanupBuilds(db);
     let images: CleanupImagesResult | null = null;
@@ -82,7 +79,7 @@ export const internalRoutes = new Hono<AppEnv>()
         console.error("image cleanup failed", err);
       }
     }
-    return c.json({ ...versions, structure, oauth, builds, images });
+    return c.json({ ...versions, oauth, builds, images });
   })
   // ワーカーがデプロイフックを呼べたあとに呼ぶ。これが来ないビルドは、次の tick でもう一度頼む
   .post("/builds/:id/triggered", async (c) => {

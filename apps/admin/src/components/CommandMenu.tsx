@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
@@ -123,7 +123,6 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       run: go("/w/$wikiKey/analytics"),
     },
     { id: "templates", label: "「テンプレート」を開く", keywords: ["templates"], icon: <LayoutTemplate size={18} />, run: go("/w/$wikiKey/templates") },
-    { id: "history", label: "「構造の履歴」を開く", keywords: ["history", "commits"], icon: <History size={18} />, run: go("/w/$wikiKey/history") },
     { id: "members", label: "「メンバー」を開く", keywords: ["members", "invite", "users"], icon: <Users size={18} />, run: go("/w/$wikiKey/settings/members") },
     // 監査ログは管理者だけ
     ...(role === "admin"

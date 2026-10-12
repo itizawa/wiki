@@ -246,17 +246,4 @@ describe("trash", () => {
     expect((await ctx.call("GET", `${W}/stars`)).body.pageIds).toEqual([child.id]);
     expect((await ctx.call("GET", `${W}/search?q=${encodeURIComponent("消える")}`)).body.results).toHaveLength(2);
   });
-
-  it("records trashing and restoring in the structure history", async () => {
-    ctx = await setup();
-    const parent = await newPage("親");
-    await newPage("子", parent.id);
-    await ctx.call("DELETE", `${W}/pages/${parent.id}`);
-    await ctx.call("POST", `${W}/pages/${parent.id}/restore`);
-    const commits = (await ctx.call("GET", `${W}/structure/commits`)).body.commits as { message: string }[];
-    expect(commits.slice(0, 2).map((c) => c.message)).toEqual([
-      "「親」と配下の 1 ページをゴミ箱から元に戻す",
-      "「親」と配下の 1 ページをゴミ箱に入れる",
-    ]);
-  });
 });
