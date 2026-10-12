@@ -1,5 +1,5 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequest, type EditRequestItem, type EditRequestListStatus } from "@wiki/shared";
+import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequest, type EditRequestItem, type EditRequestListStatus, type PageEditRequests } from "@wiki/shared";
 import { api, currentWikiKey } from "./api";
 import { screenLink } from "./wiki";
 
@@ -93,6 +93,39 @@ export function placeOfAccepted(
   if (item.replacement === null || item.replacement === "") return null;
   const found = locateLineEdit(head.bodyMd, { startLine: 1, endLine: 1, originalText: item.replacement, atBase: false });
   return found.ok ? { startLine: found.startLine, endLine: found.endLine } : null;
+}
+
+type LineRange = { startLine: number; endLine: number };
+
+/**
+ * レビュー画面の項目を、出す場所ごとに振り分ける。順は、リクエスト → 項目の並びのまま。
+ * - inline：本文の箇所のすぐ下に出す（未対応で場所のあるもの＝highlight あり。この画面で決めたもので、場所が分かるもの）
+ * - unplaced：場所を決められない項目（未対応で場所なし。この画面で決めたもので、場所が分からないもの）
+ * - done：この画面で決めていない、片付いた項目
+ * `recent` は、この画面で採否を決めた項目（採用した項目は、API が返した行の範囲も持つ）。
+ */
+export function groupEditRequestItems({ data, recent }: { data: PageEditRequests; recent: Record<string, LineRange | true> }) {
+  const head = { versionId: data.headVersionId, bodyMd: data.headBodyMd };
+  const inline: { request: EditRequest; item: EditRequestItem; range: LineRange; highlight: boolean }[] = [];
+  const unplaced: { request: EditRequest; item: EditRequestItem }[] = [];
+  const done: { request: EditRequest; item: EditRequestItem }[] = [];
+  for (const request of data.requests) {
+    for (const item of request.items) {
+      const known = recent[item.id];
+      if (item.status === "open") {
+        if (item.current) inline.push({ request, item, range: item.current, highlight: true });
+        else unplaced.push({ request, item });
+      } else if (known === undefined) {
+        done.push({ request, item });
+      } else {
+        // この画面で決めた項目は、結果をその場所に出す
+        const range = item.status === "accepted" ? placeOfAccepted(item, head, known === true ? undefined : known) : item.current;
+        if (range) inline.push({ request, item, range, highlight: false });
+        else unplaced.push({ request, item });
+      }
+    }
+  }
+  return { inline, unplaced, done, pendingRequests: data.requests.filter((r) => r.items.some((i) => i.status === "open")) };
 }
 
 /**

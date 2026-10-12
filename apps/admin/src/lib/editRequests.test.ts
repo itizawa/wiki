@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { EditRequest, EditRequestItem, PageEditRequests } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { editRequestKeys, invalidateEditRequests, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
+import { editRequestKeys, groupEditRequestItems, invalidateEditRequests, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
 
 const step = (versionId: string, edits: [string, string][]) => ({
   versionId,
@@ -108,35 +108,8 @@ describe("itemCountLabel / requesterLabel", () => {
   });
 });
 
-// ── groupEditRequestItems の特性テスト ──
-// 整理の前は、EditRequestsPage の useMemo の中にあった計算を、そのまま写して固める
-type GRange = { startLine: number; endLine: number };
-function legacyGroup(input: { data: PageEditRequests; recent: Record<string, GRange | true> }) {
-  const { data, recent } = input;
-  const head = { versionId: data.headVersionId, bodyMd: data.headBodyMd };
-  const inline: { request: EditRequest; item: EditRequestItem; range: GRange; highlight: boolean }[] = [];
-  const unplaced: { request: EditRequest; item: EditRequestItem }[] = [];
-  const done: { request: EditRequest; item: EditRequestItem }[] = [];
-  for (const request of data.requests) {
-    for (const item of request.items) {
-      const known = recent[item.id];
-      if (item.status === "open") {
-        if (item.current) inline.push({ request, item, range: item.current, highlight: true });
-        else unplaced.push({ request, item });
-      } else if (known === undefined) {
-        done.push({ request, item });
-      } else {
-        const range = item.status === "accepted" ? placeOfAccepted(item, head, known === true ? undefined : known) : item.current;
-        if (range) inline.push({ request, item, range, highlight: false });
-        else unplaced.push({ request, item });
-      }
-    }
-  }
-  return { inline, unplaced, done, pendingRequests: data.requests.filter((r) => r.items.some((i) => i.status === "open")) };
-}
-const group = legacyGroup;
-
 describe("groupEditRequestItems（項目を、本文の箇所・場所なし・対応済みに振り分ける）", () => {
+  const group = groupEditRequestItems;
   const mk = (id: string, over: Partial<EditRequestItem> = {}): EditRequestItem => ({
     id,
     requestId: "r",
