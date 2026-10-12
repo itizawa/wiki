@@ -23,7 +23,7 @@
 ```
 apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite）
 apps/api         API（Hono + Drizzle + PostgreSQL）
-apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、構造のスナップショット、役目を終えたトークンと公開イベント、週1回は参照されていない画像）
+apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、構造のスナップショット、役目を終えたトークンと公開イベント、週1回は参照されていない画像）、1時間に1回の閲覧数の集計
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
@@ -370,17 +370,25 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 
 - 数えるもの：公開（`public`）の記事。`/p/{id}` とツリー経由の `/t/...` は同じ記事として合わせて数える。トップ・新着・検索などの一覧と、限定公開（`unlisted`）のページは数えない（限定公開のページには数えるスクリプトを入れず、外へ何も送らない。`build:sample` の検査で確かめる）
 - **同じブラウザが同じ記事を同じ日（JST）に何度開いても1回**。判定はブラウザ側で、`localStorage` に「この記事を数えた日」（今日のぶんだけ）を持つ。**IP アドレス・Cookie・個人を見分ける値は、サーバーに送らず、残さない**。管理画面にログインしている本人の閲覧も数える（公開サイトは別のドメインで見分けられないため）
-- 数え方（`apps/site/src/components/ViewCounter.astro` → `apps/site/worker/views.ts` → API の `/internal/views`）
+- 数え方（`apps/site/src/components/ViewCounter.astro` → `apps/site/worker/views.ts` → Workers Analytics Engine → `apps/worker/src/views.ts` → API の `/internal/views/totals`）
   1. 記事が実際に表示されたとき（先読み・裏のタブで開いただけのときは表示されるまで待つ）に、ブラウザが同じオリジンの `POST /_v` へ記事の ID だけを送る（`navigator.sendBeacon`）。自動操作のブラウザ（`navigator.webdriver`）は送らない
   2. 公開サイトの Worker が確かめる：User-Agent が Bot のものでない、Cloudflare が確認済みの Bot としているリクエストでない、先読みでない、その wiki の `page-routes.json` にある（いま公開している）記事である、回数の制限（接続元ごとに 60 秒で 30 回。`wrangler.toml` の `[[ratelimits]]`）を超えていない
-  3. 確かめたら、API の `/internal/views`（`INTERNAL_TOKEN` が要る）へ wiki の key と記事の ID を渡し、API がもう一度（使用中の wiki の、削除していない公開中の記事か）確かめて、`page_views_daily`（`wiki_id` / `page_id` / `day` / `count`）の、その日の行に1を足す。1件ずつの記録は持たない。公開サイトの Worker から DB へは直接つながない
-  - `/_v` は、数えたかどうかにかかわらず、いつも 204 を返す。API へ渡すのは応答を返したあとで、失敗しても記事の表示には関わらず、数が静かに欠ける
+  3. 確かめたら、Workers Analytics Engine（バインディング `PAGE_VIEWS`、データセット `wiki_page_views`）に1行書く。**ここでは API も DB も呼ばない**（閲覧が多くても、DB への書き込みは増えない）。1行の形は、blob1 = wiki の key、blob2 = 記事の ID、blob3 = JST の日付、double1 = 1、index1 = `{wiki の key}:{記事の ID}`。IP アドレスなどは書かない
+  4. 1時間に1回（毎時0分）、Cron のワーカーが SQL API で、今日と昨日（JST）のぶんを記事と日ごとに集計し（`SUM(_sample_interval)`）、API の `/internal/views/totals`（`INTERNAL_TOKEN` が要る）へ渡す。API がもう一度（使用中の wiki の、削除していない公開中の記事か）確かめて、`page_views_daily`（`wiki_id` / `page_id` / `day` / `count`）の、その日の行の数を、渡された合計まで引き上げる。1件ずつの記録は DB に持たない
+  - **渡すのは「その日の合計」で、前の回から増えたぶんではない**。だから、集計が二重に動いても、途中で失敗して次の回にやり直しても、数は二重にならない（「どこまで足し込んだか」の記録は持たない）。数は上げるだけで、下げない
+  - 管理画面に出るまでの遅れは、最大で1時間と少し（書いた行が SQL API で読めるようになるまでの遅れのぶんは、次の回に入る）。昨日のぶんは、次の日のあいだ毎時読み直すので、日付が変わる直前の閲覧も入る。集計が2日続けて止まると、そのあいだの古い日のぶんは入らない
+  - 集計のときに公開していない記事（非公開に戻した・削除した）の行は飛ばす。前の回までに入った数は残る
+  - Analytics Engine は、書き込みが多いと行を間引いて持つ（サンプリング）。数は `_sample_interval` で補うので、閲覧の多い記事では、わずかにずれることがある。貯めた行が残るのは3か月（DB に反映した数は消えない）
+  - 集計には、Cron のワーカーのシークレット `CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_ANALYTICS_TOKEN` が要る（「デプロイ → 初回の準備」）。どちらかが無いあいだは、集計を飛ばす
+  - 手元（`pnpm preview`）では、書いた行はどこにも貯まらない。集計は、SQL API の代わりのものを差し込んだテストで確かめている（`apps/worker/src/views.test.ts`、`apps/api/src/test/views.test.ts`）
+  - `/_v` は、数えたかどうかにかかわらず、いつも 204 を返す。書き込みは待たず、失敗しても記事の表示には関わらず、数が静かに欠ける
   - Cloudflare の「確認済みの Bot」（`request.cf.botManagement.verifiedBot`）は Bot Management のある（Enterprise の）プランでだけ値が入る。それ以外のプランでは値が無く、User-Agent の判定だけが効く
 - **除ききれないもの**：User-Agent を偽って JavaScript も動かす Bot は数に入る。反対に、JavaScript を切っている人や、広告ブロックで送信が止められた人は数に入らない。ブラウザの保存領域を消した・別のブラウザで開いた場合は、同じ日でももう1回と数える。数え始めたのは、この機能を出した日から（それより前のぶんは無い）
 - 管理画面（その wiki を開ける人ならだれでも見られる）
   - 記事の画面：「…」メニューの「閲覧数」から、合計・直近30日と、直近30日の日別の推移
   - 「すべてのページ」：閲覧数の列（合計・直近30日）。列の見出しで多い順・少ない順に並べ替えられる
   - 数えていない記事（まだ公開していない・限定公開）で数が無いものは「—」、公開していて0回のときは「0」。「◯年◯月◯日から計測」は、いちばん古い記録の日
+  - 直近の1時間ほどのぶんは、まだ出ない（集計が1時間に1回のため）。画面にも「反映まで1時間ほどかかります」と書いてある
   - ページを削除したら、そのページの数は出さない（行は残す）。非公開にしたページは、それまでの数を出し続ける
 
 ## アクセス解析
@@ -470,7 +478,8 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 | 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
-| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない） | `apps/worker/wrangler.toml` |
+| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない。ほかに、1日1回の版の間引きと、1時間に1回の閲覧数の集計） | `apps/worker/wrangler.toml` |
+| 閲覧数を貯める先 | Cloudflare Workers Analytics Engine のデータセット `wiki_page_views`（`wiki-site` がバインディング `PAGE_VIEWS` で書き、`wiki-worker` が SQL API で読む） | `apps/site/wrangler.toml` |
 | 公開サイト | Cloudflare Workers `wiki-site`（静的アセット + `Host` で wiki を振り分ける Worker。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 | 画像 | Cloudflare R2 のバケット `wiki-images`（`wiki-admin` と `wiki-site` の両方がバインディング `IMAGES` で使う） | 両方の `wrangler.toml` |
@@ -493,7 +502,7 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    - このルートは `wiki-admin` など、ほかの Worker のサブドメインにも当たる。wiki の key として使えないホスト名（予約語）は、公開サイトの Worker がそのまま本来の Worker へ渡す。**新しい Worker を同じゾーンのサブドメインで出すときは、その名前を `RESERVED_WIKI_KEYS` に足す**
    - ルートは、同じホスト名のカスタムドメインより先に当たる（[Routes](https://developers.cloudflare.com/workers/configuration/routing/routes/)）。そのままだと、管理画面へのリクエストはどれも `wiki-site` を経てから `wiki-admin` に届き、Worker の呼び出しが2回になる。**`wiki-admin` のホストをルートから外すには、ダッシュボードの `hatchery-works.com` → Workers Routes で、ルート `wiki-admin.hatchery-works.com/*` を Worker なし（None）で足す**（より細かいルートが優先され、Worker の付いていないルートは、粗いルートを打ち消す）。足したあと、管理画面が今までどおり開けることを確かめる
    - `/_astro/*`（Astro のスクリプトとスタイル）だけは、Worker を通さずに静的アセットから返す（`apps/site/wrangler.toml` の `run_worker_first`）。Worker の呼び出しに数えられず、ブラウザに1年キャッシュさせる。ここに足したパスは Host による wiki の振り分けを通らず、管理画面のホスト（上のルートを外していないとき）でも `wiki-site` のファイルが返るので、wiki ごとの内容が出るパスと、ほかの Worker が使うパスは足さない
-   - 閲覧数のために、Worker の実行時のシークレット `INTERNAL_TOKEN`（手順6と同じ値）を入れる（Settings → Variables and Secrets、または `apps/site` で `npx wrangler secret put INTERNAL_TOKEN`）。ビルドの環境変数とは別に要る（ビルドの環境変数は Worker からは読めない）。渡す先の `API_ORIGIN` は `apps/site/wrangler.toml` の `[vars]` にある。どちらかが無い間は数えない（記事の表示には影響しない）
+   - 閲覧数は、Workers Analytics Engine に貯める（`apps/site/wrangler.toml` の `[[analytics_engine_datasets]]`）。データセットは最初に書いたときに自動でできるので、作る手順は無い。アカウントでまだ Analytics Engine を使ったことが無ければ、先に Cloudflare のダッシュボードで Analytics Engine を有効にしておく（有効でないアカウントでは、バインディングのある Worker のデプロイが失敗することがある）。Worker の実行時のシークレットは要らない
    - つないだらデプロイフック（Settings → Builds → Deploy Hooks、ブランチ `main`）を発行する
 6. GitHub の Settings → Secrets and variables → Actions に次を登録する
 
@@ -505,9 +514,10 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
    | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
    | `ADMIN_EMAILS` | 最初のオーナーにする Google アカウント（カンマ区切り）。ユーザーが1人もいないときのマイグレーションで一度だけ読む（「ユーザーを DB で持つようになったときの移行」） |
    | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順4のクライアント |
-   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数・実行時のシークレットと同じ値 |
+   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数と同じ値 |
    | `SITE_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook |
+   | `CLOUDFLARE_ANALYTICS_TOKEN` | 任意。閲覧数の集計が Workers Analytics Engine を読む API トークン。権限は **Account → Account Analytics → Read** だけにする（デプロイ用の `CLOUDFLARE_API_TOKEN` とは別に作る）。`wiki-worker` のシークレットになる。アカウントの ID は `CLOUDFLARE_ACCOUNT_ID` を、同じ名前で `wiki-worker` にも渡す。未登録でもデプロイは通り、閲覧数が管理画面に反映されないだけになる（そのあいだの閲覧も貯まっていて、登録したあとの集計で、今日と昨日のぶんは入る） |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）

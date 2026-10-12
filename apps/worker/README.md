@@ -1,6 +1,6 @@
 # apps/worker
 
-Cloudflare Workers（Cron Triggers）。cron は2本ある（`wrangler.toml` の `crons`）。どちらで起きたかは `src/index.ts` で見分ける。
+Cloudflare Workers（Cron Triggers）。cron は3本ある（`wrangler.toml` の `crons`）。どちらで起きたかは `src/index.ts` で見分ける。
 
 ## 5分おき（`*/5 * * * *`）
 
@@ -25,7 +25,17 @@ Cloudflare Workers（Cron Triggers）。cron は2本ある（`wrangler.toml` の
 
 API の `/internal/versions/prune` で、自動でできた版を間引く（24時間以内はすべて残し、30日までは1日に1つ、その先は1か月に1つ。決まりはルートの README と `apps/api/src/pages/prune.ts`）。これだけを行い、5分おきの処理は呼ばない。消した数をログに出す。1回に消すのは1000件までで、残りは次の日に回る。失敗したらログに出すだけで、次の日にもう一度試す。
 
+## 1時間に1回（`0 * * * *`）
+
+公開サイトの Worker が Workers Analytics Engine（データセット `wiki_page_views`）に貯めた閲覧を集計し、API の `/internal/views/totals` へ渡す（`src/views.ts`）。これだけを行い、5分おきの処理は呼ばない（毎時0分には、5分おきの方も別に呼ばれる）。
+
+1. SQL API（`https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/analytics_engine/sql`）で、wiki・記事・JST の日付ごとの数（`SUM(_sample_interval)`）を取る
+2. 今日と昨日（JST）の行だけを、API へ渡す（1000行ずつ）。渡すのは**その日の合計**で、API は行の数をその合計まで引き上げるだけ。二重に動いても、失敗してやり直しても、数は二重にならない
+3. 渡す行が無ければ、API を呼ばない
+
+シークレットの `CLOUDFLARE_ACCOUNT_ID` か `CLOUDFLARE_ANALYTICS_TOKEN` が無ければ、何もせず `{"views":{"skipped":true}}` をログに出す。失敗したらログに出すだけで、次の回（1時間後）にもう一度試す。毎時0分にしてあるのは、5分おきの方が印に関係なく API を呼ぶ回と同じ時刻にそろえて、DB を起こす回数を増やさないため。
+
 ## 設定
 
-設定は `wrangler.toml` の `[vars]` と `[[kv_namespaces]]`（印を置く名前空間。API の `wrangler.toml` と同じ `id` にする。作り方はルートの README「デプロイ → 初回の準備」）、シークレットの `INTERNAL_TOKEN` / `SITE_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL`（デプロイ時に GitHub Actions が入れる。手順はルートの README「デプロイ」）。
-ローカルでは `pnpm dev` 後に `curl "http://localhost:8787/__scheduled"` で5分おきの1回分を実行できる。手元の API（Node）は印を書かないので、`pnpm dev` は `IGNORE_CRON_MARKS` を渡して、印を見ずに毎回 API を呼ぶ。間引きの方は `curl "http://localhost:8787/__scheduled?cron=0+18+*+*+*"`。
+設定は `wrangler.toml` の `[vars]` と `[[kv_namespaces]]`（印を置く名前空間。API の `wrangler.toml` と同じ `id` にする。作り方はルートの README「デプロイ → 初回の準備」）、シークレットの `INTERNAL_TOKEN` / `SITE_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL` / `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_ANALYTICS_TOKEN`（デプロイ時に GitHub Actions が入れる。手順はルートの README「デプロイ」。後ろの2つは閲覧数の集計用で、トークンの権限は Account Analytics の読み取りだけ）。
+ローカルでは `pnpm dev` 後に `curl "http://localhost:8787/__scheduled"` で5分おきの1回分を実行できる。手元の API（Node）は印を書かないので、`pnpm dev` は `IGNORE_CRON_MARKS` を渡して、印を見ずに毎回 API を呼ぶ。間引きの方は `curl "http://localhost:8787/__scheduled?cron=0+18+*+*+*"`、閲覧数の集計の方は `curl "http://localhost:8787/__scheduled?cron=0+*+*+*+*"`（手元ではシークレットが無いので、飛ばしたことだけがログに出る）。

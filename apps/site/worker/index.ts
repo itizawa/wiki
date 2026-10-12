@@ -84,7 +84,7 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
     return assetUrl;
   };
   if (url.pathname === VIEW_PATH && request.method === "POST") {
-    return recordView(request, env, ctx, target, async () => {
+    return recordView(request, env, target, async () => {
       const res = await env.ASSETS.fetch(asset("/page-routes.json"));
       return res.ok ? ((await res.json()) as PublicRoutes) : null;
     });

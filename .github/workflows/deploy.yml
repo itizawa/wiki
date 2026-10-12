@@ -64,7 +64,9 @@ jobs:
           INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
           SITE_DEPLOY_HOOK_URL: ${{ secrets.SITE_DEPLOY_HOOK_URL }}
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          # 任意。閲覧数の集計が Workers Analytics Engine を読むトークン（Account Analytics の読み取りだけ）。未登録なら集計を飛ばす
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
         run: |
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/worker-secrets.json" \
-            INTERNAL_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?"
+            INTERNAL_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?" "CLOUDFLARE_ACCOUNT_ID?" "CLOUDFLARE_ANALYTICS_TOKEN?"
           npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"
