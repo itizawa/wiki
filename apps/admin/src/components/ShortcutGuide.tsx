@@ -46,6 +46,18 @@ export function shortcutGroups(mod: string): Group[] {
       ],
     },
     {
+      title: "キーボードだけで移る",
+      entries: [
+        { keys: ["Tab"], label: "画面を開いて最初に押すと「本文へ移る」が出る。Enter で本文へ移る" },
+        { keys: ["↑", "↓"], label: "サイドバーのツリーで、前後のページへ移る（Tab で入れるのは1行だけ）" },
+        { keys: ["→", "←"], label: "ツリーで、ひらく・子のページへ／たたむ・親のページへ" },
+        { keys: ["Home", "End"], label: "ツリーの先頭／末尾のページへ" },
+        { keys: ["Enter"], label: "ツリーで、そのページを開く" },
+        { keys: ["Shift", "Enter"], label: "ツリーで、そのページの下に新しいページを作る" },
+        { keys: ["Shift", "F10"], label: "ツリーで、そのページの「…」メニューを開く（メニューキーでも同じ）" },
+      ],
+    },
+    {
       title: "本文で打つと出るメニュー",
       entries: [
         { keys: ["/"], label: "ブロックを挿入する（見出し・表・画像など）" },

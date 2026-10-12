@@ -1,6 +1,6 @@
 import { childrenByParent, type TreeNode } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { BEFORE_ZONE_RATIO, dropTargetOf, flattenVisible, resolveDrop, ROOT_END_DROP_ID, rowDropAt, rowDropId } from "./tree";
+import { BEFORE_ZONE_RATIO, dropTargetOf, flattenVisible, resolveDrop, ROOT_END_DROP_ID, rowDropAt, rowDropId, treeKeyAction } from "./tree";
 
 const page = (nodeId: string, parentNodeId: string | null, position: string): TreeNode => ({
   nodeId,
@@ -105,5 +105,47 @@ describe("flattenVisible", () => {
     expect(summary(["a"])).toEqual(["a:0:1/2+", "b:0:2/2"]);
     // 子の無いページを畳んだことにしても、変わらない
     expect(summary(["b"])).toEqual(["a:0:1/2+", "a1:1:1/2", "a2:1:2/2", "b:0:2/2"]);
+  });
+});
+
+describe("treeKeyAction", () => {
+  // a（子: a1, a2）, b。a を開いた並び: a, a1, a2, b
+  const childrenOf = childrenByParent(nodes);
+  const rowsOf = (collapsed: string[]) => flattenVisible(childrenOf, new Set(collapsed));
+  const act = (collapsed: string[], index: number, key: string) => treeKeyAction(rowsOf(collapsed), new Set(collapsed), index, key);
+
+  it("moves up and down, stopping at both ends", () => {
+    expect(act([], 0, "ArrowDown")).toEqual({ focus: 1 });
+    expect(act([], 1, "ArrowUp")).toEqual({ focus: 0 });
+    expect(act([], 0, "ArrowUp")).toBeNull();
+    expect(act([], 3, "ArrowDown")).toBeNull();
+  });
+
+  it("jumps to the first and last rows", () => {
+    expect(act([], 2, "Home")).toEqual({ focus: 0 });
+    expect(act([], 1, "End")).toEqual({ focus: 3 });
+    expect(act([], 0, "Home")).toBeNull();
+    expect(act([], 3, "End")).toBeNull();
+  });
+
+  it("opens a collapsed page with ArrowRight, then moves to its first child", () => {
+    expect(act(["a"], 0, "ArrowRight")).toEqual({ toggle: "open" });
+    expect(act([], 0, "ArrowRight")).toEqual({ focus: 1 });
+  });
+
+  it("does nothing on ArrowRight for a page without children", () => {
+    expect(act([], 3, "ArrowRight")).toBeNull();
+  });
+
+  it("collapses an open page with ArrowLeft, then moves to the parent", () => {
+    expect(act([], 0, "ArrowLeft")).toEqual({ toggle: "close" });
+    expect(act([], 2, "ArrowLeft")).toEqual({ focus: 0 });
+    expect(act(["a"], 0, "ArrowLeft")).toBeNull();
+    expect(act([], 3, "ArrowLeft")).toBeNull();
+  });
+
+  it("ignores other keys and out-of-range rows", () => {
+    expect(act([], 0, "a")).toBeNull();
+    expect(act([], 9, "ArrowDown")).toBeNull();
   });
 });

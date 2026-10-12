@@ -44,7 +44,7 @@ export function parentPageId(nodes: readonly TreeNode[], pageId: string): string
 }
 
 /** 行の「…」ボタン。押すと、サイドバーに1つだけ置いた `PageRowMenu` がこのボタンの下に開く。 */
-export function PageRowMenuButton(props: { title: string; open: boolean; onOpen: (anchor: HTMLElement) => void; sx?: IconButtonProps["sx"] }) {
+export function PageRowMenuButton(props: { title: string; open: boolean; onOpen: (anchor: HTMLElement) => void; sx?: IconButtonProps["sx"]; tabIndex?: number }) {
   return (
     <Tooltip title="スター・複製などの操作">
       <IconButton
@@ -52,6 +52,7 @@ export function PageRowMenuButton(props: { title: string; open: boolean; onOpen:
         aria-label={`「${props.title}」の操作`}
         aria-haspopup="menu"
         aria-expanded={props.open}
+        tabIndex={props.tabIndex}
         onClick={(e) => props.onOpen(e.currentTarget)}
         sx={props.sx}
       >
