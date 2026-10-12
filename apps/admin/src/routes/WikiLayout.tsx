@@ -21,6 +21,7 @@ import { Muted, RouterLink, Section } from "../components/ui";
 import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
+import { useTabIcon } from "../lib/tabIcon";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { Center, Loading, useSession, useWikis } from "./Layout";
 
@@ -61,6 +62,9 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
   useEffect(() => {
     if (wiki) rememberWiki(wiki.key);
   }, [wiki]);
+
+  // タブのアイコンを、開いている wiki のファビコンにする（未設定・wiki の外では既定のまま）
+  useTabIcon(wiki?.faviconUrl);
 
   if (wikis.isPending) return <Loading />;
   if (!wiki) {

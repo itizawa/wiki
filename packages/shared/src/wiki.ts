@@ -192,4 +192,6 @@ export type WikiSummary = Wiki & {
   publishedPages: number;
   /** ログインしている人の、この wiki でのロール（オーナーは管理者） */
   role: WikiRole;
+  /** 外観で設定したファビコンのパス（`/images/{name}`）。未設定は null。管理画面のタブのアイコンに使う */
+  faviconUrl: string | null;
 };
