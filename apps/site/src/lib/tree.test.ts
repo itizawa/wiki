@@ -55,7 +55,7 @@ describe("initialNavItems", () => {
     expect(b!.children[0]).toMatchObject({ nodeId: "b1", children: [], more: true });
     expect(JSON.stringify(initial("a1x"))).not.toContain("a2x");
     // 葉には付けない
-    expect(a!.children[0]!.children[0]!.children[0]).toEqual({ nodeId: "a1x1", title: "A1X1", icon: null, href: "/t/main/a1x1", children: [] });
+    expect(a!.children[0]!.children[0]!.children[0]).toEqual({ nodeId: "a1x1", title: "A1X1", icon: null, href: "/p/a1x1", children: [] });
   });
 
   it("does not change the full tree", () => {
