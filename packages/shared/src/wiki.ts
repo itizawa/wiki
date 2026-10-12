@@ -194,4 +194,6 @@ export type WikiSummary = Wiki & {
   role: WikiRole;
   /** 外観で設定したファビコンのパス（`/images/{name}`）。未設定は null。管理画面のタブのアイコンに使う */
   faviconUrl: string | null;
+  /** 外観で選んだテーマの key（`THEME_PRESETS` にあるもの）。管理画面の配色に使う */
+  themePreset: string;
 };

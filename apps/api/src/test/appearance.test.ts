@@ -70,6 +70,18 @@ describe("appearance", () => {
     expect(await faviconOf(editor)).toBeNull();
   });
 
+  it("gives the chosen theme in the wiki list to every member", async () => {
+    ctx = await setup();
+    const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    const presetOf = async (c: { call: typeof ctx.call }) =>
+      (await c.call("GET", "/admin/wikis")).body.wikis.find((w: { key: string }) => w.key === "wiki").themePreset;
+    expect(await presetOf(editor)).toBe("simple");
+
+    await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme: { ...base, preset: "space" } });
+    expect(await presetOf(ctx)).toBe("space");
+    expect(await presetOf(editor)).toBe("space");
+  });
+
   it("accepts only the keys of defined themes", async () => {
     ctx = await setup();
     for (const theme of [

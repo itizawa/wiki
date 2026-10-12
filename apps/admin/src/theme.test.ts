@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { theme } from "./theme";
+import { adminThemeFor, fixedModeOf, theme } from "./theme";
 
 type Scheme = { palette: { primary: { main: string }; background: { default: string; paper: string } } };
 const schemes = (theme as unknown as { colorSchemes: Record<"light" | "dark", Scheme> }).colorSchemes;
@@ -28,5 +28,34 @@ describe("キーボードのフォーカスの枠", () => {
   it("押せる部品すべてに、:focus-visible のときだけ出る枠がある", () => {
     const root = theme.components?.MuiButtonBase?.styleOverrides?.root as Record<string, Record<string, unknown>>;
     expect(root["&.Mui-focusVisible"]?.outline).toBe("2px solid");
+  });
+});
+
+describe("adminThemeFor（wiki の外観のテーマに合わせた配色）", () => {
+  it("「シンプル」と知らない key は、既定の配色のまま", () => {
+    expect(adminThemeFor("simple")).toBe(theme);
+    expect(adminThemeFor("unknown")).toBe(theme);
+  });
+
+  const darkOf = (preset: string) => (adminThemeFor(preset) as unknown as { colorSchemes: Record<"light" | "dark", Scheme> }).colorSchemes.dark.palette;
+  const lightOf = (preset: string) => (adminThemeFor(preset) as unknown as { colorSchemes: Record<"light" | "dark", Scheme> }).colorSchemes.light.palette;
+
+  it("ダークだけのテーマは、ダークの配色にテーマの色が入る", () => {
+    expect(fixedModeOf("space")).toBe("dark");
+    expect(darkOf("space").background.default).toBe("#0b1020");
+  });
+
+  it("ライトだけのテーマは、ライトの配色にテーマの色が入る", () => {
+    expect(fixedModeOf("notebook")).toBe("light");
+    expect(lightOf("notebook").background.default).toBe("#fbf7ea");
+  });
+
+  it("両方あるテーマと既定のテーマは、固定しない（端末の設定に追従）", () => {
+    expect(fixedModeOf("simple")).toBeNull();
+    expect(fixedModeOf("unknown")).toBeNull();
+  });
+
+  it("同じ key は同じテーマを返す", () => {
+    expect(adminThemeFor("owl")).toBe(adminThemeFor("owl"));
   });
 });

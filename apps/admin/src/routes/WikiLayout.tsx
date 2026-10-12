@@ -23,6 +23,7 @@ import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { useTabIcon } from "../lib/tabIcon";
+import { useAdminThemeFor } from "../lib/adminTheme";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { TOUCH } from "../theme";
 import { Center, Loading, mainProps, mainSx, SkipLink, useSession, useWikis } from "./Layout";
@@ -67,6 +68,8 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
 
   // タブのアイコンを、開いている wiki のファビコンにする（未設定・wiki の外では既定のまま）
   useTabIcon(wiki?.faviconUrl);
+  // 配色を、開いている wiki の外観のテーマにする
+  useAdminThemeFor(wikiKey, wiki?.themePreset);
 
   if (wikis.isPending) return <Loading />;
   if (!wiki) {
