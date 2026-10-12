@@ -19,6 +19,7 @@ import { api, ApiError, errorMessage } from "../../lib/api";
 import { extendSelection, parseBodyWithLines, selectBetween, selectionForLines, targetForSelection, type BlockUnit, type UnitSelection } from "../../lib/blockLines";
 import { inBodyOrder, rangesOverlap, rebaseDraftItems, relocateSelection, toCreateInput, type DraftItem } from "../../lib/editRequestDraft";
 import { invalidateEditRequests, itemCountLabel } from "../../lib/editRequests";
+import { UNTITLED_TITLE } from "../../lib/untitled";
 import { TOUCH } from "../../theme";
 import { confirmDialog } from "../ConfirmDialog";
 import { ReviewBody, unitName, type ReviewSelect, type ReviewSlot } from "../ReviewBody";
@@ -405,7 +406,7 @@ export function ComposeMode(props: {
                   {props.icon}
                 </Box>
               )}
-              {props.title || "無題"}
+              {props.title || UNTITLED_TITLE}
             </Typography>
             {/* 選べなかった理由は、本文のすぐ上に出す */}
             {pickNotice && (
