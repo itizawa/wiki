@@ -419,6 +419,8 @@ export function errorMessage(err: unknown): string {
       }
       case "x_rate_limited":
         return "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。";
+      case "x_payment_required":
+        return "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。";
       case "x_unavailable":
         return "X に届きませんでした。時間をおいて、もう一度お試しください。";
       case "exceeds_parent": {
