@@ -17,6 +17,7 @@ import { LoadingRegion, Muted, RouterLink, Section, SkeletonLines } from "../com
 import { api, ApiError, errorMessage } from "../lib/api";
 import { invalidateEditRequests, editRequestKeys, groupEditRequestItems, itemCountLabel } from "../lib/editRequests";
 import { formatDateTime } from "../lib/format";
+import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { pageLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
 
@@ -75,7 +76,8 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
     if (result.versionId === null) return;
     // 版が増えた：編集画面の本文と下書き、版やタイトルを出している所を読み直す。
     // ツリー（structure）はページの更新日時を持ち、30 秒は取り直さない（lib/queryStaleTime.ts）ので、ここで読み直す（編集画面で版を作ったときと同じ）
-    for (const key of [["page", pageId], ["draft", pageId], ["versions", pageId], ["pages"], ["search"], ["structure"], ["schedule"]]) void qc.invalidateQueries({ queryKey: key });
+    for (const key of [["page", pageId], ["draft", pageId]]) void qc.invalidateQueries({ queryKey: key });
+    invalidateAfterNewVersion(qc, pageId);
   };
 
   const decide = useMutation({

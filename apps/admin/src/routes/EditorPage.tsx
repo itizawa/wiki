@@ -22,6 +22,7 @@ import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
 import { formatDateTime } from "../lib/format";
+import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { takeJustCreated } from "../lib/newPage";
 import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
@@ -107,14 +108,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   });
 
   /** 版が増えたあと、版やタイトルを出している所を読み直す */
-  const refreshAfterNewVersion = () => {
-    void qc.invalidateQueries({ queryKey: ["versions", pageId] });
-    void qc.invalidateQueries({ queryKey: ["pages"] });
-    void qc.invalidateQueries({ queryKey: ["search"] });
-    void qc.invalidateQueries({ queryKey: ["structure"] });
-    // 「予約後に編集あり」の表示を更新する
-    void qc.invalidateQueries({ queryKey: ["schedule"] });
-  };
+  const refreshAfterNewVersion = () => invalidateAfterNewVersion(qc, pageId);
 
   // ワーカーが自分の下書きから版を作っていたら、その版をもとに編集を続ける。編集中の内容は入れ替えない
   // （読み直した head が編集中の内容と同じなら、未反映の変更は無くなる）
