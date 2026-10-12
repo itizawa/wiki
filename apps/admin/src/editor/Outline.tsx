@@ -5,7 +5,7 @@ import Popover from "@mui/material/Popover";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "../components/Tooltip";
-import { currentHeadingIndex, outlineOf, type OutlineHeading } from "./outlineHeadings";
+import { currentOutlineIndex, outlineOf, TITLE_INDEX, type OutlineHeading } from "./outlineHeadings";
 
 /** 見出しへ飛んだとき・いまの節を決めるときに空けておく、画面の上の余白（固定したヘッダー 48px ＋少し）。 */
 export const OUTLINE_SCROLL_MARGIN = 64;
@@ -15,7 +15,7 @@ const sameOutline = (a: OutlineHeading[], b: OutlineHeading[]) =>
 
 /**
  * 本文の見出しの一覧。書くたびに（版の復元などで本文が差し替わったときも）追いかける。
- * 見出しが2つ以上あるときだけ目次を出す（公開サイトと同じ）。
+ * 見出しが1つ以上あるときだけ目次を出す（公開サイトと同じ）。目次の先頭にはページのタイトルが付く。
  */
 export function useOutline(editor: Editor | null): OutlineHeading[] {
   const [headings, setHeadings] = useState<OutlineHeading[]>([]);
@@ -29,7 +29,7 @@ export function useOutline(editor: Editor | null): OutlineHeading[] {
     editor.on("transaction", update);
     return () => void editor.off("transaction", update);
   }, [editor]);
-  return editor && headings.length >= 2 ? headings : [];
+  return editor && headings.length >= 1 ? headings : [];
 }
 
 /** 見出しの要素。閉じたトグルの中にあって見えないときは、そのトグルを返す。 */
@@ -46,10 +46,10 @@ function jumpTo(editor: Editor, pos: number) {
 
 /** いま読んでいる節の番号。本文の枠（スクロールする main）を送るたびに見直す。 */
 function useCurrentHeading(editor: Editor | null, headings: OutlineHeading[]): number {
-  const [current, setCurrent] = useState(-1);
+  const [current, setCurrent] = useState(TITLE_INDEX);
   useEffect(() => {
     if (!editor || headings.length === 0) {
-      setCurrent(-1);
+      setCurrent(TITLE_INDEX);
       return;
     }
     const scroller = editor.view.dom.closest("main");
@@ -62,7 +62,7 @@ function useCurrentHeading(editor: Editor | null, headings: OutlineHeading[]): n
       });
       const line = (scroller?.getBoundingClientRect().top ?? 0) + OUTLINE_SCROLL_MARGIN;
       const atEnd = !!scroller && scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
-      setCurrent(currentHeadingIndex(tops, line, atEnd));
+      setCurrent(currentOutlineIndex(tops, line, atEnd));
     };
     const onScroll = () => {
       if (queued) return;
@@ -80,11 +80,39 @@ function useCurrentHeading(editor: Editor | null, headings: OutlineHeading[]): n
   return current;
 }
 
+const outlineLinkSx = {
+        display: "block",
+        py: 0.375,
+        pl: 1.25,
+        borderLeft: "2px solid transparent",
+        color: "text.secondary",
+        textDecoration: "none",
+        lineHeight: 1.5,
+        overflowWrap: "anywhere",
+        "&:hover": { color: "text.primary", textDecoration: "underline" },
+        "&[aria-current]": { color: "text.primary", fontWeight: 700, borderLeftColor: "primary.main" },
+} as const;
+
 /** 目次の一覧。いちばん浅い見出しを左端に揃え、いま読んでいる節は色・太字・左の線で示す。 */
-function OutlineList(props: { editor: Editor; headings: OutlineHeading[]; current: number; onJump?: () => void }) {
+function OutlineList(props: { editor: Editor; headings: OutlineHeading[]; title: string; onJumpTitle: () => void; current: number; onJump?: () => void }) {
   const minLevel = Math.min(...props.headings.map((h) => h.level));
   return (
     <Box component="ol" sx={{ listStyle: "none", m: 0, p: 0 }}>
+      <Box component="li">
+        <Box
+          component="a"
+          href="#"
+          aria-current={props.current === TITLE_INDEX ? "location" : undefined}
+          onClick={(e) => {
+            e.preventDefault();
+            props.onJump?.();
+            props.onJumpTitle();
+          }}
+          sx={outlineLinkSx}
+        >
+          {props.title}
+        </Box>
+      </Box>
       {props.headings.map((h, i) => (
         <Box component="li" key={h.pos} sx={{ pl: `${(h.level - minLevel) * 0.875}rem` }}>
           <Box
@@ -96,18 +124,7 @@ function OutlineList(props: { editor: Editor; headings: OutlineHeading[]; curren
               props.onJump?.();
               jumpTo(props.editor, h.pos);
             }}
-            sx={{
-              display: "block",
-              py: 0.375,
-              pl: 1.25,
-              borderLeft: "2px solid transparent",
-              color: "text.secondary",
-              textDecoration: "none",
-              lineHeight: 1.5,
-              overflowWrap: "anywhere",
-              "&:hover": { color: "text.primary", textDecoration: "underline" },
-              "&[aria-current]": { color: "text.primary", fontWeight: 700, borderLeftColor: "primary.main" },
-            }}
+            sx={outlineLinkSx}
           >
             {h.text}
           </Box>
@@ -118,7 +135,7 @@ function OutlineList(props: { editor: Editor; headings: OutlineHeading[]; curren
 }
 
 /** 広い画面で、本文の右に固定して出す目次。 */
-export function OutlineSide({ editor, headings }: { editor: Editor; headings: OutlineHeading[] }) {
+export function OutlineSide({ editor, headings, title, onJumpTitle }: { editor: Editor; headings: OutlineHeading[]; title: string; onJumpTitle: () => void }) {
   const current = useCurrentHeading(editor, headings);
   const nav = useRef<HTMLElement>(null);
   // 目次が長くて中でスクロールするとき、いまの節が見える位置に来るようにする
@@ -141,13 +158,13 @@ export function OutlineSide({ editor, headings }: { editor: Editor; headings: Ou
         fontSize: "0.8125rem",
       }}
     >
-      <OutlineList editor={editor} headings={headings} current={current} />
+      <OutlineList editor={editor} headings={headings} title={title} onJumpTitle={onJumpTitle} current={current} />
     </Box>
   );
 }
 
 /** ボタンの下に開く目次。見出しを選ぶと閉じる。スマホ幅では「…」メニューから開く。 */
-export function OutlinePopover(props: { editor: Editor; headings: OutlineHeading[]; anchorEl: HTMLElement | null; open: boolean; onClose: () => void }) {
+export function OutlinePopover(props: { editor: Editor; headings: OutlineHeading[]; title: string; onJumpTitle: () => void; anchorEl: HTMLElement | null; open: boolean; onClose: () => void }) {
   const current = useCurrentHeading(props.editor, props.headings);
   return (
     <Popover
@@ -158,13 +175,13 @@ export function OutlinePopover(props: { editor: Editor; headings: OutlineHeading
       transformOrigin={{ vertical: "top", horizontal: "right" }}
       slotProps={{ paper: { component: "nav", "aria-label": "目次", sx: { width: 280, maxWidth: "calc(100vw - 32px)", maxHeight: "60vh", p: 1.5, fontSize: "0.875rem" } } as object }}
     >
-      <OutlineList editor={props.editor} headings={props.headings} current={current} onJump={props.onClose} />
+      <OutlineList editor={props.editor} headings={props.headings} title={props.title} onJumpTitle={props.onJumpTitle} current={current} onJump={props.onClose} />
     </Popover>
   );
 }
 
 /** 本文の右に目次を置けない幅で、ヘッダーのボタンから開く目次。 */
-export function OutlineButton({ editor, headings }: { editor: Editor; headings: OutlineHeading[] }) {
+export function OutlineButton({ editor, headings, title, onJumpTitle }: { editor: Editor; headings: OutlineHeading[]; title: string; onJumpTitle: () => void }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
     <>
@@ -173,7 +190,7 @@ export function OutlineButton({ editor, headings }: { editor: Editor; headings: 
           <TableOfContents size={18} />
         </IconButton>
       </Tooltip>
-      <OutlinePopover editor={editor} headings={headings} anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} />
+      <OutlinePopover editor={editor} headings={headings} title={title} onJumpTitle={onJumpTitle} anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)} />
     </>
   );
 }

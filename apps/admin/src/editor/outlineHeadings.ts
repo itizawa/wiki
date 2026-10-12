@@ -3,6 +3,9 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 /** 目次に載せる1つの見出し。`pos` は本文の中の位置（見出しのノードの直前）。 */
 export type OutlineHeading = { pos: number; level: number; text: string };
 
+/** 目次の先頭に置くページのタイトルを指す、いまの節の番号。 */
+export const TITLE_INDEX = -1;
+
 /** 目次に載せる見出しの深さ（公開サイトと同じく #### まで）。 */
 const OUTLINE_MAX_LEVEL = 4;
 
@@ -36,4 +39,14 @@ export function currentHeadingIndex(tops: readonly (number | null)[], line: numb
     }
   }
   return index;
+}
+
+/**
+ * 先頭にタイトルを置いた目次で、いま読んでいる項目。
+ * 最初の見出しがまだ `line` に届いていなければ、先頭のタイトル（TITLE_INDEX）。いちばん下まで送ったときは、タイトルにしない。
+ */
+export function currentOutlineIndex(tops: readonly (number | null)[], line: number, atEnd: boolean): number {
+  const index = currentHeadingIndex(tops, line, atEnd);
+  const top = tops[index];
+  return !atEnd && top != null && top > line ? TITLE_INDEX : index;
 }

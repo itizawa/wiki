@@ -77,6 +77,8 @@ export function PageMenu(props: {
   editor: Editor | null;
   /** 目次に出す見出し。無ければ「目次」は出さない */
   headings: OutlineHeading[];
+  /** 目次の先頭のタイトルを押したときの動き（タイトル欄へ移る） */
+  onJumpTitle: () => void;
 }) {
   const { title, bodyMd } = props;
   const qc = useQueryClient();
@@ -315,7 +317,7 @@ export function PageMenu(props: {
       <Presentation open={presenting} title={title} bodyMd={bodyMd} onClose={() => setPresenting(false)} onExited={() => menuButton.current?.focus({ preventScroll: true })} />
       <PublishSheet page={props.page} dirty={props.dirty} ensureVersion={props.ensureVersion} open={publishOpen} onClose={() => setPublishOpen(false)} />
       {props.editor && (
-        <OutlinePopover editor={props.editor} headings={props.headings} anchorEl={menuButton.current} open={outlineOpen} onClose={() => setOutlineOpen(false)} />
+        <OutlinePopover editor={props.editor} headings={props.headings} title={title.trim() || "無題"} onJumpTitle={props.onJumpTitle} anchorEl={menuButton.current} open={outlineOpen} onClose={() => setOutlineOpen(false)} />
       )}
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar

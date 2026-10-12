@@ -1,4 +1,4 @@
-.article h1 { line-height: 1.4; margin: 0 0 4px; }
+.article h1 { line-height: 1.4; margin: 0 0 4px; scroll-margin-top: 16px; }
 /* ページのアイコン（絵文字）。タイトルとの間を少し空ける。プレゼンモードのタイトルのスライドでも同じ */
 .icon { margin-right: 0.25em; }
 /* カバー画像。高さを固定して、読み込みで本文が下へずれないようにする（切り抜きは中央） */
@@ -162,5 +162,5 @@
 .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: 16px; }
 /* 狭い画面では上にヘッダーが張り付く（Base.module.css）ので、その高さぶん空ける */
 @media (max-width: 800px) {
-  .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: calc(var(--header-height) + 16px); }
+  .body :global(:is(h1, h2, h3, h4, h5, h6)), .article h1 { scroll-margin-top: calc(var(--header-height) + 16px); }
 }

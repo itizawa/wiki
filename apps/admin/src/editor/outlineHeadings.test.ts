@@ -1,7 +1,7 @@
 import { Editor } from "@tiptap/react";
 import { describe, expect, it } from "vitest";
 import { editorExtensions } from "./extensions";
-import { currentHeadingIndex, outlineOf } from "./outlineHeadings";
+import { currentHeadingIndex, currentOutlineIndex, outlineOf, TITLE_INDEX } from "./outlineHeadings";
 
 const outline = (md: string) =>
   outlineOf(new Editor({ element: null, extensions: editorExtensions, content: md, contentType: "markdown" }).state.doc).map(({ level, text }) => ({ level, text }));
@@ -52,5 +52,24 @@ describe("いま読んでいる節", () => {
 
   it("見出しが無ければ -1", () => {
     expect(currentHeadingIndex([], 64, false)).toBe(-1);
+  });
+});
+
+describe("タイトルを先頭に置いた目次の、いま読んでいる項目", () => {
+  it("最初の見出しがまだ上端に届いていなければ、タイトル", () => {
+    expect(currentOutlineIndex([300, 900], 64, false)).toBe(TITLE_INDEX);
+  });
+
+  it("最初の見出しが上端を過ぎたら、その見出し", () => {
+    expect(currentOutlineIndex([40, 900], 64, false)).toBe(0);
+    expect(currentOutlineIndex([-500, 40], 64, false)).toBe(1);
+  });
+
+  it("見出しが1つで、いちばん下まで送ったときは、その見出し", () => {
+    expect(currentOutlineIndex([300], 64, true)).toBe(0);
+  });
+
+  it("見出しがすべて隠れているときは、タイトルにしない", () => {
+    expect(currentOutlineIndex([null], 64, false)).toBe(0);
   });
 });

@@ -299,6 +299,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   if (!page.data || !draft) return <SkeletonEditor />;
   const p = page.data;
   const counter = titleCounter(draft.title.length);
+  const outlineTitle = draft.title.trim() || UNTITLED;
 
   const pageMenu = (
     <PageMenu
@@ -317,6 +318,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       ensureVersion={ensureVersion}
       editor={editor}
       headings={headings}
+      onJumpTitle={focusTitleEnd}
     />
   );
 
@@ -342,7 +344,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       )}
       {editor && headings.length > 0 && (
         <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
-          <OutlineButton editor={editor} headings={headings} />
+          <OutlineButton editor={editor} headings={headings} title={outlineTitle} onJumpTitle={focusTitleEnd} />
         </Box>
       )}
       <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
@@ -514,11 +516,10 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} onEditor={setEditor} onLeaveTop={focusTitleEnd} />
           </Box>
           {/* 広い画面では、目次を本文の右に置いて、スクロール中も見えるようにする */}
-          {editor && headings.length > 0 && (
-            <Box sx={{ display: "none", flex: "0 0 200px", pt: 4, [SIDE_OUTLINE]: { display: "block" } }}>
-              <OutlineSide editor={editor} headings={headings} />
-            </Box>
-          )}
+          {/* 見出しが無いときも列は空けておく（見出しを書き足すたびに、本文が左右にずれないように） */}
+          <Box sx={{ display: "none", flex: "0 0 200px", pt: 4, [SIDE_OUTLINE]: { display: "block" } }}>
+            {editor && headings.length > 0 && <OutlineSide editor={editor} headings={headings} title={outlineTitle} onJumpTitle={focusTitleEnd} />}
+          </Box>
         </Box>
         <EditingStats bodyMd={draft.bodyMd} />
       </Box>
