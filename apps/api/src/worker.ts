@@ -43,9 +43,28 @@ function toAppRequest(request: Request): Request | null {
   return null;
 }
 
+/** エッジのキャッシュ（`caches.default`）のうち、ここで使う部分。Workers のランタイムにだけある */
+type EdgeCache = { match(key: string): Promise<Response | undefined>; put(key: string, response: Response): Promise<void> };
+
+function edgeCache(): EdgeCache | null {
+  return (globalThis as { caches?: { default?: EdgeCache } }).caches?.default ?? null;
+}
+
+/**
+ * 画像（`GET /images/{name}`）をエッジのキャッシュに入れるときのキー。画像でなければ null。
+ * 画像は認証なしで配るもの（`images/routes.ts`）で、名前が同じなら中身も同じなので、URL だけで決めてよい。
+ * クエリは捨てる（`?x=1` を付け替えて、キャッシュに無い要求を作らせない）。
+ */
+function imageCacheKey(request: Request): string | null {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  return url.pathname.startsWith("/images/") ? `${url.origin}${url.pathname}` : null;
+}
+
 /**
  * Cloudflare Workers のエントリ。静的アセット（管理画面）に当たらなかったリクエストだけがここに来る。
  * 接続はリクエストをまたいで持ち越せないので、リクエストごとに開いて閉じる（プールは Hyperdrive 側が持つ）。
+ * 画像は、エッジのキャッシュにあれば DB にも R2 にも触らずに返す。
  */
 export function createWorker(connect: Connect) {
   return {
@@ -53,13 +72,20 @@ export function createWorker(connect: Connect) {
       const appRequest = toAppRequest(request);
       if (!appRequest) return Response.json({ error: { code: "not_found", message: "not found" } }, { status: 404 });
 
+      const cache = edgeCache();
+      const cacheKey = cache ? imageCacheKey(request) : null;
+      if (cache && cacheKey) {
+        const cached = await cache.match(cacheKey).catch(() => undefined);
+        if (cached) return cached;
+      }
+
       const vars = Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === "string")) as Record<string, string>;
       const config = loadConfig(vars);
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const { db, close } = connect(env);
       const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER };
       try {
-        return await createApp({
+        const res = await createApp({
           db,
           config,
           google,
@@ -68,6 +94,12 @@ export function createWorker(connect: Connect) {
           cronMarks: env.CRON_MARKS ?? null,
           rateLimits,
         }).fetch(appRequest);
+        // 入れるのは見つかった画像だけ（404 は入れない）。Cookie を書く応答は、ほかの人に返さないよう入れない。
+        // 入れ終わるのは応答を返したあと。失敗しても応答は返す
+        if (cache && cacheKey && res.status === 200 && !res.headers.has("set-cookie")) {
+          ctx.waitUntil(cache.put(cacheKey, res.clone()).catch(() => undefined));
+        }
+        return res;
       } finally {
         ctx.waitUntil(close());
       }

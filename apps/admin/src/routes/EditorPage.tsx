@@ -6,15 +6,17 @@ import Snackbar from "@mui/material/Snackbar";
 import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useBlocker, useNavigate } from "@tanstack/react-router";
-import type { PageDetail, PageDraft } from "@wiki/shared";
+import { createLink, useBlocker, useNavigate } from "@tanstack/react-router";
+import type { AppliedEditRequests, PageDetail, PageDraft } from "@wiki/shared";
+import { GitPullRequestArrow } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { caretOnLastLine, enterBodyFromTitle } from "../editor/titleBridge";
 import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
-import { api, errorMessage } from "../lib/api";
+import { api, ApiError, errorMessage } from "../lib/api";
+import { editRequestsLink, mergeAppliedEdits, useOpenEditRequestCount } from "../lib/editRequests";
 import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
@@ -46,6 +48,10 @@ const UNTITLED = "無題";
 const TITLE_REQUIRED = "タイトルが空のため、版として残せません。タイトルを入れてください。";
 
 const draftOf = (p: PageDetail): Draft => ({ title: p.head.title, bodyMd: p.head.bodyMd });
+
+const ButtonLink = createLink(Button);
+
+const isVersionConflict = (err: unknown) => err instanceof ApiError && err.status === 409 && err.code === "version_conflict";
 
 export function EditorPage({ pageId, historyVersionId }: { pageId: string; historyVersionId: string | null }) {
   const qc = useQueryClient();
@@ -183,6 +189,43 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     save.reset();
   };
 
+  // 別の画面で版が先に進んでいて保存できなかった（409）とき、その版が編集リクエストの採用でできたものかを確かめる。
+  // 採用でできた版なら、同じ置き換えを手元の内容にかければ、手元を捨てずに続けられる（サーバーも、下書きに同じ置き換えをかけている）
+  const saveError = save.error ?? autosave.error;
+  const conflicted = isVersionConflict(saveError);
+  const applied = useQuery({
+    queryKey: ["edit-requests", pageId, "applied", baseVersionId],
+    queryFn: () => api.appliedEditRequests(pageId, baseVersionId!),
+    enabled: conflicted && baseVersionId !== null,
+    gcTime: 0,
+    retry: false,
+  });
+  const accepted = conflicted && applied.data?.mergeable && applied.data.steps.length > 0 ? applied.data : null;
+  /** 採用された置き換えをかけた、手元の本文。採用された箇所を手元でも書き換えていて、かけられなければ null */
+  const merged = useMemo(() => (accepted && draft ? mergeAppliedEdits(draft.bodyMd, accepted.steps) : null), [accepted, draft]);
+
+  /** 採用された変更を、手元の内容に取り込んで編集を続ける */
+  const takeInAccepted = async () => {
+    if (!accepted || merged === null || !draft) return;
+    await autosave.settle();
+    const latest = await qc.fetchQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+    // 確かめたあとに、さらに版が進んでいた。もう一度確かめ直す
+    if (latest.headVersionId !== accepted.headVersionId) {
+      void applied.refetch();
+      return;
+    }
+    setDraft({ ...draft, bodyMd: merged });
+    setBase(latest.headVersionId);
+    setRestored(null);
+    save.reset();
+    // 取り込んだ内容は、まだ保存していない。止まっていた自動保存を再開して、新しい版をもとにした下書きとして保存する
+    autosave.resume();
+    refreshAfterNewVersion();
+    setNotice("採用された変更を、手元の内容に取り込みました");
+  };
+
+  const openRequests = useOpenEditRequestCount(pageId);
+
   // ゴミ箱に入れる。サイドバーの行の「…」と同じもの（そちらからこのページを入れたときも、下の移動の確認は出さない）
   const { confirmAndDelete, error: removeError } = useDeletePage();
   useEffect(() => forgetRemovedPage(pageId), [pageId]);
@@ -227,8 +270,6 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   }
   if (!page.data || !draft) return <SkeletonEditor />;
   const p = page.data;
-  // 版を作れなかった・下書きを保存できなかった（どちらも、別の画面で先に版ができたときは読み直すしかない）
-  const saveError = save.error ?? autosave.error;
 
   const pageMenu = (
     <PageMenu
@@ -240,6 +281,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       onPickIcon={() => setIconPickerOpen(true)}
       onKeepVersion={() => void keepVersion()}
       onOpenHistory={() => showVersion(p.headVersionId)}
+      openEditRequests={openRequests}
       onDelete={() => void confirmAndDelete({ id: p.id, title: p.title, publishedVersionId: p.publishedVersionId })}
       narrow={narrow}
       page={p}
@@ -254,6 +296,12 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const actions = (
     <>
       <StarButton pageId={pageId} />
+      {/* 未対応の編集リクエストがあるあいだだけ、件数つきで出す。0件のときは「…」メニューから開く */}
+      {openRequests !== undefined && openRequests > 0 && (
+        <ButtonLink {...editRequestsLink(pageId)} size="small" variant="outlined" startIcon={<GitPullRequestArrow size={16} />} sx={{ whiteSpace: "nowrap" }}>
+          編集リクエスト {openRequests}
+        </ButtonLink>
+      )}
       {editor && headings.length > 0 && (
         <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
           <OutlineButton editor={editor} headings={headings} />
@@ -304,6 +352,27 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               <Alert severity="error" sx={{ mb: 2 }}>
                 {TITLE_REQUIRED}
               </Alert>
+            ) : conflicted && applied.isPending ? (
+              // 採用でできた版かどうかを確かめているあいだ。手元の内容は、そのまま残っている
+              <Alert severity="info" sx={{ mb: 2 }}>
+                別の画面で、このページの新しい版が作られました。手元の内容はそのまま残っています。新しい版の内容を確かめています…
+              </Alert>
+            ) : accepted ? (
+              <AcceptedNotice
+                accepted={accepted}
+                canTakeIn={merged !== null}
+                onTakeIn={() => void takeInAccepted()}
+                onReload={async () => {
+                  const ok = await confirmDialog({
+                    title: "手元の内容を捨てて、最新の版を読み込みますか？",
+                    body: "まだ版になっていない手元の変更は失われます。",
+                    confirmLabel: "手元の内容を捨てて読み込む",
+                    cancelLabel: "編集に戻る",
+                    danger: true,
+                  });
+                  if (ok) await revertToLatest();
+                }}
+              />
             ) : saveError ? (
               <Alert
                 severity="error"
@@ -413,6 +482,38 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         </Alert>
       )}
     </Box>
+  );
+}
+
+/**
+ * 編集中に、ほかの人（か外部のアプリ）が編集リクエストを採用して、新しい版ができたことを知らせる。
+ * 採用された変更を手元の内容に取り込めば、手元を捨てずに続けられる。採用された箇所を手元でも書き換えていたら、取り込めない。
+ */
+function AcceptedNotice(props: { accepted: AppliedEditRequests; canTakeIn: boolean; onTakeIn: () => void; onReload: () => void }) {
+  const names = [...new Set(props.accepted.steps.map((s) => s.acceptedBy?.name).filter((n): n is string => Boolean(n)))];
+  const count = props.accepted.steps.reduce((n, s) => n + s.edits.length, 0);
+  const who = names.length > 0 ? `${names.join("、")} さんが` : "ほかの人が";
+  return (
+    <Alert
+      severity={props.canTakeIn ? "info" : "warning"}
+      // 選ぶまで自動保存が止まるので、本文の下のほうを書いていても見えるよう、画面の上に留める
+      sx={{ mb: 2, position: "sticky", top: { xs: 8, md: 56 }, zIndex: 1, boxShadow: 3, "& .MuiAlert-message": { minWidth: 0 } }}
+    >
+      {who}、このページの編集リクエストの提案を {count} 件採用し、新しい版ができました。
+      {props.canTakeIn
+        ? "手元の内容はそのまま残っています。採用された変更を取り込むと、手元の内容に同じ置き換えをかけて、そのまま編集を続けられます。"
+        : "採用された箇所を手元でも書き換えているため、取り込めません。手元の内容を残したいときは、書き換えた箇所を控えてから、最新の版を読み込んでください。"}
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
+        {props.canTakeIn && (
+          <Button variant="contained" size="small" onClick={props.onTakeIn}>
+            採用された変更を取り込む
+          </Button>
+        )}
+        <Button variant="outlined" color="inherit" size="small" onClick={props.onReload}>
+          手元の内容を捨てて最新の版を読み込む
+        </Button>
+      </Box>
+    </Alert>
   );
 }
 

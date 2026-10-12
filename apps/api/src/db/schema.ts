@@ -154,6 +154,33 @@ export const pageVersions = pgTable(
 );
 
 /**
+ * 検索用の、head 版のタイトルと本文の写し。管理画面の検索（`routes/search.ts`）が、ここを `ILIKE '%語%'` で探す。
+ *
+ * - 版（`page_versions`）は過去の本文も持つので、そこに索引を付けると、探さない本文まで索引に入る。
+ *   `pages` に本文を持たせると、公開・ゴミ箱などで `pages` の行を書き換えるたびに本文の索引も作り直され、
+ *   `pages` を読むすべての所が本文まで読むことになる。なので表を分けている
+ * - タイトルもここに持つのは、「タイトルか本文に含む」（OR）を1つの表の2つの索引で引けるようにするため
+ * - **head 版を進める所は、同じトランザクションで `syncPageSearch`（`pages/versions.ts`）を呼ぶ**。
+ *   `createPage` と `createVersion` が呼んでいるので、この2つを通せば足りる
+ * - 完全に削除したページの行は消す（本文を残さない）。ゴミ箱のページの行は残す（元に戻せば、また探せる）
+ * - 索引は pg_trgm の GIN。3文字以上の語で効く（1〜2文字の語は、この表を全部読む）
+ */
+export const pageSearch = pgTable(
+  "page_search",
+  {
+    pageId: text("page_id")
+      .primaryKey()
+      .references(() => pages.id),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+  },
+  (t) => [
+    index("page_search_title_trgm_idx").using("gin", t.title.op("gin_trgm_ops")),
+    index("page_search_body_trgm_idx").using("gin", t.bodyMd.op("gin_trgm_ops")),
+  ],
+);
+
+/**
  * 編集中の下書き（自動保存）。人ごとに1つだけ持つ。編集が一段落したらワーカーが版にし、版になったら消す
  * （人が操作して版を作ったときも消す）。
  * base_version_id は下書きを始めたときの head。head が先に進んでいたら、下書きは古い版をもとにしている。
@@ -176,6 +203,123 @@ export const pageDrafts = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.pageId, t.userId] })],
+);
+
+/**
+ * 編集リクエスト：1ページに対する1回分。箇所ごとの項目（`edit_request_items`）を束ねる。
+ * リクエスト自体に状態は持たせない（未対応の項目が0件になったら完了）。
+ */
+export const editRequests = pgTable(
+  "edit_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** 全体へのひとこと */
+    comment: text("comment"),
+    /** 出した人。外部のアプリ（MCP）から出したものは、許可した人 */
+    createdBy: uuid("created_by")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
+    /** 外部のアプリ（MCP）から出したものなら、その連携 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // ページごとの一覧（新しい順）
+    index("edit_requests_page_idx").on(t.pageId, t.createdAt),
+    // wiki ごとの一覧（新しい順）
+    index("edit_requests_wiki_idx").on(t.wikiId, t.createdAt),
+  ],
+);
+
+/**
+ * 編集リクエストの項目。位置は「基準の版・本文（Markdown）の行の範囲・その範囲の元の文面」で持つ（行の数え方は `bodyLines`）。
+ * 出したあとは書き換えない（直すときは、取り下げて出し直す）。変わるのは状態と、決めた人・日時・採用でできた版だけ。
+ * 「古くなった」は状態に持たない（未対応のまま。読むたびに最新の版から決める）。
+ */
+export const editRequestItems = pgTable(
+  "edit_request_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => editRequests.id),
+    /** リクエストの中での並び（0 から） */
+    position: integer("position").notNull(),
+    /** 項目の種類。suggestion: 提案（置き換え案を持つ）、note: 指摘（置き換え案を持たず、本文を持つ） */
+    kind: text("kind", { enum: ["suggestion", "note"] }).notNull().default("suggestion"),
+    /** 基準の版。項目が残っているあいだは、版の間引き（`pages/prune.ts`）で消さない */
+    baseVersionId: uuid("base_version_id")
+      .notNull()
+      .references(() => pageVersions.id),
+    /** 基準の版での行の範囲（1から数え、両端を含む） */
+    startLine: integer("start_line").notNull(),
+    endLine: integer("end_line").notNull(),
+    /** 基準の版で、その範囲にあった文面（Markdown）。サーバーが切り出す */
+    originalMd: text("original_md").notNull(),
+    /** 提案の置き換え案（Markdown）。空の文字なら、その行を消す提案（null とは別）。指摘では null */
+    replacementMd: text("replacement_md"),
+    /** 提案の理由（任意）。指摘では null */
+    reason: text("reason"),
+    /** 指摘の本文（プレーンテキスト。必須）。提案では null */
+    noteBody: text("note_body"),
+    /** 未対応は、種類を問わず open。提案は accepted / rejected、指摘は resolved になる。どちらも withdrawn にできる */
+    status: text("status", { enum: ["open", "accepted", "rejected", "resolved", "withdrawn"] }).notNull().default("open"),
+    /** 採用・却下・解決済み・取り下げを決めた人と日時。未対応に戻したら null に戻す */
+    decidedBy: uuid("decided_by").references((): AnyPgColumn => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** 採用でできた版。「すべて採用」では、複数の項目が同じ版を指す */
+    acceptedVersionId: uuid("accepted_version_id").references(() => pageVersions.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("edit_request_items_kind_check", sql`${t.kind} in ('suggestion', 'note')`),
+    check("edit_request_items_status_check", sql`${t.status} in ('open', 'accepted', 'rejected', 'resolved', 'withdrawn')`),
+    // 種類ごとの形：提案は置き換え案が必須（空の文字は「行を消す」）で本文を持たず、解決済みにならない。
+    // 指摘は本文が必須で、置き換え案・理由・採用でできた版を持たず、採用・却下にならない
+    check(
+      "edit_request_items_kind_shape_check",
+      sql`(${t.kind} = 'suggestion' and ${t.replacementMd} is not null and ${t.noteBody} is null and ${t.status} <> 'resolved') or (${t.kind} = 'note' and ${t.replacementMd} is null and ${t.reason} is null and ${t.acceptedVersionId} is null and ${t.noteBody} is not null and btrim(${t.noteBody}) <> '' and ${t.status} not in ('accepted', 'rejected'))`,
+    ),
+    check("edit_request_items_lines_check", sql`${t.startLine} >= 1 and ${t.endLine} >= ${t.startLine}`),
+    unique("edit_request_items_request_position_unique").on(t.requestId, t.position),
+    // 版の間引きが「項目が基準にしている版か」を版ごとに引く
+    index("edit_request_items_base_version_idx").on(t.baseVersionId),
+    // 版履歴が「採用でできた版か」を版ごとに引く
+    index("edit_request_items_accepted_version_idx").on(t.acceptedVersionId),
+    // 未対応の件数（ページごと・wiki ごと）。提案も指摘も、未対応は open
+    index("edit_request_items_open_idx").on(t.requestId).where(sql`${t.status} = 'open'`),
+  ],
+);
+
+/**
+ * 編集リクエストの項目への返信。本文はプレーンテキスト（HTML としても Markdown としても描かない）。
+ * 書いたあとは、書き換えも削除もしない（消えるのは、ページを完全に削除したときだけ）。
+ */
+export const editRequestComments = pgTable(
+  "edit_request_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => editRequestItems.id),
+    body: text("body").notNull(),
+    /** 書いた人。外部のアプリ（MCP）から書いたものは、許可した人 */
+    createdBy: uuid("created_by")
+      .notNull()
+      .references((): AnyPgColumn => users.id),
+    /** 外部のアプリ（MCP）から書いたものなら、その連携 */
+    oauthGrantId: uuid("oauth_grant_id").references(() => oauthGrants.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("edit_request_comments_body_check", sql`btrim(${t.body}) <> ''`),
+    // 項目ごとの返信（古い順）
+    index("edit_request_comments_item_idx").on(t.itemId, t.createdAt),
+  ],
 );
 
 export const pageLinks = pgTable(

@@ -16,8 +16,15 @@ preview_urls = true
 [assets]
 directory = "dist"
 binding = "ASSETS"
-# アセットより先に Worker を通す。パスを直接指定して、ほかの wiki のディレクトリを開けないようにする
-run_worker_first = true
+# アセットより先に Worker を通す。パスを直接指定して、ほかの wiki のディレクトリを開けないようにする。
+# /_astro/*（Astro のスクリプトとスタイル。名前にハッシュが入り、どの wiki にも共通）だけは Worker を通さずに返す。
+# - 「!」の付いたパターンが優先され、並べる順は関係ない
+#   https://developers.cloudflare.com/workers/static-assets/binding/#run_worker_first
+# - Worker を通さないパスは Host による振り分けも通らない。wiki ごとの内容が出るパスをここに足さない
+#   （/_astro/ に wiki の内容が出ていないことは、scripts/verify-build.mjs が確かめる）
+# - 上のルートは管理画面（wiki-admin）のホストにも当たるので、ここに足したパスは、そのホストでもこの Worker のファイルが返る。
+#   /favicon.svg は管理画面にもあるので足さない
+run_worker_first = ["/*", "!/_astro/*"]
 # /p/{id} は {wiki}/p/{id}.html、/u/{key}/ は {wiki}/u/{key}/index.html を返す
 html_handling = "auto-trailing-slash"
 # 無いパスは、その wiki の 404.html（{wiki}/404.html）を返す

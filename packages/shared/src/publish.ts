@@ -122,7 +122,11 @@ export type WikiManifest = {
   gaMeasurementId: string | null;
   /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */
   searchConsoleVerification: string | null;
-  headCommitId: string;
+  /**
+   * この wiki の公開内容のハッシュ。公開サイトの出力に出るものだけから作る（apps/api/src/publishing/manifest.ts）。
+   * 前のビルドと同じなら、この wiki の出力は変わらない
+   */
+  contentHash: string;
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];
   trees: ManifestTree[];
@@ -132,7 +136,7 @@ export type WikiManifest = {
 
 export type PublicManifest = {
   generatedAt: string;
-  /** generatedAt を除いた、全 wiki の内容のハッシュ。変わらなければビルドを省略できる */
+  /** 全 wiki の key と、wiki ごとの contentHash から作ったハッシュ。変わらなければビルドを省略できる */
   contentHash: string;
   /** アーカイブ中の wiki は含めない */
   wikis: WikiManifest[];

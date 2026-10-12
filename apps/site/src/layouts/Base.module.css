@@ -1,6 +1,8 @@
 .header {
   display: flex; align-items: center; gap: 16px; padding: 12px 16px;
   border-bottom: 1px solid var(--border); max-width: 1200px; margin: 0 auto;
+  /* ページ遷移のフェードから外す（global.css） */
+  view-transition-name: site-header;
 }
 /* 狭い画面では、ヘッダーを上に張り付ける。下にスクロールしたら隠し、上にスクロールしたら戻す
    （data-hidden は Base.astro のスクリプトが付ける。スクリプトが動かなければ、張り付いたまま出続ける） */

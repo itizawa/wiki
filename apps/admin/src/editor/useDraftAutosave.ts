@@ -71,6 +71,9 @@ export function useDraftAutosave(
     await inflight.current;
   }, []);
 
+  /** 保存の失敗（別の画面で版が先に進んでいた、など）を片付けて、自動保存を再開する。手元の内容は、まだ保存していないものとして残る */
+  const resume = useCallback(() => setError(null), []);
+
   const pending = content !== null && syncedState !== null && !sameContent(content, syncedState);
   const conflict = error instanceof ApiError && error.status === 409;
 
@@ -80,5 +83,5 @@ export function useDraftAutosave(
     return () => clearTimeout(timer);
   }, [content, pending, paused, saving, conflict, error, flush]);
 
-  return { pending, saving, savedAt, error, conflict, markSynced, flush, settle };
+  return { pending, saving, savedAt, error, conflict, markSynced, flush, settle, resume };
 }

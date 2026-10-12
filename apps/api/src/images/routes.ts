@@ -25,7 +25,10 @@ export const imageUploadRoutes = new Hono<AppEnv>().post("/", async (c) => {
   return c.json({ url: `/images/${name}` }, 201);
 });
 
-/** 画像を配る。認証はしない（URL を知っていれば見られる）。名前は変わらないので、長くキャッシュさせる */
+/**
+ * 画像を配る。認証はしない（URL を知っていれば見られる）。名前は変わらないので、長くキャッシュさせる。
+ * Workers の上では、この応答をエッジのキャッシュにも入れる（`worker.ts`）。ここに認証を足すなら、そちらも変える
+ */
 export const imageServeRoutes = new Hono<AppEnv>().get("/:name", async (c) => {
   const name = imageNameFromPath(`/images/${c.req.param("name")}`);
   const store = c.get("deps").images;
