@@ -21,7 +21,7 @@ export const ChildrenList = Node.create({
   draggable: true,
 
   addAttributes() {
-    return { depth: { default: CHILDREN_DEFAULTS.depth }, sort: { default: CHILDREN_DEFAULTS.sort } };
+    return { depth: { default: CHILDREN_DEFAULTS.depth, rendered: false }, sort: { default: CHILDREN_DEFAULTS.sort, rendered: false } };
   },
 
   parseHTML() {
