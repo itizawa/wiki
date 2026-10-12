@@ -133,9 +133,16 @@ export async function findLivePage(db: Db, wikiId: string, id: string, forUpdate
 }
 
 export async function getDetail(db: Db, wikiId: string, id: string): Promise<PageDetail> {
-  const page = await findLivePage(db, wikiId, id);
-  const head = await findVersion(db, eq(pageVersions.id, page.headVersionId));
-  return { ...toSummary(page), head: head! };
+  // ページと head の版を1回の問い合わせで引く（2回直列にすると、往復1回ぶん遅くなる）
+  const [row] = await db
+    .select({ page: pages, version: pageVersions, name: users.name, email: users.email, acceptedItems: acceptedItemCount })
+    .from(pages)
+    .innerJoin(pageVersions, eq(pageVersions.id, pages.headVersionId))
+    .leftJoin(users, eq(users.id, pageVersions.createdBy))
+    .where(and(eq(pages.wikiId, wikiId), eq(pages.id, id), isNull(pages.deletedAt)));
+  if (!row) throw notFound(`page ${id}`);
+  const author = row.email === null ? null : { name: row.name, email: row.email };
+  return { ...toSummary(row.page), head: toVersion(row.version, author, Number(row.acceptedItems)) };
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
