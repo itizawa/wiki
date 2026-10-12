@@ -64,8 +64,28 @@ describe("本文のMarkdown往復", () => {
     expect(types("https://www.google.com/maps/embed?pb=1")).toEqual(["googleMap"]);
     expect(types("ここ https://www.google.com/maps/embed?pb=1")).toEqual(["paragraph"]);
     expect(types("https://www.google.com/maps/embed?pb=1\n続きの文")).toEqual(["paragraph"]);
-    expect(types("https://example.com/maps/embed?pb=1")).toEqual(["paragraph"]);
+    // 地図ではない URL だけの段落は、リンクカードの部品になる
+    expect(types("https://example.com/maps/embed?pb=1")).toEqual(["linkCard"]);
     expect(types("<https://www.google.com/maps/embed?pb=1>")).toEqual(["googleMap"]);
+  });
+
+  it("外部の URL だけの段落はカードの部品になり、文章の中・続きの行・[文字](URL)・内部リンクは段落のまま。往復しても同じ", () => {
+    const types = (md: string) => manager.parse(md).content?.map((n) => n.type);
+    expect(types("https://example.com/post")).toEqual(["linkCard"]);
+    expect(types("<https://example.com/post>")).toEqual(["linkCard"]);
+    expect(types("前\n\nhttps://example.com/post\n\n後")).toEqual(["paragraph", "linkCard", "paragraph"]);
+    expect(types("ここ https://example.com/post")).toEqual(["paragraph"]);
+    expect(types("https://example.com/post\n続きの文")).toEqual(["paragraph"]);
+    expect(types("[文字](https://example.com/post)")).toEqual(["paragraph"]);
+    expect(types("/p/abcdefghij")).toEqual(["paragraph"]);
+    expect(types("https://www.google.com/maps/embed?pb=1")).toEqual(["googleMap"]);
+    expect(roundTrip("前\n\nhttps://example.com/post\n\n後")).toBe("前\n\nhttps://example.com/post\n\n後");
+  });
+
+  it("「リンクに戻した」段落（URL を文字にしたリンク）は、カードに戻らない", () => {
+    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "https://example.com/post", marks: [{ type: "link", attrs: { href: "https://example.com/post" } }] }] }] };
+    const md = manager.serialize(doc);
+    expect(manager.parse(md).content?.map((n) => n.type)).toEqual(["paragraph"]);
   });
 
   it("@children は一覧の部品になり、コードブロックの中・文中は部品にならない", () => {
