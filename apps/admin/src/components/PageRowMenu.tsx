@@ -13,6 +13,7 @@ import type { TreeNode } from "@wiki/shared";
 import { Copy, Ellipsis, ExternalLink, Globe, Link, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
+import { COPY_FAILED_MESSAGE, copyText } from "../lib/clipboard";
 import { useDeletePage } from "../lib/deletePage";
 import { focusAfterRemoval } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
@@ -110,12 +111,7 @@ export function PageRowMenu(props: {
 
   const copyLink = async (url: string) => {
     onClose();
-    try {
-      await navigator.clipboard.writeText(url);
-      setNotice("リンクをコピーしました");
-    } catch {
-      setNotice("コピーできませんでした。ブラウザでクリップボードの利用を許可してください");
-    }
+    setNotice((await copyText(url)) ? "リンクをコピーしました" : COPY_FAILED_MESSAGE);
   };
 
   const page = target?.page;
