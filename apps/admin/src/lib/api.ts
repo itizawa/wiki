@@ -43,6 +43,8 @@ import type {
   WikiAppearance,
   WikiHome,
   WikiRole,
+  SnsPostResult,
+  SnsStatus,
   WikiSettings,
   WikiSummary,
   WikiViews,
@@ -265,6 +267,13 @@ export const api = {
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
   updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
 
+  /** 「設定」の「SNS」：wiki につないだ SNS のアカウント（管理者だけ） */
+  snsStatus: () => request<SnsStatus>("GET", w("/sns")),
+  /** X の認可を始める。返ってきた URL（X の認可の画面）へ移る */
+  connectX: () => request<{ url: string }>("POST", w("/sns/x/connect")),
+  disconnectX: () => request<SnsStatus>("POST", w("/sns/x/disconnect")),
+  testPostX: (text: string) => request<SnsPostResult>("POST", w("/sns/x/test-post"), { text }),
+
   /** 「アクセス解析」：Google Analytics とサーチコンソールの数字と、連携の状態。同じ期間は、API が1時間のあいだ使い回す */
   analytics: (days: AnalyticsDays) => request<WikiAnalytics>("GET", w(`/analytics?days=${days}`)),
   /** Google から取り直す（1分おきまで） */
@@ -404,6 +413,21 @@ export function errorMessage(err: unknown): string {
         return "この招待リンクは見つかりません。";
       case "cycle":
         return "自分自身や子孫の下には移動できません。";
+      case "x_not_configured":
+        return "この管理画面には、X の開発者アプリの設定がまだ登録されていないため、X と連携できません。";
+      case "sns_not_connected":
+        return "この wiki には、X のアカウントが連携されていません。先に「X と連携する」から連携してください。";
+      case "x_reauth_required":
+        return "X との連携が切れています（X の側で連携を外したか、許可の期限が切れました）。「X と連携し直す」から、もう一度許可してください。";
+      case "x_rejected": {
+        const detail = (err.details as { detail?: unknown } | undefined)?.detail;
+        const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
+        return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
+      }
+      case "x_rate_limited":
+        return "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。";
+      case "x_unavailable":
+        return "X に届きませんでした。時間をおいて、もう一度お試しください。";
       case "exceeds_parent": {
         const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
         const parent = d?.parentTitle ? `親ページ「${d.parentTitle}」` : "親ページ";

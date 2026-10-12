@@ -9,13 +9,15 @@ import { sessions } from "../db/schema";
  */
 export const SESSION_COOKIE = "wiki_session";
 export const OAUTH_COOKIE = "wiki_oauth";
+/** X 連携の認可の state と PKCE の値を運ぶ Cookie。Google のログインと同時に進めても上書きし合わないよう、別の名前にする */
+export const X_OAUTH_COOKIE = "wiki_x_oauth";
 
 /**
  * 読み書きする Cookie の名前。https では `__Host-` を付け、兄弟のサブドメイン（公開サイト）から
  * `Domain` 付きで同じ名前の Cookie を植えられないようにする（ブラウザが `Secure`・`Path=/`・`Domain` なしのものだけを受け付ける）。
  * http（手元の開発）では `__Host-` の Cookie をブラウザが受け付けないので、もとの名前のままにする。
  */
-export function cookieName(base: typeof SESSION_COOKIE | typeof OAUTH_COOKIE, secure: boolean): string {
+export function cookieName(base: typeof SESSION_COOKIE | typeof OAUTH_COOKIE | typeof X_OAUTH_COOKIE, secure: boolean): string {
   return secure ? `__Host-${base}` : base;
 }
 export const SESSION_TTL_SEC = 60 * 60 * 24 * 7;
@@ -83,6 +85,30 @@ export async function verifyOAuthState(
       ...(typeof payload.invite === "string" && { invite: payload.invite }),
       ...(typeof payload.next === "string" && { next: payload.next }),
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * X 連携の認可を始めたときの値。短命の署名付き Cookie に入れて往復させる。
+ * どの wiki に、だれがつなごうとしたかも入れ、戻ってきたときに同じ人かを確かめる。
+ */
+export type XOAuthState = { state: string; codeVerifier: string; wikiKey: string; userId: string };
+
+export async function signXOAuthState(secret: string, data: XOAuthState): Promise<string> {
+  return new SignJWT({ state: data.state, cv: data.codeVerifier, wiki: data.wikiKey, uid: data.userId, typ: "x_oauth" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setExpirationTime("10m")
+    .sign(key(secret));
+}
+
+export async function verifyXOAuthState(secret: string, token: string): Promise<XOAuthState | null> {
+  try {
+    const { payload } = await jwtVerify(token, key(secret), { algorithms: ["HS256"] });
+    const { state, cv, wiki, uid } = payload;
+    if (payload.typ !== "x_oauth" || typeof state !== "string" || typeof cv !== "string" || typeof wiki !== "string" || typeof uid !== "string") return null;
+    return { state, codeVerifier: cv, wikiKey: wiki, userId: uid };
   } catch {
     return null;
   }

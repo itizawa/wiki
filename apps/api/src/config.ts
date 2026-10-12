@@ -23,6 +23,11 @@ export type AppConfig = {
    * null：未設定（この機能は無効）。"invalid"：登録してあるが、鍵の JSON として読めない
    */
   googleServiceAccount: GoogleServiceAccount | "invalid" | null;
+  /**
+   * SNS 連携の X の開発者アプリ（OAuth 2.0 のクライアント）と、トークンを暗号化して DB に持つための鍵。
+   * 3つ（`X_CLIENT_ID`・`X_CLIENT_SECRET`・`SNS_TOKEN_KEY`）がそろっていなければ null（X 連携は無効）
+   */
+  x: { clientId: string; clientSecret: string; redirectUri: string; tokenKey: string } | null;
 };
 
 /**
@@ -40,6 +45,9 @@ export function parseServiceAccount(json: string | undefined): AppConfig["google
     return "invalid";
   }
 }
+
+/** `SNS_TOKEN_KEY` の長さの下限。短いものは鍵として使わない（X 連携は無効になる） */
+export const SNS_TOKEN_KEY_MIN = 32;
 
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const required = (key: string) => {
@@ -65,5 +73,14 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     exportToken: env.EXPORT_TOKEN || undefined,
     cronToken: env.CRON_TOKEN || undefined,
     googleServiceAccount: parseServiceAccount(env.GOOGLE_SERVICE_ACCOUNT_JSON),
+    x:
+      env.X_CLIENT_ID && env.X_CLIENT_SECRET && env.SNS_TOKEN_KEY && env.SNS_TOKEN_KEY.length >= SNS_TOKEN_KEY_MIN
+        ? {
+            clientId: env.X_CLIENT_ID,
+            clientSecret: env.X_CLIENT_SECRET,
+            redirectUri: env.X_REDIRECT_URI ?? `${adminOrigin}/api/auth/x/callback`,
+            tokenKey: env.SNS_TOKEN_KEY,
+          }
+        : null,
   };
 }

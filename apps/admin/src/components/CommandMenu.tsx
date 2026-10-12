@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
@@ -134,6 +134,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // トップページ（公開サイトのトップの自由記述）も管理者だけ
     ...(role === "admin"
       ? [{ id: "home", label: "「トップページ」を開く", keywords: ["home", "top", "intro", "toppage"], icon: <PanelsTopLeft size={18} />, run: go("/w/$wikiKey/settings/home") }]
+      : []),
+    // SNS の連携も管理者だけ
+    ...(role === "admin"
+      ? [{ id: "sns", label: "「SNS」を開く", keywords: ["sns", "x", "twitter", "post", "renkei"], icon: <Share2 size={18} />, run: go("/w/$wikiKey/settings/sns") }]
       : []),
     { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },
     {

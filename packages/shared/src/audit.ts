@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Visibility } from "./page";
 import type { PublishVisibility } from "./publish";
 import { WIKI_ROLE_LABELS, type WikiRole } from "./users";
+import { SNS_PROVIDER_LABELS, type SnsProvider } from "./sns";
 
 /**
  * 監査ログ：「誰が・いつ・何をしたか」を、あとから確かめるための記録。追記だけで、直したり消したりしない。
@@ -53,6 +54,9 @@ export const AUDIT_ACTIONS = {
 
   wiki_update: "settings",
   wiki_home_update: "settings",
+  sns_connect: "settings",
+  sns_disconnect: "settings",
+  sns_test_post: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -125,6 +129,11 @@ export type AuditDetailMap = {
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
   wiki_home_update: Record<string, never>;
+  /** SNS のアカウントをつないだ・外した。トークンは入れない */
+  sns_connect: { provider: SnsProvider; username: string };
+  sns_disconnect: { provider: SnsProvider; username: string };
+  /** 管理画面からテスト投稿をした（文面は残さない） */
+  sns_test_post: { provider: SnsProvider; username: string; postId: string };
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -295,6 +304,12 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
     }
     case "wiki_home_update":
       return plain("公開サイトのトップページの自由記述を変更しました");
+    case "sns_connect":
+      return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）を連携しました`);
+    case "sns_disconnect":
+      return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）の連携を解除しました`);
+    case "sns_test_post":
+      return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）にテスト投稿をしました`);
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];

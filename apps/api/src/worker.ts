@@ -1,6 +1,7 @@
 import { reportingFromConfig } from "./analytics/google";
 import { createApp } from "./app";
 import { createGoogleOidc } from "./auth/google";
+import { createXClient } from "./sns/x-client";
 import { loadConfig } from "./config";
 import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
@@ -82,6 +83,7 @@ export function createWorker(connect: Connect) {
       const vars = Object.fromEntries(Object.entries(env).filter(([, v]) => typeof v === "string")) as Record<string, string>;
       const config = loadConfig(vars);
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
+      const x = config.x ? createXClient(config.x) : null;
       const { db, close } = connect(env);
       const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER };
       try {
@@ -89,6 +91,7 @@ export function createWorker(connect: Connect) {
           db,
           config,
           google,
+          x,
           images: env.IMAGES ? r2ImageStore(env.IMAGES) : null,
           reporting: reportingFromConfig(config),
           cronMarks: env.CRON_MARKS ?? null,
