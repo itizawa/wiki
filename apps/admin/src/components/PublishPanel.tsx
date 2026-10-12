@@ -23,8 +23,11 @@ import {
 } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { api, errorMessage } from "../lib/api";
+import { useScheduleToasts } from "../lib/scheduleActions";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
+import { focusAfterRemoval } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
+import { checkRunAt } from "../lib/runAt";
 import { publicPageUrl } from "../lib/publicUrl";
 import { scheduleChoices, type ScheduleKind } from "../lib/scheduleKind";
 import { descendantImpact, pageHierarchy } from "../lib/visibility";
@@ -84,6 +87,10 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
   const impact = descendantImpact(descendants, visibility);
   const publishedDescendants = descendants.filter((d) => d.published).length;
   const blockedByDescendants = impact.wider > 0 && !applyToDescendants;
+
+  const toasts = useScheduleToasts();
+  // 予約の日時は、送る前に過去・空を確かめる（編集カレンダーの日時の変更と同じ）
+  const runAtCheck = checkRunAt(runAt, Date.now());
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ["page", page.id] });
@@ -274,13 +281,26 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                 ))}
               </TextField>
               {scheduleKind === "publish_page" && visibilitySelect({ width: "100%" }, "公開範囲")}
-              <TextField type="datetime-local" label="日時（JST）" fullWidth value={runAt} onChange={(e) => setRunAt(e.target.value)} />
+              <TextField
+                type="datetime-local"
+                label="日時（JST）"
+                fullWidth
+                value={runAt}
+                onChange={(e) => {
+                  setRunAt(e.target.value);
+                  // 日時を直したら、前に送って返ったエラーは古いので消す
+                  action.reset();
+                }}
+                error={runAtCheck.error !== null}
+                helperText={runAtCheck.error ?? "いまより先の日時を選べます。"}
+                slotProps={{ htmlInput: { min: runAtCheck.min }, inputLabel: { shrink: true } }}
+              />
               <Button
                 variant="outlined"
-                disabled={action.isPending || !runAt}
+                disabled={action.isPending || runAtCheck.error !== null}
                 onClick={() =>
-                  action.mutate(async () =>
-                    api.createSchedule(
+                  action.mutate(async () => {
+                    const created = await api.createSchedule(
                       scheduleKind === "publish_page"
                         ? {
                             actionType: "publish_page",
@@ -290,8 +310,9 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                             runAt: jstLocalToIso(runAt),
                           }
                         : { actionType: "unpublish_page", pageId: page.id, runAt: jstLocalToIso(runAt) },
-                    ),
-                  )
+                    );
+                    toasts.created(created, page.title);
+                  })
                 }
               >
                 予約する
@@ -312,7 +333,19 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                         {formatDateTime(a.runAt)} に{actionLabel(a)}
                       </Typography>
                       {(a.status === "scheduled" || a.status === "failed") && (
-                        <Button variant="text" color="error" onClick={() => action.mutate(() => api.cancelSchedule(a.id))}>
+                        <Button
+                          variant="text"
+                          color="error"
+                          onClick={(e) => {
+                            // 押したボタンは行ごと消えるので、次の予約（無ければ「予約」のタブ）にフォーカスを移す
+                            const restore = focusAfterRemoval(e.currentTarget.closest("li"), {
+                              scope: e.currentTarget.closest("ul"),
+                              focusSelector: "li button",
+                              fallback: () => document.getElementById(tabId("schedule")),
+                            });
+                            action.mutate(() => toasts.cancel({ ...a, pageTitle: a.pageTitle ?? page.title }), { onSuccess: restore });
+                          }}
+                        >
                           予約を取り消す
                         </Button>
                       )}

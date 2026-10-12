@@ -60,10 +60,10 @@ export function ConfirmHost() {
   const shown = useSyncExternalStore(subscribe, lastSnapshot);
   return (
     <Dialog open={active !== null} onClose={() => settle(false)} fullWidth maxWidth="xs" aria-labelledby="confirm-title">
-      <DialogTitle id="confirm-title">{shown?.title}</DialogTitle>
+      <DialogTitle id="confirm-title" sx={{ overflowWrap: "anywhere" }}>{shown?.title}</DialogTitle>
       {shown?.body && (
         <DialogContent>
-          <DialogContentText>{shown.body}</DialogContentText>
+          <DialogContentText sx={{ overflowWrap: "anywhere" }}>{shown.body}</DialogContentText>
         </DialogContent>
       )}
       {/* 取り返しのつかない操作のボタンは、やめるボタンから離して置く */}

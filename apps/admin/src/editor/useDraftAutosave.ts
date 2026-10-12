@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
+import { draftPayload } from "../lib/titleLimit";
 
 export type DraftContent = { title: string; bodyMd: string };
 
@@ -14,6 +15,7 @@ const RETRY_DELAY_MS = 5000;
  * 編集中の内容を、下書きとしてサーバーに自動保存する（版は作らない。編集が一段落すると、ワーカーが下書きを版にする）。
  * 打つのが止まったら保存し、保存中に打った分は保存が終わってから続けて保存する。
  * 別の画面で版が先に進んでいた（409）ときは、読み直すまで保存しない。
+ * タイトルが上限を超えているあいだは、タイトルを除いて本文だけを保存する（タイトルを直すまで、タイトルの変更は保存されない）。
  * 自分の下書きからワーカーが版を作っていたときは、保存の返事でいまの head が分かるので `onHeadMoved` で知らせる。
  */
 export function useDraftAutosave(
@@ -46,12 +48,15 @@ export function useDraftAutosave(
   const flush = useCallback(async (): Promise<boolean> => {
     if (inflight.current) await inflight.current;
     const { content, baseVersionId } = latest.current;
-    if (!content || !baseVersionId || !synced.current || sameContent(content, synced.current)) return true;
+    if (!content || !baseVersionId || !synced.current) return true;
+    // タイトルが上限を超えていたら、タイトルは送らず本文だけ保存する（本文の下書きを止めない）
+    const payload = draftPayload(content, synced.current.title);
+    if (sameContent(payload, synced.current)) return true;
     const run = (async () => {
       setSaving(true);
       try {
-        const res = await api.saveDraft(pageId, { baseVersionId, ...content });
-        markSynced(content, res.draft?.updatedAt ?? null);
+        const res = await api.saveDraft(pageId, { baseVersionId, ...payload });
+        markSynced(payload, res.draft?.updatedAt ?? null);
         if (res.headVersionId !== baseVersionId) headMoved.current(res.headVersionId);
         return true;
       } catch (e) {

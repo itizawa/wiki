@@ -47,7 +47,7 @@ import type {
   WikiSettings,
   WikiSummary,
 } from "@wiki/shared";
-import { IMAGE_LIMIT_LABEL } from "@wiki/shared";
+import { IMAGE_LIMIT_LABEL, PAGE_TITLE_MAX } from "@wiki/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -331,6 +331,8 @@ export const api = {
   saveHome: (input: UpdateHomeInput) => request<WikiHome>("PUT", w("/home"), input),
   /** ロゴ・ファビコンをアップロードし、パス（`/images/{name}`）を返す。PNG・WebP の 512KB まで */
   uploadThemeImage: (file: Blob) => upload(w("/appearance/images"), file),
+  /** 背景画像をアップロードし、パス（`/images/{name}`）を返す。PNG・JPEG・WebP の 2MB まで */
+  uploadBackgroundImage: (file: Blob) => upload(w("/appearance/background-images"), file),
 
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
@@ -348,9 +350,30 @@ function imageLimit(err: ApiError): string {
   return typeof limit === "string" ? limit : IMAGE_LIMIT_LABEL;
 }
 
+/** API の検証エラー（zod の項目）に出てくる項目名 */
+const FIELD_LABEL: Record<string, string> = { title: "タイトル", bodyMd: "本文" };
+
+/** `invalid_input` の `details`（zod の項目の配列）から、どの項目をどう直すかを言う。分からなければ、確かめるよう促す */
+export function invalidInputMessage(details: unknown): string {
+  const issues = Array.isArray(details) ? (details as { path?: unknown; code?: string }[]) : [];
+  const first = issues.find((i) => Array.isArray(i.path) && typeof i.path[0] === "string" && FIELD_LABEL[i.path[0]]);
+  const field = first && Array.isArray(first.path) ? (first.path[0] as string) : null;
+  if (field === "title") {
+    return first?.code === "too_small" ? "タイトルを入れてください。" : `タイトルは${PAGE_TITLE_MAX}字までです。短くしてください。`;
+  }
+  if (field) return `${FIELD_LABEL[field]}の内容に誤りがあります。確かめて、もう一度お試しください。`;
+  return "入力内容に誤りがあります。各項目を確かめて、もう一度お試しください。";
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
+      case "invalid_input":
+        return invalidInputMessage(err.details);
+      case "not_found":
+        return "見つかりません。ゴミ箱に入れられたか、URL が違います。";
+      case "invalid_request":
+        return "接続の依頼が見つからないか、期限が切れています。";
       case "version_conflict":
         return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
       case "edit_request_stale":
@@ -419,6 +442,8 @@ export function errorMessage(err: unknown): string {
       }
       case "x_rate_limited":
         return "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。";
+      case "x_payment_required":
+        return "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。";
       case "x_unavailable":
         return "X に届きませんでした。時間をおいて、もう一度お試しください。";
       case "exceeds_parent": {

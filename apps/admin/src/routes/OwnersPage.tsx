@@ -3,14 +3,10 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserSummary } from "@wiki/shared";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
 import { Tooltip } from "../components/Tooltip";
@@ -18,6 +14,9 @@ import { Muted, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useSession } from "./Layout";
+
+/** 一覧の行の高さ（読み込み中の行も、この高さで出す） */
+const OWNER_ROW_HEIGHT = 64;
 
 /** オーナーの追加・解除。オーナーにだけ出す。オーナーにできるのは、登録済みのユーザー（一度は招待で参加した人など）。 */
 export function OwnersPage() {
@@ -60,6 +59,61 @@ export function OwnersPage() {
     if (ok) setOwner.mutate({ user, isOwner: !user.isOwner });
   };
 
+  const columns: DataListColumn<UserSummary>[] = [
+    {
+      key: "name",
+      header: "名前 / メールアドレス",
+      width: "minmax(200px, 1fr)",
+      render: (u) => (
+        <Box>
+          <Box sx={{ fontWeight: 600 }}>
+            {u.name ?? u.email}
+            {u.id === session.id && <Chip size="small" label="自分" sx={{ ml: 1 }} />}
+          </Box>
+          {u.name && <Muted>{u.email}</Muted>}
+        </Box>
+      ),
+    },
+    {
+      key: "lastLoginAt",
+      header: "最後のログイン",
+      render: (u) => (
+        <Box>
+          {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <Muted component="span">まだログインしていません</Muted>}
+          {!u.linked && <Muted sx={{ fontSize: 12 }}>このメールアドレスで最初にログインした Google アカウントに結びつきます</Muted>}
+        </Box>
+      ),
+    },
+    {
+      key: "owner",
+      header: "オーナー",
+      render: (u) => {
+        const lastOwner = u.isOwner && owners <= 1;
+        return (
+          <Box>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+              {u.isOwner && <Chip size="small" color="primary" label="オーナー" />}
+              <Tooltip title={lastOwner ? "最後のオーナーは解除できません。先にほかの人をオーナーにしてください" : ""}>
+                <span>
+                  <Button
+                    variant="outlined"
+                    color={u.isOwner ? "error" : "primary"}
+                    disabled={lastOwner || setOwner.isPending}
+                    onClick={() => toggle(u)}
+                    sx={{ whiteSpace: "nowrap" }}
+                  >
+                    {u.isOwner ? "オーナーから外す" : "オーナーにする"}
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
+            {lastOwner && <Muted sx={{ mt: 0.5, whiteSpace: "nowrap" }}>最後のオーナーなので、外せません</Muted>}
+          </Box>
+        );
+      },
+    },
+  ];
+
   return (
     <Stack spacing={1.5}>
       <ConfirmHost />
@@ -83,58 +137,16 @@ export function OwnersPage() {
           <Typography variant="subtitle1" component="h3" gutterBottom>
             登録済みのユーザー
           </Typography>
-          {users.isPending && <Muted>読み込み中…</Muted>}
-          {list.length > 0 && (
-            <Box sx={{ overflowX: "auto" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>名前 / メールアドレス</TableCell>
-                    <TableCell>最後のログイン</TableCell>
-                    <TableCell>オーナー</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {list.map((u) => {
-                    const lastOwner = u.isOwner && owners <= 1;
-                    return (
-                      <TableRow key={u.id}>
-                        <TableCell>
-                          <Box sx={{ fontWeight: 600 }}>
-                            {u.name ?? u.email}
-                            {u.id === session.id && <Chip size="small" label="自分" sx={{ ml: 1 }} />}
-                          </Box>
-                          {u.name && <Muted>{u.email}</Muted>}
-                        </TableCell>
-                        <TableCell>
-                          {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <Muted component="span">まだログインしていません</Muted>}
-                          {!u.linked && (
-                            <Muted sx={{ fontSize: 12 }}>このメールアドレスで最初にログインした Google アカウントに結びつきます</Muted>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {u.isOwner && <Chip size="small" color="primary" label="オーナー" sx={{ mr: 1.5 }} />}
-                          <Tooltip title={lastOwner ? "最後のオーナーは解除できません。先にほかの人をオーナーにしてください" : ""}>
-                            <span>
-                              <Button
-                                variant="outlined"
-                                color={u.isOwner ? "error" : "primary"}
-                                disabled={lastOwner || setOwner.isPending}
-                                onClick={() => toggle(u)}
-                              >
-                                {u.isOwner ? "オーナーから外す" : "オーナーにする"}
-                              </Button>
-                            </span>
-                          </Tooltip>
-                          {lastOwner && <Muted sx={{ mt: 0.5 }}>最後のオーナーなので、外せません</Muted>}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </Box>
-          )}
+          {/* 読み込みのエラーは、上で出している */}
+          <DataList
+            label="登録済みのユーザー"
+            columns={columns}
+            rows={users.data ? list : undefined}
+            rowKey={(u) => u.id}
+            empty="登録済みのユーザーはいません。"
+            rowHeight={OWNER_ROW_HEIGHT}
+            skeletonRows={3}
+          />
         </Section>
       )}
     </Stack>

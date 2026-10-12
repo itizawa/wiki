@@ -183,7 +183,7 @@ function EntryRow({ entry, showWiki }: { entry: AuditLogEntry; showWiki: boolean
       sx={{
         display: "grid",
         // 日時の桁を揃え、狭い画面では文を下の行に回す
-        gridTemplateColumns: { xs: "auto 1fr", md: "auto 12em 1fr" },
+        gridTemplateColumns: { xs: "auto minmax(0, 1fr)", md: "auto 12em minmax(0, 1fr)" },
         columnGap: 2,
         rowGap: 0.25,
         px: 2,
@@ -199,7 +199,7 @@ function EntryRow({ entry, showWiki }: { entry: AuditLogEntry; showWiki: boolean
         {entry.actor.via && <Chip size="small" label={`${entry.actor.via} 経由`} variant="outlined" sx={{ ml: 1 }} />}
         {entry.actor.type === "system" && <Chip size="small" label="予約の実行" variant="outlined" sx={{ ml: 1 }} />}
       </Box>
-      <Box sx={{ gridColumn: { xs: "1 / -1", md: "auto" } }}>
+      <Box sx={{ gridColumn: { xs: "1 / -1", md: "auto" }, minWidth: 0, overflowWrap: "anywhere" }}>
         {showWiki && <Chip size="small" label={entry.wiki?.name ?? "全体"} sx={{ mr: 1 }} />}
         {describeAudit(entry).map((part, i) =>
           part.target && pageId && entry.wiki ? (

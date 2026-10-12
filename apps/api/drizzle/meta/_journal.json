@@ -232,6 +232,13 @@
       "when": 1791775341124,
       "tag": "0032_wiki_site_public",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791776348550,
+      "tag": "0033_user_picture",
+      "breakpoints": true
     }
   ]
 }

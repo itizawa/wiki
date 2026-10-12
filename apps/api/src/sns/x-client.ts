@@ -15,9 +15,9 @@ export type XUser = { id: string; username: string; name: string };
 /**
  * X が断った理由。
  * unauthorized：トークンが無効（連携し直しが要る）／forbidden：権限が無い・ポストの内容を X が受け付けない／
- * rate_limited：回数の上限／unavailable：X に届かない・X の側の障害
+ * rate_limited：回数の上限／payment_required：X の API の利用残高（クレジット）が足りない（402）／unavailable：X に届かない・X の側の障害
  */
-export type XErrorKind = "unauthorized" | "forbidden" | "rate_limited" | "unavailable";
+export type XErrorKind = "unauthorized" | "forbidden" | "rate_limited" | "payment_required" | "unavailable";
 
 /** X の API の失敗。トークンや応答の本文は持たない（detail は X が返した短い説明だけ）。 */
 export class XApiError extends Error {
@@ -54,6 +54,7 @@ function kindOf(status: number, tokenEndpoint: boolean): XErrorKind {
   if (status === 401 || (tokenEndpoint && status === 400)) return "unauthorized";
   if (status === 400 || status === 403) return "forbidden";
   if (status === 429) return "rate_limited";
+  if (status === 402) return "payment_required";
   return "unavailable";
 }
 

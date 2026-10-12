@@ -126,7 +126,7 @@ export const authRoutes = new Hono<AppEnv>()
     const identity = await google.exchangeCode({ code, nonce: saved.nonce });
     // メールアドレスが未確認のアカウントは、ログインも参加もできない
     const { db } = c.get("deps");
-    const login = { sub: identity.sub, email: identity.email, name: identity.name };
+    const login = { sub: identity.sub, email: identity.email, name: identity.name, picture: identity.picture ?? null };
     const meta = requestMeta(c);
     if (!identity.emailVerified) {
       await recordDenied(db, login, "unverified", meta);
