@@ -1,10 +1,19 @@
 ---
-import { ChevronsLeft, X } from "lucide-react";
+import { ChevronsLeft, Rss, Search, X } from "lucide-react";
 import layout from "../styles/page.module.css";
 
+interface Props {
+  /** 開いているのが検索ページなら "search"（サイドバーの「検索」を現在地として示す） */
+  current?: "search";
+  /** スロットにページ一覧（ツリーナビ）を入れるか。公開ページが無いツリーでは false にして、見出しも出さない */
+  list?: boolean;
+}
+
+const { current, list = true } = Astro.props;
+
 /**
- * ツリーナビを入れる左の列。`.withNav` の中に置く。
- * 広い画面では左のサイドバーになり、狭い画面（800px 以下）ではヘッダーの「階層を開く」で開く左のドロワーになる
+ * サイドバーになる左の列。`.withNav` の中に置く。上に、サイト全体にまたがる「検索」「RSS」、その下に「ページ一覧」（スロットに入れたツリーナビ）を並べる。
+ * 広い画面では左のサイドバーになり、狭い画面（800px 以下）ではヘッダーの「ページ一覧を開く」で開く左のドロワーになる
  * （同じ要素を CSS で切り替えるので、ツリーは1か所にしか出ない）。ヘッダーのボタンを出すのは Base.astro（`nav` を渡したとき）。
  * サイドバーは「サイドバーを閉じる」で閉じ、ヘッダーの「サイドバーを開く」で開く。閉じたことは localStorage に覚える（描く前に当てるのは Base.astro）。
  * スクリプトが動かなければ、サイドバーは開いたままで、ヘッダーのボタンはトップ（/）へのリンクのまま。
@@ -15,8 +24,7 @@ import layout from "../styles/page.module.css";
 <aside id="site-nav" data-nav-drawer data-pagefind-ignore>
   <div class={layout.navInner}>
     <div class={layout.drawerHead}>
-      <span>階層</span>
-      <button type="button" class={layout.drawerClose} data-nav-close aria-label="階層を閉じる"><X size={20} aria-hidden="true" /></button>
+      <button type="button" class={layout.drawerClose} data-nav-close aria-label="ページ一覧を閉じる"><X size={20} aria-hidden="true" /></button>
       <button
         type="button"
         class={layout.sidebarClose}
@@ -30,7 +38,24 @@ import layout from "../styles/page.module.css";
         <ChevronsLeft size={20} aria-hidden="true" />
       </button>
     </div>
-    <slot />
+    <nav class={layout.sideLinks} aria-label="サイト全体">
+      <a href="/search" aria-current={current === "search" ? "page" : undefined}>
+        <Search size={16} aria-hidden="true" />
+        検索
+      </a>
+      <a href="/feed.xml">
+        <Rss size={16} aria-hidden="true" />
+        RSS
+      </a>
+    </nav>
+    {
+      list && (
+        <>
+          <h2 class={layout.listHeading}>ページ一覧</h2>
+          <slot />
+        </>
+      )
+    }
   </div>
 </aside>
 
@@ -59,7 +84,7 @@ import layout from "../styles/page.module.css";
     // ヘッダーのボタンの名前と aria-expanded を、いまの幅での役目（ドロワーか、サイドバーか）に合わせる
     const syncToggle = () => {
       const sidebarOpen = !root.hasAttribute("data-sidebar-closed");
-      const label = narrow.matches ? "階層を開く" : "サイドバーを開く";
+      const label = narrow.matches ? "ページ一覧を開く" : "サイドバーを開く";
       toggle.setAttribute("aria-label", label);
       toggle.title = label;
       toggle.setAttribute("aria-expanded", String(narrow.matches ? root.hasAttribute("data-nav-open") : sidebarOpen));
@@ -100,7 +125,7 @@ import layout from "../styles/page.module.css";
       if (open) {
         drawer.setAttribute("role", "dialog");
         drawer.setAttribute("aria-modal", "true");
-        drawer.setAttribute("aria-label", "階層");
+        drawer.setAttribute("aria-label", "ページ一覧");
         inertOthers();
         close?.focus();
       } else {

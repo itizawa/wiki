@@ -7,8 +7,19 @@
 .withNav > aside { font-size: 0.9rem; }
 /* ドロワーの幕。開いている間だけ出す */
 .navBackdrop { display: none; }
-/* 列の見出し（「階層」と、閉じるボタン）。スクロールしても上に残る */
-.drawerHead { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; font-weight: 700; }
+/* 列の上の帯（閉じるボタン）。スクロールしても上に残る */
+.drawerHead { display: flex; align-items: center; justify-content: flex-end; position: sticky; top: 0; font-weight: 700; }
+/* サイト全体の「検索」「RSS」と、その下の「ページ一覧」の見出し */
+.sideLinks { display: flex; flex-direction: column; margin-bottom: 12px; }
+.sideLinks a {
+  display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; border-radius: var(--radius);
+  color: var(--text); text-decoration: none;
+}
+.sideLinks a:hover { background: var(--bg); }
+.sideLinks a[aria-current="page"] { background: var(--bg); font-weight: 600; color: var(--accent); }
+.sideLinks svg { flex: none; color: var(--muted); }
+.sideLinks a[aria-current="page"] svg { color: inherit; }
+.listHeading { margin: 0 0 4px; padding: 0 6px; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
 .drawerClose, .sidebarClose {
   align-items: center; justify-content: center; width: 40px; height: 40px;
   border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer;
@@ -28,7 +39,7 @@
   .sidebarClose { display: inline-flex; margin-right: -4px; }
   :global(html[data-sidebar-closed]) .withNav > aside { display: none; }
 }
-/* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「階層を開く」で開く。NavDrawer.astro）。
+/* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「ページ一覧を開く」で開く。NavDrawer.astro）。
    閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
 @media (max-width: 800px) {
   .withNav > aside {

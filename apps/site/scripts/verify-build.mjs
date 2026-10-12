@@ -87,20 +87,28 @@ check(!unlisted.includes("nav.json") && !unlisted.includes('"items"'), "an unlis
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 
-// ---- 狭い画面のドロワー（ヘッダーの「階層を開く」と、ツリーナビの列）
+// ---- 狭い画面のドロワー（ヘッダーの「ページ一覧を開く」と、サイドバーの列）
 const hasDrawer = (html) => html.includes("data-nav-toggle") && html.includes('id="site-nav"');
 check(hasDrawer(iconPage) && iconPage.includes('href="/" data-nav-toggle'), "an article page has the tree button (a link to the tree without JavaScript) and the drawer");
 check(hasDrawer(tPage) && tPage.includes('href="/" data-nav-toggle'), "a page viewed through a tree opens that tree in the drawer");
 check(/<aside[^>]*id="site-nav"[^>]*data-pagefind-ignore/.test(iconPage), "the tree nav column is left out of the search index");
 const topPage = await read("wiki/index.html");
 check(hasDrawer(topPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(topPage), "the top shows the tree nav next to the new posts");
-const noDrawer = { "search": await read("wiki/search.html"), "404": await read("wiki/404.html"), "unlisted": unlisted };
+const searchPage = await read("wiki/search.html");
+const noDrawer = { "404": await read("wiki/404.html"), "unlisted": unlisted };
 const withDrawer = Object.entries(noDrawer).filter(([, html]) => html.includes("data-nav-toggle") || html.includes("site-nav"));
-check(withDrawer.length === 0, `search, 404 and unlisted pages have no tree button or drawer${withDrawer.length ? ` (${withDrawer.map(([k]) => k).join(", ")})` : ""}`);
+check(withDrawer.length === 0, `404 and unlisted pages have no tree button or drawer${withDrawer.length ? ` (${withDrawer.map(([k]) => k).join(", ")})` : ""}`);
+// 検索・RSS はサイト全体のものなので、「…」メニューではなくサイドバーに置く。検索ページも、記事と同じサイドバーを持つ
+check(
+  [iconPage, tPage, topPage, searchPage].every((html) => /<nav[^>]*aria-label="サイト全体"[^>]*>[\s\S]*?href="\/search"[\s\S]*?href="\/feed\.xml"/.test(html)),
+  "the sidebar has search and RSS on the top, the search page, and article pages",
+);
+check(hasDrawer(searchPage) && /href="\/search" aria-current="page"/.test(searchPage) && searchPage.includes("ページ一覧") && /<a href="\/t\/main\/aaaaaaaaa1">/.test(searchPage), "the search page has the sidebar with the page list and marks 検索 as current");
+check(![iconPage, topPage, searchPage].some((html) => /id="site-menu"[^>]*>[\s\S]*?<\/div>/.exec(html)?.[0].match(/href="\/(search|feed\.xml)"/)), "the … menu no longer holds search or RSS");
 const fragmentTexts = await Promise.all(
   (await readdir(join(dist, "wiki/pagefind/fragment")).catch(() => [])).map(async (f) => gunzipSync(await readFile(join(dist, "wiki/pagefind/fragment", f))).toString("utf8").replaceAll("\u200b", "")),
 );
-check(fragmentTexts.length > 0 && fragmentTexts.every((t) => t.includes("設計メモ") && !t.includes("階層を閉じる") && !t.includes("階層を開く") && !t.includes("サイドバーを")), "the search index holds no text of the tree button or drawer");
+check(fragmentTexts.length > 0 && fragmentTexts.every((t) => t.includes("設計メモ") && !t.includes("ページ一覧を閉じる") && !t.includes("ページ一覧を開く") && !t.includes("サイドバーを")), "the search index holds no text of the tree button or drawer");
 
 // ---- 広い画面のサイドバー（閉じる・開く）
 const hasSidebarState = (html) => html.includes('localStorage.getItem(key) === closed') && html.includes('"wiki:sidebar"');
@@ -109,7 +117,7 @@ check(
   "pages with the tree nav restore the closed sidebar before drawing, and have the close button (hidden until the script runs)",
 );
 const withSidebar = Object.entries(noDrawer).filter(([, html]) => html.includes("data-sidebar-close ") || html.includes("サイドバーを閉じる") || html.includes("wiki:sidebar"));
-check(withSidebar.length === 0, `search, 404 and unlisted pages have no sidebar script or button${withSidebar.length ? ` (${withSidebar.map(([k]) => k).join(", ")})` : ""}`);
+check(withSidebar.length === 0, `404 and unlisted pages have no sidebar script or button${withSidebar.length ? ` (${withSidebar.map(([k]) => k).join(", ")})` : ""}`);
 
 const publicHtml = [await read("wiki/index.html"), await read("wiki/p/aaaaaaaaa1.html"), await read("wiki/sitemap.xml"), await read("wiki/feed.xml")];
 check(publicHtml.every((h) => !h.includes(key)), "unlisted key does not appear in public pages, sitemap or RSS");
