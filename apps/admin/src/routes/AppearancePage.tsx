@@ -282,6 +282,8 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
     <Box
       component="label"
       sx={{
+        // 非表示のラジオ（absolute）の基準にする。外すと、ラジオが画面の外まで広がって横スクロールが出る
+        position: "relative",
         display: "block",
         cursor: "pointer",
         borderRadius: 1,
@@ -292,7 +294,7 @@ function ThemeCard({ preset, groupName, selected, onSelect }: { preset: ThemePre
         "&:hover": { borderColor: selected ? "primary.main" : "text.secondary" },
       }}
     >
-      <Box component="input" type="radio" name={groupName} value={preset.key} checked={selected} onChange={onSelect} sx={{ position: "absolute", opacity: 0, width: 1, height: 1 }} />
+      <Box component="input" type="radio" name={groupName} value={preset.key} checked={selected} onChange={onSelect} sx={{ position: "absolute", opacity: 0, width: "1px", height: "1px", pointerEvents: "none" }} />
       {/* 背景・文字・リンクの色が分かる見本 */}
       <Box sx={{ position: "relative", minHeight: 64, bgcolor: c.bg, ...backdropSx(preset, null), color: c.text, px: 1.25, py: 1, lineHeight: 1.6, fontSize: "0.8rem", borderBottom: `1px solid ${c.border}` }}>
         <Box sx={{ fontWeight: 700 }}>見出し</Box>
