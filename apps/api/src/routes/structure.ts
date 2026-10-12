@@ -3,7 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { pages } from "../db/schema";
 import type { AppEnv } from "../env";
-import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
+import { changeStructure, getPrimaryTree, loadPrimaryStructure } from "../structure/repo";
 import { parseJson } from "../validation";
 
 export const structureRoutes = new Hono<AppEnv>()
@@ -11,9 +11,7 @@ export const structureRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
     const wikiId = c.get("wiki").id;
-    const state = await loadStructure(db, wikiId);
-    const tree = await getPrimaryTree(db, wikiId);
-    const nodes = state.trees[tree.id]?.nodes ?? [];
+    const { tree, nodes } = await loadPrimaryStructure(db, wikiId);
     const pageIds = nodes.map((n) => n.pageId);
     const pageRows =
       pageIds.length === 0
