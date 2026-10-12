@@ -1,4 +1,4 @@
-import { Bold, Braces, ChevronRight, Code, Image, Italic, Link, List, ListChecks, ListOrdered, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
+import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -10,6 +10,8 @@ import Paper from "@mui/material/Paper";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
@@ -25,6 +27,7 @@ import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MENU_MAX_WIDTH, monoFont, TOUCH } from "../theme";
 import { TableMenu } from "./TableMenu";
+import { setBlockDragging } from "./blockMove";
 import { editorExtensions } from "./extensions";
 import { highlightSx } from "./highlight";
 import { OUTLINE_SCROLL_MARGIN } from "./Outline";
@@ -168,6 +171,8 @@ export function MarkdownEditor(props: {
           position: "relative",
           // 「挿入」のボタンは行の左の余白に出す。狭い画面では余白が 16px しか無く、画面の外にはみ出すので、行の右端に出す
           [t.breakpoints.down("md")]: { "& .insert-menu": { left: "auto !important", right: 0 } },
+          // ハンドルでブロックを動かしている間は、標準の落とす位置のカーソル（リストの項目の中にも出る）を隠し、最上位のブロックの間の線だけを出す
+          "&:has(.tiptap[data-block-dragging]) .prosemirror-dropcursor-block": { display: "none" },
           "& .tiptap": {
             outline: "none",
             minHeight: "50vh",
@@ -177,6 +182,9 @@ export function MarkdownEditor(props: {
             "& :is(h1, h2, h3, h4), & [data-type='details']": { scrollMarginTop: `${OUTLINE_SCROLL_MARGIN}px` },
             "& a": { color: "primary.main", cursor: "text" },
             "& [data-type='details'] summary:empty::before": { content: '"トグルの見出し"', color: "text.disabled" },
+            // ハンドルでブロックを動かしているとき、落とす位置の線（ブロックの上か下に出す）
+            "& .block-drop-before": { boxShadow: `0 -4px 0 -2px ${t.palette.primary.main}` },
+            "& .block-drop-after": { boxShadow: `0 4px 0 -2px ${t.palette.primary.main}` },
             "& img.ProseMirror-selectednode": { outline: "2px solid", outlineColor: "primary.main" },
             "& .image-uploading": {
               display: "inline-block",
@@ -203,6 +211,7 @@ export function MarkdownEditor(props: {
         })}
       >
         <EditorContent editor={editor} />
+        <BlockDragHandle editor={editor} />
         <TableMenu editor={editor} />
       </Box>
       <CodeBlockMenu editor={editor} />
@@ -212,6 +221,46 @@ export function MarkdownEditor(props: {
         </Alert>
       </Snackbar>
     </Box>
+  );
+}
+
+// ハンドルの位置。行の左の余白に出し、空行の「挿入」ボタン（行の左 4px）と重ならないよう、さらに左へ置く
+const dragHandlePosition = { placement: "left-start" as const, strategy: "absolute" as const };
+
+/**
+ * ブロック（段落・見出し・リスト全体・表・画像など、最上位のもの）にマウスを乗せると左に出る、つかんで動かすハンドル。
+ * 指で操作する端末（TOUCH）では出さない（ドラッグは対象外）。キーボードでは Alt+↑↓（extensions の BlockMove）。
+ */
+function BlockDragHandle({ editor }: { editor: Editor }) {
+  const touch = useMediaQuery(TOUCH);
+  // つかんでいる間は、ツールチップが動かす先の見えるところを隠さないよう出さない
+  const [dragging, setDragging] = useState(false);
+  if (touch) return null;
+  return (
+    <DragHandle
+      editor={editor}
+      computePositionConfig={dragHandlePosition}
+      className="block-drag-handle"
+      onElementDragStart={() => {
+        setDragging(true);
+        setBlockDragging(editor, true);
+      }}
+      onElementDragEnd={() => {
+        setDragging(false);
+        setBlockDragging(editor, false);
+      }}
+    >
+      {/* Tab の順には入れない（本文の中の Tab を増やさない）。キーボードでは Alt+↑↓ */}
+      <Tooltip title="ドラッグして動かす（Alt+↑↓ でも動かせる）" placement="top" {...(dragging && { open: false })}>
+        <Box
+          role="img"
+          aria-label="ブロックを動かす"
+          sx={(t) => ({ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, mr: 3.5, [t.breakpoints.down("md")]: { mr: 0.5 }, borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } })}
+        >
+          <GripVertical size={18} />
+        </Box>
+      </Tooltip>
+    </DragHandle>
   );
 }
 
