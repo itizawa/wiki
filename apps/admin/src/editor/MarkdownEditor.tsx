@@ -173,6 +173,9 @@ export function MarkdownEditor(props: {
           [t.breakpoints.down("md")]: { "& .insert-menu": { left: "auto !important", right: 0 } },
           // ハンドルでブロックを動かしている間は、標準の落とす位置のカーソル（リストの項目の中にも出る）を隠し、最上位のブロックの間の線だけを出す
           "&:has(.tiptap[data-block-dragging]) .prosemirror-dropcursor-block": { display: "none" },
+          // ハンドルの外枠は、右の余白（下の mr）を含めて「挿入」ボタンの上にかぶる。外枠はクリックを通し、つかむ四角（BlockDragHandle の Box）だけが受ける
+          // （外枠の pointer-events はライブラリが style に auto と書くので、!important で上書きする）
+          "& .block-drag-handle": { pointerEvents: "none !important" },
           "& .tiptap": {
             outline: "none",
             minHeight: "50vh",
@@ -255,7 +258,7 @@ function BlockDragHandle({ editor }: { editor: Editor }) {
         <Box
           role="img"
           aria-label="ブロックを動かす"
-          sx={(t) => ({ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, mr: 3.5, [t.breakpoints.down("md")]: { mr: 0.5 }, borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } })}
+          sx={(t) => ({ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, mr: 3.5, [t.breakpoints.down("md")]: { mr: 0.5 }, pointerEvents: "auto", borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } })}
         >
           <GripVertical size={18} />
         </Box>
