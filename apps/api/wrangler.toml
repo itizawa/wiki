@@ -32,9 +32,9 @@ bucket_name = "wiki-images"
 # 下の3行のコメントを外し、出力された id を入れる。apps/worker/wrangler.toml にも同じ id で同じブロックを入れる。
 # id が実在しない名前空間のままコメントを外すと、wrangler deploy が失敗する。
 # コメントのあいだは印を書かない（ワーカーも、バインディングが無ければ今までどおり5分おきに API を呼ぶ）。
-# [[kv_namespaces]]
-# binding = "CRON_MARKS"
-# id = "<wrangler kv namespace create の出力の id>"
+[[kv_namespaces]]
+binding = "CRON_MARKS"
+id = "9e2cad4b68d14f3aa613878cc78c97be"
 
 # ログインせずに叩ける経路（/oauth/*・/mcp）の回数の制限。接続元（cf-connecting-ip）ごとに数え、超えたら 429 を返す（src/rate-limit.ts）。
 # period に書けるのは 10 か 60（秒）だけ。namespace_id はアカウントの中で重ならない数字なら何でもよい（wiki-site が 6001 を使っている）
