@@ -58,6 +58,12 @@ name = "MCP_LIMITER"
 namespace_id = "6103"
 simple = { limit = 300, period = 60 }
 
+# 外部の URL の OGP を取る /admin/w/{key}/link-preview（ログインしている人ごとに）：60 秒で 30 回まで。取りにいくのは外部のサイトなので、少なめにしている
+[[ratelimits]]
+name = "LINK_PREVIEW_LIMITER"
+namespace_id = "6104"
+simple = { limit = 30, period = 60 }
+
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする
 NODE_ENV = "production"

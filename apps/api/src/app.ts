@@ -12,6 +12,7 @@ import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
 import { analyticsRoutes } from "./routes/analytics";
 import { editRequestRoutes, wikiEditRequestRoutes } from "./routes/editRequests";
 import { exportRoutes, internalRoutes } from "./routes/internal";
+import { linkPreviewRoutes } from "./routes/linkPreview";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { snsRoutes, xCallbackRoutes } from "./routes/sns";
@@ -111,6 +112,7 @@ export function createApp(deps: Deps) {
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);
+  wiki.route("/link-preview", linkPreviewRoutes);
   wiki.route("/stars", starRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);

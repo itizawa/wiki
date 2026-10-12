@@ -15,6 +15,8 @@ export type RateLimiters = {
   oauth?: RateLimiter;
   /** トークンの付いた `/mcp`。トークンを DB で確かめる前に数える */
   mcp?: RateLimiter;
+  /** `GET /admin/w/{key}/link-preview`（ログインしている人。人ごとに数える） */
+  linkPreview?: RateLimiter;
 };
 
 /** wrangler.toml の `simple.period`（秒）。429 の `Retry-After` に入れる */
