@@ -35,6 +35,19 @@ describe("THEME_PRESETS", () => {
     expect(themePresetFor("unknown").key).toBe(DEFAULT_THEME.preset);
   });
 
+  it("keeps the keys of the themes saved before the color-only themes were added", () => {
+    const keys = THEME_PRESETS.map((p) => p.key);
+    expect(keys.slice(0, 5)).toEqual(["simple", "notebook", "pastel", "space", "owl"]);
+  });
+
+  it("has color-only themes (light and dark, no image, no ornament) alongside the themes with decorations", () => {
+    const plain = THEME_PRESETS.filter((p) => themeModes(p).every((m) => !p[m]!.background && !p[m]!.ornament));
+    const keys = plain.map((p) => p.key);
+    for (const k of ["aubergine", "forest", "ocean", "crimson", "mono", "contrast"]) expect(keys).toContain(k);
+    expect(plain.length).toBeGreaterThanOrEqual(7);
+    for (const p of plain.filter((p) => p.key !== "simple")) expect(themeModes(p), p.key).toEqual(["light", "dark"]);
+  });
+
   it("keeps the colors of the site before themes existed", () => {
     const simple = THEME_PRESETS.find((p) => p.key === "simple")!;
     expect(simple.light!.colors).toMatchObject({ bg: "#f6f7f9", text: "#1d2330", accent: "#2257c5" });
