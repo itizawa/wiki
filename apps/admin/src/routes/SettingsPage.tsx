@@ -9,7 +9,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVerification, type GoogleConnection, type WikiSettings } from "@wiki/shared";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, SaveNotice, Section, SkeletonSection } from "../components/ui";
 import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_SECRET, type AnalyticsTarget } from "../lib/analytics";
@@ -116,10 +116,16 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
   /** タグごと貼られたものから、content の値を取り出した */
   const [extracted, setExtracted] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  /** 誤りのまま保存を押した（ボタンのそばに、誤りの知らせを出す） */
+  const [blocked, setBlocked] = useState(false);
+  const gaRef = useRef<HTMLInputElement>(null);
+  const propertyRef = useRef<HTMLInputElement>(null);
+  const verificationRef = useRef<HTMLInputElement>(null);
 
   const save = useMutation({
     mutationFn: (input: WikiSettings) => api.updateSettings(input),
     onSuccess: (after) => {
+      setBlocked(false);
       setDone(savedMessage(saved, after));
       qc.setQueryData(["wiki-settings"], after);
       // プロパティ ID が変わると、「アクセス解析」に出すものが変わる
@@ -156,6 +162,12 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
     (normalizeGaMeasurementId(gaId) || null) !== saved.gaMeasurementId ||
     (extractSearchConsoleVerification(verification) || null) !== saved.searchConsoleVerification ||
     propertyChanged;
+  // 画面の上から順。誤りが直った欄は、ここから外れる
+  const invalidFields = [
+    gaProblem !== null && "GA4 の測定 ID",
+    propertyProblem !== null && "GA4 のプロパティ ID",
+    verificationProblem !== null && "サーチコンソールの確認用の値",
+  ].filter((name): name is string => name !== false);
   const edited = () => {
     setDone(null);
     save.reset();
@@ -171,7 +183,17 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
         const ga = checkGa();
         const sc = checkVerification();
         const property = checkProperty();
-        if (ga.problem || sc.problem || property.problem || !changed || save.isPending) return;
+        if (ga.problem || sc.problem || property.problem) {
+          // 誤りは欄の下に出ている。押したボタンのそばにも知らせ、最初の誤りの欄へ移す
+          setBlocked(true);
+          setDone(null);
+          const first = ga.problem ? gaRef : property.problem ? propertyRef : verificationRef;
+          first.current?.focus({ preventScroll: true });
+          first.current?.scrollIntoView?.({ block: "center" });
+          return;
+        }
+        if (!changed || save.isPending) return;
+        setBlocked(false);
         save.mutate({ gaMeasurementId: ga.value, searchConsoleVerification: sc.value, gaPropertyId: property.value });
       }}
     >
@@ -201,6 +223,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
             edited();
           }}
           onBlur={checkGa}
+          inputRef={gaRef}
           placeholder="例：G-XXXXXXXXXX"
           error={gaProblem !== null}
           helperText={gaProblem}
@@ -232,6 +255,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
                 edited();
               }}
               onBlur={checkProperty}
+              inputRef={propertyRef}
               placeholder="例：123456789"
               error={propertyProblem !== null}
               helperText={propertyProblem}
@@ -285,6 +309,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
             edited();
           }}
           onBlur={checkVerification}
+          inputRef={verificationRef}
           placeholder={'例：<meta name="google-site-verification" content="..." />'}
           error={verificationProblem !== null}
           helperText={verificationProblem ?? (extracted ? "貼られたタグから、content の値を取り出しました。" : null)}
@@ -317,6 +342,11 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
         {save.error && (
           <Alert severity="error" sx={textSx}>
             {saveErrorMessage(save.error)}
+          </Alert>
+        )}
+        {blocked && invalidFields.length > 0 && (
+          <Alert severity="error" role="alert" sx={textSx}>
+            入力に誤りがあります。{invalidFields.map((name) => `「${name}」`).join("、")}を直してください。
           </Alert>
         )}
         {done && (
