@@ -111,7 +111,11 @@ export function PageRowMenu(props: {
 
   const copyLink = async (url: string) => {
     onClose();
-    setNotice((await copyText(url)) ? "リンクをコピーしました" : COPY_FAILED_MESSAGE);
+    await copyText(
+      url,
+      () => setNotice("リンクをコピーしました"),
+      () => setNotice(COPY_FAILED_MESSAGE),
+    );
   };
 
   const page = target?.page;

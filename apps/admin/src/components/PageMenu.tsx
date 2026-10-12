@@ -114,7 +114,11 @@ export function PageMenu(props: {
   const copy = async () => {
     setAnchor(null);
     setCreatedTemplate(null);
-    setNotice((await copyText(toMarkdownDocument(title, bodyMd))) ? "Markdown をコピーしました" : COPY_FAILED_MESSAGE);
+    await copyText(
+      toMarkdownDocument(title, bodyMd),
+      () => setNotice("Markdown をコピーしました"),
+      () => setNotice(COPY_FAILED_MESSAGE),
+    );
   };
 
   const download = () => {
