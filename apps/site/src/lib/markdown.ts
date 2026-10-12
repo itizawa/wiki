@@ -1,4 +1,4 @@
-import { CALLOUT_LABELS, matchToggle, parseCalloutMarker, toggleStart } from "@wiki/shared";
+import { CALLOUT_LABELS, googleMapOfParagraph, matchToggle, parseCalloutMarker, toggleStart } from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
 import { createHighlighter } from "shiki";
 
@@ -68,6 +68,7 @@ function plainText(tokens: Tokens.Generic[] | undefined): string {
  * - 内部リンク（/p/{id}...）は公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
  * - 本文中の生HTMLはエスケープする。リンクと画像は http(s)・同じサイトのパスなど、決まった形のものだけを出す
  * - 見出しには id を振る
+ * - 地図の URL だけの段落は、Google マップの iframe にする（それ以外の URL はリンクのまま）
  * - `+++` のトグルは <details> にする（中身も検索の索引と目次に入る）
  * - 言語の付いたコードブロックは色分けする（ライト・ダーク両方の色を持たせ、CSS で切り替える）
  */
@@ -112,6 +113,16 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         if (!highlightable.has(lang)) return false;
         return `${highlighter.codeToHtml(token.text, { lang, themes: CODE_THEMES, defaultColor: false })}\n`;
       },
+      // 地図の URL だけの段落は、Google マップの埋め込みにする（packages/shared/src/googleMap.ts）。埋め込めない URL（短縮 URL など）は、これまでどおりリンク
+      paragraph(token: Tokens.Paragraph) {
+        const map = googleMapOfParagraph(token.text);
+        if (!map?.embedSrc) return false;
+        const href = escapeHtml(map.url);
+        return (
+          `<figure class="map-embed"><iframe src="${escapeHtml(map.embedSrc)}" title="Google マップ" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin"></iframe>` +
+          `<figcaption><a href="${href}" rel="noopener">Google マップで開く</a></figcaption></figure>\n`
+        );
+      },
       html(token: Tokens.HTML | Tokens.Tag) {
         return escapeHtml(token.text);
       },
@@ -155,6 +166,8 @@ export function excerpt(md: string, length = 120): string {
   const text = md
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
+    // 地図の URL だけの行（本文では地図になる）
+    .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))
     .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")

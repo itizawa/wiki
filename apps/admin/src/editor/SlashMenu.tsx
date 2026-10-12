@@ -1,8 +1,10 @@
-import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, Minus, Quote, Table } from "lucide-react";
+import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, Minus, Quote, Table, MapPin } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
 import { useState, type ReactNode } from "react";
+import { GoogleMapDialog } from "./GoogleMapDialog";
+import { insertGoogleMap } from "./googleMap";
 import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage } from "./LinkForm";
 import { createTrigger, TriggerMenu, useTriggerMatch, type FindTrigger } from "./trigger";
@@ -21,7 +23,7 @@ type Block = {
   /** ラベル以外に、絞り込みで当たる語（英語名やMarkdownの記法） */
   keywords: string[];
   icon: ReactNode;
-  run: (editor: Editor, ui: { openImageDialog: () => void }) => void;
+  run: (editor: Editor, ui: { openImageDialog: () => void; openMapDialog: () => void }) => void;
 };
 
 const headingIcons = { 1: Heading1, 2: Heading2, 3: Heading3 } as const;
@@ -49,6 +51,7 @@ const blocks: Block[] = [
   { id: "code", label: "コードブロック", keywords: ["code", "pre", "```"], icon: <Braces size={18} />, run: (e) => chain(e).setCodeBlock().run() },
   { id: "table", label: "表", keywords: ["table", "hyou"], icon: <Table size={18} />, run: (e) => chain(e).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   { id: "image", label: "画像…", keywords: ["image", "img", "picture", "gazou"], icon: <Image size={18} />, run: (_e, ui) => ui.openImageDialog() },
+  { id: "map", label: "Google マップ…", keywords: ["map", "google", "maps", "chizu", "地図"], icon: <MapPin size={18} />, run: (_e, ui) => ui.openMapDialog() },
   {
     id: "callout",
     label: "コールアウト（目立たせる注意書き）",
@@ -77,6 +80,7 @@ export function SlashMenu({ editor }: { editor: Editor }) {
   const match = useTriggerMatch(editor, slashTrigger);
   const ids = filterBlocks(match?.query ?? "");
   const [imageOpen, setImageOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   return (
     <>
       <TriggerMenu
@@ -96,7 +100,7 @@ export function SlashMenu({ editor }: { editor: Editor }) {
         onChoose={(b, range) => {
           // 打ち込んだ「/…」を消してから、その行をブロックに変える
           editor.chain().focus().deleteRange(range).run();
-          b.run(editor, { openImageDialog: () => setImageOpen(true) });
+          b.run(editor, { openImageDialog: () => setImageOpen(true), openMapDialog: () => setMapOpen(true) });
         }}
       />
       <ImageDialog
@@ -107,6 +111,17 @@ export function SlashMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setImageOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <GoogleMapDialog
+        open={mapOpen}
+        onSubmit={(url) => {
+          setMapOpen(false);
+          insertGoogleMap(editor, url);
+        }}
+        onClose={() => {
+          setMapOpen(false);
           editor.commands.focus();
         }}
       />
