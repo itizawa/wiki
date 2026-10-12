@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, headingId, renderArticle, renderMarkdown } from "./markdown";
+import { excerpt, firstImagePath, headingId, ogImagePath, renderArticle, renderMarkdown } from "./markdown";
 
 const publicPaths = new Map([["abcdefghij", "/p/abcdefghij"]]);
 
@@ -317,5 +317,28 @@ describe("リンクのホバープレビューの data 属性", () => {
   it("OGP が取れていない外部リンク・previewOf が無いときは、これまでどおり", () => {
     expect(renderMarkdown("[ここ](/p/abcdefghij)", { publicPaths })).not.toContain("data-preview");
     expect(renderMarkdown("[x](https://nope.example/)", { publicPaths, linkPreviews })).toBe('<p><a href="https://nope.example/" rel="noopener">x</a></p>\n');
+  });
+});
+
+describe("OGP image", () => {
+  const a = "/images/aaaaaaaaaaaaaaaaaaaaaaaa.png";
+  const b = "/images/bbbbbbbbbbbbbbbbbbbbbbbb.webp";
+
+  it("takes the first uploaded image of the body", () => {
+    expect(firstImagePath(`本文\n\n![図](${a})\n\n![別](${b} "題")`)).toBe(a);
+  });
+
+  it("ignores code blocks, external images and non-image paths", () => {
+    expect(firstImagePath("```\n![x](" + a + ")\n```\n\n![y](https://example.com/a.png)\n\n![z](/images/short.png)")).toBeNull();
+    expect(firstImagePath("画像なし")).toBeNull();
+    expect(firstImagePath("```\n![x](" + a + ")\n```\n![y](" + b + ")")).toBe(b);
+  });
+
+  it("prefers the cover, skips provided SVG covers, and falls back to the body", () => {
+    expect(ogImagePath(b, `![](${a})`)).toBe(b);
+    expect(ogImagePath("/covers/forest.svg", `![](${a})`)).toBe(a);
+    expect(ogImagePath(null, `![](${a})`)).toBe(a);
+    expect(ogImagePath("/covers/forest.svg", "画像なし")).toBeNull();
+    expect(ogImagePath(undefined, "")).toBeNull();
   });
 });

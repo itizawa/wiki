@@ -84,7 +84,7 @@
           "title": "設計メモ",
           "icon": null,
           "cover": null,
-          "bodyMd": "構造はコミットで管理します。おすすめの本は [こちら](https://example.com/book)。\n\n+++ コミットとは？\n\nツリーの並び替えや移動を、1回ごとに記録したものです。合言葉：とぐるのなかみ\n\n+++",
+          "bodyMd": "![構成図](/images/ogp0body0sample000000000.png)\n\n構造はコミットで管理します。おすすめの本は [こちら](https://example.com/book)。\n\n+++ コミットとは？\n\nツリーの並び替えや移動を、1回ごとに記録したものです。合言葉：とぐるのなかみ\n\n+++",
           "firstPublishedAt": "2026-10-08T00:00:00.000Z",
           "revisedAt": "2026-10-08T00:00:00.000Z",
           "monetization": {

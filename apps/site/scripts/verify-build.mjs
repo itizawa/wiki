@@ -275,6 +275,16 @@ check(wikiIndex.includes('href="/favicon.svg"') && !wikiIndex.includes("<img cla
 const themeLeaks = leaks(await readAll("wiki"), ["notes0logo0sample0000000", "notes0favicon0sample0000"]);
 check(themeLeaks.length === 0, `the notes wiki's theme does not appear in the first wiki's output${themeLeaks.length ? ` (${themeLeaks.join(", ")})` : ""}`);
 
+// OGP：公開ページとトップにだけ出し、画像は絶対 URL。カバー（用意した SVG）は使わず、本文の最初の画像、無ければロゴ、どちらも無ければ画像なし
+const ogMeta = (html, name) => new RegExp(`<meta (?:property|name)="${name}" content="([^"]*)"`).exec(html)?.[1];
+const bodyImagePage = await read("wiki/p/aaaaaaaaa2.html");
+check(ogMeta(bodyImagePage, "og:image") === "http://wiki.localhost:4321/images/ogp0body0sample000000000.png" && ogMeta(bodyImagePage, "twitter:card") === "summary_large_image", "og:image is the body's first image as an absolute URL (large card)");
+check(ogMeta(iconPage, "og:image") === undefined && ogMeta(iconPage, "twitter:card") === "summary", "a page with only a provided SVG cover and no logo has no og:image (summary card)");
+check(ogMeta(iconPage, "og:type") === "article" && ogMeta(iconPage, "og:title") === "はじめに" && ogMeta(iconPage, "og:url") === "http://wiki.localhost:4321/p/aaaaaaaaa1" && Boolean(ogMeta(iconPage, "og:description")) && ogMeta(iconPage, "article:published_time") === "2026-10-01T00:00:00.000Z" && ogMeta(iconPage, "article:modified_time") === "2026-10-05T00:00:00.000Z", "a public page has og:type article, title, description, url and article times");
+check(ogMeta(await read("wiki/index.html"), "og:type") === "website", "the top page has og:type website");
+check(ogMeta(notesIndex, "og:image") === "http://notes.localhost:4321/images/notes0logo0sample0000000.png", "a wiki's logo is the og:image when the page has no image");
+check(!(await read("wiki/404.html")).includes("og:") && !(await read(`wiki/u/${key}/index.html`)).includes("og:"), "the 404 page and unlisted pages have no OGP");
+
 if (failures > 0) {
   console.error(`${failures} check(s) failed`);
   process.exit(1);
