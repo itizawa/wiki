@@ -1,9 +1,9 @@
 import Box from "@mui/material/Box";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
-import Typography from "@mui/material/Typography";
 import { createLink, Outlet, useRouterState } from "@tanstack/react-router";
-import { Muted, Section } from "../components/ui";
+import { HelpHeading } from "../components/HelpTip";
+import { Section } from "../components/ui";
 import { useWiki } from "../lib/wiki";
 
 /** 本物のリンク（Tab と Enter で移れ、新しいタブでも開ける）として描くタブ */
@@ -50,11 +50,10 @@ export function WikiSettingsLayout() {
   return (
     <Box>
       <Section sx={{ pb: 0, mb: 1.5 }}>
-        <Typography variant="h6" component="h1">
+        <HelpHeading variant="h6" component="h1" help={<>「{wiki.name}」の設定です。wiki ごとに持ち、ほかの wiki には影響しません。</>}>
           設定
-        </Typography>
-        <Muted>「{wiki.name}」の設定です。wiki ごとに持ち、ほかの wiki には影響しません。</Muted>
-        <Tabs value={current} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="設定" sx={{ mt: 1 }}>
+        </HelpHeading>
+        <Tabs value={current} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="設定" sx={{ mt: 0.5 }}>
           {tabs.map((t) => (
             <TabLink key={t.to} to={t.to} params={{ wikiKey: wiki.key }} value={t.to} label={t.label} />
           ))}

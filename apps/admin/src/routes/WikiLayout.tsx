@@ -149,6 +149,8 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
             position: "relative",
             flexShrink: 0,
             overflow: "hidden",
+            // 画面を移るときのフェードから外す（theme.ts）
+            viewTransitionName: "admin-sidebar",
             // 右の境界線（1px）のぶんを足す
             width: open ? "calc(var(--sidebar-width) + 1px)" : COLLAPSED_WIDTH,
             borderRight: 1,
@@ -185,7 +187,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         </Box>
       ) : (
         // 狭い画面では横に列を取らず、上に細い帯を置く（左に空きを作らず、本文に幅を使う）
-        <Box component="header" sx={{ flexShrink: 0, height: NARROW_BAR_HEIGHT, px: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Box component="header" sx={{ flexShrink: 0, height: NARROW_BAR_HEIGHT, viewTransitionName: "admin-bar", px: 1, display: "flex", alignItems: "center", gap: 0.5 }}>
           <Tooltip title="サイドバーを開く (⌘.)" placement="bottom">
             <IconButton size="small" aria-label="サイドバーを開く" onClick={() => setDrawer(true)}>
               <Menu size={18} />

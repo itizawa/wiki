@@ -9,6 +9,7 @@ import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import { STRUCTURE_SNAPSHOT_KEEP_DAYS, type StructureChange } from "@wiki/shared";
 import { useState } from "react";
+import { HelpHeading } from "../components/HelpTip";
 import { LoadingRegion, Mono, Muted, Row, Section, SkeletonRows, StatusChip, WithSidebar } from "../components/ui";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -26,10 +27,9 @@ export function HistoryPage() {
   return (
     <WithSidebar>
       <Section>
-        <Typography variant="h6" component="h2">
+        <HelpHeading variant="h6" component="h2" about="「構造の履歴」" help="ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。">
           構造の履歴（main）
-        </Typography>
-        <Muted>ツリーへの変更はすべてコミットとして記録されます。巻き戻しはフェーズ3で追加します。</Muted>
+        </HelpHeading>
         {/* 選ぶ前に分かるよう、差分を見られる範囲を先に書く */}
         <Muted>差分を見られるのは、最新のコミットと、直近{STRUCTURE_SNAPSHOT_KEEP_DAYS}日のコミットです。</Muted>
         {/* コミットの行（メッセージ + 日時）と同じ高さ */}

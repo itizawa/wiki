@@ -17,8 +17,8 @@ import {
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
-import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks } from "../pages/versions";
+import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
+import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent, recordPublishEvents } from "../publishing/service";
 import type { AppEnv } from "../env";
@@ -45,7 +45,7 @@ const toSummary = (p: PageRow): PageSummary => ({
   updatedAt: p.updatedAt.toISOString(),
 });
 
-const toVersion = (v: VersionRow, author: { name: string | null; email: string } | null): PageVersion => ({
+const toVersion = (v: VersionRow, author: { name: string | null; email: string } | null, acceptedItems: number): PageVersion => ({
   id: v.id,
   pageId: v.pageId,
   baseVersionId: v.baseVersionId,
@@ -54,17 +54,23 @@ const toVersion = (v: VersionRow, author: { name: string | null; email: string }
   authorType: v.authorType,
   createdBy: v.createdBy && author ? { id: v.createdBy, name: author.name ?? author.email } : null,
   keep: v.keep,
+  acceptedItems,
   createdAt: v.createdAt.toISOString(),
 });
+
+/** その版が、編集リクエストの提案を採用してできたものなら、採用した項目の数（そうでなければ 0）。 */
+const acceptedItemCount = sql<number>`(
+  select count(*)::int from "edit_request_items" i where i."accepted_version_id" = "page_versions"."id"
+)`;
 
 /** 版と、それを作った人（いまの名前）。 */
 async function findVersion(db: Db, where: ReturnType<typeof eq>): Promise<PageVersion | null> {
   const [row] = await db
-    .select({ version: pageVersions, name: users.name, email: users.email })
+    .select({ version: pageVersions, name: users.name, email: users.email, acceptedItems: acceptedItemCount })
     .from(pageVersions)
     .leftJoin(users, eq(users.id, pageVersions.createdBy))
     .where(where);
-  return row ? toVersion(row.version, row.email === null ? null : { name: row.name, email: row.email }) : null;
+  return row ? toVersion(row.version, row.email === null ? null : { name: row.name, email: row.email }, Number(row.acceptedItems)) : null;
 }
 
 const toDraft = (d: DraftRow): PageDraft => ({
@@ -79,20 +85,20 @@ const PAGE_LIMIT_DEFAULT = 50;
 const PAGE_LIMIT_MAX = 100;
 
 /** `limit` を 1〜100 に丸める。数でなければ既定の件数にする。 */
-function clampPageLimit(value: string | undefined): number {
+export function clampPageLimit(value: string | undefined): number {
   const n = Number.parseInt(value ?? "", 10);
   if (Number.isNaN(n)) return PAGE_LIMIT_DEFAULT;
   return Math.min(Math.max(n, 1), PAGE_LIMIT_MAX);
 }
 
 /** 一覧の続きの位置。最後に返した行の日時（ページは更新日時、版は作った日時。DB の文字のまま）と id。 */
-type ListCursor = { at: string; id: string };
+export type ListCursor = { at: string; id: string };
 
-const encodeCursor = (cursor: ListCursor): string =>
+export const encodeCursor = (cursor: ListCursor): string =>
   btoa(JSON.stringify([cursor.at, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 /** 壊れたカーソルは 400 にする（DB に渡してから失敗させない）。`idPattern` は、その一覧の id の形。 */
-function decodeCursor(value: string, idPattern?: RegExp): ListCursor {
+export function decodeCursor(value: string, idPattern?: RegExp): ListCursor {
   try {
     const parsed: unknown = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/")));
     if (Array.isArray(parsed) && parsed.length === 2) {
@@ -154,6 +160,7 @@ export async function createPage(
     createdBy: opts.createdBy ?? null,
     oauthGrantId: opts.oauthGrantId ?? null,
   });
+  await syncPageSearch(tx, id, input);
   await replaceLinks(tx, wikiId, id, input.bodyMd);
   await commitOps(tx, wikiId, {
     createdBy: opts.createdBy ?? null,
@@ -414,7 +421,7 @@ export async function restorePage(
 
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
- * 版・下書き・リンク・スター・予約を消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
+ * 版・下書き・リンク・スター・予約・編集リクエストと、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
  * 構造の履歴（過去のツリー）がこの行を指しているため。閲覧数の行も残す（画面には出ない）。監査ログに残す。トランザクション内で呼ぶ。
  */
 export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
@@ -425,7 +432,15 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
   await tx.delete(pageDrafts).where(inArray(pageDrafts.pageId, ids));
   await tx.delete(pageLinks).where(or(inArray(pageLinks.fromPageId, ids), inArray(pageLinks.toPageId, ids)));
   await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
+  // 編集リクエストの項目は版を指しているので、版より先に消す
+  const requestIds = tx.select({ id: editRequests.id }).from(editRequests).where(inArray(editRequests.pageId, ids));
+  // 返信は項目を指しているので、項目より先に消す
+  const itemIds = tx.select({ id: editRequestItems.id }).from(editRequestItems).where(inArray(editRequestItems.requestId, requestIds));
+  await tx.delete(editRequestComments).where(inArray(editRequestComments.itemId, itemIds));
+  await tx.delete(editRequestItems).where(inArray(editRequestItems.requestId, requestIds));
+  await tx.delete(editRequests).where(inArray(editRequests.pageId, ids));
   await tx.delete(pageVersions).where(inArray(pageVersions.pageId, ids));
+  await tx.delete(pageSearch).where(inArray(pageSearch.pageId, ids));
   await tx
     .update(pages)
     .set({
@@ -615,6 +630,7 @@ export const pageRoutes = new Hono<AppEnv>()
         createdByName: sql<string | null>`coalesce(${users.name}, ${users.email})`,
         // 外部のアプリ（MCP）から保存した版なら、そのアプリの名前
         via: oauthClients.name,
+        acceptedItems: acceptedItemCount,
       })
       .from(pageVersions)
       .leftJoin(users, eq(users.id, pageVersions.createdBy))
@@ -629,6 +645,7 @@ export const pageRoutes = new Hono<AppEnv>()
     return c.json({
       versions: shown.map(({ createdById, createdByName, createdAtText: _, ...r }) => ({
         ...r,
+        acceptedItems: Number(r.acceptedItems),
         createdBy: createdById && createdByName ? { id: createdById, name: createdByName } : null,
         createdAt: r.createdAt.toISOString(),
       })),

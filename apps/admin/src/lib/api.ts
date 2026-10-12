@@ -1,5 +1,15 @@
 import type {
+  AcceptEditRequestResult,
   AnalyticsDays,
+  AppliedEditRequests,
+  CreatedEditRequest,
+  CreateEditRequestInput,
+  EditRequestComment,
+  EditRequestCount,
+  EditRequestList,
+  EditRequestListStatus,
+  EditRequestPageCount,
+  PageEditRequests,
   ConnectionCheck,
   GoogleConnection,
   AuditActorOption,
@@ -218,6 +228,41 @@ export const api = {
   },
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
+  /** ページの編集リクエスト（新しい順）と、最新の版の本文。項目には、最新の版での行の範囲と、採用できるかが付く */
+  listEditRequests: (pageId: string) => request<PageEditRequests>("GET", w(`/pages/${pageId}/edit-requests`)),
+  /** ページの、未対応の項目の数 */
+  countEditRequests: (pageId: string) => request<EditRequestCount>("GET", w(`/pages/${pageId}/edit-requests/count`)),
+  /** `since` の版のあとに、採用でかかった置き換え（編集画面が、手元の内容に取り込む） */
+  appliedEditRequests: (pageId: string, since: string) =>
+    request<AppliedEditRequests>("GET", w(`/pages/${pageId}/edit-requests/applied?since=${encodeURIComponent(since)}`)),
+  /** 項目を1件採用する。古くなった・編集中の人の下書きとぶつかる・もう未対応でないときは 409 */
+  acceptEditRequestItem: (pageId: string, itemId: string) =>
+    request<AcceptEditRequestResult>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/accept`)),
+  rejectEditRequestItem: (pageId: string, itemId: string) => request<{ ok: true }>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/reject`)),
+  /** 指摘を解決済みにする（古くなった指摘も）。提案は 409（`not_a_note`） */
+  resolveEditRequestItem: (pageId: string, itemId: string) => request<{ ok: true }>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/resolve`)),
+  /** 項目に返信する（プレーンテキスト）。項目の状態は問わない */
+  replyToEditRequestItem: (pageId: string, itemId: string, body: string) =>
+    request<EditRequestComment>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/comments`), { body }),
+  /** 却下した提案・解決済みにした指摘を、未対応に戻す */
+  reopenEditRequestItem: (pageId: string, itemId: string) => request<{ ok: true }>("POST", w(`/pages/${pageId}/edit-request-items/${itemId}/reopen`)),
+  /** リクエストの未対応の項目のうち、採用できるものをまとめて採用する（1つの版になる）。できなかった項目は `skipped` で返る */
+  acceptAllEditRequestItems: (pageId: string, requestId: string) =>
+    request<AcceptEditRequestResult>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/accept-all`)),
+  /** 編集リクエストを出す。基準の版が最新の版でなければ 409（`version_conflict`） */
+  createEditRequest: (pageId: string, input: CreateEditRequestInput) => request<CreatedEditRequest>("POST", w(`/pages/${pageId}/edit-requests`), input),
+  /** 自分が出したリクエストの、未対応の項目をまとめて取り下げる。出した本人でなければ 403（`not_requester`） */
+  withdrawEditRequest: (pageId: string, requestId: string) =>
+    request<{ withdrawn: number }>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/withdraw`)),
+  /** この wiki の編集リクエストの一覧を、続きから取る（出した日時の新しい順）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
+  listWikiEditRequests: (input: { status: EditRequestListStatus; cursor?: string | null; limit: number }) => {
+    const params = new URLSearchParams({ status: input.status, limit: String(input.limit) });
+    if (input.cursor) params.set("cursor", input.cursor);
+    return request<EditRequestList>("GET", w(`/edit-requests?${params}`));
+  },
+  /** この wiki で、未対応の編集リクエストがあるページの数（サイドバーに出す） */
+  countEditRequestPages: () => request<EditRequestPageCount>("GET", w("/edit-requests/count")),
+
   /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
   updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
@@ -315,6 +360,23 @@ export function errorMessage(err: unknown): string {
     switch (err.code) {
       case "version_conflict":
         return "別の画面で先に版が作られています。最新の版を読み込んでから編集してください。";
+      case "edit_request_stale":
+        return "この箇所は、提案のあとに書き換えられたため、採用できません。";
+      case "draft_conflict": {
+        const editors = (err.details as { editors?: { name: string }[] } | undefined)?.editors ?? [];
+        const who = editors.length > 0 ? `${editors.map((e) => e.name).join("、")} さん` : "ほかの人";
+        return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
+      }
+      case "not_open":
+        return "この提案は、すでに採用・却下・取り下げのどれかが済んでいます。最新の状態を読み込みました。";
+      case "not_requester":
+        return "取り下げられるのは、このリクエストを出した本人だけです。";
+      case "no_change":
+        return "元の文面と同じ提案が入っています。書き換えるか、取り除いてから送信してください。";
+      case "line_out_of_range":
+        return "提案の指している行が、本文の外にあります。最新の版に合わせてから、もう一度送信してください。";
+      case "not_rejected":
+        return "却下した提案だけを、未対応に戻せます。最新の状態を読み込みました。";
       case "image_too_large":
         return `画像が大きすぎます。${imageLimit(err)}です。`;
       case "unsupported_image_type":

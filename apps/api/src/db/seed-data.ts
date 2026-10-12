@@ -1,6 +1,7 @@
 import { addDays, jstDay, pagePath } from "@wiki/shared";
 import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
+import { syncPageSearch } from "../pages/versions";
 import { publishPage } from "../publishing/service";
 import { createPage } from "../routes/pages";
 import { bootstrapStructure } from "../structure/repo";
@@ -251,6 +252,7 @@ async function seedWiki(db: Db, wikiId: string, seed: SeedPage[], now: Date): Pr
           .values({ pageId: id, baseVersionId: versionId, title: page.title, bodyMd: fill(page.revisedBody), authorType: "human" })
           .returning({ id: pageVersions.id });
         await tx.update(pages).set({ headVersionId: version!.id }).where(eq(pages.id, id));
+        await syncPageSearch(tx, id, { title: page.title, bodyMd: fill(page.revisedBody) });
       }
 
       for (const child of page.children ?? []) await add(child, id);

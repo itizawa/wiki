@@ -1,4 +1,5 @@
 import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, History, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
 import Divider from "@mui/material/Divider";
@@ -12,6 +13,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
+import { useComposition, useSearchTerm } from "../lib/searchTerm";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/findBarState";
 import { usePageActions } from "../lib/pageActions";
@@ -44,7 +46,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const pageActions = usePageActions();
 
   // 検索の画面と同じ検索（タイトルと本文）。何も打っていなければ、最近更新したページ
-  const pages = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: open, placeholderData: keepPreviousData });
+  // 探しにいくのは、打つのを止めてから（変換中は、確定してから）。それまでは前の結果を出したままにする
+  const { composing, compositionProps } = useComposition();
+  const term = useSearchTerm(q, composing);
+  const pages = useQuery({ queryKey: ["search", term], queryFn: () => api.search(term), enabled: open, placeholderData: keepPreviousData });
   const create = useMutation({
     mutationFn: () => api.createPage({ title: q || "無題" }),
     onSuccess: async (page) => {
@@ -100,6 +105,13 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       },
     },
     { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    {
+      id: "requests",
+      label: "「編集リクエスト」を開く",
+      keywords: ["requests", "edit requests", "review", "suggestion", "teian", "henshu"],
+      icon: <GitPullRequestArrow size={18} />,
+      run: go("/w/$wikiKey/requests"),
+    },
     { id: "calendar", label: "「編集カレンダー」を開く", keywords: ["calendar", "schedule"], icon: <Calendar size={18} />, run: go("/w/$wikiKey/calendar") },
     {
       id: "analytics",
@@ -237,7 +249,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="ページを探す（タイトルと本文）、または操作を選ぶ"
-          inputProps={{ "aria-label": "ページを探す、または操作を選ぶ", role: "combobox", "aria-expanded": true, "aria-controls": "command-menu-list" }}
+          inputProps={{ "aria-label": "ページを探す、または操作を選ぶ", role: "combobox", "aria-expanded": true, "aria-controls": "command-menu-list", ...compositionProps }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -271,7 +283,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
           ];
         })}
       </MenuList>
-      {q !== "" && pages.data && pageItems.length === 0 && matched.length === 0 && (
+      {q !== "" && term === q && pages.data && !pages.isPlaceholderData && pageItems.length === 0 && matched.length === 0 && (
         <Muted sx={{ px: 2, pb: 1.5 }}>「{q}」に一致するページや操作はありません。上の項目から、この名前でページを作れます。</Muted>
       )}
       {(create.error ?? pages.error) && (

@@ -1,5 +1,5 @@
 {
-  "id": "4e96418f-0734-4a10-8b05-197bf779159a",
+  "id": "838d79c9-c9cc-4b60-aa8b-7175da68b46c",
   "prevId": "5b1b807c-ebd4-4a5c-97c8-6aa43dc4cff2",
   "version": "7",
   "dialect": "postgresql",
@@ -1013,6 +1013,84 @@
           ]
         }
       },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.page_search": {
+      "name": "page_search",
+      "schema": "",
+      "columns": {
+        "page_id": {
+          "name": "page_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body_md": {
+          "name": "body_md",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "page_search_title_trgm_idx": {
+          "name": "page_search_title_trgm_idx",
+          "columns": [
+            {
+              "expression": "title",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "page_search_body_trgm_idx": {
+          "name": "page_search_body_trgm_idx",
+          "columns": [
+            {
+              "expression": "body_md",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "page_search_page_id_pages_id_fk": {
+          "name": "page_search_page_id_pages_id_fk",
+          "tableFrom": "page_search",
+          "tableTo": "pages",
+          "columnsFrom": [
+            "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -2837,147 +2915,6 @@
         "wiki_members_role_check": {
           "name": "wiki_members_role_check",
           "value": "\"wiki_members\".\"role\" in ('admin', 'editor')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.wiki_sns_accounts": {
-      "name": "wiki_sns_accounts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "wiki_id": {
-          "name": "wiki_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "external_id": {
-          "name": "external_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "username": {
-          "name": "username",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "display_name": {
-          "name": "display_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "access_token_enc": {
-          "name": "access_token_enc",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "refresh_token_enc": {
-          "name": "refresh_token_enc",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scopes": {
-          "name": "scopes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connected_by": {
-          "name": "connected_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "connected_by_label": {
-          "name": "connected_by_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connected_at": {
-          "name": "connected_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "wiki_sns_accounts_wiki_id_wikis_id_fk": {
-          "name": "wiki_sns_accounts_wiki_id_wikis_id_fk",
-          "tableFrom": "wiki_sns_accounts",
-          "tableTo": "wikis",
-          "columnsFrom": [
-            "wiki_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "wiki_sns_accounts_connected_by_users_id_fk": {
-          "name": "wiki_sns_accounts_connected_by_users_id_fk",
-          "tableFrom": "wiki_sns_accounts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "connected_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "wiki_sns_accounts_wiki_provider_key": {
-          "name": "wiki_sns_accounts_wiki_provider_key",
-          "nullsNotDistinct": false,
-          "columns": [
-            "wiki_id",
-            "provider"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "wiki_sns_accounts_provider_check": {
-          "name": "wiki_sns_accounts_provider_check",
-          "value": "\"wiki_sns_accounts\".\"provider\" in ('x')"
         }
       },
       "isRLSEnabled": false
