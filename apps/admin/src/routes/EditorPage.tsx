@@ -27,6 +27,7 @@ import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { takeJustCreated } from "../lib/newPage";
 import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { PageCover, PageCoverPicker, useSetCover } from "../components/PageCover";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
 import { PublishMenu } from "../components/PublishMenu";
@@ -83,6 +84,10 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   // アイコン（絵文字）を選ぶ画面。タイトルのそばのボタンと「…」メニューのどちらから開いても、タイトルの下に出す
   const titleRow = useRef<HTMLDivElement>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  // カバー画像。選ぶ画面は、カバー（付いていなければ「カバーを追加」）の下に出す
+  const coverRow = useRef<HTMLDivElement>(null);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+  const removeCover = useSetCover(pageId);
   const headings = useOutline(editor);
   // 狭い画面（md 未満。WikiLayout が上の帯を置く幅）では、この画面の帯を置かず、操作を上の帯に出して1段にする
   const barBelow = useMediaQuery(useTheme().breakpoints.down("md"));
@@ -440,6 +445,17 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
                 />
               )
             )}
+            {/* カバー画像は版に入らず、選んだ・外したらすぐに反映する */}
+            <Box ref={coverRow}>
+              <PageCover
+                cover={p.cover}
+                onPick={() => setCoverPickerOpen(true)}
+                onRemove={() => removeCover.mutate(null)}
+                removing={removeCover.isPending}
+                error={removeCover.error ? `カバーを外せませんでした：${errorMessage(removeCover.error)}` : null}
+              />
+            </Box>
+            <PageCoverPicker pageId={pageId} cover={p.cover} anchorEl={coverRow.current} open={coverPickerOpen} onClose={() => setCoverPickerOpen(false)} />
             {/* 下書きは保存されるが、タイトルが空のあいだは版にならない。押す前から分かるよう、タイトルのすぐ上に出しておく */}
             {draft.title.trim() === "" && !titleRequired && <Muted sx={{ mb: 0.5 }}>タイトルを入れると版履歴に残ります</Muted>}
             {/* アイコンは、タイトルと本文の左端を揃えたまま出す（広い画面では左の余白、狭い画面ではタイトルの上） */}

@@ -197,6 +197,8 @@ export const api = {
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
   /** アイコン（絵文字1つ）を付ける・変える・外す（null）。版は作らず、すぐに反映される */
   setPageIcon: (id: string, icon: string | null) => request<PageDetail>("PUT", w(`/pages/${id}/icon`), { icon }),
+  /** カバー画像（`/images/{name}` か用意した画像）を付ける・変える・外す（null）。版は作らず、すぐに反映される */
+  setPageCover: (id: string, cover: string | null) => request<PageDetail>("PUT", w(`/pages/${id}/cover`), { cover }),
   getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
   saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<SavePageDraftResult>("PUT", w(`/pages/${id}/draft`), input),

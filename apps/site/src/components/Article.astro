@@ -39,7 +39,7 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 
 <article class={s.article}>
   {/* 飾りなので alt は空。高さは固定にして、読み込みで本文が下へずれないようにする */}
-  {cover && <img class={s.cover} src={cover} alt="" width="1600" height="400" loading="eager" decoding="async" data-pagefind-ignore />}
+  {cover && <img class={s.cover} src={cover} alt="" width="1600" height="400" loading="eager" decoding="async" data-cover data-pagefind-ignore />}
   {/* タイトルは検索結果の見出し（meta）として渡し、本文の抜粋には入れない */}
   <h1 data-pagefind-meta="title" data-pagefind-ignore="index">
     {/* 飾りなので読み上げず、検索の見出しにも入れない */}
@@ -185,7 +185,8 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
   };
   if (article && typeof HTMLDialogElement !== "undefined") {
     for (const img of article.querySelectorAll<HTMLImageElement>("img")) {
-      if (img.closest("a, button")) continue;
+      // カバーは飾りなので、拡大の対象にしない
+      if (img.closest("a, button") || img.hasAttribute("data-cover")) continue;
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.imageZoomOpen = "";
