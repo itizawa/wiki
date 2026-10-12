@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../app";
 import type { GoogleReporting } from "../analytics/google";
 import type { GoogleOidc } from "../auth/google";
+import type { XClient } from "../sns/x-client";
 import { issueSession, SESSION_COOKIE } from "../auth/session";
 import type { AppConfig } from "../config";
 import type { CronMarkStore } from "../cron/marks";
@@ -32,6 +33,7 @@ export const testConfig: AppConfig = {
   exportToken: "export-token",
   cronToken: "cron-token",
   googleServiceAccount: null,
+  x: null,
 };
 
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
@@ -69,6 +71,7 @@ function migratedDataDir() {
 export async function setup(
   opts: {
     google?: GoogleOidc;
+    x?: XClient;
     config?: Partial<AppConfig>;
     images?: ImageStore | null;
     reporting?: GoogleReporting | null;
@@ -85,6 +88,7 @@ export async function setup(
     db,
     config,
     google: opts.google ?? null,
+    x: opts.x ?? null,
     images,
     reporting: opts.reporting ?? null,
     rateLimits: opts.rateLimits ?? null,

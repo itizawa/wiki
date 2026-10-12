@@ -2,6 +2,7 @@ import type { AppConfig } from "./config";
 import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
+import type { XClient } from "./sns/x-client";
 import type { GoogleReporting } from "./analytics/google";
 import type { ImageStore } from "./images/store";
 import type { RateLimiters } from "./rate-limit";
@@ -17,6 +18,8 @@ export type Deps = {
   images?: ImageStore | null;
   /** Google Analytics とサーチコンソールの数字を読むもの。無ければ「アクセス解析」は未設定として出す */
   reporting?: GoogleReporting | null;
+  /** SNS 連携の X の API。無ければ（`config.x` が null）X 連携は使えない */
+  x?: XClient | null;
   /**
    * Cron のワーカーへの印を書く先（Workers KV）。無ければ印を書かない
    * （手元の開発とテスト。ワーカーの側も、バインディングが無ければ毎回 DB を見に行く）

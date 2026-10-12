@@ -653,6 +653,38 @@ export const invites = pgTable(
   ],
 );
 
+/**
+ * wiki につないだ SNS のアカウント（いまは X だけ）。wiki と SNS の組に1つ。
+ * トークンは `SNS_TOKEN_KEY` で暗号化して持つ（`sns/crypto.ts`）。同じアカウントを複数の wiki につないでもよい。
+ */
+export const wikiSnsAccounts = pgTable(
+  "wiki_sns_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    provider: text("provider", { enum: ["x"] }).notNull(),
+    /** SNS の側のアカウント ID（ユーザー名が変わっても同じ） */
+    externalId: text("external_id").notNull(),
+    username: text("username").notNull(),
+    displayName: text("display_name").notNull(),
+    accessTokenEnc: text("access_token_enc").notNull(),
+    /** 更新用のトークン。使うたびに新しいものに置き換わる */
+    refreshTokenEnc: text("refresh_token_enc"),
+    /** アクセストークンの期限 */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    scopes: text("scopes").notNull(),
+    connectedBy: uuid("connected_by").references(() => users.id),
+    /** つないだ人の名前（無ければメールアドレス）。その時点の値 */
+    connectedByLabel: text("connected_by_label").notNull(),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("wiki_sns_accounts_wiki_provider_key").on(t.wikiId, t.provider),
+    check("wiki_sns_accounts_provider_check", sql`${t.provider} in ('x')`),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // 監査ログ（誰が・いつ・何をしたか）。追記だけ。直す・消す API は無い
 // ---------------------------------------------------------------------------

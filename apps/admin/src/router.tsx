@@ -1,7 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
-import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
+import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, X_CONNECT_RESULTS, type AnalyticsDays, type XConnectResult } from "@wiki/shared";
 import type { EditRequestListStatus } from "@wiki/shared";
-import type { ComponentType } from "react";
+import { useCallback, type ComponentType } from "react";
 import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
 import { Home, Root } from "./routes/Layout";
@@ -19,6 +19,7 @@ import { FIRST_WIKI } from "./lib/wiki";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
+import { SnsSettingsPage } from "./routes/SnsSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
 import { WikisPage } from "./routes/WikisPage";
@@ -175,6 +176,21 @@ const appearanceRoute = createRoute({ getParentRoute: () => settingsRoute, path:
 const siteHomeRoute = createRoute({ getParentRoute: () => settingsRoute, path: "home", component: HomeSettingsPage });
 // 公開サイトの連携（GA・サーチコンソール）。読むのはだれでも、変えるのはオーナーだけ
 const integrationsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "integrations", component: SettingsPage });
+// SNS のアカウントとの連携（管理者だけ）。X の認可の画面から戻ってきたときは、結果が `?x=` に付く
+const snsRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "sns",
+  validateSearch: (search: Record<string, unknown>): { x?: XConnectResult } => {
+    const x = X_CONNECT_RESULTS.find((r) => r === search.x);
+    return x ? { x } : {};
+  },
+  component: function SnsScreen() {
+    const { x } = snsRoute.useSearch();
+    const navigate = snsRoute.useNavigate();
+    const clear = useCallback(() => void navigate({ search: {}, replace: true }), [navigate]);
+    return <SnsSettingsPage result={x} onResultRead={clear} />;
+  },
+});
 // メンバー。一覧はだれでも、変えるのは管理者だけ
 const membersRoute = createRoute({ getParentRoute: () => settingsRoute, path: "members", component: MembersPage });
 // この wiki の監査ログ（管理者だけ）
@@ -226,7 +242,7 @@ const routeTree = rootRoute.addChildren([
     templateEditorRoute,
     historyRoute,
     trashRoute,
-    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, membersRoute, auditRoute]),
+    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),
     legacySettingsScreen("appearance"),
