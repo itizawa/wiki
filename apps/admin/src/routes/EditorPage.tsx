@@ -28,6 +28,7 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
 import { PublishMenu } from "../components/PublishMenu";
+import { SaveStatus, saveState } from "../components/SaveStatus";
 import { StarButton } from "../components/StarButton";
 import { VersionHistory } from "../components/VersionHistory";
 import { Muted, RouterLink, SkeletonEditor } from "../components/ui";
@@ -319,6 +320,16 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     />
   );
 
+  // 本文の下書きの保存の状態。タイトルの誤りは本文の保存を止めない（タイトルの上限は本文の上の表示で伝える）ので、ここには含めない
+  const saveStatus = (
+    <SaveStatus
+      state={saveState(autosave)}
+      savedAt={autosave.savedAt}
+      // 別の画面で版が進んだ（409）ときは、もう一度試しても保存できない。本文の上の帯の操作で直す
+      onRetry={autosave.conflict ? undefined : () => void autosave.flush()}
+    />
+  );
+
   // 「…」の手前に並べるボタン（スマホ幅では「…」メニューの中に出す）
   const actions = (
     <>
@@ -349,6 +360,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         {barBelow ? (
           // 狭い画面（md 未満）では、この画面の帯を置かず、上の帯（サイドバーを開くボタンと wiki 名）の右端に出す。パンくずは出さない（タイトルは本文の上で見える）
           <NarrowBarActions>
+            {saveStatus}
             {!narrow && actions}
             {pageMenu}
           </NarrowBarActions>
@@ -368,6 +380,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             }}
           >
             <Breadcrumb pageId={pageId} title={draft.title} />
+            {saveStatus}
             {actions}
             {pageMenu}
           </Box>
