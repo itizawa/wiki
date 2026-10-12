@@ -16,6 +16,7 @@ import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { useDeletePage } from "../lib/deletePage";
 import { focusAfterRemoval } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
+import { invalidatePageLists } from "../lib/invalidatePageLists";
 import { publicPageUrl } from "../lib/publicUrl";
 import { useStars } from "../lib/stars";
 import { pageLink, useWiki } from "../lib/wiki";
@@ -97,7 +98,7 @@ export function PageRowMenu(props: {
       return api.createPage({ title: copyTitle(head.title), bodyMd: head.bodyMd, parentPageId: parentPageId(props.nodes, page.id) });
     },
     onSettled: () => {
-      for (const key of ["structure", "pages", "search"]) void qc.invalidateQueries({ queryKey: [key] });
+      invalidatePageLists(qc);
     },
     onSuccess: async (created) => {
       setNotice(`「${created.title}」を作りました`);

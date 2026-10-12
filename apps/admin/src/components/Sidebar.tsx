@@ -43,6 +43,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { api, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
+import { invalidatePageLists } from "../lib/invalidatePageLists";
 import { markJustCreated } from "../lib/newPage";
 import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
@@ -158,9 +159,7 @@ export function Sidebar(props: {
   const create = useMutation({
     mutationFn: (parentPageId: string | null) => api.createPage({ title: UNTITLED, parentPageId }),
     onSettled: () => {
-      refreshStructure();
-      void qc.invalidateQueries({ queryKey: ["pages"] });
-      void qc.invalidateQueries({ queryKey: ["search"] });
+      invalidatePageLists(qc);
     },
     onSuccess: async (page) => {
       markJustCreated(page.id);
