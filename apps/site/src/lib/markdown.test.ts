@@ -235,3 +235,64 @@ describe("@children（配下のページの一覧）", () => {
     expect(excerpt("前の文\n\n@children depth=2\n\n後の文")).toBe("前の文 後の文");
   });
 });
+
+describe("リンクカード（URL だけの段落）", () => {
+  const linkPreviews = { "https://example.com/post": { title: "記事 <b>", description: "説明", siteName: "サイト" } };
+
+  it("OGP がある外部 URL だけの段落は、ただの <a> のカードにする（画像は出さない）", () => {
+    const html = renderMarkdown("前\n\nhttps://example.com/post\n\n後", { publicPaths, linkPreviews });
+    expect(html).toContain('<p class="link-card"><a href="https://example.com/post" target="_blank" rel="noopener">');
+    expect(html).toContain('<span class="link-card-title">記事 &lt;b&gt;</span>');
+    expect(html).toContain('<span class="link-card-site">サイト</span>');
+    expect(html).toContain('<span class="link-card-description">説明</span>');
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<script");
+  });
+
+  it("収益化の記事は rel に sponsored を付ける。サイト名が無ければ host、説明が無ければ出さない", () => {
+    const html = renderMarkdown("https://example.com/post", { publicPaths, sponsored: true, linkPreviews: { "https://example.com/post": { title: "t", description: null, siteName: null } } });
+    expect(html).toContain('rel="sponsored noopener"');
+    expect(html).toContain('<span class="link-card-site">example.com</span>');
+    expect(html).not.toContain("link-card-description");
+  });
+
+  it("OGP が無い（取れなかった）URL・文章の途中・[文字](URL)・マップの URL は、これまでどおりリンク", () => {
+    expect(renderMarkdown("https://nope.example/", { publicPaths, linkPreviews })).toContain('<a href="https://nope.example/" rel="noopener">');
+    expect(renderMarkdown("見て https://example.com/post です", { publicPaths, linkPreviews })).not.toContain("link-card");
+    expect(renderMarkdown("[文字](https://example.com/post)", { publicPaths, linkPreviews })).not.toContain("link-card");
+    expect(renderMarkdown("https://example.com/post\nつづき", { publicPaths, linkPreviews })).not.toContain("link-card");
+    expect(renderMarkdown("https://www.google.com/maps/embed?pb=1", { publicPaths, linkPreviews: { "https://www.google.com/maps/embed?pb=1": { title: "x", description: null, siteName: null } } })).toContain("map-embed");
+  });
+
+  it("内部リンクの URL だけの段落は、カードにしない", () => {
+    const html = renderMarkdown("https://wiki.example.com/p/abcdefghij", {
+      publicPaths,
+      origin: "https://wiki.example.com",
+      linkPreviews: { "https://wiki.example.com/p/abcdefghij": { title: "x", description: null, siteName: null } },
+    });
+    expect(html).not.toContain("link-card");
+    expect(html).toContain('<a href="/p/abcdefghij">');
+  });
+});
+
+describe("内部リンクの「@タイトル」", () => {
+  const titleOf = (id: string) => (id === "abcdefghij" ? "手順書" : undefined);
+
+  it("文字がタイトルそのままの公開ページへのリンクに page-mention を付ける（文字は変えない）", () => {
+    expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths, titleOf })).toContain('<a class="page-mention" href="/p/abcdefghij">手順書</a>');
+    expect(renderMarkdown("[ 手順書 ](/p/abcdefghij)", { publicPaths, titleOf })).toContain("page-mention");
+  });
+
+  it("文字を変えたリンク・タイトルを渡さないときは、ふつうのリンク", () => {
+    expect(renderMarkdown("[詳しくはこちら](/p/abcdefghij)", { publicPaths, titleOf })).toContain('<a href="/p/abcdefghij">詳しくはこちら</a>');
+    expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths })).not.toContain("page-mention");
+  });
+
+  it("非公開のページは文字だけで、@ の印も付けない。Markdown に @ と ** は書かない", () => {
+    const html = renderMarkdown("[旧題](/p/zzzzzzzzzz)", { publicPaths, titleOf: () => "旧題" });
+    expect(html).toContain("旧題");
+    expect(html).not.toContain("page-mention");
+    expect(html).not.toContain("<a");
+    expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths, titleOf })).not.toMatch(/@|<strong/);
+  });
+});
