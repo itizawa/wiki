@@ -456,11 +456,14 @@ function ReadNumbers({ target, connection, blocked, children }: { target: Analyt
 }
 
 function ServiceAccountMissing({ state }: { state: GoogleConnection["serviceAccount"] }) {
+  const secret = <Mono sx={{ wordBreak: "break-all" }}>{SERVICE_ACCOUNT_SECRET}</Mono>;
   return (
     <Alert severity="info" sx={textSx}>
-      {state === "invalid"
-        ? `サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）が登録されていますが、鍵として読めません。`
-        : `この管理画面には、サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）がまだ登録されていないため、足すメールアドレスを出せません。`}
+      {state === "invalid" ? (
+        <>サービスアカウントの鍵（{secret}）が登録されていますが、鍵として読めません。</>
+      ) : (
+        <>この管理画面には、サービスアカウントの鍵（{secret}）がまだ登録されていないため、足すメールアドレスを出せません。</>
+      )}
       登録の手順は、
       <RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">
         「アクセス解析」

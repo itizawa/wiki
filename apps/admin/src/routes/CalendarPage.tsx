@@ -27,7 +27,7 @@ const STOCK_MIN = 3;
  * 行の中の、ページの名前の枠。残りの幅を取る。
  * 最低の幅を決めておき、足りなければ右のボタンを次の行へ送る（決めておかないと、スマホの幅ではボタンに押されて1文字ずつ折り返す）。
  */
-const titleCellSx = { flex: "1 1 10em", minWidth: 0 } as const;
+const titleCellSx = { flex: "1 1 10em", minWidth: 0, overflowWrap: "anywhere" } as const;
 
 /** 行の遷移先。ページが無い予約（ブランチの操作）には無い。 */
 export const entryLink = (e: Entry) => (e.kind === "action" ? (e.action.pageId ? pageLink(e.action.pageId) : undefined) : pageLink(e.pageId));
