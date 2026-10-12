@@ -3,9 +3,8 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
-import { IMAGE_LIMIT_LABEL, IMAGE_TYPES } from "@wiki/shared";
 import { useRef, useState } from "react";
-import { imageFileProblem } from "../editor/imageFile";
+import { DEFAULT_IMAGE_RULE, imageFileProblem, type ImageRule } from "../editor/imageFile";
 import { api, errorMessage } from "../lib/api";
 import { Muted } from "./ui";
 
@@ -14,11 +13,11 @@ import { Muted } from "./ui";
  * 画面の側で分かる理由（ファイルでない・2枚以上・形式・大きさ）で断るときは、その理由を返す。
  * 最終的な判定はサーバーが中身を見て行う。
  */
-export function pickImageFile<F extends { type: string; size: number }>(files: readonly F[]): { file: F } | { problem: string } {
+export function pickImageFile<F extends { type: string; size: number }>(files: readonly F[], rule: ImageRule = DEFAULT_IMAGE_RULE): { file: F } | { problem: string } {
   if (files.length === 0) return { problem: "画像のファイルを選んでください。文字やリンクはアップロードできません。" };
   if (files.length > 1) return { problem: "画像は1枚だけ選んでください。" };
   const file = files[0]!;
-  const problem = imageFileProblem(file);
+  const problem = imageFileProblem(file, rule);
   return problem ? { problem } : { file };
 }
 
@@ -26,6 +25,7 @@ export function pickImageFile<F extends { type: string; size: number }>(files: r
  * 画像を1枚選んでアップロードする部品。ファイルの選択と、枠へのドラッグ＆ドロップの両方を受ける。
  * 受け付ける形式と大きさは、選ぶ前から枠の中に出しておく。アップロード中の表示とエラーも、この枠のそばに出す。
  * 終わったら、画像のパス（`/images/{name}`）を onUploaded に渡す。
+ * 受け付ける形式と大きさ（`rule`）と送り先（`upload`）を省くと、本文の画像と同じ（PNG・JPEG・WebP・GIF の 5MB まで）。
  */
 export function ImageUploader(props: {
   /** どの wiki の経路でアップロードするか。省くと、いま開いている wiki */
@@ -35,15 +35,20 @@ export function ImageUploader(props: {
   onUploadingChange?: (uploading: boolean) => void;
   /** ファイルを選ぶボタンの文言 */
   label?: string;
+  /** 受け付ける形式と大きさ。API の側の条件と合わせる */
+  rule?: ImageRule;
+  /** アップロードの送り先。省くと、wiki の画像（本文と同じ置き場所） */
+  upload?: (file: File) => Promise<{ url: string }>;
 }) {
+  const rule = props.rule ?? DEFAULT_IMAGE_RULE;
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const upload = async (files: File[]) => {
+  const startUpload = async (files: File[]) => {
     if (uploading) return;
-    const picked = pickImageFile(files);
+    const picked = pickImageFile(files, rule);
     if ("problem" in picked) {
       setError(picked.problem);
       return;
@@ -52,7 +57,7 @@ export function ImageUploader(props: {
     setUploading(true);
     props.onUploadingChange?.(true);
     try {
-      const { url } = await api.uploadImage(picked.file, props.wikiKey);
+      const { url } = await (props.upload ? props.upload(picked.file) : api.uploadImage(picked.file, props.wikiKey));
       props.onUploaded(url);
     } catch (err) {
       setError(`画像をアップロードできませんでした。${errorMessage(err)}`);
@@ -77,7 +82,7 @@ export function ImageUploader(props: {
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          void upload(Array.from(e.dataTransfer.files));
+          void startUpload(Array.from(e.dataTransfer.files));
         }}
         sx={{
           display: "flex",
@@ -107,16 +112,16 @@ export function ImageUploader(props: {
           ref={fileInput}
           type="file"
           hidden
-          accept={Object.keys(IMAGE_TYPES).join(",")}
+          accept={rule.types.join(",")}
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
             // 同じファイルを続けて選んでも、もう一度アップロードできるようにする
             e.target.value = "";
-            if (files.length > 0) void upload(files);
+            if (files.length > 0) void startUpload(files);
           }}
         />
         <Muted sx={{ fontSize: "0.8rem" }}>
-          {dragging ? "ここにドロップするとアップロードします" : `この枠に画像をドラッグしても入れられます。${IMAGE_LIMIT_LABEL}。`}
+          {dragging ? "ここにドロップするとアップロードします" : `この枠に画像をドラッグしても入れられます。${rule.limitLabel}。`}
         </Muted>
       </Box>
       {error && (

@@ -9,9 +9,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { TEMPLATE_VARIABLES, type PageTemplate } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
-import { Mono, Muted, RouterLink, Row, Section, SkeletonEditor, SkeletonSection } from "../components/ui";
+import { Mono, Muted, RouterLink, Row, Section, SkeletonEditor } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { useCreateFromTemplate } from "../lib/createFromTemplate";
@@ -59,7 +60,49 @@ export function TemplatesPage() {
     mutationFn: (id: string) => api.deleteTemplate(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
   });
-  const error = create.error ?? remove.error ?? createPage.error ?? templates.error;
+  const error = create.error ?? remove.error ?? createPage.error;
+  const columns: DataListColumn<PageTemplate>[] = [
+    {
+      key: "title",
+      header: "名前",
+      // 長い名前は折り返す。狭い画面でも1文字ずつに潰れない幅を取る
+      width: "minmax(160px, 1fr)",
+      sx: { overflowWrap: "anywhere" },
+      render: (t) => <RouterLink {...templateLink(t.id)}>{t.title}</RouterLink>,
+    },
+    {
+      key: "updatedAt",
+      header: "最終更新",
+      width: "160px",
+      sx: { whiteSpace: "nowrap" },
+      render: (t) => (
+        <Muted component="span">
+          <time dateTime={t.updatedAt}>{formatDateTime(t.updatedAt)}</time>
+        </Muted>
+      ),
+    },
+    {
+      key: "actions",
+      header: "操作",
+      width: "max-content",
+      render: (t) => (
+        <Row sx={{ flexWrap: "nowrap" }}>
+          <Button variant="outlined" disabled={createPage.isPending} onClick={() => createPage.mutate({ templateId: t.id })} sx={{ whiteSpace: "nowrap" }}>
+            このテンプレートでページを作る
+          </Button>
+          <Button
+            color="error"
+            disabled={remove.isPending}
+            onClick={async () => {
+              if (await confirmDelete(t.title)) remove.mutate(t.id);
+            }}
+          >
+            削除
+          </Button>
+        </Row>
+      ),
+    },
+  ];
 
   return (
     <Stack spacing={1.5}>
@@ -81,41 +124,18 @@ export function TemplatesPage() {
       </Section>
 
       {error && <Alert severity="error">{errorMessage(error)}</Alert>}
-      {/* テンプレートのカード（名前 + 最終更新）の形 */}
-      {templates.isPending && [0, 1].map((i) => <SkeletonSection key={i} lines={1} />)}
-      {templates.data?.templates.length === 0 && (
-        <Section>
-          <Muted>テンプレートはまだありません。</Muted>
-        </Section>
-      )}
-      {templates.data?.templates.map((t) => (
-        <Section key={t.id}>
-          <Row sx={{ justifyContent: "space-between" }}>
-            <Box sx={{ minWidth: 0 }}>
-              <RouterLink {...templateLink(t.id)} sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>
-                {t.title}
-              </RouterLink>
-              <Muted>
-                最終更新 <time dateTime={t.updatedAt}>{formatDateTime(t.updatedAt)}</time>
-              </Muted>
-            </Box>
-            <Row>
-              <Button variant="outlined" disabled={createPage.isPending} onClick={() => createPage.mutate({ templateId: t.id })}>
-                このテンプレートでページを作る
-              </Button>
-              <Button
-                color="error"
-                disabled={remove.isPending}
-                onClick={async () => {
-                  if (await confirmDelete(t.title)) remove.mutate(t.id);
-                }}
-              >
-                削除
-              </Button>
-            </Row>
-          </Row>
-        </Section>
-      ))}
+      <Section>
+        <DataList
+          label="テンプレートの一覧"
+          columns={columns}
+          rows={templates.data?.templates}
+          rowKey={(t) => t.id}
+          rowLink={(t) => templateLink(t.id)}
+          error={templates.error}
+          empty="テンプレートはまだありません。"
+          skeletonRows={2}
+        />
+      </Section>
     </Stack>
   );
 }

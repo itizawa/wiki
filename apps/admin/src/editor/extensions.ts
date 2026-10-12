@@ -4,6 +4,7 @@ import { TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
+import { BlockMove } from "./blockMove";
 import { CalloutBlockquote } from "./callout";
 import { lowlight } from "./highlight";
 import { MarkdownListItem, MarkdownTaskItem } from "./listItems";
@@ -25,6 +26,7 @@ export const editorExtensions = [
     link: { openOnClick: false, autolink: true, defaultProtocol: "https" },
   }),
   CalloutBlockquote,
+  BlockMove,
   MarkdownListItem,
   ...toggleExtensions,
   // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）

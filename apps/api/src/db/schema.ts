@@ -34,7 +34,7 @@ export const wikis = pgTable("wikis", {
   /** 管理画面で wiki を見分けるための画像の URL（http(s)）。null なら表示名の頭文字を出す */
   iconUrl: text("icon_url"),
   /**
-   * 公開サイトの見た目（アクセント色・ロゴ・ファビコン。`WikiTheme`）。null なら既定。
+   * 公開サイトの見た目（テーマの key・ロゴ・ファビコン。`WikiTheme`）。null なら既定。
    * 読むときは resolveTheme を通し、欠けた・正しくない項目は既定に戻す
    */
   theme: jsonb("theme"),
@@ -585,6 +585,8 @@ export const users = pgTable(
     /** 表示用。ログインのたびに Google から受け取ったもので更新する（小文字） */
     email: text("email").notNull(),
     name: text("name"),
+    /** Google アカウントの画像の URL（https のみ）。ログインのたびに更新する。無ければ空 */
+    pictureUrl: text("picture_url"),
     /** すべての wiki に管理者として入れ、wiki の作成・アーカイブとオーナーの追加・解除ができる */
     isOwner: boolean("is_owner").notNull().default(false),
     createdAt: createdAt(),

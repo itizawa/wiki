@@ -22,6 +22,9 @@ export const TOUCH = "@media (pointer: coarse)";
 /** 本文の近くに浮かぶメニュー（書式、表の操作）の幅の上限。画面の左右に 8px ずつ空ける。 */
 export const MENU_MAX_WIDTH = "calc(100vw - 16px)";
 
+/** キーボードのフォーカスの枠。primary の色で 2px。背景に対して 3:1 以上（WCAG 1.4.11）。マウスで押したときは出さない（:focus-visible のときだけ） */
+const focusRing = (offset: number) => ({ outline: "2px solid", outlineColor: "var(--mui-palette-primary-main)", outlineOffset: offset });
+
 /** 配色はOSの設定（prefers-color-scheme）に追従する。 */
 export const theme = createTheme({
   cssVariables: true,
@@ -80,8 +83,14 @@ export const theme = createTheme({
         "@media (prefers-reduced-motion: reduce)": {
           "::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*)": { animation: "none !important" },
         },
+        // リンクの枠も、ボタンと同じ見た目にそろえる
+        "a:focus-visible": focusRing(2),
       },
     },
+    // 押せる部品（アイコンのボタン・テキストのボタン・Chip など）すべての、キーボードのフォーカスの枠。
+    // 周りで切り取られる行（メニュー・一覧・タブ）は、枠を内側に描く
+    MuiButtonBase: { styleOverrides: { root: { "&.Mui-focusVisible": focusRing(2) } } },
+    MuiTab: { styleOverrides: { root: { "&.Mui-focusVisible": focusRing(-2) } } },
     MuiButton: { defaultProps: { size: "small", disableElevation: true } },
     MuiTextField: { defaultProps: { size: "small" } },
     // 入力欄は背景（グレー）の上にも置くので、常にカードと同じ面の色にする
@@ -92,8 +101,8 @@ export const theme = createTheme({
     // 隣のボタンとの間が 4px より狭い所では、隣の押せる範囲に食い込むので、その場で `&::after` を消して大きさを決める
     MuiIconButton: { styleOverrides: { sizeSmall: { [TOUCH]: { "&::after": { content: '""', position: "absolute", inset: -4 } } } } },
     // メニューと一覧の詰めた行（32px）は、指で操作する端末では 40px にする
-    MuiMenuItem: { styleOverrides: { dense: { [TOUCH]: { minHeight: 40 } } } },
-    MuiListItemButton: { styleOverrides: { dense: { [TOUCH]: { minHeight: 40 } } } },
+    MuiMenuItem: { styleOverrides: { root: { "&.Mui-focusVisible": focusRing(-2) }, dense: { [TOUCH]: { minHeight: 40 } } } },
+    MuiListItemButton: { styleOverrides: { root: { "&.Mui-focusVisible": focusRing(-2) }, dense: { [TOUCH]: { minHeight: 40 } } } },
   },
 });
 

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { pageIconSchema } from "./emoji";
 
+/** ページのタイトルの長さの上限（文字数）。API の検証と、管理画面の入力欄の表示で同じ値を使う */
+export const PAGE_TITLE_MAX = 200;
+
 export const visibilitySchema = z.enum(["public", "unlisted", "private"]);
 export type Visibility = z.infer<typeof visibilitySchema>;
 
@@ -11,7 +14,7 @@ export type AuthorType = z.infer<typeof authorTypeSchema>;
 export const createPageInput = z
   .object({
     /** テンプレートから作るときは省略でき、テンプレートのタイトル（変数を置き換えたもの）になる */
-    title: z.string().trim().min(1).max(200).optional(),
+    title: z.string().trim().min(1).max(PAGE_TITLE_MAX).optional(),
     bodyMd: z.string().max(500_000).default(""),
     /** この下に置く親ページ。省略またはnullなら最上位。どちらも兄弟の末尾に置く。 */
     parentPageId: z.string().min(1).max(64).nullable().optional(),
@@ -26,7 +29,7 @@ export type CreatePageInput = z.infer<typeof createPageInput>;
 /** 本文の保存。baseVersionIdが現在のheadと一致する場合のみ保存できる（楽観ロック）。 */
 export const savePageInput = z.object({
   baseVersionId: z.string().uuid(),
-  title: z.string().trim().min(1).max(200),
+  title: z.string().trim().min(1).max(PAGE_TITLE_MAX),
   bodyMd: z.string().max(500_000),
 });
 export type SavePageInput = z.infer<typeof savePageInput>;
@@ -37,7 +40,7 @@ export type SavePageInput = z.infer<typeof savePageInput>;
  */
 export const savePageDraftInput = z.object({
   baseVersionId: z.string().uuid(),
-  title: z.string().max(200),
+  title: z.string().max(PAGE_TITLE_MAX),
   bodyMd: z.string().max(500_000),
 });
 export type SavePageDraftInput = z.infer<typeof savePageDraftInput>;

@@ -251,16 +251,22 @@ check(JSON.parse(await read("notes/page-routes.json")).gone.join() === "hhhhhhhh
 const notesFragments = await readdir(join(dist, "notes/pagefind/fragment")).catch(() => []);
 check(notesFragments.length === 1, `the notes wiki's search index holds only its 1 public page (got ${notesFragments.length})`);
 
-// ---- wiki ごとのテーマ：アクセント色・ロゴ・ファビコンは、その wiki の出力にだけ出る。設定の無い wiki は既定のまま
-check(
-  notesIndex.includes("html:root{--accent:#00716b}") && notesIndex.includes("html:root{--accent:#4fd1c5}"),
-  "the notes wiki's pages set its accent colors for light and dark",
-);
+// ---- wiki ごとのテーマ：テーマの色の変数一式・ロゴ・ファビコンは、その wiki の出力に出る。設定の無い wiki は既定のテーマのまま
+const lightVars = "html:root{--bg:#f6f7f9;--paper:#ffffff;--text:#1d2330;--muted:#6b7385;--border:#e2e5eb;--accent:#2257c5;--mark:#fff3a8;--ok:#1f8a4c;--warn:#b7791f;--danger:#c93636}";
+const darkVars = "@media (prefers-color-scheme: dark){html:root{--bg:#14171d;--paper:#1c2028;--text:#e4e7ee;--muted:#949bad;--border:#2d3340;--accent:#7aa5ff;--mark:#5b4f10;--ok:#57c27a;--warn:#e3b341;--danger:#ff7a7a}}";
+const notesTheme = notesIndex.match(/<style>(html:root\{.*?\}\}?)<\/style>/s)?.[1] ?? "";
+const [notesLight = "", notesDark = ""] = notesTheme.split("@media (prefers-color-scheme: dark)");
+check(notesLight.includes("--bg:#fbf7ea;--paper:#fffdf5;") && notesDark.includes("--bg:#1a1612;--paper:#231d17;"), "the notes wiki's pages set its theme's colors for light, then for dark under prefers-color-scheme");
+// 背景画像と飾り：ライトはテーマの方眼（飾りなし）、ダークは wiki が入れた画像（テーマのフクロウの飾りは残る）
+check(notesLight.includes('--bg-image:url("data:image/svg+xml,') && notesLight.includes("--bg-size:32px 32px") && notesLight.includes("--ornament-image:none"), "the light theme's own background image is set, with no ornament");
+check(notesDark.includes('url("/images/notes0background0dark000.jpg")') && notesDark.includes("color-mix(in srgb, #1a1612 82%, transparent)") && notesDark.includes('--ornament-image:url("data:image/svg+xml,'), "the wiki's own dark background replaces the theme's, under a veil, and the owl stays");
+check(notesIndex.includes('class="theme-backdrop" aria-hidden="true"') && notesIndex.includes('class="theme-ornament" aria-hidden="true"'), "the background and the ornament are decorative elements (aria-hidden) at the end of the body");
+check(!wikiIndex.includes("theme-backdrop") && !wikiIndex.includes("--bg-image") && !wikiIndex.includes("--ornament-image"), "a wiki with plain themes gets no background or ornament elements or variables");
 check(notesIndex.includes('<img class=') && notesIndex.includes('src="/images/notes0logo0sample0000000.png" alt="開発ノート" height="32"'), "the logo replaces the site name in the header, with the site name as its alt text");
 check(notesIndex.includes('<link rel="icon" type="image/webp" href="/images/notes0favicon0sample0000.webp">'), "the favicon is the wiki's own image");
-check(wikiIndex.includes("html:root{--accent:#2257c5}") && wikiIndex.includes("html:root{--accent:#7aa5ff}"), "a wiki without a theme keeps the default accent colors");
+check(wikiIndex.includes(lightVars + darkVars), "a wiki without a theme gets the default themes");
 check(wikiIndex.includes('href="/favicon.svg"') && !wikiIndex.includes("<img class="), "a wiki without a theme keeps the default favicon and the text site name");
-const themeLeaks = leaks(await readAll("wiki"), ["#00716b", "#4fd1c5", "notes0logo0sample0000000", "notes0favicon0sample0000"]);
+const themeLeaks = leaks(await readAll("wiki"), ["notes0logo0sample0000000", "notes0favicon0sample0000"]);
 check(themeLeaks.length === 0, `the notes wiki's theme does not appear in the first wiki's output${themeLeaks.length ? ` (${themeLeaks.join(", ")})` : ""}`);
 
 if (failures > 0) {

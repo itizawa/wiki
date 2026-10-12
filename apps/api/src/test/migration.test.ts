@@ -428,6 +428,8 @@ describe("0019_users_and_invites", () => {
     ]);
 
     // pnpm db:migrate が続けて ADMIN_EMAILS をオーナーにする。スターのために作った行をそのまま使う
+    // （bootstrapOwners は今のスキーマで書くので、あとのマイグレーションも流してから呼ぶ）
+    for (const tag of tags.filter((t) => t.slice(0, 4) > "0019")) await runMigration(db, tag);
     const { drizzle } = await import("drizzle-orm/pglite");
     const schema = await import("../db/schema");
     const { bootstrapOwners } = await import("../users/service");

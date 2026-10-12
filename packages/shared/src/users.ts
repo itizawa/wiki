@@ -20,6 +20,8 @@ export type Me = {
   id: string;
   email: string;
   name: string | null;
+  /** Google アカウントの画像の URL（https）。無ければ null */
+  pictureUrl: string | null;
   isOwner: boolean;
 };
 

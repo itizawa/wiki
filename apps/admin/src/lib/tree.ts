@@ -74,6 +74,41 @@ export function flattenVisible(childrenOf: ReadonlyMap<string | null, readonly T
   return rows;
 }
 
+/** ツリーでキーを押したときの動き。行を移る（`focus`：`rows` の添字）か、開く・たたむ（`toggle`）か。何もしないなら null。 */
+export type TreeKeyAction = { focus: number } | { toggle: "open" | "close" } | null;
+
+/**
+ * WAI-ARIA の Tree View のキー操作（↑↓ で前後の行、→ で開く・子へ、← でたたむ・親へ、Home と End で先頭と末尾）。
+ * `index` は、いまフォーカスがある行の `rows` での添字。
+ */
+export function treeKeyAction(rows: readonly FlatRow[], collapsed: ReadonlySet<string>, index: number, key: string): TreeKeyAction {
+  const row = rows[index];
+  if (!row || rows.length === 0) return null;
+  const clamp = (i: number) => ({ focus: Math.min(Math.max(i, 0), rows.length - 1) });
+  switch (key) {
+    case "ArrowDown":
+      return index + 1 < rows.length ? { focus: index + 1 } : null;
+    case "ArrowUp":
+      return index > 0 ? { focus: index - 1 } : null;
+    case "Home":
+      return index > 0 ? clamp(0) : null;
+    case "End":
+      return index < rows.length - 1 ? clamp(rows.length - 1) : null;
+    case "ArrowRight":
+      if (!row.hasChildren) return null;
+      // 開いていれば、いちばん上の子の行（すぐ下の行）へ移る
+      return collapsed.has(row.node.nodeId) ? { toggle: "open" } : index + 1 < rows.length ? { focus: index + 1 } : null;
+    case "ArrowLeft": {
+      if (row.hasChildren && !collapsed.has(row.node.nodeId)) return { toggle: "close" };
+      if (row.node.parentNodeId === null) return null;
+      const parent = rows.findIndex((r) => r.node.nodeId === row.node.parentNodeId);
+      return parent >= 0 ? { focus: parent } : null;
+    }
+    default:
+      return null;
+  }
+}
+
 function isSelfOrDescendant(nodes: readonly TreeNode[], nodeId: string, target: string | null): boolean {
   const byId = new Map(nodes.map((n) => [n.nodeId, n]));
   for (let cur = target; cur !== null; cur = byId.get(cur)?.parentNodeId ?? null) {
