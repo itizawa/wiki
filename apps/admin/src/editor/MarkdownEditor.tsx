@@ -11,6 +11,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import useMediaQuery from "@mui/material/useMediaQuery";
+import type { Theme } from "@mui/material/styles";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
@@ -173,9 +174,6 @@ export function MarkdownEditor(props: {
           [t.breakpoints.down("md")]: { "& .insert-menu": { left: "auto !important", right: 0 } },
           // ハンドルでブロックを動かしている間は、標準の落とす位置のカーソル（リストの項目の中にも出る）を隠し、最上位のブロックの間の線だけを出す
           "&:has(.tiptap[data-block-dragging]) .prosemirror-dropcursor-block": { display: "none" },
-          // ハンドルの外枠は、右の余白（下の mr）を含めて「挿入」ボタンの上にかぶる。外枠はクリックを通し、つかむ四角（BlockDragHandle の Box）だけが受ける
-          // （外枠の pointer-events はライブラリが style に auto と書くので、!important で上書きする）
-          "& .block-drag-handle": { pointerEvents: "none !important" },
           "& .tiptap": {
             outline: "none",
             minHeight: "50vh",
@@ -228,7 +226,9 @@ export function MarkdownEditor(props: {
 }
 
 // ハンドルの位置。行の左の余白に出し、空行の「挿入」ボタン（行の左 4px）と重ならないよう、さらに左へ置く
-const dragHandlePosition = { placement: "left-start" as const, strategy: "absolute" as const };
+// 左へずらすのは、外枠の余白ではなくオフセットでやる（外枠はライブラリが draggable にするので、大きくしたり pointer-events を切ったりするとつかめなくなる）
+const dragHandlePositionAt = (offset: number) => ({ placement: "left-start" as const, strategy: "absolute" as const, middleware: [{ name: "shiftLeft", fn: ({ x, y }: { x: number; y: number }) => ({ x: x - offset, y }) }] });
+const dragHandlePosition = { wide: dragHandlePositionAt(28), narrow: dragHandlePositionAt(4) };
 
 /**
  * ブロック（段落・見出し・リスト全体・表・画像など、最上位のもの）にマウスを乗せると左に出る、つかんで動かすハンドル。
@@ -238,11 +238,12 @@ function BlockDragHandle({ editor }: { editor: Editor }) {
   const touch = useMediaQuery(TOUCH);
   // つかんでいる間は、ツールチップが動かす先の見えるところを隠さないよう出さない
   const [dragging, setDragging] = useState(false);
+  const narrow = useMediaQuery((t: Theme) => t.breakpoints.down("md"));
   if (touch) return null;
   return (
     <DragHandle
       editor={editor}
-      computePositionConfig={dragHandlePosition}
+      computePositionConfig={dragHandlePosition[narrow ? "narrow" : "wide"]}
       className="block-drag-handle"
       onElementDragStart={() => {
         setDragging(true);
@@ -258,7 +259,7 @@ function BlockDragHandle({ editor }: { editor: Editor }) {
         <Box
           role="img"
           aria-label="ブロックを動かす"
-          sx={(t) => ({ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, mr: 3.5, [t.breakpoints.down("md")]: { mr: 0.5 }, pointerEvents: "auto", borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } })}
+          sx={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } }}
         >
           <GripVertical size={18} />
         </Box>
