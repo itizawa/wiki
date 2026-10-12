@@ -27,10 +27,10 @@ export function iconUrlProblem(value: string): string | null {
 type IdentityTarget = Pick<WikiSummary, "key" | "name" | "iconUrl">;
 
 /**
- * wiki の表示名と画像の入力欄・確かめ・保存。「全体の管理」の wiki の一覧の「表示名と画像」と、「設定」の「一般」タブで使う。
+ * wiki の表示名と画像の入力欄・確かめ・保存。「設定」の「一般」タブで使う。
  * 保存したら wiki の一覧（["wikis"]）を読み直し、サイドバーの切り替えメニューの表示名・アイコンにもすぐ映す。
  */
-export function useWikiIdentityForm(wiki: IdentityTarget, opts: { autoFocus?: boolean; onSaved?: (before: IdentityTarget, after: WikiSummary) => void } = {}) {
+export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (before: IdentityTarget, after: WikiSummary) => void } = {}) {
   const refreshWikis = useRefreshWikis();
   const [name, setName] = useState(wiki.name);
   const [iconUrl, setIconUrl] = useState(wiki.iconUrl ?? "");
@@ -53,7 +53,6 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { autoFocus?: bo
         label="表示名"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        autoFocus={opts.autoFocus}
         fullWidth
         slotProps={{
           htmlInput: { maxLength: SITE_NAME_MAX },
