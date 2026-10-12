@@ -1,4 +1,5 @@
 ---
+import { ChevronsLeft, X } from "lucide-react";
 import layout from "../styles/page.module.css";
 
 /**
@@ -15,7 +16,7 @@ import layout from "../styles/page.module.css";
   <div class={layout.navInner}>
     <div class={layout.drawerHead}>
       <span>階層</span>
-      <button type="button" class={layout.drawerClose} data-nav-close aria-label="階層を閉じる">×</button>
+      <button type="button" class={layout.drawerClose} data-nav-close aria-label="階層を閉じる"><X size={20} aria-hidden="true" /></button>
       <button
         type="button"
         class={layout.sidebarClose}
@@ -26,10 +27,7 @@ import layout from "../styles/page.module.css";
         aria-controls="site-nav"
         aria-expanded="true"
       >
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-          <path d="M9 4v16M16 9.5 13.5 12l2.5 2.5"></path>
-        </svg>
+        <ChevronsLeft size={20} aria-hidden="true" />
       </button>
     </div>
     <slot />

@@ -3,6 +3,7 @@ import { resolveTheme } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
+import { Menu, Rss, Search } from "lucide-react";
 import "../styles/global.css";
 import s from "./Base.module.css";
 
@@ -109,9 +110,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       {
         nav && (
           <a class={s.navToggle} href={nav} data-nav-toggle aria-label="階層を開く">
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
+            <Menu size={20} aria-hidden="true" />
           </a>
         )
       }
@@ -121,8 +120,14 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       {
         !noindex && (
           <nav class={s.nav}>
-            <a href="/search">検索</a>
-            <a href="/feed.xml">RSS</a>
+            <a href="/search">
+              <Search size={16} aria-hidden="true" />
+              検索
+            </a>
+            <a href="/feed.xml">
+              <Rss size={16} aria-hidden="true" />
+              RSS
+            </a>
           </nav>
         )
       }

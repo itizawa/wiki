@@ -1,7 +1,11 @@
+.field { position: relative; }
+.fieldIcon { position: absolute; top: 50%; left: 10px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+/* 入力欄は管理画面と同じ、面の色（白）に細い枠 */
 .input {
-  width: 100%; font: inherit; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
-  background: transparent; color: inherit;
+  width: 100%; font: inherit; padding: 8px 12px 8px 36px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--paper); color: inherit;
 }
+.input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .muted { color: var(--muted); }
 .results { padding-left: 20px; }
 .results :global(mark) { background: var(--mark); color: inherit; }
