@@ -125,7 +125,8 @@ function useSidebarPeek(enabled: boolean) {
         pointerInside: inside.current,
         pressed: pressed.current,
         overlayOpen: hasOpenOverlay(),
-        focusInside: ref.current?.contains(document.activeElement) ?? false,
+        // キーボードで入れたフォーカスだけを数える（マウスで押したボタンに残ったフォーカスで、開きっぱなしにならないように）
+        focusInside: !!document.activeElement && !!ref.current?.contains(document.activeElement) && document.activeElement.matches(":focus-visible"),
       });
       // 閉じない理由があるときは、そのまま待つ。理由が無くなったあとの操作（マウスの移動・フォーカスが外れる）で、また数える
       if (!hold) setPeek(false);
@@ -143,7 +144,9 @@ function useSidebarPeek(enabled: boolean) {
   // 出している間だけ、サイドバーの外での操作を見る（メニューを閉じたあとの、マウスの動きなど）
   useEffect(() => {
     if (!peek) return;
-    const onMove = () => {
+    const onMove = (e: PointerEvent) => {
+      // React のイベントは、画面の末尾に置いたメニューの背景の上でも「サイドバーの中」とみなす。実際の DOM で見直す
+      inside.current = e.target instanceof Node && !!ref.current?.contains(e.target);
       if (!inside.current && timer.current === undefined) scheduleClose();
     };
     const onDown = () => {
@@ -271,6 +274,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
             position: "relative",
             flexShrink: 0,
             overflow: peek ? "visible" : "hidden",
+            zIndex: peek ? (t) => t.zIndex.appBar : "auto",
             // 画面を移るときのフェードから外す（theme.ts）
             viewTransitionName: "admin-sidebar",
             // 右の境界線（1px）のぶんを足す
@@ -284,7 +288,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
           {/* 閉じている間は、見えない中身にフォーカスが入らないようにする。重ねて出している間は、本文の上に置く（列の幅は変えない） */}
           <Box
             inert={!open && !peek}
-            sx={(t) => ({
+            sx={{
               position: "absolute",
               top: 0,
               left: 0,
@@ -293,13 +297,12 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
               borderRight: 1,
               borderColor: peek ? "divider" : "transparent",
               bgcolor: "background.default",
-              zIndex: peek ? t.zIndex.appBar : "auto",
               boxShadow: peek ? 8 : "none",
               opacity: open || peek ? 1 : 0,
               visibility: open || peek ? "visible" : "hidden",
               transition: `opacity ${MOTION_MS}ms ease, visibility ${MOTION_MS}ms, box-shadow ${MOTION_MS}ms ease`,
               ...noMotion,
-            })}
+            }}
           >
             <Sidebar
               email={email}
