@@ -17,6 +17,8 @@ import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { caretOnLastLine, enterBodyFromTitle } from "../editor/titleBridge";
 import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
 import { api, ApiError, currentWikiKey, errorMessage } from "../lib/api";
+import { usePageTabIcon } from "../lib/tabIcon";
+import { useWikis } from "./Layout";
 import { editRequestsLink, mergeAppliedEdits, useOpenEditRequestCount } from "../lib/editRequests";
 import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
@@ -63,8 +65,12 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const navigate = useNavigate();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
   // 自動保存した下書きは、開くたびにサーバーから読む（前に開いたときのキャッシュは使わない）
+  const wikis = useWikis();
+  const wikiFaviconUrl = wikis.data?.wikis.find((w) => w.key === currentWikiKey())?.faviconUrl;
   const savedDraft = useQuery({ queryKey: ["draft", pageId], queryFn: () => api.getDraft(pageId), gcTime: 0 });
   const [draft, setDraft] = useState<Draft | null>(null);
+  // タブのアイコンを、このページの絵文字かタイトルの1文字目にする（入力中のタイトルにも追従する）
+  usePageTabIcon(wikiFaviconUrl, draft && page.data ? { title: draft.title, icon: page.data.icon } : null);
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   // 版を作るときは、直前の下書きの保存で分かった head をすぐ使う（state の反映を待たない）
   const baseRef = useRef<string | null>(null);
