@@ -20,6 +20,8 @@ export type Wiki = {
   /** アーカイブした日時。null なら使用中 */
   archivedAt: string | null;
   createdAt: string;
+  /** 公開サイトを出しているか。false の間は、ページごとの公開範囲は変えずに、サイトをだれも見られない */
+  sitePublic: boolean;
 } & WikiSettings;
 
 /**
@@ -158,8 +160,9 @@ export const updateWikiSettingsInput = z
     gaMeasurementId: settingValue(isGaMeasurementId, "measurement id must look like G-XXXXXXXXXX").optional(),
     searchConsoleVerification: settingValue(isSearchConsoleVerification, "verification must be the content value of the meta tag").optional(),
     gaPropertyId: settingValue(isGaPropertyId, "property id must be digits only").optional(),
+    sitePublic: z.boolean().optional(),
   })
-  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined || v.gaPropertyId !== undefined, { message: "nothing to update" });
+  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined || v.gaPropertyId !== undefined || v.sitePublic !== undefined, { message: "nothing to update" });
 export type UpdateWikiSettingsInput = z.infer<typeof updateWikiSettingsInput>;
 
 /**

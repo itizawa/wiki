@@ -24,7 +24,7 @@ dist/
                           nav.{hash}.json, page-routes.json, pagefind/）
 ```
 
-`worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404 になる。
+`worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメイン、アーカイブ中の wiki、公開サイトを非公開にしている wiki（`wikis.site_public` が false。API が `/export/public` のマニフェストに入れない）は、ディレクトリが無いので 404 になる。非公開の間も、各ページの公開範囲は変わらず、公開に戻して次のビルドが終われば元のとおりに出る。
 
 Worker を通さないのは `/_astro/*` だけ（`wrangler.toml` の `run_worker_first = ["/*", "!/_astro/*"]`）。どの wiki にも共通で、名前にハッシュが入るので、静的アセットからそのまま返し、ブラウザに1年キャッシュさせる。Worker の呼び出しにも数えられない。
 

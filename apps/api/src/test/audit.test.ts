@@ -196,6 +196,17 @@ describe("audit log: what is recorded", () => {
     ]);
   });
 
+  it("words the site visibility entries", async () => {
+    ctx = await setup();
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: false });
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: true });
+    const entries = (await logs("/admin/audit-logs?category=publish")).reverse();
+    expect(entries.map((e) => [e.action, auditSentenceText(e)])).toEqual([
+      ["wiki_site_visibility", "wiki 「wiki」の公開サイトを非公開にしました（wiki）"],
+      ["wiki_site_visibility", "wiki 「wiki」の公開サイトを公開にしました（wiki）"],
+    ]);
+  });
+
   it("names the author on versions and structure commits", async () => {
     ctx = await setup();
     const editor = await ctx.addUser("minato@example.com", { wiki: "editor" });

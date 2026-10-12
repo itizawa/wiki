@@ -225,6 +225,13 @@
       "when": 1791772442523,
       "tag": "0031_drop_page_views",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791775341124,
+      "tag": "0032_wiki_site_public",
+      "breakpoints": true
     }
   ]
 }
