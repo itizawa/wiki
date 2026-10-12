@@ -1,10 +1,11 @@
+import Box from "@mui/material/Box";
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, X_CONNECT_RESULTS, type AnalyticsDays, type XConnectResult } from "@wiki/shared";
 import type { EditRequestListStatus } from "@wiki/shared";
 import { useCallback, type ComponentType } from "react";
 import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
-import { Home, Root } from "./routes/Layout";
+import { Home, mainProps, mainSx, Root, SkipLink } from "./routes/Layout";
 import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
@@ -49,12 +50,24 @@ const padded = (Page: ComponentType) => () => (
   </PageBody>
 );
 
+/** wiki の外の画面（サイドバーが無い）の枠。スキップリンクと本文（`main`）を付ける。 */
+const standalone = (Page: ComponentType) => () => (
+  <>
+    <SkipLink />
+    <Box {...mainProps} sx={mainSx}>
+      <PageBody>
+        <Page />
+      </PageBody>
+    </Box>
+  </>
+);
+
 // `/` は最後に開いていた wiki へ移す。使用中の wiki が無ければ「wiki を作成する」だけを出す
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Home });
 // ログイン失敗時のリダイレクト先。Root がログイン画面を出す
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: Home });
 // 「全体の管理」：wiki をまたぐオーナー向けの3画面の共通の枠（「wiki の画面に戻る」・見出し・タブ）。URL は持たない
-const globalAdminRoute = createRoute({ getParentRoute: () => rootRoute, id: "global-admin", component: padded(GlobalAdminLayout) });
+const globalAdminRoute = createRoute({ getParentRoute: () => rootRoute, id: "global-admin", component: standalone(GlobalAdminLayout) });
 // wiki の一覧・作成・アーカイブ（オーナーだけ）。wiki が1つも無くても開けるよう、/w/ の外に置く
 const wikisRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/wikis", component: WikisPage });
 // オーナーの追加・解除（オーナーだけ）
@@ -73,7 +86,7 @@ const inviteRoute = createRoute({
 });
 // 外部のアプリ（MCP）：接続の依頼への同意と、与えた許可の一覧。wiki をまたぐので /w/ の外に置く
 const consentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/consent", component: ConsentPage });
-const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/connections", component: padded(ConnectionsPage) });
+const connectionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/connections", component: standalone(ConnectionsPage) });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,

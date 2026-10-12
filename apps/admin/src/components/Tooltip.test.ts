@@ -23,6 +23,10 @@ describe("Tooltip", () => {
   });
 
   it("always renders with an arrow", () => {
-    expect(readFileSync(join(src, wrapper), "utf8")).toMatch(/<MuiTooltip \{\.\.\.props\} arrow \/>/);
+    expect(readFileSync(join(src, wrapper), "utf8")).toMatch(/<MuiTooltip [^>]*\{\.\.\.props\} arrow \/>/);
+  });
+
+  it("does not stay under the pointer, so the row below stays clickable", () => {
+    expect(readFileSync(join(src, wrapper), "utf8")).toMatch(/<MuiTooltip disableInteractive \{\.\.\.props\}/);
   });
 });

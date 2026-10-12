@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { iconUrlProblem } from "../components/WikiIdentityForm";
+import { iconUrlProblem, nameProblem } from "../components/WikiIdentityForm";
 import { keyChecks } from "./WikisPage";
 
 const unmet = (key: string, taken: string[] = []) => keyChecks(key, taken).filter((c) => !c.ok).length;
@@ -32,5 +32,13 @@ describe("wiki の画像の URL の入力", () => {
     expect(iconUrlProblem("javascript:alert(1)")).toMatch(/http/);
     expect(iconUrlProblem("example.com/a.png")).toMatch(/http/);
     expect(iconUrlProblem(`https://example.com/${"a".repeat(2048)}`)).toMatch(/長すぎます/);
+  });
+});
+
+describe("nameProblem", () => {
+  it("空や空白だけなら理由を返し、入っていれば null", () => {
+    expect(nameProblem("")).toBe("表示名を入れてください");
+    expect(nameProblem("  ")).toBe("表示名を入れてください");
+    expect(nameProblem("社内 wiki")).toBeNull();
   });
 });

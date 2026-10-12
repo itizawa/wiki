@@ -8,7 +8,8 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import Typography, { type TypographyProps } from "@mui/material/Typography";
 import { createLink, type LinkComponent } from "@tanstack/react-router";
-import { forwardRef } from "react";
+import Alert from "@mui/material/Alert";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { monoFont } from "../theme";
 
 /** 画面をまたいで使う部品（カード・レイアウト補助・バッジ・ルーターのリンク） */
@@ -24,6 +25,22 @@ export function Section({ sx, ...props }: PaperProps) {
 export function Row({ sx, ...props }: StackProps) {
   return (
     <Stack direction="row" spacing={1} useFlexGap {...props} sx={[{ alignItems: "center", flexWrap: "wrap" }, ...sxList(sx)]} />
+  );
+}
+
+/**
+ * 保存できたことの知らせ。保存ボタンのすぐ上に置く（「設定」の各タブで同じ場所）。
+ * 出たとき、画面の外にあれば、見える所までスクロールする（スマホ幅で、下の端のボタンを押しても見落とさない）。
+ */
+export function SaveNotice({ children, onClose, sx }: { children: ReactNode; onClose?: () => void; sx?: BoxProps["sx"] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
+  return (
+    <Alert ref={ref} severity="success" role="status" onClose={onClose} sx={[{ mb: 1, scrollMarginBottom: 80 }, ...sxList(sx)]}>
+      {children}
+    </Alert>
   );
 }
 

@@ -5,7 +5,7 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const jwks = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
 
 /** sub は Google のアカウント ID（メールアドレスが変わっても同じ）。名前は表示用 */
-export type GoogleIdentity = { sub: string; email: string; emailVerified: boolean; name: string | null };
+export type GoogleIdentity = { sub: string; email: string; emailVerified: boolean; name: string | null; picture?: string | null };
 
 /** Google OIDC。テストでは差し替えられるようにインターフェース化している。 */
 export type GoogleOidc = {
@@ -55,7 +55,18 @@ export function createGoogleOidc(opts: { clientId: string; clientSecret: string;
         email: payload.email.toLowerCase(),
         emailVerified: payload.email_verified === true,
         name: typeof payload.name === "string" && payload.name ? payload.name : null,
+        picture: httpsUrlOrNull(payload.picture),
       };
     },
   };
+}
+
+/** 画像の URL は、https: で始まるものだけを受け取る（http: や javascript: などは捨てる）。 */
+export function httpsUrlOrNull(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    return new URL(value).protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
 }

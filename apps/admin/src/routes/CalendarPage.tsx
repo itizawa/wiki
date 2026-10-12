@@ -11,12 +11,16 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { actionLabel } from "../components/PublishPanel";
 import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
+import { focusAfterRemoval } from "../lib/focus";
+import { useScheduleToasts } from "../lib/scheduleActions";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime, formatDay } from "../lib/format";
+import { checkRunAt } from "../lib/runAt";
 
 const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
@@ -26,9 +30,13 @@ const STOCK_MIN = 3;
  * 行の中の、ページの名前の枠。残りの幅を取る。
  * 最低の幅を決めておき、足りなければ右のボタンを次の行へ送る（決めておかないと、スマホの幅ではボタンに押されて1文字ずつ折り返す）。
  */
-const titleCellSx = { flex: "1 1 10em", minWidth: 0 } as const;
+const titleCellSx = { flex: "1 1 10em", minWidth: 0, overflowWrap: "anywhere" } as const;
 
-type Entry =
+/** 行の遷移先。ページが無い予約（ブランチの操作）には無い。 */
+export const entryLink = (e: Entry) => (e.kind === "action" ? (e.action.pageId ? pageLink(e.action.pageId) : undefined) : pageLink(e.pageId));
+const entryKey = (e: Entry) => (e.kind === "action" ? `action-${e.action.id}` : `${e.kind}-${e.pageId}-${e.at}`);
+
+export type Entry =
   | { kind: "action"; at: string; action: ScheduledAction }
   | { kind: "published"; at: string; pageId: string; title: string; unlisted: boolean }
   | { kind: "draft"; at: string; pageId: string; title: string };
@@ -46,6 +54,20 @@ export function CalendarPage() {
     mutationFn: (fn: () => Promise<unknown>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule"] }),
   });
+  const toasts = useScheduleToasts();
+  /**
+   * 予約を取り消す。確認は挟まず、取り消したことを知らせて「元に戻す」を出す。
+   * 押したボタンは行ごと消えるので、次の行（無ければ前の行、全部消えたら見出し）にフォーカスを移す。
+   */
+  const cancel = (e: MouseEvent<HTMLElement>, action: ScheduledAction) => {
+    const row = e.currentTarget.closest("[role=row], li");
+    const restore = focusAfterRemoval(row, {
+      scope: e.currentTarget.closest("[data-focus-scope]"),
+      focusSelector: "[role=row] a[href], li a[href]",
+      fallback: () => document.getElementById("calendar-heading"),
+    });
+    mutate.mutate(() => toasts.cancel(action), { onSuccess: restore });
+  };
 
   const days = useMemo(() => {
     const entries: Entry[] = [];
@@ -87,8 +109,73 @@ export function CalendarPage() {
   const lowStock = !schedule.isPending && stock < STOCK_MIN;
   if (schedule.error) return <Alert severity="error">{errorMessage(schedule.error)}</Alert>;
 
+  const entryColumns: DataListColumn<Entry>[] = [
+    {
+      key: "time",
+      width: "56px",
+      sx: { px: 1, color: "text.secondary" },
+      render: (e) => <Mono sx={{ color: "text.secondary" }}>{isoToJstLocal(e.at).slice(11)}</Mono>,
+    },
+    {
+      key: "status",
+      width: "136px",
+      render: (e) =>
+        e.kind === "action" ? (
+          <StatusChip status={e.action.status} label={actionLabel(e.action)} />
+        ) : e.kind === "published" ? (
+          <StatusChip status={e.unlisted ? "unlisted" : "public"} label={e.unlisted ? "限定公開済み" : "公開済み"} />
+        ) : (
+          <StatusChip label="AI下書き" />
+        ),
+    },
+    {
+      key: "page",
+      // ページの名前は長ければ折り返す。狭い画面でも1文字ずつに潰れない幅を取る
+      width: "minmax(160px, 1fr)",
+      sx: { overflowWrap: "anywhere" },
+      render: (e) =>
+        e.kind === "action" ? (
+          <Box>
+            <PageLink action={e.action} />
+            {e.action.editedAfterSchedule && (
+              <Box component="span" sx={{ color: "warning.main" }}>
+                {" "}
+                予約後に編集あり
+              </Box>
+            )}
+            {e.action.status === "done" && (
+              <Box component="span" sx={{ color: "text.secondary" }}>
+                {" "}
+                実行済み
+              </Box>
+            )}
+          </Box>
+        ) : (
+          <RouterLink {...pageLink(e.pageId)}>{e.title}</RouterLink>
+        ),
+    },
+    {
+      key: "actions",
+      // 予約中の行だけにある操作。日をまたいで列がそろうよう、幅を決める
+      width: "250px",
+      align: "right",
+      sx: { px: 1 },
+      render: (e) =>
+        e.kind === "action" && e.action.status === "scheduled" ? (
+          <Row sx={{ flexWrap: "nowrap", justifyContent: "flex-end" }} spacing={0}>
+            <Button variant="text" onClick={() => setRescheduling(e.action)} sx={{ whiteSpace: "nowrap" }}>
+              日時を変更…
+            </Button>
+            <Button variant="text" color="error" onClick={(ev) => cancel(ev, e.action)} sx={{ whiteSpace: "nowrap" }}>
+              予約を取り消す
+            </Button>
+          </Row>
+        ) : null,
+    },
+  ];
+
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1.5} data-focus-scope>
       <Section sx={lowStock ? { borderColor: "warning.main" } : undefined}>
         <Typography variant="h6" component="h2" gutterBottom>
           予約ストック
@@ -125,7 +212,7 @@ export function CalendarPage() {
                     {a.lastError}
                   </Typography>
                 </Box>
-                <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
+                <Button variant="text" color="error" onClick={(e) => cancel(e, a)}>
                   予約を取り消す
                 </Button>
               </Row>
@@ -135,7 +222,8 @@ export function CalendarPage() {
       )}
 
       <Section>
-        <Typography variant="h6" component="h2">
+        {/* 予約を取り消して一覧が空になったとき、フォーカスの移し先になる */}
+        <Typography id="calendar-heading" tabIndex={-1} variant="h6" component="h2" sx={{ outline: "none" }}>
           編集カレンダー
         </Typography>
         <Muted gutterBottom>過去14日〜60日先。時刻はJST。</Muted>
@@ -165,59 +253,14 @@ export function CalendarPage() {
                 </Typography>
                 {day === today && <StatusChip label="今日" />}
               </Row>
-              <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0, typography: "body2" }}>
-                {entries.map((e, i) => (
-                  <Row component="li" key={i}>
-                    <Mono sx={{ color: "text.secondary" }}>{isoToJstLocal(e.at).slice(11)}</Mono>
-                    {e.kind === "action" && (
-                      <>
-                        <StatusChip status={e.action.status} label={actionLabel(e.action)} />
-                        <Box sx={titleCellSx}>
-                          <PageLink action={e.action} />
-                          {e.action.editedAfterSchedule && (
-                            <Box component="span" sx={{ color: "warning.main" }}>
-                              {" "}
-                              予約後に編集あり
-                            </Box>
-                          )}
-                          {e.action.status === "done" && (
-                            <Box component="span" sx={{ color: "text.secondary" }}>
-                              {" "}
-                              実行済み
-                            </Box>
-                          )}
-                        </Box>
-                        {e.action.status === "scheduled" && (
-                          <>
-                            <Button variant="text" onClick={() => setRescheduling(e.action)}>
-                              日時を変更…
-                            </Button>
-                            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))} sx={{ ml: 1 }}>
-                              予約を取り消す
-                            </Button>
-                          </>
-                        )}
-                      </>
-                    )}
-                    {e.kind === "published" && (
-                      <>
-                        <StatusChip status={e.unlisted ? "unlisted" : "public"} label={e.unlisted ? "限定公開済み" : "公開済み"} />
-                        <RouterLink {...pageLink(e.pageId)}>
-                          {e.title}
-                        </RouterLink>
-                      </>
-                    )}
-                    {e.kind === "draft" && (
-                      <>
-                        <StatusChip label="AI下書き" />
-                        <RouterLink {...pageLink(e.pageId)}>
-                          {e.title}
-                        </RouterLink>
-                      </>
-                    )}
-                  </Row>
-                ))}
-              </Stack>
+              <DataList
+                label={`${formatDay(day, thisYear)}の予定`}
+                columns={entryColumns}
+                rows={entries}
+                rowKey={entryKey}
+                rowLink={entryLink}
+                empty=""
+              />
             </Box>
           ))}
         </Stack>
@@ -244,9 +287,7 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
     setShown(props.action);
     setValue(isoToJstLocal(props.action.runAt));
   }
-  const min = isoToJstLocal(new Date(props.now).toISOString());
-  const valid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value);
-  const past = valid && value < min;
+  const { min, valid, past, error } = checkRunAt(value, props.now);
   const unchanged = shown !== null && value === isoToJstLocal(shown.runAt);
   return (
     <Dialog open={props.action !== null} onClose={props.onClose} fullWidth maxWidth="xs" aria-labelledby="reschedule-title">
@@ -268,8 +309,8 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
             label="新しい日時（JST）"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            error={past}
-            helperText={past ? "過去の日時です。いまより先の日時を選んでください。" : "いまより先の日時を選べます。"}
+            error={error !== null}
+            helperText={error ?? "いまより先の日時を選べます。"}
             slotProps={{ htmlInput: { min }, inputLabel: { shrink: true } }}
           />
         </DialogContent>

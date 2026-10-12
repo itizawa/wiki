@@ -40,7 +40,7 @@ Worker を通さないのは `/_astro/*` だけ（`wrangler.toml` の `run_worke
 | `/images/{name}` | 同上 | `worker/index.ts`。エッジのキャッシュ（`caches.default`）にも入れる |
 | ほか（HTML、`pagefind.js`、`feed.xml` など） | 静的アセットの既定（`public, max-age=0, must-revalidate`） | — |
 
-検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、ツリーナビの全体（`nav.{hash}.json`）、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。アクセント色（`--accent`）・ロゴ・ファビコンも wiki ごとのテーマ（マニフェストの `theme`）から出し分ける（`src/layouts/Base.astro`）。
+検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、ツリーナビの全体（`nav.{hash}.json`）、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。テーマの色（`--bg` `--accent` ほかの CSS の変数一式）・ロゴ・ファビコンも wiki ごとのテーマ（マニフェストの `theme`）から出し分ける（`src/layouts/Base.astro`）。
 
 `build:sample` の検査は、限定公開の漏れに加えて、ある wiki の内容（テーマを含む）が別の wiki の出力に混ざっていないことも確かめる。
 
