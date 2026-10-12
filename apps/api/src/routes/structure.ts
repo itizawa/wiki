@@ -20,6 +20,7 @@ export const structureRoutes = new Hono<AppEnv>()
             .select({
               id: pages.id,
               title: pages.title,
+              icon: pages.icon,
               visibility: pages.visibility,
               publishedVersionId: pages.publishedVersionId,
               unlistedKey: pages.unlistedKey,

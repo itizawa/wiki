@@ -129,6 +129,8 @@ export type StructureResponse = {
     {
       id: string;
       title: string;
+      /** 設定した絵文字。無ければ null */
+      icon: string | null;
       visibility: string;
       publishedVersionId: string | null;
       /** 限定公開の URL に入るキー。限定公開にしたことが無ければ null */
