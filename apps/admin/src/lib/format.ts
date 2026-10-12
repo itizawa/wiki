@@ -14,6 +14,13 @@ export function formatDateTime(iso: string): string {
 
 const timeFmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" });
 
+const shortFmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** 年を省いた日時（JST）。「10/20 10:00」。ヘッダーのボタンのように、狭い場所に出す。 */
+export function formatShortDateTime(iso: string): string {
+  return shortFmt.format(new Date(iso));
+}
+
 /** 時刻だけ（JST）。 */
 export function formatTime(iso: string): string {
   return timeFmt.format(new Date(iso));

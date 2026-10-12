@@ -9,7 +9,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
 import type { Me } from "@wiki/shared";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type MouseEvent, type ReactNode } from "react";
 import { SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth } from "../components/SidebarResizer";
 import { LoadingRegion, Muted, PageBody, Section } from "../components/ui";
@@ -73,6 +73,53 @@ function LoginGate() {
 }
 
 const ButtonLink = createLink(Button);
+
+/** 本文（`main`）の id。スキップリンクの行き先。 */
+export const MAIN_ID = "main-content";
+
+/**
+ * 「本文へ移る」のスキップリンク。ふだんは見えず、Tab でフォーカスが来たら左上に出す。押すと `main` へフォーカスを移す。
+ * 画面の先頭（サイドバーや枠の前）に置く。`href="#…"` のままだと、ハッシュを使う画面（招待リンク）やルーターと取り合うので、移動は自分で行う。
+ */
+export function SkipLink() {
+  return (
+    <Box
+      component="a"
+      href={`#${MAIN_ID}`}
+      onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        const main = document.getElementById(MAIN_ID);
+        main?.focus();
+        main?.scrollIntoView({ block: "start" });
+      }}
+      sx={{
+        position: "fixed",
+        top: 8,
+        left: 8,
+        zIndex: (t) => t.zIndex.tooltip + 1,
+        px: 2,
+        py: 1,
+        borderRadius: 1,
+        bgcolor: "background.paper",
+        color: "primary.main",
+        fontWeight: 600,
+        fontSize: "0.9rem",
+        boxShadow: 3,
+        border: 2,
+        borderColor: "primary.main",
+        // 画面の外に置き、フォーカスが来たときだけ戻す（display: none だとフォーカスを受けられない）
+        transform: "translateY(-200%)",
+        "&:focus": { transform: "none" },
+      }}
+    >
+      本文へ移る
+    </Box>
+  );
+}
+
+/** 本文の枠（`main`）。スキップリンクから移れるよう `id` と `tabIndex={-1}` を持つ。移ったときに枠線は出さない（本文全体を囲んでも手がかりにならない）。 */
+export const mainProps = { component: "main", id: MAIN_ID, tabIndex: -1 } as const;
+export const mainSx = { outline: "none" } as const;
 
 /** `/`：最後に開いていた wiki へ移す。使用中の wiki が1つも無ければ「wiki を作成する」だけを出す。 */
 export function Home() {

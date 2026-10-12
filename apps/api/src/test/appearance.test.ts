@@ -53,6 +53,23 @@ describe("appearance", () => {
     expect(await events()).toHaveLength(1);
   });
 
+  it("gives the favicon in the wiki list to every member, including non-admins", async () => {
+    ctx = await setup();
+    const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    const faviconOf = async (c: { call: typeof ctx.call }) =>
+      (await c.call("GET", "/admin/wikis")).body.wikis.find((w: { key: string }) => w.key === "wiki").faviconUrl;
+    expect(await faviconOf(ctx)).toBeNull();
+
+    const favicon = (await ctx.call("POST", `${W}/appearance/images`, PNG)).body.url as string;
+    await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme: { ...base, favicon } });
+    expect(await faviconOf(ctx)).toBe(favicon);
+    expect(await faviconOf(editor)).toBe(favicon);
+
+    // 外すと null に戻る
+    await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme: base });
+    expect(await faviconOf(editor)).toBeNull();
+  });
+
   it("accepts only the keys of defined themes", async () => {
     ctx = await setup();
     for (const theme of [

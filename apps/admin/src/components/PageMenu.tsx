@@ -37,7 +37,7 @@ import { setPageActions } from "../lib/pageActions";
 import { useStars } from "../lib/stars";
 import { templateLink } from "../lib/wiki";
 import { Presentation } from "./Presentation";
-import { publishState, PublishSheet } from "./PublishMenu";
+import { PublishSheet, usePublishState } from "./PublishMenu";
 import type { EnsureVersion } from "./PublishPanel";
 import { modKey } from "./ShortcutGuide";
 import { Tooltip } from "./Tooltip";
@@ -86,6 +86,7 @@ export function PageMenu(props: {
   // スマホ幅でだけメニューから開くもの。開いたあとに幅が広がっても、閉じるまでは出しておく
   const [publishOpen, setPublishOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const publishLabel = usePublishState(props.page).label;
   const stars = useStars();
   const starred = stars.ids.includes(props.pageId);
   // プレゼンモード。いま画面にある内容（版になる前の変更も含む）を、そのままスライドにする
@@ -165,7 +166,7 @@ export function PageMenu(props: {
             <ListItemText>公開・予約</ListItemText>
             {/* いまの公開範囲。ヘッダーのボタンに出していたもの */}
             <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
-              {publishState(props.page).label}
+              {publishLabel}
             </Muted>
           </MenuItem>,
           <MenuItem
