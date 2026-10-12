@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { OAUTH_SCOPES, type OAuthGrantSummary } from "@wiki/shared";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Section, SkeletonTableRows } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -55,16 +56,20 @@ export function ConnectionsPage() {
           <ArrowLeft size={18} />
           wiki の画面に戻る
         </RouterLink>
-        <Typography variant="h5" component="h1" sx={{ mt: 1 }}>
+        <HelpHeading variant="h5" component="h1" help="Claude などの AI エージェントから、MCP でページを探す・読む・書く・公開することができます。" sx={{ mt: 1 }}>
           外部アプリ連携
-        </Typography>
-        <Muted>Claude などの AI エージェントから、MCP でページを探す・読む・書く・公開することができます。</Muted>
+        </HelpHeading>
       </Box>
 
       <Section>
-        <Typography variant="h6" component="h2" gutterBottom>
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help="何を許すかは、つなぐときに選びます。公開・予約と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。"
+          sx={{ mb: 0.5 }}
+        >
           つなぎ方
-        </Typography>
+        </HelpHeading>
         <Stack spacing={1}>
           <Box>
             MCP サーバーの URL：<Mono>{mcpUrl}</Mono>
@@ -72,9 +77,6 @@ export function ConnectionsPage() {
           <Muted>
             Claude では「設定 → コネクタ → カスタムコネクタを追加」にこの URL を入れます。Claude Code では{" "}
             <Mono>claude mcp add --transport http wiki {mcpUrl}</Mono> を実行します。つなぐと、この管理画面で許可するかを聞かれます。
-          </Muted>
-          <Muted>
-            何を許すかは、つなぐときに選びます。公開・予約と削除は、許したアプリだけができます。作ったページは非公開の下書きから始まります。
           </Muted>
         </Stack>
       </Section>
