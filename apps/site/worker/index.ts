@@ -1,4 +1,4 @@
-import { imageNameFromPath, isValidWikiKey, resolvePagePath, wikiKeyFromHost, type PublicRoutes } from "@wiki/shared";
+import { imageNameFromPath, isValidWikiKey, pagePath, resolvePagePath, wikiKeyFromHost, type PublicRoutes } from "@wiki/shared";
 
 export type Env = {
   ASSETS: { fetch(input: Request | URL): Promise<Response> };
@@ -27,6 +27,8 @@ const IMMUTABLE = "public, max-age=31536000, immutable";
 
 /** 廃止したツリーの一覧のページ（/t/main、/t/main/）。 */
 const TREE_INDEX = /^\/t\/[^/]+\/?$/;
+/** 廃止したツリー経由の記事のページ（/t/main/{nodeId}）。nodeId はページの id と同じ */
+const TREE_PAGE = /^\/t\/[^/]+\/([0-9a-z]{10})\/?$/;
 
 const notFound = () => new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
 
@@ -36,7 +38,8 @@ const notFound = () => new Response("Not Found", { status: 404, headers: { "cont
  * 通らないのは、どの wiki にも共通の `/_astro/*` だけ。
  * - ほかの wiki のディレクトリは、パスを直接指定しても開けない（必ず自分の wiki のディレクトリの下として読む）
  * - 知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404
- * - 廃止したツリーの一覧（`/t/{treeKey}` と `/t/{treeKey}/`）→ トップへ 301（ツリーはトップのサイドバーに出る。`/t/{treeKey}/{nodeId}` は残っている）
+ * - 廃止したツリーの一覧（`/t/{treeKey}` と `/t/{treeKey}/`）→ トップへ 301（ツリーはトップのサイドバーに出る）
+ * - 廃止したツリー経由の記事（`/t/{treeKey}/{nodeId}`）→ `/p/{nodeId}` へ 301（ツリーは1本なので、記事のページのサイドバーと同じものだった）
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
  * - `/images/{name}`：アップロードした画像。エッジのキャッシュにあれば、R2 を読まずに返す
  */
@@ -77,6 +80,8 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
   if (url.pathname.startsWith("/images/")) return image(request, url, env, ctx);
 
   if (TREE_INDEX.test(url.pathname)) return Response.redirect(new URL("/", url).href, 301);
+  const treePage = TREE_PAGE.exec(url.pathname);
+  if (treePage) return Response.redirect(new URL(pagePath(treePage[1]!), url).href, 301);
 
   const prefix = `/${target}`;
   const asset = (pathname: string) => {

@@ -115,18 +115,6 @@
               "position": "a0"
             }
           ]
-        },
-        {
-          "key": "by-theme",
-          "isPrimary": false,
-          "nodes": [
-            {
-              "nodeId": "aaaaaaaaa2",
-              "pageId": "aaaaaaaaa2",
-              "parentNodeId": null,
-              "position": "a0"
-            }
-          ]
         }
       ],
       "gone": [

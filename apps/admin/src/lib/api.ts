@@ -263,7 +263,7 @@ export const api = {
 
   /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
-  updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
+  updateSettings: (input: Partial<WikiSettings> & { sitePublic?: boolean }) => request<WikiSettings>("PATCH", w("/settings"), input),
 
   /** 「設定」の「SNS」：wiki につないだ SNS のアカウント（管理者だけ） */
   snsStatus: () => request<SnsStatus>("GET", w("/sns")),

@@ -1,5 +1,5 @@
 {
-  "id": "4bfea17a-38e3-4a53-a782-3fc71b70c324",
+  "id": "0b87a2a8-2e5d-48f9-bd78-8199310d6f76",
   "prevId": "a4bfd806-6447-40b2-8324-658e3e0ca327",
   "version": "7",
   "dialect": "postgresql",
@@ -3153,12 +3153,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "picture_url": {
-          "name": "picture_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "is_owner": {
           "name": "is_owner",
           "type": "boolean",
@@ -3523,6 +3517,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "site_public": {
+          "name": "site_public",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "archived_at": {
           "name": "archived_at",

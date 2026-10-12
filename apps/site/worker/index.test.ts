@@ -55,14 +55,17 @@ describe("site worker", () => {
     expect(e.requested).toEqual(["/wiki/p/abcdefghij"]);
   });
 
-  it("redirects the retired tree index pages to the top, but leaves the pages under a tree", async () => {
+  it("redirects the retired tree index pages to the top, and the pages under a tree to /p/", async () => {
     for (const path of ["/t/main", "/t/main/"]) {
       const res = await wiki(path);
       expect(res.status).toBe(301);
       expect(res.headers.get("location")).toBe("https://wiki.site.test/");
     }
-    const e = env({ ...files, "/wiki/t/main/abcdefghij": "<h1>ツリー経由</h1>" });
-    expect((await wiki("/t/main/abcdefghij", e)).status).toBe(200);
+    for (const path of ["/t/main/abcdefghij", "/t/by-theme/abcdefghij/"]) {
+      const res = await wiki(path);
+      expect(res.status).toBe(301);
+      expect(res.headers.get("location")).toBe("https://wiki.site.test/p/abcdefghij");
+    }
   });
 
   it("serves the tree nav data of the host's wiki only", async () => {
@@ -182,9 +185,9 @@ describe("site worker", () => {
     expect(await unknown.text()).toBe("not found page");
 
     const e = env(files);
-    const other = await wiki("/t/main/zzzzzzzzzz", e);
+    const other = await wiki("/new/zzzzzzzzzz", e);
     expect(other.status).toBe(404);
-    expect(e.requested).toEqual(["/wiki/t/main/zzzzzzzzzz"]);
+    expect(e.requested).toEqual(["/wiki/new/zzzzzzzzzz"]);
   });
 
   it("falls back to the 404 page when the route table is missing", async () => {

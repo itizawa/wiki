@@ -31,24 +31,23 @@ const leaks = (files, words) => files.flatMap((f) => words.filter((w) => f.text.
 // ---- 最初の wiki（wiki）
 const key = "Unl1stedKeyAbCdEfGhIjK";
 check(await exists("wiki/p/aaaaaaaaa1.html"), "public page is generated at {wiki}/p/{id}");
-check(await exists("wiki/t/by-theme/aaaaaaaaa2.html"), "tree view re-displays the page under /t/");
+check(!(await exists("wiki/t")), "pages are not re-displayed under /t/ (the tree nav links to /p/)");
 check(await exists(`wiki/u/${key}/index.html`), "unlisted page is generated under /u/{key}/");
 check(await exists("wiki/404.html"), "each wiki has its own 404 page");
 const top = (await readdir(dist)).sort();
 check(top.join() === ["_astro", "_headers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
 
-const tPage = await read("wiki/t/by-theme/aaaaaaaaa2.html");
 // ページのアイコン（絵文字）：タイトルとツリーのナビには出し、<title> には入れない
 const iconPage = await read("wiki/p/aaaaaaaaa1.html");
 check(/<h1[^>]*>\s*<span[^>]*aria-hidden="true"[^>]*>👋<\/span>\s*はじめに\s*<\/h1>/.test(iconPage), "a page's icon is shown before its title");
 const noIconPage = await read("wiki/p/aaaaaaaaa2.html");
-check(/<a href="\/t\/main\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
+check(/<a href="\/p\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
 check(!/<h1[^>]*>\s*<span/.test(noIconPage), "a page without an icon has nothing before its title");
 check(!/<title>[^<]*👋/.test(iconPage), "the icon is not part of <title>");
-check(tPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "/t/ page has canonical to /p/ on the wiki's origin");
+check(noIconPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "a page has canonical to /p/ on the wiki's origin");
 
 check(
-  tPage.includes('<details class="toggle"><summary>コミットとは？</summary>') && tPage.includes("とぐるのなかみ"),
+  noIconPage.includes('<details class="toggle"><summary>コミットとは？</summary>') && noIconPage.includes("とぐるのなかみ"),
   "a +++ toggle is rendered as <details> with its body in the page",
 );
 
@@ -73,11 +72,11 @@ check(
 );
 check(navName !== notesNavName, "wikis with different trees get different nav file names");
 check(
-  Object.keys(navData.trees).sort().join() === "by-theme,main" && navIds(navData.trees.main).join() === "aaaaaaaaa1,aaaaaaaaa2" && navIds(navData.trees["by-theme"]).join() === "aaaaaaaaa2",
-  "the nav file holds every tree of the wiki, with the public pages only",
+  Object.keys(navData.trees).join() === "main" && navIds(navData.trees.main).join() === "aaaaaaaaa1,aaaaaaaaa2",
+  "the nav file holds the wiki's tree, with the public pages only",
 );
 check(
-  navData.trees.main[0].title === "はじめに" && navData.trees.main[0].icon === "👋" && navData.trees.main[0].children[0].href === "/t/main/aaaaaaaaa2",
+  navData.trees.main[0].title === "はじめに" && navData.trees.main[0].icon === "👋" && navData.trees.main[0].children[0].href === "/p/aaaaaaaaa2",
   "the nav file has the title, icon and link of each node",
 );
 const navLeaks = [key, "限定公開のメモ", "ひみつのあいことば", "zzzzzzzzz9", "ggggggggg1"].filter((w) => navText.includes(w));
@@ -88,12 +87,10 @@ check(
   articleNav.length === 1 && articleNav[0].includes(`"src":[0,"/${navName}"]`) && articleNav[0].includes('"treeKey":[0,"main"]'),
   "an article page's tree nav loads the whole tree from the hashed nav file",
 );
-const tNav = treeNavProps(tPage);
-check(tNav.length === 1 && tNav[0].includes(`"src":[0,"/${navName}"]`) && tNav[0].includes('"treeKey":[0,"by-theme"]'), "a page viewed through a tree loads that tree from the hashed nav file");
 const notesNav = treeNavProps(await read("notes/p/bbbbbbbbb1.html"));
 check(notesNav.length === 1 && notesNav[0].includes(`"src":[0,"/${notesNavName}"]`), "another wiki's pages load that wiki's own nav file");
 check(
-  /<a href="\/t\/main\/aaaaaaaaa2" aria-current="page">設計メモ<\/a>/.test(noIconPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(noIconPage),
+  /<a href="\/p\/aaaaaaaaa2" aria-current="page">設計メモ<\/a>/.test(noIconPage) && /<a href="\/p\/aaaaaaaaa1">/.test(noIconPage),
   "an article's HTML has the page's place in the tree (its parent and itself) before any script runs",
 );
 check(!/nav\.[0-9a-f]{16}\.json/.test(unlisted) && !unlisted.includes('"items"'), "an unlisted page has no tree nav and does not load the nav file");
@@ -104,20 +101,19 @@ check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 // ---- 狭い画面のドロワー（ヘッダーの「ページ一覧を開く」と、サイドバーの列）
 const hasDrawer = (html) => html.includes("data-nav-toggle") && html.includes('id="site-nav"');
 check(hasDrawer(iconPage) && iconPage.includes('href="/" data-nav-toggle'), "an article page has the tree button (a link to the tree without JavaScript) and the drawer");
-check(hasDrawer(tPage) && tPage.includes('href="/" data-nav-toggle'), "a page viewed through a tree opens that tree in the drawer");
 check(/<aside[^>]*id="site-nav"[^>]*data-pagefind-ignore/.test(iconPage), "the tree nav column is left out of the search index");
 const topPage = await read("wiki/index.html");
-check(hasDrawer(topPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(topPage), "the top shows the tree nav next to the new posts");
+check(hasDrawer(topPage) && /<a href="\/p\/aaaaaaaaa1">/.test(topPage), "the top shows the tree nav next to the new posts");
 const searchPage = await read("wiki/search.html");
 const noDrawer = { "404": await read("wiki/404.html"), "unlisted": unlisted };
 const withDrawer = Object.entries(noDrawer).filter(([, html]) => html.includes("data-nav-toggle") || html.includes("site-nav"));
 check(withDrawer.length === 0, `404 and unlisted pages have no tree button or drawer${withDrawer.length ? ` (${withDrawer.map(([k]) => k).join(", ")})` : ""}`);
 // 検索・RSS はサイト全体のものなので、「…」メニューではなくサイドバーに置く。検索ページも、記事と同じサイドバーを持つ
 check(
-  [iconPage, tPage, topPage, searchPage].every((html) => /<nav[^>]*aria-label="サイト全体"[^>]*>[\s\S]*?href="\/search"[\s\S]*?href="\/feed\.xml"/.test(html)),
+  [iconPage, topPage, searchPage].every((html) => /<nav[^>]*aria-label="サイト全体"[^>]*>[\s\S]*?href="\/search"[\s\S]*?href="\/feed\.xml"/.test(html)),
   "the sidebar has search and RSS on the top, the search page, and article pages",
 );
-check(hasDrawer(searchPage) && /href="\/search" aria-current="page"/.test(searchPage) && searchPage.includes("ページ一覧") && /<a href="\/t\/main\/aaaaaaaaa1">/.test(searchPage), "the search page has the sidebar with the page list and marks 検索 as current");
+check(hasDrawer(searchPage) && /href="\/search" aria-current="page"/.test(searchPage) && searchPage.includes("ページ一覧") && /<a href="\/p\/aaaaaaaaa1">/.test(searchPage), "the search page has the sidebar with the page list and marks 検索 as current");
 check(![iconPage, topPage, searchPage].some((html) => /id="site-menu"[^>]*>[\s\S]*?<\/div>/.exec(html)?.[0].match(/href="\/(search|feed\.xml)"/)), "the … menu no longer holds search or RSS");
 const fragmentTexts = await Promise.all(
   (await readdir(join(dist, "wiki/pagefind/fragment")).catch(() => [])).map(async (f) => gunzipSync(await readFile(join(dist, "wiki/pagefind/fragment", f))).toString("utf8").replaceAll("\u200b", "")),
@@ -127,7 +123,7 @@ check(fragmentTexts.length > 0 && fragmentTexts.every((t) => t.includes("設計�
 // ---- 広い画面のサイドバー（閉じる・開く）
 const hasSidebarState = (html) => html.includes('localStorage.getItem(key) === closed') && html.includes('"wiki:sidebar"');
 check(
-  [iconPage, tPage, topPage].every((html) => hasSidebarState(html) && /<button[^>]*data-sidebar-close[^>]*\bhidden\b[^>]*aria-label="サイドバーを閉じる"/.test(html)),
+  [iconPage, topPage].every((html) => hasSidebarState(html) && /<button[^>]*data-sidebar-close[^>]*\bhidden\b[^>]*aria-label="サイドバーを閉じる"/.test(html)),
   "pages with the tree nav restore the closed sidebar before drawing, and have the close button (hidden until the script runs)",
 );
 const withSidebar = Object.entries(noDrawer).filter(([, html]) => html.includes("data-sidebar-close ") || html.includes("サイドバーを閉じる") || html.includes("wiki:sidebar"));
@@ -159,7 +155,7 @@ const sendsView = async (html) => {
 };
 // レイアウトのスクリプトは <body> の中に出る（</html> のあとに書くと、Astro 7 はそのまま </html> のあとへ出す）
 check(/<\/body>\s*<\/html>\s*$/.test(intro), "nothing is emitted after </body></html>");
-for (const [path, html] of Object.entries({ "wiki/p/aaaaaaaaa1.html": intro, "wiki/t/by-theme/aaaaaaaaa2.html": tPage, "wiki/index.html": await read("wiki/index.html") })) {
+for (const [path, html] of Object.entries({ "wiki/p/aaaaaaaaa1.html": intro, "wiki/p/aaaaaaaaa2.html": noIconPage, "wiki/index.html": await read("wiki/index.html") })) {
   check(!(await sendsView(html)), `${path} does not count views`);
 }
 check(!(await read("notes/p/bbbbbbbbb1.html")).includes("このページにリンクしているページ"), "a link from another wiki is not a backlink");
@@ -169,7 +165,7 @@ const gaId = "G-SAMPLE1234";
 const verification = "sampleVerification_0123-abc";
 const gaSrc = `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>`;
 const verificationMeta = `<meta name="google-site-verification" content="${verification}">`;
-const withTags = { "wiki/index.html": await read("wiki/index.html"), "wiki/p/aaaaaaaaa1.html": intro, "wiki/t/by-theme/aaaaaaaaa2.html": tPage, "wiki/search.html": await read("wiki/search.html") };
+const withTags = { "wiki/index.html": await read("wiki/index.html"), "wiki/p/aaaaaaaaa1.html": intro, "wiki/p/aaaaaaaaa2.html": noIconPage, "wiki/search.html": await read("wiki/search.html") };
 for (const [path, html] of Object.entries(withTags)) {
   check(html.includes(gaSrc) && html.includes(`const gaMeasurementId = "${gaId}";`) && html.includes('window.gtag("config", gaMeasurementId)'), `${path} loads the Google tag with the wiki's measurement id`);
   check(html.includes(verificationMeta), `${path} has the Search Console verification meta`);
@@ -211,7 +207,7 @@ const sharedPaths = [
 ];
 const sharedFiles = await Promise.all(sharedPaths.map(async (path) => ({ path: path.slice(dist.length), text: await readFile(path, "utf8") })));
 const perWikiWords = [
-  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "by-theme", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc"],
+  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc"],
   ...["bbbbbbbbb1", "hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート", "#00716b", "notes0logo0sample0000000"],
 ];
 const inShared = leaks(sharedFiles, perWikiWords);
@@ -241,7 +237,7 @@ check((await read("notes/robots.txt")).includes("Sitemap: http://notes.localhost
 check((await read("notes/p/bbbbbbbbb1.html")).includes('rel="canonical" href="http://notes.localhost:4321/p/bbbbbbbbb1"'), "canonical uses the wiki's origin");
 
 // ---- wiki どうしの漏れ：id・限定公開の key・本文・タイトル・削除済みの id が、別の wiki の出力に無いこと
-const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "by-theme", gaId, verification];
+const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", gaId, verification];
 const ofNotes = ["hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート"];
 const inWiki = leaks(await readAll("wiki"), ofNotes);
 const inNotes = leaks(await readAll("notes"), ofWiki);

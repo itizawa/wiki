@@ -150,22 +150,6 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
   return { html: marked.parse(md, { async: false }), headings };
 }
 
-const articlesByPaths = new WeakMap<ReadonlyMap<string, string>, Map<string, { html: string; headings: Heading[] }>>();
-
-/**
- * renderArticle と同じ結果を、同じ本文については1回だけ作って使い回す。
- * 公開ページは `/p/` と `/t/` の2か所に出るので、Markdown の変換と色分けを2回走らせないために使う。
- * 結果は publicPaths（wiki ごとに1つ。lib/manifest.ts の siteData が同じものを返す）・sponsored・origin・本文で決まる。
- */
-export function renderArticleOnce(md: string, opts: RenderOptions): { html: string; headings: Heading[] } {
-  let articles = articlesByPaths.get(opts.publicPaths);
-  if (!articles) articlesByPaths.set(opts.publicPaths, (articles = new Map()));
-  const key = `${opts.sponsored ? 1 : 0}\0${opts.origin ?? ""}\0${md}`;
-  let article = articles.get(key);
-  if (!article) articles.set(key, (article = renderArticle(md, opts)));
-  return article;
-}
-
 /** 一覧やRSS用の短い抜粋（Markdown記法を落とした先頭部分）。 */
 export function excerpt(md: string, length = 120): string {
   const text = md

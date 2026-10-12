@@ -24,7 +24,7 @@ dist/
                           nav.{hash}.json, page-routes.json, pagefind/）
 ```
 
-`worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404 になる。
+`worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメイン、アーカイブ中の wiki、公開サイトを非公開にしている wiki（`wikis.site_public` が false。API が `/export/public` のマニフェストに入れない）は、ディレクトリが無いので 404 になる。非公開の間も、各ページの公開範囲は変わらず、公開に戻して次のビルドが終われば元のとおりに出る。
 
 Worker を通さないのは `/_astro/*` だけ（`wrangler.toml` の `run_worker_first = ["/*", "!/_astro/*"]`）。どの wiki にも共通で、名前にハッシュが入るので、静的アセットからそのまま返し、ブラウザに1年キャッシュさせる。Worker の呼び出しにも数えられない。
 
@@ -60,7 +60,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 | URL | 内容 |
 |---|---|
 | `/p/{id}` | 記事（正規）。slug つきの旧URL（`/p/{id}-{slug}`）は301、削除済みは410（`worker/index.ts`） |
-| `/t/{treeKey}/{nodeId}` | ツリー経由の閲覧。本文を再掲し、canonicalは `/p/`。本文の HTML は `/p/` で作ったものを使い回す（Markdown の変換と色分けは1回） |
+| `/t/{treeKey}/{nodeId}` | 廃止。`/p/{nodeId}` へ 301（`worker/index.ts`）。ツリーは1本なので、記事のページと同じサイドバーを出すだけの再掲だった。ツリーナビのリンクは `/p/` を指す |
 | `/t/{treeKey}`、`/t/{treeKey}/` | 廃止。トップへ 301（`worker/index.ts`）。ツリーはトップと記事のサイドバーに出る |
 | `/nav.{hash}.json` | ツリーナビの全体。記事のページのツリーナビが読む。名前に中身のハッシュが入り、ブラウザに1年キャッシュさせる（下の「サイドバー（ページ一覧）」） |
 | `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（下の「Google Analytics とサーチコンソール」）も出さない |
@@ -72,7 +72,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 ## サイドバー（ページ一覧）
 
-記事（`/p/`）・ツリー経由の記事（`/t/.../{nodeId}`）・トップ（`/`）・検索（`/search`）は、左にサイドバーを置く2カラム（`page.module.css` の `.withNav`、列は `components/NavDrawer.astro`）。列の上に、サイト全体にまたがる「検索」「RSS」（ヘッダーの「…」メニューには置かない）、その下に「ページ一覧」（ツリーナビ）を並べる。階層という言葉は、読む人に伝わりにくいので画面には出さない。公開ページの入ったツリーが無ければ、ページ一覧は出さず、検索と RSS だけにする。
+記事（`/p/`）・トップ（`/`）・検索（`/search`）は、左にサイドバーを置く2カラム（`page.module.css` の `.withNav`、列は `components/NavDrawer.astro`）。列の上に、サイト全体にまたがる「検索」「RSS」（ヘッダーの「…」メニューには置かない）、その下に「ページ一覧」（ツリーナビ）を並べる。階層という言葉は、読む人に伝わりにくいので画面には出さない。公開ページの入ったツリーが無ければ、ページ一覧は出さず、検索と RSS だけにする。
 
 - 幅 800px を超えると、ナビは左のサイドバーになる。ウィンドウの左端に付き、ヘッダーの下からページの下端まで伸びる（背景は `global.css` の `--sidebar-bg`、幅は `--sidebar-width`）。スクロールしても中身は画面に張り付き、中身が長ければ列の中でスクロールする
   - 並べているのは `<body>` のグリッド（`Base.module.css` の `.hasNav`）。フッターも本文の列に入るので、サイドバーがページの下端まで届く
@@ -87,7 +87,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 ### ツリーの中身の持ち方
 
-記事のページ（`/p/` と `/t/.../{nodeId}`）の HTML には、ツリーのうち最初の表示に出る分だけを入れる。ツリー全体を全ページに入れると、ページの大きさがページ数に比例し、出力の合計がページ数の2乗で増えるため。
+記事のページ（`/p/`）の HTML には、ツリーのうち最初の表示に出る分だけを入れる。ツリー全体を全ページに入れると、ページの大きさがページ数に比例し、出力の合計がページ数の2乗で増えるため。
 
 - HTML に入れる分（`src/lib/nav.ts` の `initialNavItems`）：最上位とその子、現在地までの祖先とその兄弟、現在地の子。これは、ツリーナビが最初に開いて見せる範囲と同じ。閉じている枝の子は入れず、「子がある」という印（`more`）だけを付ける
 - ツリー全体は、wiki ごとに1つの JSON（`dist/{key}/nav.{hash}.json`、URL は `/nav.{hash}.json`。`src/pages/[wiki]/nav.[hash].json.ts`）に出す。形は `{ "trees": { "{treeKey}": NavItem[] } }` で、`NavItem` は `{ nodeId, title, icon, href, children }`
