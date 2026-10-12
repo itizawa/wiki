@@ -5,6 +5,7 @@ import { createLink, Outlet, useRouterState } from "@tanstack/react-router";
 import { HelpHeading } from "../components/HelpTip";
 import { Section } from "../components/ui";
 import { useWiki } from "../lib/wiki";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /** 本物のリンク（Tab と Enter で移れ、新しいタブでも開ける）として描くタブ */
 const TabLink = createLink(Tab);
@@ -46,6 +47,9 @@ export function WikiSettingsLayout() {
   const rest = pathname.startsWith(base) ? pathname.slice(base.length).replace(/\/$/, "") : "";
   const tabs = TABS.filter((t) => !t.adminOnly || role === "admin");
   const current = tabs.find((t) => t.path === rest)?.to ?? false;
+  // 管理者だけのタブを URL で直接開いた人にも、そのタブの名前を出す
+  const tabLabel = TABS.find((t) => t.path === rest)?.label;
+  useScreenTitle(tabLabel && rest !== "" ? `${tabLabel} - 設定` : "設定");
 
   return (
     <Box>

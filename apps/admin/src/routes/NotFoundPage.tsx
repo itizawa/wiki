@@ -3,14 +3,14 @@ import Typography from "@mui/material/Typography";
 import { useParams } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { Muted, PageBody, RouterLink, Section } from "../components/ui";
+import { DEFAULT_DOCUMENT_TITLE, useDocumentTitle } from "../lib/documentTitle";
 import { Center } from "./Layout";
 
 export const NOT_FOUND_HEADING = "ページが見つかりません";
-const DEFAULT_TITLE = "wiki 管理画面";
 
 /** 画面の名前（タブの題・履歴に出る）。 */
 export function notFoundTitle(): string {
-  return `${NOT_FOUND_HEADING} - ${DEFAULT_TITLE}`;
+  return `${NOT_FOUND_HEADING} - ${DEFAULT_DOCUMENT_TITLE}`;
 }
 
 /**
@@ -22,13 +22,9 @@ export function NotFoundPage() {
   const { wikiKey } = useParams({ strict: false });
   const heading = useRef<HTMLHeadingElement>(null);
 
+  useDocumentTitle(notFoundTitle());
   useEffect(() => {
-    const before = document.title;
-    document.title = notFoundTitle();
     heading.current?.focus({ preventScroll: true });
-    return () => {
-      document.title = before;
-    };
   }, []);
 
   const content = (

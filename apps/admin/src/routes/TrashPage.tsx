@@ -14,6 +14,7 @@ import { api, ApiError, errorMessage } from "../lib/api";
 import { focusAfterRemoval, focusWhenReady } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /** 元に戻した行。一覧からは消えるので、戻したことをその行があった場所に出し続ける */
 type Restored = TrashedPage & { parentMissing: boolean };
@@ -22,6 +23,7 @@ const withDescendants = (p: TrashedPage) => (p.descendantCount > 0 ? `と配下�
 
 /** ゴミ箱：削除したページの一覧。配下ごと元に戻す・完全に削除する。 */
 export function TrashPage() {
+  useScreenTitle("ゴミ箱");
   const qc = useQueryClient();
   const trash = useQuery({ queryKey: ["trash"], queryFn: api.listTrash });
   const [restored, setRestored] = useState<Restored[]>([]);

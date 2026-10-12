@@ -11,6 +11,7 @@ import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
+import { useScreenTitle } from "../lib/documentTitle";
 
 const STAR_WIDTH = 36;
 /** 行の高さ（読み込み中の行も、この高さで出す）。状態のチップが折り返した行は、これより高くなる。 */
@@ -21,6 +22,7 @@ const PAGE_SIZE = 50;
 const nowrap = { whiteSpace: "nowrap" } as const;
 
 export function PagesPage() {
+  useScreenTitle("すべてのページ");
   const [q, setQ] = useState("");
   // 絞り込みを変えるとキーが変わり、先頭から取り直す。["pages", q] を使うほかの一覧（検索・コマンドメニューなど）とは重ならないキーにする
   const pages = useInfiniteQuery({

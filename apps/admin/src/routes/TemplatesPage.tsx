@@ -19,6 +19,7 @@ import { useCreateFromTemplate } from "../lib/createFromTemplate";
 import { formatDateTime } from "../lib/format";
 import { pageLink, screenLink, templateLink } from "../lib/wiki";
 import { FULL_HEIGHT } from "./WikiLayout";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /** テンプレートを消す前の確認。 */
 const confirmDelete = (title: string) =>
@@ -45,6 +46,7 @@ export function TemplateVariables() {
 
 /** テンプレートの一覧：新しいページのひな形を作る・直す・消す、そこからページを作る。 */
 export function TemplatesPage() {
+  useScreenTitle("テンプレート");
   const qc = useQueryClient();
   const navigate = useNavigate();
   const templates = useQuery({ queryKey: ["templates"], queryFn: api.listTemplates });
@@ -149,6 +151,8 @@ export function TemplateEditorPage({ templateId }: { templateId: string }) {
   const navigate = useNavigate();
   const template = useQuery({ queryKey: ["template", templateId], queryFn: () => api.getTemplate(templateId) });
   const [draft, setDraft] = useState<Draft | null>(null);
+  // タブの題は、テンプレートの名前（入力中のものに追従）
+  useScreenTitle(draft ? draft.title : null);
 
   useEffect(() => {
     if (template.data && draft === null) setDraft(draftOf(template.data));

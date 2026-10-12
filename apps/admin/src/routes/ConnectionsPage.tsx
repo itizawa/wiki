@@ -12,6 +12,7 @@ import { HelpHeading } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { useScreenTitle } from "../lib/documentTitle";
 
 const SHORT_LABEL: Record<string, string> = {
   "wiki.read": "読む",
@@ -27,6 +28,7 @@ const GRANT_ROW_HEIGHT = 54;
 
 /** `/connections`：外部のアプリ（MCP クライアント）のつなぎ方と、自分が与えた許可の一覧・取り消し */
 export function ConnectionsPage() {
+  useScreenTitle("外部アプリ連携");
   const qc = useQueryClient();
   const grants = useQuery({ queryKey: ["oauth-grants"], queryFn: api.listGrants });
   const revoke = useMutation({

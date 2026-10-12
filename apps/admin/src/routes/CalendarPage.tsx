@@ -21,6 +21,7 @@ import { useScheduleToasts } from "../lib/scheduleActions";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime, formatDay } from "../lib/format";
 import { checkRunAt } from "../lib/runAt";
+import { useScreenTitle } from "../lib/documentTitle";
 
 const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
@@ -43,6 +44,7 @@ export type Entry =
 
 /** 編集カレンダー：公開済み・予約済み・AI下書きを日付で並べる。 */
 export function CalendarPage() {
+  useScreenTitle("編集カレンダー");
   const qc = useQueryClient();
   const [now] = useState(() => Date.now());
   const from = new Date(now - 14 * DAY).toISOString();

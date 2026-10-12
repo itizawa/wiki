@@ -38,6 +38,7 @@ import { VersionHistory } from "../components/VersionHistory";
 import { Muted, RouterLink, SkeletonEditor } from "../components/ui";
 import { TITLE_TOO_LONG, titleCounter } from "../lib/titleLimit";
 import { TemplatePicker } from "./TemplatePicker";
+import { useScreenTitle } from "../lib/documentTitle";
 
 type Draft = { title: string; bodyMd: string };
 
@@ -71,6 +72,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const [draft, setDraft] = useState<Draft | null>(null);
   // タブのアイコンを、このページの絵文字かタイトルの1文字目にする（入力中のタイトルにも追従する）
   usePageTabIcon(wikiFaviconUrl, draft && page.data ? { title: draft.title, icon: page.data.icon } : null);
+  // タブの題も、このページのタイトル（入力中のものに追従。空なら「無題」）にする
+  useScreenTitle(draft && page.data ? draft.title : null);
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   // 版を作るときは、直前の下書きの保存で分かった head をすぐ使う（state の反映を待たない）
   const baseRef = useRef<string | null>(null);
