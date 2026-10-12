@@ -74,6 +74,8 @@ export function shortcutGroups(mod: string): Group[] {
         { keys: [mod, "Z"], label: "元に戻す" },
         { keys: [mod, "Shift", "Z"], label: "やり直す" },
         { keys: ["Tab"], label: "リストを1段下げる（Shift+Tab で上げる）" },
+        { keys: ["Alt", "↑"], label: "カーソルのあるブロックを1つ上へ動かす（リストや表は全体で1つ）" },
+        { keys: ["Alt", "↓"], label: "カーソルのあるブロックを1つ下へ動かす（マウスなら、ブロックの左のつまみをドラッグ）" },
       ],
     },
     {
