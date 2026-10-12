@@ -9,7 +9,7 @@ afterEach(async () => {
   ctx = undefined as unknown as typeof ctx;
 });
 
-const internal = (method: string, path: string) => ctx.call(method, path, undefined, { authorization: "Bearer internal-token", cookie: "" });
+const internal = (method: string, path: string) => ctx.call(method, path, undefined, { authorization: "Bearer cron-token", cookie: "" });
 
 const NOW = new Date("2026-06-20T03:00:00.000Z");
 const DAY = 24 * 60 * 60_000;

@@ -18,8 +18,9 @@ async function newPage(title: string, bodyMd = "") {
   return res.body;
 }
 
-const internal = (method: string, path: string, body?: unknown) =>
-  ctx.call(method, path, body, { authorization: "Bearer internal-token", cookie: "" });
+const withToken = (token: string, method: string, path: string, body?: unknown) =>
+  ctx.call(method, path, body, { authorization: `Bearer ${token}`, cookie: "" });
+const internal = (method: string, path: string, body?: unknown) => withToken("cron-token", method, path, body);
 
 describe("publish / unpublish", () => {
   it("publishes the chosen version only and keeps later edits out of the manifest", async () => {
@@ -119,12 +120,47 @@ describe("manifest", () => {
     expect(m.trees.map((t) => t.key)).toEqual(["main"]);
   });
 
-  it("is served at /export/public only with the internal token", async () => {
+  it("is served at /export/public only with the token of the site build", async () => {
     ctx = await setup();
     expect((await ctx.app.request("/export/public")).status).toBe(401);
-    const res = await internal("GET", "/export/public");
+    const res = await withToken("export-token", "GET", "/export/public");
     expect(res.status).toBe(200);
     expect(res.body.contentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("the tokens of the site build and the cron worker", () => {
+  /** いまある /internal/* の経路と、まだ無い経路（あとで足されても、同じ守りが掛かることを確かめる） */
+  const INTERNAL_PATHS = [
+    "/internal/tick",
+    "/internal/versions/prune",
+    "/internal/views/totals",
+    "/internal/builds/00000000-0000-4000-8000-000000000000/triggered",
+    "/internal/added-later",
+  ];
+
+  it("does not let the token of the site build call /internal/*", async () => {
+    ctx = await setup();
+    for (const path of INTERNAL_PATHS) {
+      expect((await withToken("export-token", "POST", path, {})).status, path).toBe(401);
+      expect((await ctx.app.request(path, { method: "POST" })).status, path).toBe(401);
+    }
+    expect((await withToken("cron-token", "POST", "/internal/tick", {})).status).toBe(200);
+    expect((await withToken("cron-token", "POST", "/internal/versions/prune")).status).toBe(200);
+    // 画像の掃除まで頼む呼び方（週1回）でも同じ
+    expect((await withToken("export-token", "POST", "/internal/versions/prune", { images: true })).status).toBe(401);
+    expect((await withToken("cron-token", "POST", "/internal/versions/prune", { images: true })).status).toBe(200);
+  });
+
+  it("does not let the token of the cron worker read /export/public", async () => {
+    ctx = await setup();
+    expect((await withToken("cron-token", "GET", "/export/public")).status).toBe(401);
+  });
+
+  it("does not accept one token where the other is not set", async () => {
+    ctx = await setup({ config: { cronToken: undefined } });
+    expect((await withToken("export-token", "POST", "/internal/tick", {})).status).toBe(404);
+    expect((await withToken("export-token", "GET", "/export/public")).status).toBe(200);
   });
 });
 
@@ -330,7 +366,7 @@ describe("build requests", () => {
     const decision = await requestBuild(ctx.db, { now: new Date(Date.now() + 1_000_000) });
     if (!decision.trigger) throw new Error("expected a build");
 
-    const manifest = (await internal("GET", "/export/public")).body;
+    const manifest = (await withToken("export-token", "GET", "/export/public")).body;
     expect(manifest.contentHash).toBe(decision.contentHash);
     expect(await publicContentHash(ctx.db)).toBe(decision.contentHash);
     expect(manifest.wikis).toHaveLength(1);
@@ -389,13 +425,5 @@ describe("build requests", () => {
     expect((await internal("POST", "/internal/builds/nope/triggered")).status).toBe(404);
     expect((await ctx.app.request("/internal/builds/nope/triggered", { method: "POST" })).status).toBe(401);
   });
-
-  it("is exposed to the worker with the internal token", async () => {
-    ctx = await setup();
-    expect((await ctx.app.request("/internal/scheduled/run", { method: "POST" })).status).toBe(401);
-    const run = await internal("POST", "/internal/scheduled/run");
-    expect(run.body).toEqual({ done: [], retrying: [], failed: [] });
-    const build = await internal("POST", "/internal/builds/request", { debounceSec: 0 });
-    expect(build.body).toEqual({ trigger: false, reason: "no_changes" });
-  });
+  // ワーカーからの呼び出し（/internal/tick）は cron.test.ts
 });

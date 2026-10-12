@@ -16,6 +16,7 @@ import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { descendantIds, descendantsWider, exceedsParent, loadTreeIndex, visibilityAt } from "../publishing/hierarchy";
 import { keepVersion } from "../pages/versions";
+import { markCronWork } from "../cron/marks";
 import { publishPage, rotateUnlistedKey, unpublishPage, type PublishInput } from "../publishing/service";
 import { parseJson } from "../validation";
 import { auditActor, writeAudit, type AuditActor } from "../audit/service";
@@ -214,6 +215,7 @@ export const scheduleRoutes = new Hono<AppEnv>()
         target: await scheduleTarget(tx, rows[0]!),
         detail: { ...scheduleRef(rows[0]!), from: before.runAt.toISOString() },
       });
+      markCronWork("scheduled", input.runAt);
       return rows;
     });
     // running になった後は変更できない
@@ -274,6 +276,7 @@ export async function createSchedule(
     });
     // 予約に使った版は、自動でできた版でも間引かない
     if (input.actionType === "publish_page") await keepVersion(tx, input.versionId);
+    markCronWork("scheduled", input.runAt);
     return row;
   });
   const [created] = await listActions(db, wikiId, eq(scheduledActions.id, row!.id));

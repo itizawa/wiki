@@ -28,7 +28,7 @@
 2. .claude/skills/ui-ux-audit/references/layout-probe.js の中身を javascript_tool で走らせ、結果を控える
 3. computer でスクリーンショットを撮り、上から下までスクロールして目で確かめる。probe の候補が本当に崩れて見えるかを確かめ、見えないものは落とす
 4. read_console_messages（pattern: "error|Error|warn"）で、エラーを控える
-5. .claude/skills/ui-ux-audit/references/checklist.md の「表示崩れ」と「UX」を見る。メニュー・ダイアログ・ドロワーは開いて中も見る
+5. .claude/skills/ui-ux-audit/references/checklist.md の「表示崩れ」「UX」「OOUI」を見る。メニュー・ダイアログ・ドロワーは開いて中も見る。OOUI は幅で変わらないので、PC の幅のときだけ見る
 6. 長いタイトル・空の一覧など、崩れやすい状態が手近にあれば、それも見る
 
 ## 返す形
@@ -36,7 +36,7 @@
 
 - 画面: {名前}（{URL}）
 - 幅: {測った innerWidth} / 拡大率
-- 種類: 表示崩れ / UX / エラー
+- 種類: 表示崩れ / UX / OOUI / エラー
 - 重大度: 1〜4（checklist.md の「重大度」）
 - 何が起きるか: {何をすると、何がどうなるか。期待していた見え方}
 - 手順: {開く → 押す → ...}
@@ -65,8 +65,8 @@
 - 初めて使う人のつもりで、画面の言葉だけを頼りに流れを進める。迷った所、押したあと何が起きたかわからなかった所、戻れなかった所を控える
 - キーボードだけ（Tab・Enter・Esc）でも同じ流れを試す。フォーカスが見えるか、ダイアログを Esc で閉じられるか
 - わざと間違える（空のまま送る、長すぎる文字を入れる ※手元のみ）。エラーの文が次に何をすればよいかを言っているか
-- .claude/skills/ui-ux-audit/references/checklist.md の「UX」を見る
+- .claude/skills/ui-ux-audit/references/checklist.md の「UX」と「OOUI」を見る。流れの中で触ったオブジェクトごとに、一覧・詳細・作成・変更の場所を控える
 
 ## 返す形
-（表示崩れのひな形と同じ。「種類」は UX にし、どの原則に当たるかを書く）
+（表示崩れのひな形と同じ。「種類」は UX か OOUI にし、どの原則・どの番号に当たるかを書く。OOUI なら、どのオブジェクトの話かも書く）
 ```

@@ -5,10 +5,23 @@ compatibility_date = "2026-10-01"
 compatibility_flags = ["global_fetch_strictly_public"]
 
 # 予約公開の許容遅延 = Cron間隔 + デバウンス + ビルド時間（既定：5分 + 2分 + ビルド）
+# 5分おきの方は、まず下の KV（印）だけを見て、やることが無ければ API を呼ばずに終わる。毎時0分の回だけは、印に関係なく API を呼ぶ
 # 1日1回（18:00 UTC = JST の午前3時）の方は、間引きと掃除だけを行う（src/prune.ts の PRUNE_CRON と同じ文字列にする）。
 # 参照されていない画像の掃除は、このうち日曜（UTC）の回だけ
+# 1時間に1回（毎時0分）の方は、公開サイトが貯めた閲覧数の集計だけを行う（src/views.ts の VIEWS_CRON と同じ文字列にする）。
+# 毎時0分は、5分おきの方が印に関係なく API を呼ぶ回でもある。同じ時刻にそろえて、DB を起こす回数を増やさない
 [triggers]
-crons = ["*/5 * * * *", "0 18 * * *"]
+crons = ["*/5 * * * *", "0 18 * * *", "0 * * * *"]
+
+# 「やることがある」の印（Workers KV）。API（apps/api/wrangler.toml）が書き、このワーカーが読む。
+# 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
+# 下の3行のコメントを外し、出力された id を入れる。apps/api/wrangler.toml にも同じ id で同じブロックを入れる
+# （こちらだけに入れると、API が印を書かないので、下書き・予約・ビルドが最大1時間遅れる）。
+# id が実在しない名前空間のままコメントを外すと、wrangler deploy が失敗する。
+# コメントのあいだは、今までどおり5分おきに API を呼ぶ。
+[[kv_namespaces]]
+binding = "CRON_MARKS"
+id = "9e2cad4b68d14f3aa613878cc78c97be"
 
 [vars]
 # apps/api/wrangler.toml の ADMIN_ORIGIN と同じ値（/internal/* を呼ぶ）
@@ -16,6 +29,8 @@ API_ORIGIN = "https://wiki-admin.hatchery-works.com"
 BUILD_DEBOUNCE_SEC = "120"
 
 # secrets（GitHub Actions のデプロイが --secrets-file で入れる。手動なら wrangler secret put）
-# INTERNAL_TOKEN        API の /internal/* 用トークン
+# CRON_TOKEN            API の /internal/* 用トークン（wiki-admin の CRON_TOKEN と同じ値）
 # SITE_DEPLOY_HOOK_URL  公開サイト（wiki-site）の Workers Builds のデプロイフックURL
 # NOTIFY_WEBHOOK_URL    予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook（任意）
+# CLOUDFLARE_ACCOUNT_ID       閲覧数の集計で Workers Analytics Engine の SQL API を呼ぶアカウント（任意。無ければ集計を飛ばす）
+# CLOUDFLARE_ANALYTICS_TOKEN  その SQL API 用の API トークン。権限は Account → Account Analytics → Read だけ（任意。無ければ集計を飛ばす）

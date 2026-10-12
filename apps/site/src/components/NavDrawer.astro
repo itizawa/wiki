@@ -1,25 +1,69 @@
 ---
+import { ChevronsLeft, Rss, Search, X } from "lucide-react";
 import layout from "../styles/page.module.css";
 
+interface Props {
+  /** 開いているのが検索ページなら "search"（サイドバーの「検索」を現在地として示す） */
+  current?: "search";
+  /** スロットにページ一覧（ツリーナビ）を入れるか。公開ページが無いツリーでは false にして、見出しも出さない */
+  list?: boolean;
+}
+
+const { current, list = true } = Astro.props;
+
 /**
- * ツリーナビを入れる左の列。`.withNav` の中に置く。
- * 広い画面では左の列に張り付き、狭い画面（800px 以下）ではヘッダーの「階層を開く」で開く左のドロワーになる
- * （同じ要素を CSS で切り替えるので、ツリーは1か所にしか出ない）。ボタンを出すのは Base.astro（`nav` を渡したとき）。
- * スクリプトが動かなければ、ボタンはツリーの一覧ページ（/t/{key}/）へのリンクのまま。
+ * サイドバーになる左の列。`.withNav` の中に置く。上に、サイト全体にまたがる「検索」「RSS」、その下に「ページ一覧」（スロットに入れたツリーナビ）を並べる。
+ * 広い画面では左のサイドバーになり、狭い画面（800px 以下）ではヘッダーの「ページ一覧を開く」で開く左のドロワーになる
+ * （同じ要素を CSS で切り替えるので、ツリーは1か所にしか出ない）。ヘッダーのボタンを出すのは Base.astro（`nav` を渡したとき）。
+ * サイドバーは「サイドバーを閉じる」で閉じ、ヘッダーの「サイドバーを開く」で開く。閉じたことは localStorage に覚える（描く前に当てるのは Base.astro）。
+ * スクリプトが動かなければ、サイドバーは開いたままで、ヘッダーのボタンはトップ（/）へのリンクのまま。
  */
 ---
 
 <div class={layout.navBackdrop} data-nav-backdrop></div>
 <aside id="site-nav" data-nav-drawer data-pagefind-ignore>
-  <div class={layout.drawerHead}>
-    <span>階層</span>
-    <button type="button" class={layout.drawerClose} data-nav-close aria-label="階層を閉じる">×</button>
+  <div class={layout.navInner}>
+    <div class={layout.drawerHead}>
+      <button type="button" class={layout.drawerClose} data-nav-close aria-label="ページ一覧を閉じる"><X size={20} aria-hidden="true" /></button>
+      <button
+        type="button"
+        class={layout.sidebarClose}
+        data-sidebar-close
+        hidden
+        aria-label="サイドバーを閉じる"
+        title="サイドバーを閉じる"
+        aria-controls="site-nav"
+        aria-expanded="true"
+      >
+        <ChevronsLeft size={20} aria-hidden="true" />
+      </button>
+    </div>
+    <nav class={layout.sideLinks} aria-label="サイト全体">
+      <a href="/search" aria-current={current === "search" ? "page" : undefined}>
+        <Search size={16} aria-hidden="true" />
+        検索
+      </a>
+      <a href="/feed.xml">
+        <Rss size={16} aria-hidden="true" />
+        RSS
+      </a>
+    </nav>
+    {
+      list && (
+        <>
+          <h2 class={layout.listHeading}>ページ一覧</h2>
+          <slot />
+        </>
+      )
+    }
   </div>
-  <slot />
 </aside>
 
 <script>
-  // ヘッダーのリンク（スクリプトが動かないときの行き先）を、ドロワーを開くボタンに差しかえる
+  import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
+
+  // ヘッダーのリンク（スクリプトが動かないときの行き先）を、ボタンに差しかえる。
+  // 狭い画面ではドロワーを開き、広い画面では閉じたサイドバーを開く
   const drawer = document.querySelector<HTMLElement>("[data-nav-drawer]");
   const fallback = document.querySelector<HTMLAnchorElement>("[data-nav-toggle]");
   if (drawer && fallback) {
@@ -27,15 +71,39 @@ import layout from "../styles/page.module.css";
     toggle.type = "button";
     toggle.className = fallback.className;
     toggle.innerHTML = fallback.innerHTML;
-    toggle.setAttribute("aria-label", "階層を開く");
     toggle.setAttribute("aria-controls", drawer.id);
-    toggle.setAttribute("aria-expanded", "false");
     toggle.toggleAttribute("data-nav-toggle", true);
     fallback.replaceWith(toggle);
 
     const root = document.documentElement;
     const close = drawer.querySelector<HTMLButtonElement>("[data-nav-close]");
     const backdrop = document.querySelector<HTMLElement>("[data-nav-backdrop]");
+    const sidebarClose = drawer.querySelector<HTMLButtonElement>("[data-sidebar-close]");
+    const narrow = matchMedia("(max-width: 800px)");
+
+    // ヘッダーのボタンの名前と aria-expanded を、いまの幅での役目（ドロワーか、サイドバーか）に合わせる
+    const syncToggle = () => {
+      const sidebarOpen = !root.hasAttribute("data-sidebar-closed");
+      const label = narrow.matches ? "ページ一覧を開く" : "サイドバーを開く";
+      toggle.setAttribute("aria-label", label);
+      toggle.title = label;
+      toggle.setAttribute("aria-expanded", String(narrow.matches ? root.hasAttribute("data-nav-open") : sidebarOpen));
+      sidebarClose?.setAttribute("aria-expanded", String(sidebarOpen));
+    };
+
+    // 広い画面のサイドバーを閉じる・開く。次のページでも同じ状態にする（描く前に当てるのは Base.astro）
+    const setSidebarClosed = (closed: boolean) => {
+      root.toggleAttribute("data-sidebar-closed", closed);
+      try {
+        if (closed) localStorage.setItem(SIDEBAR_STORAGE_KEY, SIDEBAR_CLOSED);
+        else localStorage.removeItem(SIDEBAR_STORAGE_KEY);
+      } catch {
+        // 覚えられないブラウザでも、このページの中では開閉できる
+      }
+      syncToggle();
+      // 押したボタンは消えるので、入れ替わりに出たボタンへフォーカスを移す
+      (closed ? toggle : sidebarClose)?.focus();
+    };
     let inerted: HTMLElement[] = [];
 
     // 開いている間は、ドロワーのほか（ヘッダー・本文・フッター）を操作できないようにする（フォーカスもドロワーの中にとどまる）
@@ -57,7 +125,7 @@ import layout from "../styles/page.module.css";
       if (open) {
         drawer.setAttribute("role", "dialog");
         drawer.setAttribute("aria-modal", "true");
-        drawer.setAttribute("aria-label", "階層");
+        drawer.setAttribute("aria-label", "ページ一覧");
         inertOthers();
         close?.focus();
       } else {
@@ -70,7 +138,12 @@ import layout from "../styles/page.module.css";
       }
     };
 
-    toggle.addEventListener("click", () => setOpen(true));
+    syncToggle();
+    if (sidebarClose) {
+      sidebarClose.hidden = false;
+      sidebarClose.addEventListener("click", () => setSidebarClosed(true));
+    }
+    toggle.addEventListener("click", () => (narrow.matches ? setOpen(true) : setSidebarClosed(false)));
     close?.addEventListener("click", () => setOpen(false));
     backdrop?.addEventListener("click", () => setOpen(false));
     document.addEventListener("keydown", (e) => {
@@ -80,9 +153,10 @@ import layout from "../styles/page.module.css";
     drawer.addEventListener("click", (e) => {
       if (e.target instanceof Element && e.target.closest("a[href]")) setOpen(false, false);
     });
-    // 広い画面に変わったら閉じる（ツリーは左の列に戻る）
-    matchMedia("(max-width: 800px)").addEventListener("change", (e) => {
+    // 広い画面に変わったら閉じる（ツリーは左のサイドバーに戻る）
+    narrow.addEventListener("change", (e) => {
       if (!e.matches) setOpen(false, false);
+      syncToggle();
     });
   }
 </script>

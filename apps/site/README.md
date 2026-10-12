@@ -5,9 +5,15 @@
 ## ビルド
 
 ```sh
-pnpm build          # API_ORIGIN と INTERNAL_TOKEN で /export/public を取得してビルド → Pagefind
+pnpm build          # API_ORIGIN と EXPORT_TOKEN で /export/public を取得してビルド → Pagefind
 pnpm build:sample   # fixtures/manifest.sample.json でビルドし、scripts/verify-build.mjs で検査
 ```
+
+マニフェストをどこから持ってくるかは、`scripts/manifest-source.mjs` が次の順で決める。
+
+1. `MANIFEST_PATH` があれば、そのファイル（`build:sample`）
+2. Workers Builds の、`main` 以外のブランチのビルド（プレビュー。`WORKERS_CI_BRANCH` が `main` でない）なら、サンプルデータ（`fixtures/manifest.sample.json`）。**`EXPORT_TOKEN` が渡っていても、API は呼ばない**（プレビューの URL に、本番の限定公開の内容を残さないため）
+3. それ以外（本番のビルド、手元）は、API の `/export/public`。`API_ORIGIN` か `EXPORT_TOKEN` が無ければ失敗する（本番がサンプルデータで出ることは無い）
 
 1回のビルドで全 wiki のぶんを作る。ページはすべて `src/pages/[wiki]/` の下にあり、wiki ごとのディレクトリに出力する。
 
@@ -54,25 +60,30 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 | URL | 内容 |
 |---|---|
 | `/p/{id}` | 記事（正規）。slug つきの旧URL（`/p/{id}-{slug}`）は301、削除済みは410（`worker/index.ts`） |
-| `/t/{treeKey}/` , `/t/{treeKey}/{nodeId}` | ツリー経由の閲覧。本文を再掲し、canonicalは `/p/`。本文の HTML は `/p/` で作ったものを使い回す（Markdown の変換と色分けは1回） |
-| `/nav.json` | ツリーナビの全体。記事のページのツリーナビが読む（下の「ツリーナビ（階層）」） |
+| `/t/{treeKey}/{nodeId}` | ツリー経由の閲覧。本文を再掲し、canonicalは `/p/`。本文の HTML は `/p/` で作ったものを使い回す（Markdown の変換と色分けは1回） |
+| `/t/{treeKey}`、`/t/{treeKey}/` | 廃止。トップへ 301（`worker/index.ts`）。ツリーはトップと記事のサイドバーに出る |
+| `/nav.json` | ツリーナビの全体。記事のページのツリーナビが読む（下の「サイドバー（ページ一覧）」） |
 | `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（下の「Google Analytics とサーチコンソール」）も出さない |
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
-| `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから API の `/internal/views` へ渡す。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |
+| `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから Workers Analytics Engine（バインディング `PAGE_VIEWS`）に1行書く。API も DB も呼ばない。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |
 | `/images/{name}` | アップロードした画像。R2 のバケット（バインディング `IMAGES`）から返す。どの wiki でも同じ（`worker/index.ts`）。2回目からはエッジのキャッシュから返し、R2 を読まない（キーは Host を含む URL。プレビューの `*.workers.dev` ではキャッシュが働かず、毎回 R2 から返す） |
 
 別の wiki のページへのリンクは、外部リンクと同じ扱いになる（`/p/{id}` と書いても、その wiki に無いページなのでテキストだけになる）。
 
-## ツリーナビ（階層）
+## サイドバー（ページ一覧）
 
-記事（`/p/`）・ツリー経由の記事（`/t/.../{nodeId}`）・トップ（`/`）は、左にツリーナビを置く2カラム（`page.module.css` の `.withNav`、ナビの列は `components/NavDrawer.astro`）。トップは、公開ページの入ったツリーが無ければ新着だけ。
+記事（`/p/`）・ツリー経由の記事（`/t/.../{nodeId}`）・トップ（`/`）・検索（`/search`）は、左にサイドバーを置く2カラム（`page.module.css` の `.withNav`、列は `components/NavDrawer.astro`）。列の上に、サイト全体にまたがる「検索」「RSS」（ヘッダーの「…」メニューには置かない）、その下に「ページ一覧」（ツリーナビ）を並べる。階層という言葉は、読む人に伝わりにくいので画面には出さない。公開ページの入ったツリーが無ければ、ページ一覧は出さず、検索と RSS だけにする。
 
-- 幅 800px を超えると、ナビは左の列に張り付く
-- 幅 800px 以下では、ナビを本文の下には出さず、ヘッダーの左端の「階層を開く」（☰）で左のドロワーとして開く。同じ `<aside>` を CSS で切り替えるので、ツリーは1か所にしか出ない
+- 幅 800px を超えると、ナビは左のサイドバーになる。ウィンドウの左端に付き、ヘッダーの下からページの下端まで伸びる（背景は `global.css` の `--sidebar-bg`、幅は `--sidebar-width`）。スクロールしても中身は画面に張り付き、中身が長ければ列の中でスクロールする
+  - 並べているのは `<body>` のグリッド（`Base.module.css` の `.hasNav`）。フッターも本文の列に入るので、サイドバーがページの下端まで届く
+  - 列の上の「サイドバーを閉じる」で閉じ、閉じている間だけヘッダーの左端に出る「サイドバーを開く」で開く。本文の幅は開閉で変えず（`--main-width`）、閉じたら中央に寄せる
+  - 閉じたことは `localStorage`（`wiki:sidebar`）に覚え、次のページでも同じ状態にする。`<head>` のインラインスクリプトが描く前に `html[data-sidebar-closed]` を付けるので、読み込みの途中で列が出たり消えたりしない
+  - スクリプトが動かなければ、サイドバーは開いたまま（「サイドバーを閉じる」は出ない）
+- 幅 800px 以下では、ナビを本文の下には出さず、ヘッダーの左端の「ページ一覧を開く」（☰）で左のドロワーとして開く。同じ `<aside>` を CSS で切り替えるので、ツリーは1か所にしか出ない
   - 幕・閉じるボタン・Esc・ドロワーの中のリンクで閉じる。開いている間は後ろをスクロールさせず、ドロワーのほかを `inert` にしてフォーカスを中にとどめる。閉じたらボタンにフォーカスを戻す
-  - スクリプトが動かなければ、ボタンはツリーの一覧ページ（`/t/{treeKey}/`）へのリンクのまま
-  - 検索・404・限定公開のページには、ボタンもドロワーも出さない（`Base.astro` の `nav` を渡したページだけ）
+  - スクリプトが動かなければ、ボタンはトップ（`/`）へのリンクのまま
+  - 404・限定公開のページには、ボタンもドロワーも出さない（`Base.astro` の `nav` を渡したページだけ）
 - ナビの列は `data-pagefind-ignore` で、検索の索引に入れない
 
 ### ツリーの中身の持ち方
@@ -87,7 +98,7 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
   - 読み込む前・JavaScript が動かないとき：HTML に入れた分がそのまま出る（今までの最初の表示と同じ）
   - 読み込みが終わる前に閉じている枝を開いたとき：その枝の下に「読み込み中…」を出し、届いたら中身に変わる
   - 読み込めなかったとき：見た目は変わらず、HTML に入れた分のリンクで移れる（移った先のページには、その周りの分が入っている）。閉じている枝を開くともう一度読みに行き、だめならその枝の下に「下のページを読み込めませんでした。」と「もう一度読み込む」を出す
-- トップ（`/`）とツリーの一覧（`/t/{treeKey}/`）は、wiki に1枚ずつなので、今までどおりツリー全体を HTML に入れる
+- トップ（`/`）は、wiki に1枚なので、今までどおりツリー全体を HTML に入れる
 - `build:sample` の検査で、`nav.json` に限定公開・非公開・削除済みのページと別の wiki のページが無いこと、限定公開のページが `nav.json` を読まないことを確かめる
 
 ## コードブロック
@@ -103,9 +114,9 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 ## プレゼンモード
 
-記事の日付の行にある「プレゼンモードで表示」を押すと、その記事をスライドとして見られる。公開ページ・ツリー経由・限定公開のどれでも同じ（`src/components/Article.astro`）。
+ヘッダー右端の「…」メニューにある「プレゼンモードで表示」を押すと（スライドが2枚以上になる記事だけに出る。メニューには、ほかに検索と RSS が入る。`src/layouts/Base.astro`）、その記事をスライドとして見られる。公開ページ・ツリー経由・限定公開のどれでも同じ（`src/components/Article.astro`）。
 
-- 記事のページの上に重ねて出す（`<dialog>` のモーダル）。URL は変わらず、プレゼン用のページも作らない。ビルドの出力は、ボタンと空の `<dialog>` が記事に足されるだけで、サイトマップ・RSS・Pagefind の索引には出ない（どちらも `data-pagefind-ignore`）
+- 記事のページの上に重ねて出す（`<dialog>` のモーダル）。URL は変わらず、プレゼン用のページも作らない。ビルドの出力は、空の `<dialog>` が記事に足されるだけで、サイトマップ・RSS・Pagefind の索引には出ない（どちらも `data-pagefind-ignore`）
 - ボタンは `hidden` で出力し、スクリプトが、スライドが2枚以上になる記事でだけ見えるようにする。JavaScript が動かない環境と、本文の無い記事には出ない
 - スライドの分け方（`src/lib/slides.ts`。管理画面のプレゼンモードと同じ分け方にするが、コードは共有しない）
   - 1枚目は記事のタイトルだけ
@@ -137,6 +148,6 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 ## デプロイ
 
-デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`INTERNAL_TOKEN` `SITE_BASE_DOMAIN`（`hatchery-works.com`）。手順はルートの README「デプロイ」。
+デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`EXPORT_TOKEN`（`/export/public` だけを読めるトークン）`SITE_BASE_DOMAIN`（`hatchery-works.com`）。Worker の実行時のシークレットは無い。手順はルートの README「デプロイ」。
 
 `pnpm preview` で、ビルド結果を Workers のランタイムで確認できる。そのままだと `wrangler.toml` の `routes` のホスト（本番）へ問い合わせてしまうので、`pnpm preview --port 4321 --local-upstream localhost:4321` のように、手元を指す `--local-upstream` を付ける。Worker を通ったかどうかは、応答の `x-frame-options`（Worker が付ける）の有無で見分けられる。

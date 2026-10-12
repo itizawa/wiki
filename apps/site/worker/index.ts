@@ -23,6 +23,9 @@ const PAGEFIND_HASHED = /^\/pagefind\/(fragment|index)\/[^/]+$/;
 /** 名前が同じなら中身も同じファイルのキャッシュ。`/_astro/*` に付ける `_headers`（src/integrations/public-files.mjs）と同じ値 */
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
+/** 廃止したツリーの一覧のページ（/t/main、/t/main/）。 */
+const TREE_INDEX = /^\/t\/[^/]+\/?$/;
+
 const notFound = () => new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
 
 /**
@@ -31,6 +34,7 @@ const notFound = () => new Response("Not Found", { status: 404, headers: { "cont
  * 通らないのは、どの wiki にも共通の `/_astro/*` だけ。
  * - ほかの wiki のディレクトリは、パスを直接指定しても開けない（必ず自分の wiki のディレクトリの下として読む）
  * - 知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404
+ * - 廃止したツリーの一覧（`/t/{treeKey}` と `/t/{treeKey}/`）→ トップへ 301（ツリーはトップのサイドバーに出る。`/t/{treeKey}/{nodeId}` は残っている）
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
  * - `POST /_v`：記事の閲覧数を数える（worker/views.ts）
  * - `/images/{name}`：アップロードした画像。エッジのキャッシュにあれば、R2 を読まずに返す
@@ -71,6 +75,8 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
   if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
   if (url.pathname.startsWith("/images/")) return image(request, url, env, ctx);
 
+  if (TREE_INDEX.test(url.pathname)) return Response.redirect(new URL("/", url).href, 301);
+
   const prefix = `/${target}`;
   const asset = (pathname: string) => {
     const assetUrl = new URL(url);
@@ -78,7 +84,7 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
     return assetUrl;
   };
   if (url.pathname === VIEW_PATH && request.method === "POST") {
-    return recordView(request, env, ctx, target, async () => {
+    return recordView(request, env, target, async () => {
       const res = await env.ASSETS.fetch(asset("/page-routes.json"));
       return res.ok ? ((await res.json()) as PublicRoutes) : null;
     });

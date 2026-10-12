@@ -7,8 +7,8 @@
     "dev": "astro dev",
     "build": "node scripts/fetch-manifest.mjs && astro build && node scripts/pagefind.mjs",
     "build:sample": "MANIFEST_PATH=fixtures/manifest.sample.json pnpm build && node scripts/verify-build.mjs",
-    "deploy": "npx wrangler@4 deploy",
-    "preview": "npx wrangler@4 dev",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev",
     "typecheck": "astro check && tsc -p tsconfig.worker.json",
     "test": "vitest run"
   },
@@ -17,6 +17,7 @@
     "@astrojs/rss": "^4.0.19",
     "@wiki/shared": "workspace:*",
     "astro": "^7.3.8",
+    "lucide-react": "^1.55.0",
     "marked": "^16.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

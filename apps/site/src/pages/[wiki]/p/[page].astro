@@ -28,7 +28,7 @@ const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(
 const nav = primaryTree && (await pageNav(wiki, primaryTree, inPrimary ? page.id : undefined));
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && `/t/${primaryTree.key}/`}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"}>
   <div class={layout.withNav}>
     <main data-pagefind-body>
       {

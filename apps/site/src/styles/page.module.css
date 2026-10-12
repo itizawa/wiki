@@ -2,24 +2,50 @@
 .muted { color: var(--muted); }
 .visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-/* ツリーナビ＋本文の2カラム。ナビは左に置き、右は本文の目次（Article）に空ける。
-   HTML では本文が先（読み上げでは、本文のあとにナビが来る）。ナビの列は NavDrawer.astro */
-.withNav { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-areas: "nav main"; gap: 32px; align-items: start; }
-.withNav > main { grid-area: main; }
-.withNav > aside { grid-area: nav; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; font-size: 0.9rem; }
-/* ドロワーの幕と見出し（閉じるボタン）。広い画面では出さない */
+/* ツリーナビ＋本文。HTML では本文が先（読み上げでは、本文のあとにナビが来る）。ナビの列は NavDrawer.astro。
+   広い画面では、ナビを左のサイドバーにする。並べるのは body のグリッド（Base.module.css の .hasNav）で、ここは箱を作らない */
+.withNav > aside { font-size: 0.9rem; }
+/* ドロワーの幕。開いている間だけ出す */
 .navBackdrop { display: none; }
-.drawerHead { display: none; }
-.drawerClose { width: 40px; height: 40px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: 1.4rem; line-height: 1; cursor: pointer; }
-.drawerClose:hover { background: var(--border); }
-/* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「階層を開く」で開く。NavDrawer.astro）。
+/* 列の上の帯（閉じるボタン）。スクロールしても上に残る */
+.drawerHead { display: flex; align-items: center; justify-content: flex-end; position: sticky; top: 0; font-weight: 700; }
+/* サイト全体の「検索」「RSS」と、その下の「ページ一覧」の見出し */
+.sideLinks { display: flex; flex-direction: column; margin-bottom: 12px; }
+.sideLinks a {
+  display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; border-radius: var(--radius);
+  color: var(--text); text-decoration: none;
+}
+.sideLinks a:hover { background: var(--bg); }
+.sideLinks a[aria-current="page"] { background: var(--bg); font-weight: 600; color: var(--accent); }
+.sideLinks svg { flex: none; color: var(--muted); }
+.sideLinks a[aria-current="page"] svg { color: inherit; }
+.listHeading { margin: 0 0 4px; padding: 0 6px; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.drawerClose, .sidebarClose {
+  align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer;
+}
+.drawerClose:hover, .sidebarClose:hover { background: var(--bg); color: var(--text); }
+/* 「サイドバーを閉じる」は hidden で出力し、スクリプトが見えるようにする（スクリプトが動かなければ、押せないボタンを出さない） */
+.sidebarClose[hidden] { display: none; }
+@media (width > 800px) {
+  .withNav { display: contents; }
+  /* 本文の幅は、サイドバーを開いていても閉じていても同じ（1行が長くなりすぎない）。空いた分は左右に余らせる */
+  .withNav > main { grid-area: main; justify-self: center; width: 100%; max-width: var(--main-width); min-width: 0; padding: 24px clamp(16px, 3vw, 32px); }
+  .withNav > aside { grid-area: nav; background: var(--sidebar-bg); border-right: 1px solid var(--border); }
+  /* 列はページの下端まで伸ばし、中身だけを画面に張り付ける。中身が長ければ、列の中でスクロールする */
+  .navInner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 24px 16px; }
+  .drawerHead { min-height: 48px; margin-bottom: 4px; background: var(--sidebar-bg); color: var(--muted); font-size: 0.85rem; }
+  .drawerClose { display: none; }
+  .sidebarClose { display: inline-flex; margin-right: -4px; }
+  :global(html[data-sidebar-closed]) .withNav > aside { display: none; }
+}
+/* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「ページ一覧を開く」で開く。NavDrawer.astro）。
    閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
 @media (max-width: 800px) {
-  .withNav { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
   .withNav > aside {
     position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
-    width: min(320px, 85vw); max-height: none; overflow-y: auto; overscroll-behavior: contain;
-    padding: 0 16px 24px; background: var(--bg); border-right: 1px solid var(--border); box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
+    width: min(320px, 85vw); overflow-y: auto; overscroll-behavior: contain;
+    padding: 0 16px 24px; background: var(--paper); border-right: 1px solid var(--border); box-shadow: 0 0 24px rgb(0 0 0 / 0.25);
     transform: translateX(-100%); visibility: hidden;
     transition: transform 0.2s ease, visibility 0s linear 0.2s;
   }
@@ -27,10 +53,9 @@
   /* 開いている間は、後ろの本文をスクロールさせない */
   :global(html[data-nav-open]) { overflow: hidden; }
   :global(html[data-nav-open]) .navBackdrop { display: block; position: fixed; inset: 0; z-index: 25; background: rgb(0 0 0 / 0.4); }
-  .drawerHead {
-    display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0;
-    min-height: var(--header-height); margin-bottom: 8px; background: var(--bg); border-bottom: 1px solid var(--border); font-weight: 700;
-  }
+  .drawerHead { min-height: var(--header-height); margin-bottom: 8px; background: var(--paper); border-bottom: 1px solid var(--border); }
+  .drawerClose { display: inline-flex; }
+  .sidebarClose { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .withNav > aside { transition: none !important; }

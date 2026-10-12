@@ -23,7 +23,7 @@
 ```
 apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite）
 apps/api         API（Hono + Drizzle + PostgreSQL）
-apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、構造のスナップショット、役目を終えたトークンと公開イベント、週1回は参照されていない画像）
+apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、構造のスナップショット、役目を終えたトークンと公開イベント、週1回は参照されていない画像）、1時間に1回の閲覧数の集計
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
@@ -132,7 +132,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 - Google認証（OIDC）。セッションは署名付きCookie（「ユーザーとロール」）
 - `pages` / `page_versions`：Markdownエディタ、版履歴と差分、楽観ロック（`base_version_id` が head と一致する場合のみ保存）
 - `page_drafts`：編集中の内容は、打つのが止まると（1.5 秒）人ごとの下書きとして自動保存する。ページと人ごとに1行で、上書きする
-  - 編集が一段落したら、ワーカーが下書きを版にして、下書きを消す（`/internal/drafts/promote`、5分ごと）。一段落したとみなすのは、最後の自動保存から5分たったとき。打ち続けているあいだも、下書きを始めてから30分たてば版にする（時間は `apps/api/src/pages/versions.ts` の定数）。版になるまでは、5分＋ワーカーの間隔（最大5分）で、5〜10分
+  - 編集が一段落したら、ワーカーが下書きを版にして、下書きを消す（`/internal/tick`、5分ごと）。一段落したとみなすのは、最後の自動保存から5分たったとき。打ち続けているあいだも、下書きを始めてから30分たてば版にする（時間は `apps/api/src/pages/versions.ts` の定数）。版になるまでは、5分＋ワーカーの間隔（最大5分）で、5〜10分
   - 版にしない下書き：タイトルが空のもの、古い版をもとにしたもの（あいだにできた版の変更を黙って上書きしないため）、削除したページやアーカイブ中の wiki のもの。消さずに残す
 - 管理画面の検索（検索の画面、コマンドメニュー（⌘K）、本文の「@」「[[」のリンクの挿入。`GET /search`）：開いている wiki の、タイトルといまの本文（head 版）を `ILIKE '%語%'` で探す
   - 探す先は `page_search`（head 版のタイトルと本文の写し。ページごとに1行）。**head 版を進める所は、同じトランザクションで `syncPageSearch`（`apps/api/src/pages/versions.ts`）を呼ぶ**。いまは `createPage` と `createVersion` が呼んでいて、保存・下書きから版になるとき・前の版の内容での保存・MCP の `update_page` は、どれも `createVersion` を通る。完全に削除したページの行は消す
@@ -372,17 +372,25 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 
 - 数えるもの：公開（`public`）の記事。`/p/{id}` とツリー経由の `/t/...` は同じ記事として合わせて数える。トップ・新着・検索などの一覧と、限定公開（`unlisted`）のページは数えない（限定公開のページには数えるスクリプトを入れず、外へ何も送らない。`build:sample` の検査で確かめる）
 - **同じブラウザが同じ記事を同じ日（JST）に何度開いても1回**。判定はブラウザ側で、`localStorage` に「この記事を数えた日」（今日のぶんだけ）を持つ。**IP アドレス・Cookie・個人を見分ける値は、サーバーに送らず、残さない**。管理画面にログインしている本人の閲覧も数える（公開サイトは別のドメインで見分けられないため）
-- 数え方（`apps/site/src/components/ViewCounter.astro` → `apps/site/worker/views.ts` → API の `/internal/views`）
+- 数え方（`apps/site/src/components/ViewCounter.astro` → `apps/site/worker/views.ts` → Workers Analytics Engine → `apps/worker/src/views.ts` → API の `/internal/views/totals`）
   1. 記事が実際に表示されたとき（先読み・裏のタブで開いただけのときは表示されるまで待つ）に、ブラウザが同じオリジンの `POST /_v` へ記事の ID だけを送る（`navigator.sendBeacon`）。自動操作のブラウザ（`navigator.webdriver`）は送らない
   2. 公開サイトの Worker が確かめる：User-Agent が Bot のものでない、Cloudflare が確認済みの Bot としているリクエストでない、先読みでない、その wiki の `page-routes.json` にある（いま公開している）記事である、回数の制限（接続元ごとに 60 秒で 30 回。`wrangler.toml` の `[[ratelimits]]`）を超えていない
-  3. 確かめたら、API の `/internal/views`（`INTERNAL_TOKEN` が要る）へ wiki の key と記事の ID を渡し、API がもう一度（使用中の wiki の、削除していない公開中の記事か）確かめて、`page_views_daily`（`wiki_id` / `page_id` / `day` / `count`）の、その日の行に1を足す。1件ずつの記録は持たない。公開サイトの Worker から DB へは直接つながない
-  - `/_v` は、数えたかどうかにかかわらず、いつも 204 を返す。API へ渡すのは応答を返したあとで、失敗しても記事の表示には関わらず、数が静かに欠ける
+  3. 確かめたら、Workers Analytics Engine（バインディング `PAGE_VIEWS`、データセット `wiki_page_views`）に1行書く。**ここでは API も DB も呼ばない**（閲覧が多くても、DB への書き込みは増えない）。1行の形は、blob1 = wiki の key、blob2 = 記事の ID、blob3 = JST の日付、double1 = 1、index1 = `{wiki の key}:{記事の ID}`。IP アドレスなどは書かない
+  4. 1時間に1回（毎時0分）、Cron のワーカーが SQL API で、今日と昨日（JST）のぶんを記事と日ごとに集計し（`SUM(_sample_interval)`）、API の `/internal/views/totals`（`CRON_TOKEN` が要る）へ渡す。API がもう一度（使用中の wiki の、削除していない公開中の記事か）確かめて、`page_views_daily`（`wiki_id` / `page_id` / `day` / `count`）の、その日の行の数を、渡された合計まで引き上げる。1件ずつの記録は DB に持たない
+  - **渡すのは「その日の合計」で、前の回から増えたぶんではない**。だから、集計が二重に動いても、途中で失敗して次の回にやり直しても、数は二重にならない（「どこまで足し込んだか」の記録は持たない）。数は上げるだけで、下げない
+  - 管理画面に出るまでの遅れは、最大で1時間と少し（書いた行が SQL API で読めるようになるまでの遅れのぶんは、次の回に入る）。昨日のぶんは、次の日のあいだ毎時読み直すので、日付が変わる直前の閲覧も入る。集計が2日続けて止まると、そのあいだの古い日のぶんは入らない
+  - 集計のときに公開していない記事（非公開に戻した・削除した）の行は飛ばす。前の回までに入った数は残る
+  - Analytics Engine は、書き込みが多いと行を間引いて持つ（サンプリング）。数は `_sample_interval` で補うので、閲覧の多い記事では、わずかにずれることがある。貯めた行が残るのは3か月（DB に反映した数は消えない）
+  - 集計には、Cron のワーカーのシークレット `CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_ANALYTICS_TOKEN` が要る（「デプロイ → 初回の準備」）。どちらかが無いあいだは、集計を飛ばす
+  - 手元（`pnpm preview`）では、書いた行はどこにも貯まらない。集計は、SQL API の代わりのものを差し込んだテストで確かめている（`apps/worker/src/views.test.ts`、`apps/api/src/test/views.test.ts`）
+  - `/_v` は、数えたかどうかにかかわらず、いつも 204 を返す。書き込みは待たず、失敗しても記事の表示には関わらず、数が静かに欠ける
   - Cloudflare の「確認済みの Bot」（`request.cf.botManagement.verifiedBot`）は Bot Management のある（Enterprise の）プランでだけ値が入る。それ以外のプランでは値が無く、User-Agent の判定だけが効く
 - **除ききれないもの**：User-Agent を偽って JavaScript も動かす Bot は数に入る。反対に、JavaScript を切っている人や、広告ブロックで送信が止められた人は数に入らない。ブラウザの保存領域を消した・別のブラウザで開いた場合は、同じ日でももう1回と数える。数え始めたのは、この機能を出した日から（それより前のぶんは無い）
 - 管理画面（その wiki を開ける人ならだれでも見られる）
   - 記事の画面：「…」メニューの「閲覧数」から、合計・直近30日と、直近30日の日別の推移
   - 「すべてのページ」：閲覧数の列（合計・直近30日）。列の見出しで多い順・少ない順に並べ替えられる
   - 数えていない記事（まだ公開していない・限定公開）で数が無いものは「—」、公開していて0回のときは「0」。「◯年◯月◯日から計測」は、いちばん古い記録の日
+  - 直近の1時間ほどのぶんは、まだ出ない（集計が1時間に1回のため）。画面にも「反映まで1時間ほどかかります」と書いてある
   - ページを削除したら、そのページの数は出さない（行は残す）。非公開にしたページは、それまでの数を出し続ける
 
 ## アクセス解析
@@ -497,22 +505,44 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 
 - 自由記述は、ページの本文と同じエディタ（`MarkdownEditor`）で書く。保存するのは Markdown（記事と同じ記法・同じ描き方。本文中の内部リンクの解決も記事と同じ）で、10,000 文字まで。新着記事の上に出す。空（空白だけを含む）なら何も出さず、新着記事だけになる
 - **保存するまで公開サイトには反映しない**。値が変わったときだけ `publish_events`（`wiki_home`）に記録して公開サイトをビルドし直し（アーカイブ中の wiki ではしない）、監査ログに残す（中身は残さない）。下書きと公開を分ける仕組みは無い
-- トップにツリー（`/t/{key}/`）へのリンクは出さない。ツリーのページそのものは残っている
+- トップにツリー（`/t/{key}/`）へのリンクは出さない。ツリーの一覧のページ（`/t/{key}/`）は廃止し、トップへ 301 で移す
 - データ：`wikis.home`（jsonb：`introMd`）。null や正しくない値は既定（空）として読む（`packages/shared/src/home.ts` の `resolveHome`）。あとでトップに出す部品の並びや表示の切り替えを足せるよう、文字列ではなくオブジェクトで持つ。公開用のデータ（`/export/public`）に、wiki ごとの `home` として入る
 
 ## デプロイ
 
 `main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
 
+どちらも、関係するファイルが変わったときだけ動く。
+
+| 動くもの | 動かない変更 | 決めている場所 |
+|---|---|---|
+| GitHub Actions の「Deploy」 | `*.md` と `.claude/` の中**だけ**を変えた push（1つでもほかのファイルが変わっていれば動く。マイグレーションのファイルだけの変更でも動く） | `deploy.yml` の `paths-ignore` |
+| 公開サイトのビルド（Workers Builds） | `apps/site/`、`packages/shared/`、`pnpm-lock.yaml` のどれも変えていない push | Cloudflare のダッシュボードの Build watch paths（下の「初回の準備」の手順5） |
+
+- 「Deploy」の手動実行（Actions → Deploy → Run workflow）と、記事の公開のあとのビルド（デプロイフック）は、変わったファイルに関係なく動く
+- `.md` や `.claude/` の中のファイルを、ビルドや実行時に読むようにしたら、`deploy.yml` の `paths-ignore` から外す（外さないと、その変更が本番に出ない）
+- `wrangler` はルートの `package.json` の devDependency で版を固定している。Actions も、手元の `pnpm --filter @wiki/api deploy` なども、Workers Builds の `npx wrangler deploy` も、その版を使う（`npx wrangler` は、版を付けなければ、リポジトリに入っている Wrangler を使う）。版を上げると3つの Worker のデプロイすべてに効く。Workers Builds が実際に使った版は、ビルドのログの先頭に出る
+
 | 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
-| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔） | `apps/worker/wrangler.toml` |
+| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない。ほかに、1日1回の版の間引きと、1時間に1回の閲覧数の集計） | `apps/worker/wrangler.toml` |
+| 閲覧数を貯める先 | Cloudflare Workers Analytics Engine のデータセット `wiki_page_views`（`wiki-site` がバインディング `PAGE_VIEWS` で書き、`wiki-worker` が SQL API で読む） | `apps/site/wrangler.toml` |
 | 公開サイト | Cloudflare Workers `wiki-site`（静的アセット + `Host` で wiki を振り分ける Worker。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 | 画像 | Cloudflare R2 のバケット `wiki-images`（`wiki-admin` と `wiki-site` の両方がバインディング `IMAGES` で使う） | 両方の `wrangler.toml` |
+| Cron への印 | Cloudflare Workers KV の名前空間 `wiki-cron-marks`（`wiki-admin` が書き、`wiki-worker` が読む。どちらもバインディング `CRON_MARKS`） | 両方の `wrangler.toml` |
 
 管理画面と API は同じ Worker が同一オリジンで出す（`/api/*` が API、それ以外は管理画面）。サイトのビルドとワーカーが使う `/export/*` `/internal/*` も同じオリジンにある。
+
+`/export/*` と `/internal/*` は、呼ぶ側ごとに別のトークンで守る。片方が漏れても、もう片方の経路は通らない。
+
+| トークン | 通る経路 | 持つところ |
+|---|---|---|
+| `EXPORT_TOKEN` | `GET /export/public`（公開中と限定公開の本文を読む。限定公開の key を含む） | `wiki-admin` のシークレット、`wiki-site` の**ビルドの**環境変数 |
+| `CRON_TOKEN` | `/internal/*`（下書きを版にする、予約の実行、公開ビルドの起動、版の間引き、閲覧数の反映） | `wiki-admin` と `wiki-worker` のシークレット |
+
+公開サイトの Worker（`wiki-site`）は、実行時にはどちらのトークンも持たない（API を呼ばない）。
 
 ### 初回の準備
 
@@ -524,12 +554,27 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 4. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `https://wiki-admin.hatchery-works.com/api/auth/google/callback` を登録する
 5. **公開サイトの Worker**（`wiki-site`）を Cloudflare の Workers Builds（Git 連携）につなぐ。Worker の名前は `apps/site/wrangler.toml` の `name` と一致させる
    - ルートディレクトリ `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ブランチ `main`。`main` 以外のブランチのデプロイコマンドは `npx wrangler preview`（`apps/site/wrangler.toml` に `[previews]` ブロックが要る）
-   - ビルドの環境変数：`API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`INTERNAL_TOKEN` `SITE_BASE_DOMAIN`（`hatchery-works.com`）。サイト名とオリジンは、wiki の表示名と key から決まる
+   - ビルドの環境変数：`API_ORIGIN`（`https://wiki-admin.hatchery-works.com`）`EXPORT_TOKEN`（手順6の同じ名前のシークレットと同じ値。「シークレット」として入れる）`SITE_BASE_DOMAIN`（`hatchery-works.com`）。サイト名とオリジンは、wiki の表示名と key から決まる
+   - **`main` 以外のブランチのビルド（プレビュー）は、API を呼ばず、サンプルデータ（`apps/site/fixtures/manifest.sample.json`）で作る**。プレビューの URL（`*.workers.dev`）には作ったときの内容が残るので、本番の内容（限定公開の本文と key を含む）で作ると、限定公開の URL を発行し直しても、非公開に戻しても、プレビューには残ってしまうため。ビルドの環境変数は1組で、本番のビルドとプレビューのビルドで分ける設定は Cloudflare のドキュメントに無い（プレビューにも `EXPORT_TOKEN` が渡るものとして扱う）ので、ビルドのスクリプトが、Workers Builds の入れるブランチ名（`WORKERS_CI_BRANCH`）を見て決める（`apps/site/scripts/manifest-source.mjs`）。本番のブランチを `main` から変えるときは、そのファイルの `PRODUCTION_BRANCH` も変える
    - wiki は `{key}.hatchery-works.com` で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルート `*.hatchery-works.com/*` で受ける（`apps/site/wrangler.toml`）。**DNS に、プロキシを有効にしたワイルドカードのレコード（`*.hatchery-works.com`）を1つ足す**（行き先は使われないので、`AAAA` で `100::` など）。wiki を作るたびに DNS や設定を足す必要は無い
    - このルートは `wiki-admin` など、ほかの Worker のサブドメインにも当たる。wiki の key として使えないホスト名（予約語）は、公開サイトの Worker がそのまま本来の Worker へ渡す。**新しい Worker を同じゾーンのサブドメインで出すときは、その名前を `RESERVED_WIKI_KEYS` に足す**
    - ルートは、同じホスト名のカスタムドメインより先に当たる（[Routes](https://developers.cloudflare.com/workers/configuration/routing/routes/)）。そのままだと、管理画面へのリクエストはどれも `wiki-site` を経てから `wiki-admin` に届き、Worker の呼び出しが2回になる。**`wiki-admin` のホストをルートから外すには、ダッシュボードの `hatchery-works.com` → Workers Routes で、ルート `wiki-admin.hatchery-works.com/*` を Worker なし（None）で足す**（より細かいルートが優先され、Worker の付いていないルートは、粗いルートを打ち消す）。足したあと、管理画面が今までどおり開けることを確かめる
    - `/_astro/*`（Astro のスクリプトとスタイル）だけは、Worker を通さずに静的アセットから返す（`apps/site/wrangler.toml` の `run_worker_first`）。Worker の呼び出しに数えられず、ブラウザに1年キャッシュさせる。ここに足したパスは Host による wiki の振り分けを通らず、管理画面のホスト（上のルートを外していないとき）でも `wiki-site` のファイルが返るので、wiki ごとの内容が出るパスと、ほかの Worker が使うパスは足さない
-   - 閲覧数のために、Worker の実行時のシークレット `INTERNAL_TOKEN`（手順6と同じ値）を入れる（Settings → Variables and Secrets、または `apps/site` で `npx wrangler secret put INTERNAL_TOKEN`）。ビルドの環境変数とは別に要る（ビルドの環境変数は Worker からは読めない）。渡す先の `API_ORIGIN` は `apps/site/wrangler.toml` の `[vars]` にある。どちらかが無い間は数えない（記事の表示には影響しない）
+   - 閲覧数は、Workers Analytics Engine に貯める（`apps/site/wrangler.toml` の `[[analytics_engine_datasets]]`）。データセットは最初に書いたときに自動でできるので、作る手順は無い。アカウントでまだ Analytics Engine を使ったことが無ければ、先に Cloudflare のダッシュボードで Analytics Engine を有効にしておく（有効でないアカウントでは、バインディングのある Worker のデプロイが失敗することがある）。Worker の実行時のシークレットは要らない
+   - **Build watch paths**（Settings → Builds → Build watch paths）を次のとおりにする。既定（Include が `*`、Exclude が空）のままだと、管理画面や API だけを変えた push でも、全 wiki・全ページをビルドし直す
+
+     | 欄 | 入れるもの |
+     |---|---|
+     | Include paths | `apps/site/*`、`packages/shared/*`、`pnpm-lock.yaml` |
+     | Exclude paths | `*.md` |
+
+     - パスはリポジトリのルートから書く（ルートディレクトリの `apps/site` からではない）。`*` は0文字以上の文字に当たる。書き方は Cloudflare のドキュメントの例（`project-a/*`、`docs/README.md`）に合わせてあり、GitHub Actions の `**` は使わない
+     - Exclude が先に効く。`apps/site/README.md` だけの変更ではビルドしない
+     - `main` 以外のブランチのビルド（プレビュー）にも同じ設定が効く。プレビューが使うサンプルデータ（`apps/site/fixtures/`）と、ビルドのスクリプト（`apps/site/scripts/`）は `apps/site/*` に入っている
+     - デプロイフックからのビルド（記事の公開・非公開、wiki の設定の変更のあと）は、この設定に関係なく動くはず。watch paths は push に含まれるファイルを見て決めるもので、デプロイフックは push を伴わない「手動のビルド」として動く。ただし Cloudflare のドキュメントに「デプロイフックには効かない」と書いた箇所は無いので、設定したら下の3つを必ず確かめる
+     - 1回の push に 20 個以上のコミットか 3000 個以上のファイルの変更があると、パスに関係なくビルドされる
+     - 公開サイトのビルドが、ここに無い場所のファイルを読むようにしたら（`packages/` に新しいパッケージを足して `apps/site` から使う、など）、Include paths に足す
+     - 設定したあとに確かめる：README だけを変えた push でビルドが始まらない。`apps/site` を変えた push でビルドが始まる。**記事を1つ公開し直すとビルドが始まる**（始まらなければ、Include paths を `*` に戻す。戻さないと、記事の公開が公開サイトに出ない）
    - つないだらデプロイフック（Settings → Builds → Deploy Hooks、ブランチ `main`）を発行する
 6. GitHub の Settings → Secrets and variables → Actions に次を登録する
 
@@ -541,17 +586,55 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
    | `SESSION_SECRET` | 32文字以上のランダム文字列（`openssl rand -base64 48`） |
    | `ADMIN_EMAILS` | 最初のオーナーにする Google アカウント（カンマ区切り）。ユーザーが1人もいないときのマイグレーションで一度だけ読む（「ユーザーを DB で持つようになったときの移行」） |
    | `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` | 手順4のクライアント |
-   | `INTERNAL_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`wiki-site` のビルドの環境変数・実行時のシークレットと同じ値 |
+   | `EXPORT_TOKEN` | ランダム文字列（`openssl rand -hex 32`）。`/export/public` 用。`wiki-site` のビルドの環境変数 `EXPORT_TOKEN` と同じ値にする。`wiki-admin` のシークレットになる |
+   | `CRON_TOKEN` | ランダム文字列（`openssl rand -hex 32`。`EXPORT_TOKEN` とは別の値）。`/internal/*` 用。`wiki-admin` と `wiki-worker` のシークレットになる。`wiki-site` には置かない |
    | `SITE_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook |
+   | `CLOUDFLARE_ANALYTICS_TOKEN` | 任意。閲覧数の集計が Workers Analytics Engine を読む API トークン。権限は **Account → Account Analytics → Read** だけにする（デプロイ用の `CLOUDFLARE_API_TOKEN` とは別に作る）。`wiki-worker` のシークレットになる。アカウントの ID は `CLOUDFLARE_ACCOUNT_ID` を、同じ名前で `wiki-worker` にも渡す。未登録でもデプロイは通り、閲覧数が管理画面に反映されないだけになる（そのあいだの閲覧も貯まっていて、登録したあとの集計で、今日と昨日のぶんは入る） |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
 
    | `X_CLIENT_ID` `X_CLIENT_SECRET` `SNS_TOKEN_KEY` | 任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 の Client ID / Client Secret と、トークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上）。作り方は上の「SNS 連携 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**`SNS_TOKEN_KEY` は、あとから変えない**（つないであるアカウントが使えなくなる） |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
+   - 管理画面は、検査のジョブがビルドしたものを、デプロイのジョブがそのまま使う（成果物 `admin-dist`。7日で消える）。それより前の実行の「デプロイのジョブだけ」をやり直すと、成果物が無くて止まるので、そのときは「Re-run all jobs」でやり直す
 8. 任意。管理画面の「アクセス解析」を使うなら、**Google のサービスアカウント**を作り、鍵を `GOOGLE_SERVICE_ACCOUNT_JSON` として登録する（Google Cloud で Google Analytics Data API と Google Search Console API を有効にする → サービスアカウントと鍵（JSON）を作る → 手順6の表のシークレットに登録する → 「Deploy」を実行する）。くわしくは上の「アクセス解析 → 使えるようにする」。あとから行ってもよい
+9. 任意。5分おきの Cron が、やることの無いときに DB を起こさないようにするなら、**Workers KV の名前空間**を作る（`npx wrangler kv namespace create wiki-cron-marks`）。出力された `id` を、`apps/api/wrangler.toml` と `apps/worker/wrangler.toml` の**両方**の `[[kv_namespaces]]`（コメントにしてある3行）に入れ、コメントを外す
+   - ここに、Cron への印を置く（下の「既定として選んだこと → 編集の無い時間帯は、Cron が DB を起こさない」）
+   - あとから行ってもよい。コメントのあいだは、Cron が5分おきに API を呼ぶ（動きは変わらず、DB が止まれないだけ）
+   - **ワーカーの側だけに入れない**。API が印を書かないので、下書きが版になるのも、予約の実行も、公開ビルドの起動も、1時間に1回になる。API の側だけに入っているぶんには害は無い
+   - 実在しない `id` のままコメントを外すと、`wrangler deploy` が失敗する（`main` に入れる前に、名前空間を作って `id` を入れる）
+   - 入れたあとの最初の1時間は、入れる前からあった下書き・予約に印が無いので、毎時0分の回まで待つことがある
 
 シークレットはデプロイのたびに GitHub から Worker へ入れ直す（値を変えたら Actions の「Deploy」を手動実行する）。
+
+### 内部のトークンを分けたときの移行
+
+1つの `INTERNAL_TOKEN` を、`EXPORT_TOKEN`（`/export/public`）と `CRON_TOKEN`（`/internal/*`）に分けた。API は、デプロイされた時点から `INTERNAL_TOKEN` を通さない（両方を通す期間は無い）。次の順で行う。
+
+1. **`main` に入れる前に**、値を2つ作る（`openssl rand -hex 32` を2回。別々の値にし、`INTERNAL_TOKEN` の値は使い回さない）
+2. **`main` に入れる前に**、GitHub の Settings → Secrets and variables → Actions に `EXPORT_TOKEN` と `CRON_TOKEN` を登録する
+3. **`main` に入れる前に**、Cloudflare の `wiki-site` → Settings → Build → Variables and secrets に `EXPORT_TOKEN` を足す（2 の `EXPORT_TOKEN` と同じ値。「シークレット」にする）。`INTERNAL_TOKEN` はまだ消さない
+4. `main` に入れる。Actions の「Deploy」が、管理画面+API → Cron ワーカーの順に入れ替える
+   - 公開サイトのビルド（Workers Builds）は、`main` に入ると同時に走り、API のデプロイより先になることがある。そのビルドは新しいトークンで古い API を呼ぶので `401` で失敗する（公開サイトは、前のデプロイのまま見られる）。**「Deploy」が終わったあと、`wiki-site` の失敗したビルドをやり直す**（Deployments → 失敗したビルド → Retry。記事を1つ公開し直してもよい）
+   - API が入れ替わってから Cron ワーカーが入れ替わるまでの数十秒に5分おきの回が当たると、その1回は `401` で失敗する（ログに出るだけで、次の回に行われる）
+5. 確かめる：`wiki-site` の `main` のビルドが通る。`wiki-worker` のログ（5分おき）に `401` が出ていない。記事を公開すると公開サイトに出る
+6. 片付ける
+   - GitHub のシークレット `INTERNAL_TOKEN` を消す
+   - `wiki-site` のビルドの環境変数 `INTERNAL_TOKEN` を消す
+   - Worker に残ったシークレットを消す：`npx wrangler secret delete INTERNAL_TOKEN --name wiki-admin`、`--name wiki-worker`、`--name wiki-site`（`wiki-site` の実行時のシークレットは、閲覧数を1件ずつ API へ送っていた頃のもの。無ければ「見つからない」と出るだけ）
+7. プレビューを片付ける。これまでのプレビュー（ブランチごとの `*.workers.dev`）は、作ったときの本番の内容（限定公開の本文と key を含む）を持っていることがある
+   - 持っているかどうかは、`wiki-site` → Deployments で、`main` 以外のブランチの過去のビルドのログを開くと分かる。`manifest: wiki: 12 pages, 3 unlisted` のように本番の件数が出ていれば、本番の内容で作られている（`failed to fetch manifest` や `set MANIFEST_PATH, ...` で失敗していれば、作られていない）
+   - `wiki-site` → Settings → Builds に「Set up Worker Previews」の案内が出ていれば、古い方式のプレビュー（ブランチのビルドが、本番の設定のまま Worker の版と URL を作る）のまま。その場合は下の `wrangler preview delete` では消せないので、Deployments の版の一覧から、ブランチのビルドでできた版を消す
+   - `wiki-site` のプレビューの一覧（ダッシュボードの `wiki-site` → Previews）を見て、残っているものを消す：`cd apps/site && npx wrangler preview delete --name <プレビューの名前>`。開いている PR のぶんは、ブランチに push し直せばサンプルデータで作り直される
+   - プレビューを消しても、その前に限定公開の URL を見た人がいたかどうかは分からない。漏れては困る限定公開のページがあれば、管理画面で限定公開の URL を発行し直す
+
+**入れ忘れたとき**
+
+| 忘れたもの | 起きること |
+|---|---|
+| GitHub の `EXPORT_TOKEN` か `CRON_TOKEN` | 「Deploy」が `missing secrets` で止まる（マイグレーションのあと、API のデプロイの前）。API は古いままなので、Cron は今までどおり動く。公開サイトのビルドは、3 を済ませていれば `401` で失敗し、済ませていなければ `set MANIFEST_PATH, or API_ORIGIN and EXPORT_TOKEN` で失敗する（公開サイトは前のデプロイのまま見られるが、記事の公開が反映されない）。登録して「Deploy」をやり直す |
+| `wiki-site` のビルドの `EXPORT_TOKEN` | 公開サイトの `main` のビルドが `set MANIFEST_PATH, or API_ORIGIN and EXPORT_TOKEN` で失敗し続ける（記事の公開が反映されない）。足してビルドをやり直す |
+| GitHub と `wiki-site` で `EXPORT_TOKEN` の値が違う | 公開サイトの `main` のビルドが `failed to fetch manifest: 401` で失敗し続ける |
 
 ### wiki が1つだった頃からの移行
 
@@ -563,7 +646,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 4. **管理画面の「全体の管理」の「wiki」タブで、最初の wiki の表示名を、これまでの `SITE_NAME` と同じ名前に直す**。移行の直後の表示名はツリーの名前（`trees.name`。変えていなければ「メイン」）になっている。`SITE_NAME` は公開サイトのビルドの環境変数で、マイグレーションからは読めないため。表示名を直すと公開サイトがビルドし直される
 5. 公開サイト（`wiki-site`）のデプロイが済んだら、`wiki.hatchery-works.com` が今までどおり見られることを確かめる。カスタムドメイン `wiki.hatchery-works.com` の設定が Cloudflare に残っていれば外す（ルートに置き換わった）
 
-公開サイトは `main` に入るとすぐビルドされ、API のデプロイより先になることがある。そのときは wiki が1つだった頃の形のデータを、最初の wiki 1つ分としてビルドする（サイト名は「wiki」、テーマは既定。`apps/site/scripts/fetch-manifest.mjs`）ので、ビルドは失敗しない。逆に、API のデプロイのあと 4 より前にビルドされると、サイト名がツリーの名前で出る。気になる場合は、3 の前に Workers Builds を一時停止し、4 のあとで再開する。
+公開サイトは、`apps/site` か `packages/shared` を変えた push が `main` に入るとすぐビルドされ、API のデプロイより先になることがある。そのときは wiki が1つだった頃の形のデータを、最初の wiki 1つ分としてビルドする（サイト名は「wiki」、テーマは既定。`apps/site/scripts/fetch-manifest.mjs`）ので、ビルドは失敗しない。逆に、API のデプロイのあと 4 より前にビルドされると、サイト名がツリーの名前で出る。気になる場合は、3 の前に Workers Builds を一時停止し、4 のあとで再開する。
 
 ### ユーザーを DB で持つようになったときの移行
 
@@ -593,7 +676,7 @@ pnpm dev                                 # API :8787 と管理画面 :5173
 pnpm --filter @wiki/site build:sample   # dist/ に出力し、限定公開の漏れなどを検査
 ```
 
-APIのデータでビルドする場合は `API_ORIGIN=http://localhost:8787 INTERNAL_TOKEN=... pnpm --filter @wiki/site build`。手元では `Host` で wiki が決まらないので、表示する wiki は `?wiki={key}`（`pnpm preview`）か環境変数 `WIKI`（`astro dev`）で選ぶ（`apps/site/README.md`）。
+APIのデータでビルドする場合は `API_ORIGIN=http://localhost:8787 EXPORT_TOKEN=... pnpm --filter @wiki/site build`（`apps/api/.env` の `EXPORT_TOKEN` と同じ値）。手元では `Host` で wiki が決まらないので、表示する wiki は `?wiki={key}`（`pnpm preview`）か環境変数 `WIKI`（`astro dev`）で選ぶ（`apps/site/README.md`）。
 
 テスト用データ（`pnpm db:seed`）は、3段の階層に公開・限定公開・予約・下書き・公開後に編集ありのページを一通り含む。2つめの wiki（`notes`「開発ノート」）にも数ページ入るので、wiki の切り替えを確かめられる。ユーザーは、最初の wiki の管理者（`sakura@example.com`）と編集者（`minato@example.com`、2つめの wiki にも編集者として入る）を足す（Google でログインすることは無く、メンバーの画面の確認用）。既存のデータを消して入れ直す場合は `pnpm db:seed --reset`（すべてのテーブルを空にするので、ローカル専用。`NODE_ENV=production` では動かない）。
 
@@ -615,7 +698,23 @@ pnpm test
 - **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNode（`src/node.ts`）、本番は Workers（`src/worker.ts`）で動かす
 - **予約の通知先**：最終失敗は Slack 互換の Incoming Webhook（`NOTIFY_WEBHOOK_URL`）へ。メールは未対応
 - **予約の反映遅延**：Cron 5分 + デバウンス2分 + ビルド時間
-- **公開ビルドの起動の失敗**：デプロイフックを呼べなかったビルドは、次の Cron（5分後）で、新しい公開操作が無くても起動し直す（`site_builds.triggered_at` が空のあいだ。ワーカーはフックを呼べたら `/internal/builds/{id}/triggered` で埋める）。同じビルドの起動が3回続けて失敗したら、予約の最終失敗と同じ通知先へ一度だけ知らせ、そのあとも5分おきに試し続ける。Workers Builds の側でビルドが失敗したことは検知しない
+- **編集の無い時間帯は、Cron が DB を起こさない**：5分おきの Cron は、API を呼ぶ前に Workers KV の印（バインディング `CRON_MARKS`）だけを見て、時刻の来た印が無ければそこで終わる（API を呼ぶと DB につながり、サーバーレスの PostgreSQL が自動で止まれなくなる）
+  - 印は3つ。値は `{"at":"<ISO の時刻>"}` で、「この時刻になったら DB を見に行く」の意味
+
+    | キー | 書くとき（API） | 時刻 |
+    |---|---|---|
+    | `cron:drafts` | 下書きの保存 | いちばん早く版にできる時刻（最後の保存から5分か、始めてから30分の早い方） |
+    | `cron:scheduled` | 予約の登録・時刻の変更 | 次に実行する予約の時刻 |
+    | `cron:build` | 公開イベントの記録（`recordPublishEvent`） | 書いた時刻（次の Cron で見る） |
+
+  - API は、印が無いか、いまの印より早い時刻のときだけ書く（下書きの自動保存のたびには書かない）。書くのは応答ができたあと（DB のコミットのあと。`apps/api/src/cron/marks.ts`）。消すことはしない
+  - ワーカーは、時刻の来た印を消してから `/internal/tick` を呼び、応答の `next`（処理のあとで DB から求めた、次に見に行く時刻）で印を書き直す。残りが無い種類の印は消えたままになる。API の呼び出しが失敗したら、消した印を戻す（`apps/worker/src/tick.ts`）
+  - 「ビルド待ちあり」の印は、デバウンス中と、デプロイフックを呼べていないあいだ残る。フックを呼べた回でも消さず、次の回に API が「変更なし」と答えたところで消える（公開のあと、DB を見る回が1回余分にある）
+  - 印を消した回の次の回は、印に関係なくもう一度 API を呼ぶ（ワーカーだけが使う印 `cron:recheck`）。KV の読み出しは最大60秒ほど古いことがあり、そのあいだに API が「消す前の印」を読むと、印はもうあると思って書かずに終わるため。その変更は DB にはあるので、次の回に拾う。見直しの回は何も消さないので、続くことはない（編集が止まったあと、DB を見る回が1回余分にある）
+  - KV に書いた印がワーカーから見えるまでにも最大60秒ほどかかるので、Cron の直前に書いた印は、次の回に回ることがある。どちらの場合も、遅れは Cron 1回分（5分）まで
+  - **1時間に1回（毎時0分の回）は、印に関係なく API を呼ぶ**。印を書き損ねた（KV への書き込みの失敗、ワーカーが印を消したあと書き直す前に落ちた）ときは、ここで拾う。そのとき遅れるのは最大1時間
+  - バインディングが無い環境（手元の開発、テスト、KV の名前空間を作る前）では、API は印を書かず、ワーカーは今までどおり5分おきに API を呼ぶ
+- **公開ビルドの起動の失敗**：デプロイフックを呼べなかったビルドは、次の Cron（5分後）で、新しい公開操作が無くても起動し直す（`site_builds.triggered_at` が空のあいだ。ワーカーはフックを呼べたら `/internal/builds/{id}/triggered` で埋める。起動できるまで「ビルド待ちあり」の印が残るので、編集が無くても次の Cron は API を呼ぶ）。同じビルドの起動が3回続けて失敗したら、予約の最終失敗と同じ通知先へ一度だけ知らせ、そのあとも5分おきに試し続ける。Workers Builds の側でビルドが失敗したことは検知しない
 - **管理画面とAPIは同一オリジン**（管理画面の `/api/*` をAPIへ）。Cookieは `SameSite=Lax`、状態を変えるリクエストは `Origin` が管理画面と一致する場合のみ受け付ける
 - **ツリーそのものの設定は無い。** ツリーは常に公開サイトに出し、出す・出さないはページごとの公開範囲で決める。公開サイトでの呼び名は固定（「ページ一覧」）
 - **設計書に無い構造操作を1つ追加**：`remove_node`（ツリーから外す。子がある場合は不可）

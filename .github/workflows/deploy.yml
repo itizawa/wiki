@@ -3,6 +3,13 @@ name: Deploy
 on:
   push:
     branches: [main]
+    # 文書と、エージェント向けの設定（.claude）だけの変更では動かさない（検査もマイグレーションもデプロイも要らない）。
+    # どちらも、ビルドにも実行時にも読まれない。1つでもほかのファイルが変わっていれば動く。
+    # ビルドや実行時に .md や .claude の中を読むようにしたら、ここから外す
+    paths-ignore:
+      - "**/*.md"
+      - ".claude/**"
+  # 手動実行は、変わったファイルに関係なく動く（シークレットの値を変えたあとの入れ直しに使う）
   workflow_dispatch:
 
 # デプロイは1本ずつ。途中で打ち切らない（マイグレーションの途中で止めないため）
@@ -11,7 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる
+  # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる。
+  # ここでビルドした管理画面は、成果物 admin-dist として deploy のジョブへ渡る
   check:
     uses: ./.github/workflows/ci.yml
     with:
@@ -43,13 +51,22 @@ jobs:
           # ユーザーを DB で持つ移行（0007）で一度だけ読み、オーナーとして登録する。移行が本番に入ったら、この行とシークレットを消す
           ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
 
+      # 管理画面は check のジョブ（ci.yml）がビルドしたものを使う。ここではビルドし直さない。
+      # 置き場所は apps/api/wrangler.toml の [assets] directory（../admin/dist）と合わせる
+      - name: Download admin build
+        uses: actions/download-artifact@v8
+        with:
+          name: admin-dist
+          path: apps/admin/dist
+
       - name: Deploy admin + API
         working-directory: apps/api
         env:
           SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          EXPORT_TOKEN: ${{ secrets.EXPORT_TOKEN }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
           # 任意。「アクセス解析」用のサービスアカウントの鍵（JSON）。未登録なら渡さず、その機能だけが「未設定」になる
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           # 任意。「SNS 連携」用の X の開発者アプリと、トークンを暗号化する鍵。未登録なら渡さず、その機能だけが「未設定」になる
@@ -57,19 +74,21 @@ jobs:
           X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
           SNS_TOKEN_KEY: ${{ secrets.SNS_TOKEN_KEY }}
         run: |
-          pnpm --filter @wiki/admin build
+          test -f ../admin/dist/index.html
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
-            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET INTERNAL_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?" \
+            SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET EXPORT_TOKEN CRON_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?" \
             "X_CLIENT_ID?" "X_CLIENT_SECRET?" "SNS_TOKEN_KEY?"
-          npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
+          pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker
         working-directory: apps/worker
         env:
-          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
           SITE_DEPLOY_HOOK_URL: ${{ secrets.SITE_DEPLOY_HOOK_URL }}
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          # 任意。閲覧数の集計が Workers Analytics Engine を読むトークン（Account Analytics の読み取りだけ）。未登録なら集計を飛ばす
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
         run: |
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/worker-secrets.json" \
-            INTERNAL_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?"
-          npx wrangler@4 deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"
+            CRON_TOKEN SITE_DEPLOY_HOOK_URL "NOTIFY_WEBHOOK_URL?" "CLOUDFLARE_ACCOUNT_ID?" "CLOUDFLARE_ANALYTICS_TOKEN?"
+          pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/worker-secrets.json"

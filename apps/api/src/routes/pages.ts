@@ -18,7 +18,8 @@ import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } f
 import { Hono } from "hono";
 import type { Db } from "../db/client";
 import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
-import { createVersion, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
+import { createVersion, DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
+import { markCronWork } from "../cron/marks";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
 import { recordPublishEvent, recordPublishEvents } from "../publishing/service";
 import type { AppEnv } from "../env";
@@ -573,6 +574,8 @@ export const pageRoutes = new Hono<AppEnv>()
         .values({ pageId: id, userId, createdAt: now, ...values })
         .onConflictDoUpdate({ target: [pageDrafts.pageId, pageDrafts.userId], set: values })
         .returning();
+      // いちばん早く版にできる時刻：最後の保存から5分か、始めてから30分の早い方
+      markCronWork("drafts", new Date(Math.min(row!.updatedAt.getTime() + DRAFT_IDLE_MS, row!.createdAt.getTime() + DRAFT_MAX_AGE_MS)));
       return { draft: toDraft(row!), headVersionId: page.headVersionId };
     });
     // いまの head も返す。ワーカーが版を作っていたら、画面はここで気づいて追いかける

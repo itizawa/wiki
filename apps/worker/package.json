@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npx wrangler@4 dev --test-scheduled",
-    "deploy": "npx wrangler@4 deploy",
+    "dev": "wrangler dev --test-scheduled --var IGNORE_CRON_MARKS:1",
+    "deploy": "wrangler deploy",
     "typecheck": "tsc -p .",
     "test": "vitest run"
   },
