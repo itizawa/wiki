@@ -22,7 +22,7 @@ import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
-import { Center, Loading, useSession, useWikis } from "./Layout";
+import { Center, Loading, mainProps, mainSx, SkipLink, useSession, useWikis } from "./Layout";
 
 /** 閉じたサイドバーの幅（開くボタンだけが残る）。 */
 const COLLAPSED_WIDTH = 44;
@@ -141,6 +141,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
       style={{ "--sidebar-width": `${wide ? clampSidebarWidth(sidebarWidth) : SIDEBAR_WIDTH}px` } as CSSProperties}
       sx={{ position: "relative", display: "flex", flexDirection: wide ? "row" : "column", height: "100vh", bgcolor: "background.paper" }}
     >
+      <SkipLink />
       {wide && open && <SidebarResizer value={clampSidebarWidth(sidebarWidth)} defaultValue={SIDEBAR_WIDTH} onChange={setSidebarWidth} />}
       {wide ? (
         // 開閉は、幅を動かして出し入れする（どこが開いてどこが閉じたかを目で追えるように）。本文側も一緒に動く
@@ -222,7 +223,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
       <ShortcutGuide />
       <ConfirmHost />
       <StarsHost />
-      <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
+      <Box {...mainProps} sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...mainSx }}>
         <NarrowBarSlot.Provider value={barSlot}>
           <Outlet />
         </NarrowBarSlot.Provider>
