@@ -2,6 +2,7 @@ import { Check, CircleCheck, Copy, ExternalLink, TriangleAlert } from "lucide-re
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import InputAdornment from "@mui/material/InputAdornment";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -9,6 +10,7 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVerification, type GoogleConnection, type WikiSettings } from "@wiki/shared";
 import { useEffect, useState, type ReactNode } from "react";
+import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
 import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_SECRET, type AnalyticsTarget } from "../lib/analytics";
 import { api, ApiError, errorMessage } from "../lib/api";
@@ -71,11 +73,19 @@ export function SettingsPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2">
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help={
+            <>
+              「{wiki.name}」の公開サイト（{wiki.origin}）を Google のサービスとつなぎます。限定公開のページ（/u/...）には、どちらのタグも入れません（限定公開の URL を外へ送らないため）。
+            </>
+          }
+        >
           連携
-        </Typography>
+        </HelpHeading>
+        {/* リンクは「i」の中では押せないので、外に出しておく */}
         <Muted sx={textSx}>
-          「{wiki.name}」の公開サイト（<Mono>{wiki.origin}</Mono>）を Google のサービスとつなぎます。限定公開のページ（<Mono>/u/...</Mono>）には、どちらのタグも入れません（限定公開の URL を外へ送らないため）。
           つないだあとの数字は、<RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">「アクセス解析」</RouterLink>で見られます。
         </Muted>
       </Section>
@@ -166,11 +176,12 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
       }}
     >
       <Section>
-        <IntegrationTitle name="Google Analytics" connected={saved.gaMeasurementId !== null} />
-        <Muted sx={textSx}>
-          測定 ID を保存すると、公開サイトのページに Google タグが入り、閲覧を Google Analytics（GA4）で分析できます。
-        </Muted>
-        <Box component="ol" sx={{ ...stepsSx, mt: 1.5 }}>
+        <IntegrationTitle
+          name="Google Analytics"
+          connected={saved.gaMeasurementId !== null}
+          help="測定 ID を保存すると、公開サイトのページに Google タグが入り、閲覧を Google Analytics（GA4）で分析できます。"
+        />
+        <Box component="ol" sx={{ ...stepsSx, mt: 1 }}>
           <li>
             <ExternalSite href="https://analytics.google.com/">Google Analytics</ExternalSite> で、プロパティを作ります。
           </li>
@@ -192,11 +203,18 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
           onBlur={checkGa}
           placeholder="例：G-XXXXXXXXXX"
           error={gaProblem !== null}
-          helperText={gaProblem ?? "「G-」で始まる、GA4 の測定 ID です。空にして保存すると、連携が外れます。"}
+          helperText={gaProblem}
           slotProps={{
             htmlInput: { maxLength: 60, autoCapitalize: "characters", autoCorrect: "off", spellCheck: false },
             inputLabel: { shrink: true },
-            input: { sx: { fontFamily: "monospace" } },
+            input: {
+              sx: { fontFamily: "monospace" },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <HelpTip about="測定 ID">「G-」で始まる、GA4 の測定 ID です。空にして保存すると、連携が外れます。</HelpTip>
+                </InputAdornment>
+              ),
+            },
             formHelperText: { role: gaProblem ? "alert" : undefined },
           }}
           sx={{ mt: 2, width: "100%", maxWidth: 420 }}
@@ -216,11 +234,18 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
               onBlur={checkProperty}
               placeholder="例：123456789"
               error={propertyProblem !== null}
-              helperText={propertyProblem ?? "数字だけの番号です。公開サイトには出しません。空にして保存すると、GA の数字を読まなくなります。"}
+              helperText={propertyProblem}
               slotProps={{
                 htmlInput: { maxLength: 40, inputMode: "numeric", autoCorrect: "off", spellCheck: false },
                 inputLabel: { shrink: true },
-                input: { sx: { fontFamily: "monospace" } },
+                input: {
+              sx: { fontFamily: "monospace" },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <HelpTip about="プロパティ ID">数字だけの番号です。公開サイトには出しません。空にして保存すると、GA の数字を読まなくなります。</HelpTip>
+                </InputAdornment>
+              ),
+            },
                 formHelperText: { role: propertyProblem ? "alert" : undefined },
               }}
               sx={{ display: "flex", mt: 1.5, mb: 0.5, width: "100%", maxWidth: 420 }}
@@ -231,11 +256,12 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
       </Section>
 
       <Section>
-        <IntegrationTitle name="Google サーチコンソール" connected={saved.searchConsoleVerification !== null} />
-        <Muted sx={textSx}>
-          確認用の値を保存すると、公開サイトに確認用のタグが入り、サーチコンソールでこの wiki の持ち主であることを確かめられます。
-        </Muted>
-        <Box component="ol" sx={{ ...stepsSx, mt: 1.5 }}>
+        <IntegrationTitle
+          name="Google サーチコンソール"
+          connected={saved.searchConsoleVerification !== null}
+          help="確認用の値を保存すると、公開サイトに確認用のタグが入り、サーチコンソールでこの wiki の持ち主であることを確かめられます。"
+        />
+        <Box component="ol" sx={{ ...stepsSx, mt: 1 }}>
           <li>
             <ExternalSite href="https://search.google.com/search-console">Google サーチコンソール</ExternalSite>{" "}
             でプロパティを追加し、「URL プレフィックス」に、この wiki の公開サイトの URL を入れます。
@@ -261,16 +287,18 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
           onBlur={checkVerification}
           placeholder={'例：<meta name="google-site-verification" content="..." />'}
           error={verificationProblem !== null}
-          helperText={
-            verificationProblem ??
-            (extracted
-              ? "貼られたタグから、content の値を取り出しました。"
-              : "タグごと貼ると、content の値だけを取り出します。空にして保存すると、連携が外れます。")
-          }
+          helperText={verificationProblem ?? (extracted ? "貼られたタグから、content の値を取り出しました。" : null)}
           slotProps={{
             htmlInput: { maxLength: 400, autoCapitalize: "off", autoCorrect: "off", spellCheck: false },
             inputLabel: { shrink: true },
-            input: { sx: { fontFamily: "monospace" } },
+            input: {
+              sx: { fontFamily: "monospace" },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <HelpTip about="確認用の値">タグごと貼ると、content の値だけを取り出します。空にして保存すると、連携が外れます。</HelpTip>
+                </InputAdornment>
+              ),
+            },
             formHelperText: { role: verificationProblem ? "alert" : extracted ? "status" : undefined },
           }}
           sx={{ mt: 2, width: "100%", maxWidth: 680 }}
@@ -342,12 +370,13 @@ function ReadOnlyValue({ label, value, unset = "未設定（公開サイトに�
 }
 
 /** まとまりの見出し。保存済みの値で連携しているかを、名前の横に出す。 */
-function IntegrationTitle({ name, connected }: { name: string; connected: boolean }) {
+function IntegrationTitle({ name, connected, help }: { name: string; connected: boolean; help?: string }) {
   return (
     <Row sx={{ mb: 0.5 }}>
       <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>
         {name}
       </Typography>
+      {help && <HelpTip about={`「${name}」`} sx={{ ml: -0.75 }}>{help}</HelpTip>}
       <Muted component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, color: connected ? "success.main" : "text.secondary" }}>
         {/* 連携しているかは、色だけでなく印と文字でも示す */}
         {connected && <Check size={16} />}
@@ -405,13 +434,15 @@ function CopyField({ label, value, what = "URL" }: { label: string; value: strin
 function ReadNumbers({ target, connection, blocked, children }: { target: AnalyticsTarget; connection: GoogleConnection | undefined; blocked: string | null; children: ReactNode }) {
   return (
     <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "divider" }}>
-      <Typography component="h4" sx={{ fontWeight: 600, fontSize: "0.9375rem" }}>
+      <HelpHeading
+        component="h4"
+        textSx={{ fontWeight: 600, fontSize: "0.9375rem" }}
+        about="「数字を管理画面で見る」"
+        help="管理画面は、Google の数字を、人のログインとは別の「サービスアカウント」で読みます。だれが開いても同じ数字が出ます。読むだけで、Google の側の設定は変えません。"
+      >
         数字を管理画面で見る（アクセス解析）
-      </Typography>
-      <Muted sx={textSx}>
-        管理画面は、Google の数字を、人のログインとは別の「サービスアカウント」で読みます。だれが開いても同じ数字が出ます。読むだけで、Google の側の設定は変えません。
-      </Muted>
-      <Box component="ol" sx={{ ...stepsSx, mt: 1.5 }}>
+      </HelpHeading>
+      <Box component="ol" sx={{ ...stepsSx, mt: 1 }}>
         {children}
       </Box>
       {connection?.serviceAccountEmail ? (

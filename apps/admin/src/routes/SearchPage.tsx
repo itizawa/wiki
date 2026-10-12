@@ -9,14 +9,13 @@ import Typography from "@mui/material/Typography";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { parseSearchQuery, searchTerms, splitByTerms } from "@wiki/shared";
 import { useEffect, useState } from "react";
+import { HelpTip } from "../components/HelpTip";
 import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { useComposition, useSearchTerm } from "../lib/searchTerm";
 import { pageLink } from "../lib/wiki";
 import { visibilityLabel } from "./PagesPage";
-
-/** 打ち終わってから探しにいくまでの待ち時間（1文字ごとに問い合わせない）。 */
-const DEBOUNCE_MS = 200;
 
 /**
  * 検索の画面。タイトルと本文を探し、本文に一致したときは前後の文も出す。
@@ -26,12 +25,14 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
   const [input, setInput] = useState(props.q);
   // 戻る・進むで URL が変わったら、入力欄も合わせる
   useEffect(() => setInput(props.q), [props.q]);
+  // 打つのを止めてから（変換中は、確定してから）URL に反映する。1文字ごとには探しにいかない
+  const { composing, compositionProps } = useComposition();
+  const term = useSearchTerm(input, composing);
   useEffect(() => {
-    if (input === props.q) return;
-    const timer = setTimeout(() => props.onChange(input), DEBOUNCE_MS);
-    return () => clearTimeout(timer);
+    // 戻る・進むで入力欄を合わせた直後は、term がまだ前の語のことがある。入力に追いついた語だけを反映する
+    if (term === input && term !== props.q) props.onChange(term);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input]);
+  }, [term]);
 
   const q = props.q.trim();
   const terms = searchTerms(parseSearchQuery(q));
@@ -50,7 +51,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
         onChange={(e) => setInput(e.target.value)}
         placeholder="例：公開 予約"
         slotProps={{
-          htmlInput: { "aria-label": "タイトルと本文を検索", "aria-describedby": "search-syntax" },
+          htmlInput: { "aria-label": "タイトルと本文を検索", "aria-describedby": "search-syntax", ...compositionProps },
           input: {
             startAdornment: (
               <InputAdornment position="start">
@@ -60,8 +61,11 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
           },
         }}
       />
-      <Muted id="search-syntax">
-        タイトルと本文を探します。空白で区切ると、すべてを含むページ。<Mono>"二つの 語"</Mono> でひと続きの語、<Mono>-語</Mono> で含まないページ、<Mono>A OR B</Mono> でどちらかを含むページ。
+      <Muted id="search-syntax" sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+        タイトルと本文を探します。
+        <HelpTip about="検索の書き方">
+          空白で区切ると、すべてを含むページ。<Mono>"二つの 語"</Mono> でひと続きの語、<Mono>-語</Mono> で含まないページ、<Mono>A OR B</Mono> でどちらかを含むページを探します。
+        </HelpTip>
       </Muted>
 
       {search.error && <Alert severity="error">{errorMessage(search.error)}</Alert>}

@@ -16,6 +16,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { checkWikiKey, SITE_NAME_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary } from "@wiki/shared";
 import { useState, type ReactNode } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
+import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { useWikiIdentityForm } from "../components/WikiIdentityForm";
@@ -82,10 +83,9 @@ export function WikisPage() {
     <Stack spacing={1.5}>
       {/* 「wiki の画面に戻る」とページの見出し（h1）は、「全体の管理」の枠（GlobalAdminLayout）にある */}
       <Box>
-        <Typography variant="h6" component="h2">
+        <HelpHeading variant="h6" component="h2" help="wiki ごとに、ページ・ツリー・予約を分け、それぞれ別のサブドメインで公開します。">
           wiki
-        </Typography>
-        <Muted>wiki ごとに、ページ・ツリー・予約を分け、それぞれ別のサブドメインで公開します。</Muted>
+        </HelpHeading>
       </Box>
 
       {!session.isOwner && <Alert severity="info">wiki の作成・アーカイブは、オーナーだけが行えます。</Alert>}
@@ -191,9 +191,9 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
 
   return (
     <Section>
-      <Typography variant="subtitle1" component="h3" gutterBottom>
+      <HelpHeading variant="subtitle1" component="h3" help="作った wiki には、空のツリーを1本用意します。" sx={{ mb: 1 }}>
         wiki を作成する
-      </Typography>
+      </HelpHeading>
       <Stack
         component="form"
         spacing={2}
@@ -208,8 +208,17 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="例：開発ノート"
-          helperText="公開サイトの名前になります。あとから変えられます。"
-          slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX }, inputLabel: { shrink: true } }}
+          slotProps={{
+            htmlInput: { maxLength: SITE_NAME_MAX },
+            inputLabel: { shrink: true },
+            input: {
+              endAdornment: (
+                <InputAdornment position="end">
+                  <HelpTip about="表示名">公開サイトの名前になります。あとから変えられます。</HelpTip>
+                </InputAdornment>
+              ),
+            },
+          }}
           sx={{ maxWidth: 360 }}
         />
         <Box>
@@ -258,7 +267,6 @@ function CreateWiki({ baseDomain, taken }: { baseDomain: string; taken: string[]
             </Box>
           </Box>
         </Box>
-        <Muted>作った wiki には、空のツリーを1本用意します。</Muted>
         {create.error && !keyTaken && <Alert severity="error">{errorMessage(create.error)}</Alert>}
         <Box>
           <Button type="submit" variant="contained" size="medium" disabled={!valid || create.isPending}>
@@ -355,12 +363,14 @@ function ArchivedWikis({ wikis }: { wikis: WikiSummary[] }) {
   });
   return (
     <Section>
-      <Typography variant="subtitle1" component="h3">
+      <HelpHeading
+        variant="subtitle1"
+        component="h3"
+        help="元に戻すと、公開サイトは次のビルドでまた見られるようになります。止まっていた間に時刻を過ぎた予約は実行せず、失敗として編集カレンダーに出します。"
+        sx={{ mb: 0.5 }}
+      >
         アーカイブ中の wiki
-      </Typography>
-      <Muted sx={{ mb: 1 }}>
-        元に戻すと、公開サイトは次のビルドでまた見られるようになります。止まっていた間に時刻を過ぎた予約は実行せず、失敗として編集カレンダーに出します。
-      </Muted>
+      </HelpHeading>
       {restore.error && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {errorMessage(restore.error)}

@@ -5,5 +5,9 @@
 .current { composes: item; }
 .current > a { font-weight: 700; color: var(--text); }
 .twisty { width: 16px; flex: none; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; font: inherit; }
+/* 閉じていた枝を開いたが、その下をまだ読み込めていないときの1行（読み込み中・読み込めなかった）。タイトルの位置に揃える */
+.status { padding-left: 20px; color: var(--muted); }
+.retry { margin-left: 4px; padding: 0 8px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.retry:hover { background: var(--border); }
 /* ページのアイコン（絵文字）。タイトルとの間を少し空ける */
 .icon { margin-right: 4px; }

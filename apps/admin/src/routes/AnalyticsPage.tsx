@@ -27,6 +27,7 @@ import {
 } from "@wiki/shared";
 import { useEffect, useState, type ReactNode } from "react";
 import { DailyBars } from "../components/DailyBars";
+import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
 import {
   changeLabel,
@@ -69,12 +70,18 @@ export function AnalyticsPage({ days, onDaysChange }: { days: AnalyticsDays; onD
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2" gutterBottom>
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help={
+            <>
+              「{wiki.name}」の公開サイト（{wiki.origin}）の、Google Analytics とサーチコンソールの数字です。細かい分析は、それぞれの Google の画面で行えます。
+            </>
+          }
+          sx={{ mb: 0.5 }}
+        >
           アクセス解析
-        </Typography>
-        <Muted sx={textSx}>
-          「{wiki.name}」の公開サイト（<Mono>{wiki.origin}</Mono>）の、Google Analytics とサーチコンソールの数字です。細かい分析は、それぞれの Google の画面で行えます。
-        </Muted>
+        </HelpHeading>
         {!notConnected && (
           <Controls days={days} onDaysChange={onDaysChange} data={data} refreshing={refresh.isPending} onRefresh={() => refresh.mutate()} refreshed={refresh.isSuccess} refreshError={refresh.error} />
         )}
@@ -471,9 +478,11 @@ function GaOverview({ data, days }: { data: GaAnalytics; days: AnalyticsDays }) 
         <DailyBars days={data.daily.map((d) => ({ day: d.day, count: d.views }))} title="表示回数の日別" ariaLabel="日別の表示回数" unit="回" valueLabel="表示回数" />
         <DailyBars days={data.daily.map((d) => ({ day: d.day, count: d.users }))} title="利用者数の日別" ariaLabel="日別の利用者数" unit="人" valueLabel="利用者数" />
       </Box>
-      <Muted sx={{ ...textSx, mt: 1.5, fontSize: "0.75rem" }}>
-        昨日までの{days}日間{data.range && `（${rangeLabel(data.range)}）`}。日付の区切りは、GA のプロパティのタイムゾーン{data.timeZone && `（${data.timeZone}）`}に従います。
-        日別の利用者数は、同じ人が別の日にも来ると、それぞれの日に数えるので、足しても期間の利用者数にはなりません。
+      <Muted sx={{ ...textSx, mt: 1, fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 0.25 }}>
+        昨日までの{days}日間{data.range && `（${rangeLabel(data.range)}）`}
+        <HelpTip about="Google Analytics の数字の数え方">
+          日付の区切りは、GA のプロパティのタイムゾーン{data.timeZone && `（${data.timeZone}）`}に従います。日別の利用者数は、同じ人が別の日にも来ると、それぞれの日に数えるので、足しても期間の利用者数にはなりません。
+        </HelpTip>
       </Muted>
     </>
   );
@@ -566,8 +575,9 @@ function SearchConsoleSection({ source, siteUrl, days }: { source: AnalyticsSour
               <DailyBars days={data.daily.map((d) => ({ day: d.day, count: d.impressions }))} title="表示回数の日別" ariaLabel="日別の検索結果での表示回数" unit="回" valueLabel="表示回数" />
             </Box>
           )}
-          <Muted sx={{ ...textSx, mt: 1.5, fontSize: "0.75rem" }}>
-            昨日までの{days}日間（{rangeLabel(data.range)}。日付の区切りは太平洋時間）。サーチコンソールの数字は2〜3日遅れて出るので、終わりの数日は、まだ入っていません。
+          <Muted sx={{ ...textSx, mt: 1, fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 0.25 }}>
+            昨日までの{days}日間（{rangeLabel(data.range)}）
+            <HelpTip about="サーチコンソールの数字の数え方">日付の区切りは太平洋時間です。サーチコンソールの数字は2〜3日遅れて出るので、終わりの数日は、まだ入っていません。</HelpTip>
           </Muted>
           {!empty && (
             <>

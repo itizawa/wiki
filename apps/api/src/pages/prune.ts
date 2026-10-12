@@ -15,7 +15,7 @@ export const PRUNE_BATCH_SIZE = 1000;
  * - 区切りの中でいちばん新しい版は残す。2番目以降のうち、できてから24時間より前のものを消す
  * - 順位は、24時間以内の版と下の「消さない版」も入れて付ける。残す版（`keep = true`）は入れない
  * - 2番目以降でも消さない版：どれかのページの head・公開中の版、予約（状態は問わない）が指す版、
- *   下書きがもとにしている版、外部のアプリ（MCP）が作った版の派生元
+ *   下書きがもとにしている版、編集リクエストの項目が基準にしている版（状態は問わない）、外部のアプリ（MCP）が作った版の派生元
  * - 消した版を派生元（`base_version_id`）にしていた版は、派生元を null にする
  *
  * 続けて呼んでも結果は変わらない。時間がたって区切りが変わったとき（1日 → 1か月）にだけ、さらに減る。
@@ -59,6 +59,8 @@ export async function pruneVersions(db: Db, now = new Date()): Promise<{ deleted
               and not exists (select 1 from "pages" p where p."published_version_id" = r."id")
               and not exists (select 1 from "scheduled_actions" a where a."version_id" = r."id")
               and not exists (select 1 from "page_drafts" dr where dr."base_version_id" = r."id")
+              -- 編集リクエストの項目が基準にしている版。消すと、基準の版と同じ本文かどうかを確かめられなくなる
+              and not exists (select 1 from "edit_request_items" ei where ei."base_version_id" = r."id")
               -- 派生元が null になると「その連携が作ったページ」の判定（最初の版を作った連携）に当たってしまう
               and not exists (
                 select 1 from "page_versions" c where c."base_version_id" = r."id" and c."oauth_grant_id" is not null

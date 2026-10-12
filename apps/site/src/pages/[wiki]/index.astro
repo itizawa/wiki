@@ -5,21 +5,20 @@ import NavDrawer from "../../components/NavDrawer.astro";
 import TreeNav from "../../components/TreeNav";
 import page from "../../styles/page.module.css";
 import Base from "../../layouts/Base.astro";
-import { allWikis, siteData } from "../../lib/manifest";
+import { allWikis, fullNav, siteData } from "../../lib/manifest";
 import { excerpt, renderMarkdown } from "../../lib/markdown";
-import { navItems } from "../../lib/tree";
 
 export async function getStaticPaths() {
   return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
 }
 
-const { wiki: manifest, pagesById, publicPaths, origin, primaryTree } = await siteData(Astro.params.wiki);
+const { wiki: manifest, publicPaths, origin, primaryTree } = await siteData(Astro.params.wiki);
 // 管理画面の「トップページ」で書いた自由記述。内部リンクの解決は記事の本文と同じ
 const { introMd } = resolveHome(manifest.home);
 const introHtml = introMd ? renderMarkdown(introMd, { publicPaths, origin }) : null;
 const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
 // 公開ページが1つも無いツリーは出さない（新着だけにする）
-const items = primaryTree ? navItems(primaryTree, (id) => pagesById.get(id)?.title, (id) => pagesById.get(id)?.icon) : [];
+const items = primaryTree ? await fullNav(manifest.key, primaryTree) : [];
 const tree = items.length > 0 ? primaryTree : undefined;
 ---
 

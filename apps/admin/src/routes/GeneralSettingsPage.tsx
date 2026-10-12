@@ -5,6 +5,7 @@ import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useState } from "react";
+import { HelpHeading } from "../components/HelpTip";
 import { Mono, Muted, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { useWikiIdentityForm } from "../components/WikiIdentityForm";
@@ -44,10 +45,9 @@ export function GeneralSettingsPage() {
         )}
       </Section>
       <Section>
-        <Typography variant="subtitle1" component="h2" gutterBottom>
+        <HelpHeading variant="subtitle1" component="h2" help="key は作成後に変えられません（公開サイトの URL がすべて変わるため）。" sx={{ mb: 0.5 }}>
           key と公開サイト
-        </Typography>
-        <Muted sx={{ mb: 1 }}>key は作成後に変えられません（公開サイトの URL がすべて変わるため）。</Muted>
+        </HelpHeading>
         <Box>
           <Muted>key</Muted>
           <Mono sx={{ display: "block" }}>{wiki.key}</Mono>

@@ -37,7 +37,8 @@ if (source.kind === "api") {
   }
   await writeFile(".manifest.json", JSON.stringify(manifest));
   for (const wiki of manifest.wikis) {
-    console.log(`manifest: ${wiki.key}: ${wiki.pages.length} pages, ${wiki.unlisted.length} unlisted`);
+    // wiki ごとの hash は、古い API のマニフェストには無い
+    console.log(`manifest: ${wiki.key}: ${wiki.pages.length} pages, ${wiki.unlisted.length} unlisted${wiki.contentHash ? `, hash ${wiki.contentHash.slice(0, 12)}` : ""}`);
   }
   console.log(`manifest: ${manifest.wikis.length} wikis, hash ${manifest.contentHash.slice(0, 12)}`);
 }

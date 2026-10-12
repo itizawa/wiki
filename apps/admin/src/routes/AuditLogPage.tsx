@@ -16,6 +16,7 @@ import {
   type AuditLogEntry,
 } from "@wiki/shared";
 import { useState } from "react";
+import { HelpHeading } from "../components/HelpTip";
 import { Muted, Row, RouterLink, Section } from "../components/ui";
 import { api, errorMessage, type AuditLogFilter, type AuditScope } from "../lib/api";
 import { formatDay } from "../lib/format";
@@ -46,15 +47,21 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
     <Stack spacing={1.5}>
       <Box>
         {/* どちらも枠（「設定」のタブ・「全体の管理」）の中に出すので、見出しは h2（h1 と戻るリンクは枠にある） */}
-        <Typography variant="h6" component="h2">
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          about="「監査ログ」"
+          help={
+            <>
+              {scope === "all"
+                ? "すべての wiki の記録と、ログイン・オーナーの変更・wiki の作成とアーカイブなど、全体にかかわる記録です。"
+                : "この wiki での公開・メンバー・設定の変更・ページの削除などの記録です。"}
+              本文の保存や並べ替えは、版履歴と構造の履歴で見られます。記録は直したり消したりできません。
+            </>
+          }
+        >
           {scope === "all" ? "監査ログ（すべての wiki）" : "監査ログ"}
-        </Typography>
-        <Muted>
-          {scope === "all"
-            ? "すべての wiki の記録と、ログイン・オーナーの変更・wiki の作成とアーカイブなど、全体にかかわる記録です。"
-            : "この wiki での公開・メンバー・設定の変更・ページの削除などの記録です。"}
-          本文の保存や並べ替えは、版履歴と構造の履歴で見られます。記録は直したり消したりできません。
-        </Muted>
+        </HelpHeading>
       </Box>
 
       <Filters scope={scope} filter={filter} onChange={setFilter} />
