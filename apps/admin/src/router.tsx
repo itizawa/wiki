@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, type AnalyticsDays } from "@wiki/shared";
+import type { EditRequestListStatus } from "@wiki/shared";
 import type { ComponentType } from "react";
 import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
@@ -7,6 +8,7 @@ import { Home, Root } from "./routes/Layout";
 import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
+import { EditRequestListPage } from "./routes/EditRequestListPage";
 import { GeneralSettingsPage } from "./routes/GeneralSettingsPage";
 import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
 import { InvitePage } from "./routes/InvitePage";
@@ -26,6 +28,7 @@ import { WikisPage } from "./routes/WikisPage";
 const page = { fallback: <ScreenSkeleton /> };
 const fullHeight = { fallback: <SkeletonEditor />, bare: true };
 const EditorPage = lazyScreen(() => import("./routes/EditorPage"), "EditorPage", fullHeight);
+const EditRequestsPage = lazyScreen(() => import("./routes/EditRequestsPage"), "EditRequestsPage", fullHeight);
 const TemplatesPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplatesPage", page);
 const TemplateEditorPage = lazyScreen(() => import("./routes/TemplatesPage"), "TemplateEditorPage", fullHeight);
 const HomeSettingsPage = lazyScreen(() => import("./routes/HomeSettingsPage"), "HomeSettingsPage", page);
@@ -90,6 +93,30 @@ const editorRoute = createRoute({
     const { pageId } = editorRoute.useParams();
     const { history } = editorRoute.useSearch();
     return <EditorPage key={pageId} pageId={pageId} historyVersionId={history ?? null} />;
+  },
+});
+// ページの編集リクエストのレビュー画面（最新の版を読み取り専用で出し、提案を採用・却下する）
+const editRequestsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "pages/$pageId/requests",
+  component: function EditRequests() {
+    const { pageId } = editRequestsRoute.useParams();
+    return <EditRequestsPage key={pageId} pageId={pageId} />;
+  },
+});
+// この wiki の編集リクエストの一覧。?status=done：完了したもの（既定の「未対応」は付けない）。再読み込みや URL の共有で同じ絞り込みが開く
+const editRequestListRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "requests",
+  validateSearch: (search: Record<string, unknown>): { status?: "done" } => (search.status === "done" ? { status: "done" } : {}),
+  component: function EditRequestList() {
+    const { status = "open" } = editRequestListRoute.useSearch();
+    const navigate = editRequestListRoute.useNavigate();
+    return (
+      <PageBody>
+        <EditRequestListPage status={status} onStatusChange={(next: EditRequestListStatus) => void navigate({ search: next === "done" ? { status: next } : {} })} />
+      </PageBody>
+    );
   },
 });
 const searchRoute = createRoute({
@@ -190,6 +217,8 @@ const routeTree = rootRoute.addChildren([
   wikiRoute.addChildren([
     pagesRoute,
     editorRoute,
+    editRequestsRoute,
+    editRequestListRoute,
     searchRoute,
     calendarRoute,
     analyticsRoute,
@@ -208,7 +237,15 @@ const routeTree = rootRoute.addChildren([
   legacyScreen("/history", "/w/$wikiKey/history"),
 ]);
 
-export const router = createRouter({ routeTree });
+// 画面を移るとき、前の画面をフェードアウトさせ、次の画面をフェードインさせる（View Transitions API。見た目は theme.ts の MuiCssBaseline）。
+// 同じ画面のままクエリ（タブ・絞り込み・検索語）だけが変わるときと、最初に開いたときはフェードさせない。
+// それを見分ける仕組み（遷移の型）に対応していないブラウザでは、フェードそのものを使わない（ふつうに切り替わる）
+const pageTransition =
+  typeof CSS !== "undefined" && CSS.supports?.("selector(:active-view-transition-type(a))")
+    ? { types: ({ fromLocation, pathChanged }: { fromLocation?: unknown; pathChanged: boolean }) => (fromLocation && pathChanged ? ["page"] : false) }
+    : false;
+
+export const router = createRouter({ routeTree, defaultViewTransition: pageTransition });
 
 declare module "@tanstack/react-router" {
   interface Register {

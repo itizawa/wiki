@@ -52,6 +52,38 @@ check(
 );
 
 const unlisted = await read(`wiki/u/${key}/index.html`);
+
+// ---- ツリーナビ：記事の HTML には最初の表示の分だけを入れ、ツリー全体は wiki ごとの nav.json に出す
+/** ページに埋め込んだツリーナビのアイランドの props（`items` がツリー、`src` がツリー全体の URL） */
+const treeNavProps = (html) =>
+  [...html.matchAll(/<astro-island[^>]*\sprops="([^"]*)"/g)].map((m) => m[1].replaceAll("&quot;", '"')).filter((p) => p.includes('"items"'));
+const navIds = (items) => items.flatMap((i) => [i.nodeId, ...navIds(i.children)]);
+const navText = await read("wiki/nav.json");
+const navData = JSON.parse(navText);
+check(
+  Object.keys(navData.trees).sort().join() === "by-theme,main" && navIds(navData.trees.main).join() === "aaaaaaaaa1,aaaaaaaaa2" && navIds(navData.trees["by-theme"]).join() === "aaaaaaaaa2",
+  "nav.json holds every tree of the wiki, with the public pages only",
+);
+check(
+  navData.trees.main[0].title === "はじめに" && navData.trees.main[0].icon === "👋" && navData.trees.main[0].children[0].href === "/t/main/aaaaaaaaa2",
+  "nav.json has the title, icon and link of each node",
+);
+const navLeaks = [key, "限定公開のメモ", "ひみつのあいことば", "zzzzzzzzz9", "ggggggggg1"].filter((w) => navText.includes(w));
+check(navLeaks.length === 0, `nav.json has nothing of unlisted, private or deleted pages${navLeaks.length ? ` (${navLeaks.join(", ")})` : ""}`);
+check(navIds(JSON.parse(await read("notes/nav.json")).trees.main).join() === "bbbbbbbbb1", "each wiki has its own nav.json (the other wiki's pages are checked below, with the rest of the output)");
+const articleNav = treeNavProps(noIconPage);
+check(
+  articleNav.length === 1 && articleNav[0].includes('"src":[0,"/nav.json"]') && articleNav[0].includes('"treeKey":[0,"main"]'),
+  "an article page's tree nav loads the whole tree from /nav.json",
+);
+const tNav = treeNavProps(tPage);
+check(tNav.length === 1 && tNav[0].includes('"src":[0,"/nav.json"]') && tNav[0].includes('"treeKey":[0,"by-theme"]'), "a page viewed through a tree loads that tree from /nav.json");
+check(
+  /<a href="\/t\/main\/aaaaaaaaa2" aria-current="page">設計メモ<\/a>/.test(noIconPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(noIconPage),
+  "an article's HTML has the page's place in the tree (its parent and itself) before any script runs",
+);
+check(!unlisted.includes("nav.json") && !unlisted.includes('"items"'), "an unlisted page has no tree nav and does not load nav.json");
+
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
 
@@ -128,6 +160,35 @@ const routes = JSON.parse(await read("wiki/page-routes.json"));
 check(routes.canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check(routes.gone.includes("ggggggggg1"), "page-routes.json lists gone pages");
 check((await read("_headers")).includes("/:wiki/u/*") && (await read("_headers")).includes("X-Robots-Tag: noindex"), "_headers marks /u/ of every wiki noindex");
+// _headers で長くキャッシュさせるのは /_astro/ だけ（HTML には付けない。公開・非公開がすぐ反映されなくなる）。
+// Pagefind のハッシュ付きの断片は、見つかったときだけ Worker が付ける（_headers は無いファイルの 404 にも付くため）
+const headerRules = Object.fromEntries(
+  (await read("_headers")).split(/\n(?=\S)/).map((block) => {
+    const [path, ...lines] = block.trim().split("\n");
+    return [path, lines.map((l) => l.trim())];
+  }),
+);
+const immutableHeader = "Cache-Control: public, max-age=31536000, immutable";
+const cachedPaths = Object.keys(headerRules).filter((path) => headerRules[path].some((l) => /^cache-control:/i.test(l))).sort();
+check(
+  cachedPaths.join() === "/_astro/*" && headerRules["/_astro/*"].includes(immutableHeader),
+  `_headers lets only /_astro/ be cached for long (got ${cachedPaths.join(", ")})`,
+);
+// /_astro/ は Worker（Host による wiki の振り分け）を通さずに返す（wrangler.toml の run_worker_first）。
+// どの wiki のサブドメインからも読めるので、wiki ごとの内容（限定公開を含む）が出ていないことを確かめる
+const sharedPaths = [
+  ...(await readdir(join(dist, "_astro"), { withFileTypes: true, recursive: true })).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name)),
+  join(dist, "favicon.svg"),
+];
+const sharedFiles = await Promise.all(sharedPaths.map(async (path) => ({ path: path.slice(dist.length), text: await readFile(path, "utf8") })));
+const perWikiWords = [
+  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "by-theme", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc"],
+  ...["bbbbbbbbb1", "hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート", "#00716b", "notes0logo0sample0000000"],
+];
+const inShared = leaks(sharedFiles, perWikiWords);
+check(sharedFiles.length > 1 && inShared.length === 0, `the shared files (/_astro/ is served without the Worker) hold nothing of any wiki${inShared.length ? ` (${inShared.join(", ")})` : ""}`);
+const unhashed = sharedFiles.filter((f) => f.path.startsWith("_astro/") && !/\.[\w-]{8}\.(js|css)$/.test(f.path)).map((f) => f.path);
+check(unhashed.length === 0, `every file under /_astro/ has a content hash in its name${unhashed.length ? ` (${unhashed.join(", ")})` : ""}`);
 
 check(await exists("wiki/pagefind/pagefind.js"), "pagefind index is built per wiki");
 const fragments = await readdir(join(dist, "wiki/pagefind/fragment")).catch(() => []);

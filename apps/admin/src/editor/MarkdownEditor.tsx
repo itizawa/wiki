@@ -439,3 +439,6 @@ function Tool(props: { label: string; active?: boolean; disabled?: boolean; onCl
 function Sep() {
   return <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: 0.75 }} />;
 }
+
+// 編集リクエストを出すときの小さなエディタ（components/compose/SuggestionEditor.tsx）が、同じメニューを使う
+export { InsertMenu, SelectionMenu };

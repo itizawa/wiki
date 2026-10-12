@@ -1,7 +1,7 @@
 import { parseSearchQuery, searchSnippet, searchTerms, type SearchResult } from "@wiki/shared";
-import { and, desc, eq, ilike, isNull, not, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, not, or } from "drizzle-orm";
 import { Hono } from "hono";
-import { pages, pageVersions } from "../db/schema";
+import { pages, pageSearch } from "../db/schema";
 import type { AppEnv } from "../env";
 
 const MAX_QUERY_LENGTH = 200;
@@ -9,8 +9,8 @@ const MAX_TERMS = 20;
 const MAX_RESULTS = 50;
 
 const like = (term: string) => `%${term.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
-/** タイトルか、いまの本文（head 版）に語を含む */
-const has = (term: string) => or(ilike(pages.title, like(term)), ilike(pageVersions.bodyMd, like(term)))!;
+/** タイトルか、いまの本文（head 版）に語を含む。どちらも検索用の写し（page_search）の、pg_trgm の索引がある列 */
+const has = (term: string) => or(ilike(pageSearch.title, like(term)), ilike(pageSearch.bodyMd, like(term)))!;
 
 /**
  * 管理画面の検索。開いている wiki の、タイトルといまの本文（head 版）を探す。書き方は shared の parseSearchQuery。
@@ -24,15 +24,19 @@ export const searchRoutes = new Hono<AppEnv>().get("/", async (c) => {
     return c.json({ results: [] satisfies SearchResult[] });
   }
 
-  const conditions: SQL[] = [eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt)];
-  if (groups.length > 0) {
-    conditions.push(or(...groups.map((g) => and(...g.all.map(has), ...g.none.map((t) => not(has(t))))!))!);
+  const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
+  const summary = { id: pages.id, title: pages.title, visibility: pages.visibility, updatedAt: pages.updatedAt };
+  if (groups.length === 0) {
+    // 語が無ければ、一致した所（スニペット）も無い。本文は読まず、pages だけから最近のページを返す
+    const recent = await db.select(summary).from(pages).where(live).orderBy(desc(pages.updatedAt)).limit(MAX_RESULTS);
+    return c.json({ results: recent.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString(), snippet: null })) satisfies SearchResult[] });
   }
+
   const rows = await db
-    .select({ id: pages.id, title: pages.title, visibility: pages.visibility, updatedAt: pages.updatedAt, bodyMd: pageVersions.bodyMd })
+    .select({ ...summary, bodyMd: pageSearch.bodyMd })
     .from(pages)
-    .innerJoin(pageVersions, eq(pageVersions.id, pages.headVersionId))
-    .where(and(...conditions))
+    .innerJoin(pageSearch, eq(pageSearch.pageId, pages.id))
+    .where(and(live, or(...groups.map((g) => and(...g.all.map(has), ...g.none.map((t) => not(has(t))))!))))
     .orderBy(desc(pages.updatedAt))
     // タイトルに一致したものを先に出すために、少し多めに取ってから並べ直す
     .limit(MAX_RESULTS * 4);

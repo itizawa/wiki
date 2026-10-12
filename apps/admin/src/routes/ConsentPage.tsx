@@ -14,7 +14,7 @@ import { api, errorMessage } from "../lib/api";
 import { Center, useSession } from "./Layout";
 
 /** 既定で許すスコープ。非公開のページを外へ送るかどうかは、毎回その人に選んでもらう */
-const DEFAULT_ON: OAuthScope[] = ["wiki.read", "wiki.write"];
+const DEFAULT_ON: OAuthScope[] = ["wiki.read", "wiki.write", "wiki.suggest"];
 
 /**
  * `/consent`：外部のアプリ（MCP クライアント）からの接続の依頼に、許可するかを決める画面。

@@ -13,7 +13,7 @@
       },
       "gaMeasurementId": null,
       "searchConsoleVerification": null,
-      "headCommitId": "00000000-0000-0000-0000-000000000001",
+      "contentHash": "sample-notes",
       "pages": [
         {
           "id": "bbbbbbbbb1",
@@ -62,7 +62,7 @@
       },
       "gaMeasurementId": "G-SAMPLE1234",
       "searchConsoleVerification": "sampleVerification_0123-abc",
-      "headCommitId": "00000000-0000-0000-0000-000000000000",
+      "contentHash": "sample-wiki",
       "pages": [
         {
           "id": "aaaaaaaaa1",
