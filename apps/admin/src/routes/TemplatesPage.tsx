@@ -92,7 +92,7 @@ export function TemplatesPage() {
         <Section key={t.id}>
           <Row sx={{ justifyContent: "space-between" }}>
             <Box sx={{ minWidth: 0 }}>
-              <RouterLink {...templateLink(t.id)} sx={{ fontWeight: 600 }}>
+              <RouterLink {...templateLink(t.id)} sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>
                 {t.title}
               </RouterLink>
               <Muted>

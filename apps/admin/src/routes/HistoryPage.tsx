@@ -40,7 +40,7 @@ export function HistoryPage() {
               <ListItemText
                 primary={
                   <Row>
-                    <span>{c.message ?? "(no message)"}</span>
+                    <span style={{ overflowWrap: "anywhere", minWidth: 0 }}>{c.message ?? "(no message)"}</span>
                     {i === 0 && <StatusChip label="head" />}
                     {c.authorType === "ai" && <StatusChip label="AI" />}
                     {c.via && <StatusChip label={`${c.via} 経由`} />}
@@ -106,7 +106,7 @@ function CommitDetail({ id, structure }: { id: string; structure?: StructureResp
 
   return (
     <Stack spacing={1.5}>
-      <Typography variant="subtitle1" component="h3">
+      <Typography variant="subtitle1" component="h3" sx={{ overflowWrap: "anywhere" }}>
         {detail.data.commit.message}
       </Typography>
       {!detail.data.diffAvailable && (
