@@ -130,7 +130,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 - Google認証（OIDC）。セッションは署名付きCookie（「ユーザーとロール」）
 - `pages` / `page_versions`：Markdownエディタ、版履歴と差分、楽観ロック（`base_version_id` が head と一致する場合のみ保存）
 - `page_drafts`：編集中の内容は、打つのが止まると（1.5 秒）人ごとの下書きとして自動保存する。ページと人ごとに1行で、上書きする
-  - 編集が一段落したら、ワーカーが下書きを版にして、下書きを消す（`/internal/drafts/promote`、5分ごと）。一段落したとみなすのは、最後の自動保存から5分たったとき。打ち続けているあいだも、下書きを始めてから30分たてば版にする（時間は `apps/api/src/pages/versions.ts` の定数）。版になるまでは、5分＋ワーカーの間隔（最大5分）で、5〜10分
+  - 編集が一段落したら、ワーカーが下書きを版にして、下書きを消す（`/internal/tick`、5分ごと）。一段落したとみなすのは、最後の自動保存から5分たったとき。打ち続けているあいだも、下書きを始めてから30分たてば版にする（時間は `apps/api/src/pages/versions.ts` の定数）。版になるまでは、5分＋ワーカーの間隔（最大5分）で、5〜10分
   - 版にしない下書き：タイトルが空のもの、古い版をもとにしたもの（あいだにできた版の変更を黙って上書きしないため）、削除したページやアーカイブ中の wiki のもの。消さずに残す
 - 管理画面の検索（検索の画面、コマンドメニュー（⌘K）、本文の「@」「[[」のリンクの挿入。`GET /search`）：開いている wiki の、タイトルといまの本文（head 版）を `ILIKE '%語%'` で探す
   - 探す先は `page_search`（head 版のタイトルと本文の写し。ページごとに1行）。**head 版を進める所は、同じトランザクションで `syncPageSearch`（`apps/api/src/pages/versions.ts`）を呼ぶ**。いまは `createPage` と `createVersion` が呼んでいて、保存・下書きから版になるとき・前の版の内容での保存・MCP の `update_page` は、どれも `createVersion` を通る。完全に削除したページの行は消す
@@ -470,10 +470,11 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 | 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
-| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔） | `apps/worker/wrangler.toml` |
+| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない） | `apps/worker/wrangler.toml` |
 | 公開サイト | Cloudflare Workers `wiki-site`（静的アセット + `Host` で wiki を振り分ける Worker。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 | 画像 | Cloudflare R2 のバケット `wiki-images`（`wiki-admin` と `wiki-site` の両方がバインディング `IMAGES` で使う） | 両方の `wrangler.toml` |
+| Cron への印 | Cloudflare Workers KV の名前空間 `wiki-cron-marks`（`wiki-admin` が書き、`wiki-worker` が読む。どちらもバインディング `CRON_MARKS`） | 両方の `wrangler.toml` |
 
 管理画面と API は同じ Worker が同一オリジンで出す（`/api/*` が API、それ以外は管理画面）。サイトのビルドとワーカーが使う `/export/*` `/internal/*` も同じオリジンにある。
 
@@ -511,6 +512,12 @@ Google Analytics（GA4）とサーチコンソールにつないだ wiki の数�
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
 8. 任意。管理画面の「アクセス解析」を使うなら、**Google のサービスアカウント**を作り、鍵を `GOOGLE_SERVICE_ACCOUNT_JSON` として登録する（Google Cloud で Google Analytics Data API と Google Search Console API を有効にする → サービスアカウントと鍵（JSON）を作る → 手順6の表のシークレットに登録する → 「Deploy」を実行する）。くわしくは上の「アクセス解析 → 使えるようにする」。あとから行ってもよい
+9. 任意。5分おきの Cron が、やることの無いときに DB を起こさないようにするなら、**Workers KV の名前空間**を作る（`npx wrangler kv namespace create wiki-cron-marks`）。出力された `id` を、`apps/api/wrangler.toml` と `apps/worker/wrangler.toml` の**両方**の `[[kv_namespaces]]`（コメントにしてある3行）に入れ、コメントを外す
+   - ここに、Cron への印を置く（下の「既定として選んだこと → 編集の無い時間帯は、Cron が DB を起こさない」）
+   - あとから行ってもよい。コメントのあいだは、Cron が5分おきに API を呼ぶ（動きは変わらず、DB が止まれないだけ）
+   - **ワーカーの側だけに入れない**。API が印を書かないので、下書きが版になるのも、予約の実行も、公開ビルドの起動も、1時間に1回になる。API の側だけに入っているぶんには害は無い
+   - 実在しない `id` のままコメントを外すと、`wrangler deploy` が失敗する（`main` に入れる前に、名前空間を作って `id` を入れる）
+   - 入れたあとの最初の1時間は、入れる前からあった下書き・予約に印が無いので、毎時0分の回まで待つことがある
 
 シークレットはデプロイのたびに GitHub から Worker へ入れ直す（値を変えたら Actions の「Deploy」を手動実行する）。
 
@@ -576,7 +583,23 @@ pnpm test
 - **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNode（`src/node.ts`）、本番は Workers（`src/worker.ts`）で動かす
 - **予約の通知先**：最終失敗は Slack 互換の Incoming Webhook（`NOTIFY_WEBHOOK_URL`）へ。メールは未対応
 - **予約の反映遅延**：Cron 5分 + デバウンス2分 + ビルド時間
-- **公開ビルドの起動の失敗**：デプロイフックを呼べなかったビルドは、次の Cron（5分後）で、新しい公開操作が無くても起動し直す（`site_builds.triggered_at` が空のあいだ。ワーカーはフックを呼べたら `/internal/builds/{id}/triggered` で埋める）。同じビルドの起動が3回続けて失敗したら、予約の最終失敗と同じ通知先へ一度だけ知らせ、そのあとも5分おきに試し続ける。Workers Builds の側でビルドが失敗したことは検知しない
+- **編集の無い時間帯は、Cron が DB を起こさない**：5分おきの Cron は、API を呼ぶ前に Workers KV の印（バインディング `CRON_MARKS`）だけを見て、時刻の来た印が無ければそこで終わる（API を呼ぶと DB につながり、サーバーレスの PostgreSQL が自動で止まれなくなる）
+  - 印は3つ。値は `{"at":"<ISO の時刻>"}` で、「この時刻になったら DB を見に行く」の意味
+
+    | キー | 書くとき（API） | 時刻 |
+    |---|---|---|
+    | `cron:drafts` | 下書きの保存 | いちばん早く版にできる時刻（最後の保存から5分か、始めてから30分の早い方） |
+    | `cron:scheduled` | 予約の登録・時刻の変更 | 次に実行する予約の時刻 |
+    | `cron:build` | 公開イベントの記録（`recordPublishEvent`） | 書いた時刻（次の Cron で見る） |
+
+  - API は、印が無いか、いまの印より早い時刻のときだけ書く（下書きの自動保存のたびには書かない）。書くのは応答ができたあと（DB のコミットのあと。`apps/api/src/cron/marks.ts`）。消すことはしない
+  - ワーカーは、時刻の来た印を消してから `/internal/tick` を呼び、応答の `next`（処理のあとで DB から求めた、次に見に行く時刻）で印を書き直す。残りが無い種類の印は消えたままになる。API の呼び出しが失敗したら、消した印を戻す（`apps/worker/src/tick.ts`）
+  - 「ビルド待ちあり」の印は、デバウンス中と、デプロイフックを呼べていないあいだ残る。フックを呼べた回でも消さず、次の回に API が「変更なし」と答えたところで消える（公開のあと、DB を見る回が1回余分にある）
+  - 印を消した回の次の回は、印に関係なくもう一度 API を呼ぶ（ワーカーだけが使う印 `cron:recheck`）。KV の読み出しは最大60秒ほど古いことがあり、そのあいだに API が「消す前の印」を読むと、印はもうあると思って書かずに終わるため。その変更は DB にはあるので、次の回に拾う。見直しの回は何も消さないので、続くことはない（編集が止まったあと、DB を見る回が1回余分にある）
+  - KV に書いた印がワーカーから見えるまでにも最大60秒ほどかかるので、Cron の直前に書いた印は、次の回に回ることがある。どちらの場合も、遅れは Cron 1回分（5分）まで
+  - **1時間に1回（毎時0分の回）は、印に関係なく API を呼ぶ**。印を書き損ねた（KV への書き込みの失敗、ワーカーが印を消したあと書き直す前に落ちた）ときは、ここで拾う。そのとき遅れるのは最大1時間
+  - バインディングが無い環境（手元の開発、テスト、KV の名前空間を作る前）では、API は印を書かず、ワーカーは今までどおり5分おきに API を呼ぶ
+- **公開ビルドの起動の失敗**：デプロイフックを呼べなかったビルドは、次の Cron（5分後）で、新しい公開操作が無くても起動し直す（`site_builds.triggered_at` が空のあいだ。ワーカーはフックを呼べたら `/internal/builds/{id}/triggered` で埋める。起動できるまで「ビルド待ちあり」の印が残るので、編集が無くても次の Cron は API を呼ぶ）。同じビルドの起動が3回続けて失敗したら、予約の最終失敗と同じ通知先へ一度だけ知らせ、そのあとも5分おきに試し続ける。Workers Builds の側でビルドが失敗したことは検知しない
 - **管理画面とAPIは同一オリジン**（管理画面の `/api/*` をAPIへ）。Cookieは `SameSite=Lax`、状態を変えるリクエストは `Origin` が管理画面と一致する場合のみ受け付ける
 - **ツリーそのものの設定は無い。** ツリーは常に公開サイトに出し、出す・出さないはページごとの公開範囲で決める。公開サイトでの呼び名は固定（「ページ一覧」）
 - **設計書に無い構造操作を1つ追加**：`remove_node`（ツリーから外す。子がある場合は不可）

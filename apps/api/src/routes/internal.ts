@@ -2,15 +2,14 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { recordViewInput } from "@wiki/shared";
 import { z } from "zod";
 import type { AppEnv } from "../env";
+import { runTick } from "../cron/tick";
 import { HttpError } from "../errors";
 import { cleanupImages, type CleanupImagesResult } from "../images/cleanup";
 import { cleanupOAuth } from "../oauth/cleanup";
 import { pruneVersions } from "../pages/prune";
-import { promoteDrafts } from "../pages/versions";
-import { markBuildTriggered, requestBuild } from "../publishing/builds";
+import { markBuildTriggered } from "../publishing/builds";
 import { cleanupBuilds } from "../publishing/cleanup";
 import { buildManifest } from "../publishing/manifest";
-import { runDueActions } from "../publishing/scheduler";
 import { pruneStructure } from "../structure/prune";
 import { parseJson } from "../validation";
 import { recordView } from "./views";
@@ -33,7 +32,7 @@ async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-const buildRequestInput = z.object({
+const tickInput = z.object({
   debounceSec: z.number().int().min(0).max(3600).optional(),
   maxWaitSec: z.number().int().min(0).max(86400).optional(),
 });
@@ -51,9 +50,11 @@ export const exportRoutes = new Hono<AppEnv>().use("*", requireInternalToken).ge
 /** /internal/*：Cron Triggers のワーカーと、公開サイトの Worker（閲覧数）から呼ぶ */
 export const internalRoutes = new Hono<AppEnv>()
   .use("*", requireInternalToken)
-  // 編集が一段落した下書きを版にする
-  .post("/drafts/promote", async (c) => {
-    return c.json(await promoteDrafts(c.get("deps").db));
+  // 5分おきの Cron の1回分：下書きを版にする → 期限の来た予約を実行する → 公開ビルドを起動するか決める。
+  // 応答の next（種類ごとの、次に DB を見に行く時刻）を、ワーカーが印（Workers KV）に書き直す
+  .post("/tick", async (c) => {
+    const body = tickInput.parse(await c.req.json().catch(() => ({})));
+    return c.json(await runTick(c.get("deps").db, body));
   })
   // 1日1回の間引きと掃除。どれも消したものは戻せない。1回に消す数には上限があり、残りは次の回に回る
   // - `deleted`：自動でできた版を、古いほど粗く間引いた数
@@ -79,14 +80,7 @@ export const internalRoutes = new Hono<AppEnv>()
     }
     return c.json({ ...versions, structure, oauth, builds, images });
   })
-  .post("/scheduled/run", async (c) => {
-    return c.json(await runDueActions(c.get("deps").db));
-  })
-  .post("/builds/request", async (c) => {
-    const body = buildRequestInput.parse(await c.req.json().catch(() => ({})));
-    return c.json(await requestBuild(c.get("deps").db, body));
-  })
-  // ワーカーがデプロイフックを呼べたあとに呼ぶ。これが来ないビルドは、次の builds/request でもう一度頼む
+  // ワーカーがデプロイフックを呼べたあとに呼ぶ。これが来ないビルドは、次の tick でもう一度頼む
   .post("/builds/:id/triggered", async (c) => {
     const id = z.string().uuid().safeParse(c.req.param("id"));
     if (!id.success || !(await markBuildTriggered(c.get("deps").db, id.data))) {

@@ -1,4 +1,5 @@
 import type { AppConfig } from "./config";
+import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
 import type { GoogleReporting } from "./analytics/google";
@@ -16,6 +17,11 @@ export type Deps = {
   images?: ImageStore | null;
   /** Google Analytics とサーチコンソールの数字を読むもの。無ければ「アクセス解析」は未設定として出す */
   reporting?: GoogleReporting | null;
+  /**
+   * Cron のワーカーへの印を書く先（Workers KV）。無ければ印を書かない
+   * （手元の開発とテスト。ワーカーの側も、バインディングが無ければ毎回 DB を見に行く）
+   */
+  cronMarks?: CronMarkStore | null;
   /** ログインせずに叩ける経路（/oauth/*・/mcp）の、接続元ごとの回数の制限。無ければ制限しない */
   rateLimits?: RateLimiters | null;
 };

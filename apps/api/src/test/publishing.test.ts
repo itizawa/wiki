@@ -389,13 +389,5 @@ describe("build requests", () => {
     expect((await internal("POST", "/internal/builds/nope/triggered")).status).toBe(404);
     expect((await ctx.app.request("/internal/builds/nope/triggered", { method: "POST" })).status).toBe(401);
   });
-
-  it("is exposed to the worker with the internal token", async () => {
-    ctx = await setup();
-    expect((await ctx.app.request("/internal/scheduled/run", { method: "POST" })).status).toBe(401);
-    const run = await internal("POST", "/internal/scheduled/run");
-    expect(run.body).toEqual({ done: [], retrying: [], failed: [] });
-    const build = await internal("POST", "/internal/builds/request", { debounceSec: 0 });
-    expect(build.body).toEqual({ trigger: false, reason: "no_changes" });
-  });
+  // ワーカーからの呼び出し（/internal/tick）は cron.test.ts
 });

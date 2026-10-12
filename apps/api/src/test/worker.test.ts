@@ -90,7 +90,7 @@ describe("worker entry", () => {
     const authorization = "Bearer internal-token";
     expect((await w.fetch("/export/public", { headers: { authorization } })).status).toBe(200);
     expect((await w.fetch("/export/public")).status).toBe(401);
-    const run = await w.fetch("/internal/scheduled/run", { method: "POST", headers: { authorization }, body: "{}" });
+    const run = await w.fetch("/internal/tick", { method: "POST", headers: { authorization }, body: "{}" });
     expect(run.status).toBe(200);
   });
 
