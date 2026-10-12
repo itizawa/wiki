@@ -22,7 +22,7 @@ const items = primaryTree ? await fullNav(manifest.key, primaryTree) : [];
 const tree = items.length > 0 ? primaryTree : undefined;
 ---
 
-<Base wiki={manifest.key} title={manifest.name} canonical="/" nav={tree && `/t/${tree.key}/`}>
+<Base wiki={manifest.key} title={manifest.name} canonical="/" nav={tree && "/"}>
   <div class={tree ? page.withNav : undefined}>
     <main>
       {introHtml && <div class:list={[article.body, page.homeIntro]} data-home-intro set:html={introHtml} />}

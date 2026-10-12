@@ -3,7 +3,7 @@ import { resolveTheme } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
-import { Menu, Rss, Search } from "lucide-react";
+import { Ellipsis, Menu, Presentation, Rss, Search } from "lucide-react";
 import "../styles/global.css";
 import s from "./Base.module.css";
 
@@ -19,7 +19,7 @@ interface Props {
   /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す */
   notFound?: boolean;
   /**
-   * ツリーナビ（NavDrawer）を置いたページだけ渡す、ツリーの一覧ページ（/t/{key}/）のパス。
+   * ツリーナビ（NavDrawer）を置いたページだけ渡す、トップのパス（`/`）。
    * 渡すと、広い画面ではツリーナビを左のサイドバーにし（閉じている間は、ヘッダーに「サイドバーを開く」を出す）、
    * 狭い画面ではヘッダーに「階層を開く」を出す（スクリプトが動かなければ、このパスへのリンクのまま）
    */
@@ -117,20 +117,33 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <a class={s.brand} href="/">
         {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
       </a>
-      {
-        !noindex && (
-          <nav class={s.nav}>
-            <a href="/search">
-              <Search size={16} aria-hidden="true" />
-              検索
-            </a>
-            <a href="/feed.xml">
-              <Rss size={16} aria-hidden="true" />
-              RSS
-            </a>
-          </nav>
-        )
-      }
+      {/* 検索・RSS・プレゼンモード。popover なので、スクリプトが動かなくても開閉できる（外を押す・Esc で閉じる）。中に出すものが無いページでは、CSS が出さない */}
+      <div class={s.menuWrap}>
+        <button type="button" class={s.menuButton} popovertarget="site-menu" aria-label="メニュー" title="メニュー">
+          <Ellipsis size={20} aria-hidden="true" />
+        </button>
+        <div id="site-menu" class={s.menu} popover data-pagefind-ignore>
+          {
+            !noindex && (
+              <>
+                <a href="/search">
+                  <Search size={16} aria-hidden="true" />
+                  検索
+                </a>
+                <a href="/feed.xml">
+                  <Rss size={16} aria-hidden="true" />
+                  RSS
+                </a>
+              </>
+            )
+          }
+          {/* スクリプト（Article.astro）が、スライドが2枚以上になる記事でだけ見えるようにする。動かなければ出ない */}
+          <button type="button" hidden data-presentation-open popovertarget="site-menu" popovertargetaction="hide">
+            <Presentation size={16} aria-hidden="true" />
+            プレゼンモードで表示
+          </button>
+        </div>
+      </div>
     </header>
     <div class={s.body}>
       <slot />
@@ -140,6 +153,17 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
 {/* </html> のあとに書くと、Astro 7 はそのまま </html> のあとに出力する（5 では </body> の前へ動かしていた）ので、<body> の中に置く */}
 <script>
   import { nextHeaderVisibility } from "../lib/headerVisibility";
+
+  // プレゼンモードを閉じたら、開いたメニューのボタンへフォーカスを戻す（メニューは閉じていて、押したボタンには戻せない）
+  document.addEventListener(
+    "close",
+    (e) => {
+      if (e.target instanceof HTMLElement && e.target.hasAttribute("data-presentation")) {
+        document.querySelector<HTMLElement>("[popovertarget=site-menu]")?.focus({ preventScroll: true });
+      }
+    },
+    true,
+  );
 
   // 狭い画面で張り付くヘッダーを、下スクロールで隠し、上スクロールで戻す。
   // 張り付けるのも隠すのも CSS（Base.module.css）で、ここでは data-hidden を付け外しするだけ
