@@ -88,10 +88,11 @@ export function PagesPage() {
     <Stack spacing={1.5}>
       <Section>
         <Row sx={{ mb: 1 }}>
-          <Typography variant="h6" component="h2" noWrap sx={{ flex: 1 }}>
+          <Typography variant="h6" component="h2" sx={{ flex: "1 1 auto" }}>
             ページ
           </Typography>
-          <TextField value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" />
+          {/* 狭い幅では、見出しの下の段に全幅で置く（見出しを省略させない） */}
+          <TextField value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" sx={{ flex: { xs: "1 1 100%", sm: "0 1 auto" } }} />
         </Row>
         {/* 読み込めている一覧の取り直しに失敗したとき（続きの読み込みの失敗は、一覧の末尾に出る） */}
         {pages.isRefetchError && !isFetchNextPageError && (

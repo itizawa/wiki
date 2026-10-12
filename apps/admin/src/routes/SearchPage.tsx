@@ -115,7 +115,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
 
       {search.error && <Alert severity="error">{errorMessage(search.error)}</Alert>}
       {results && (
-        <Muted role="status">{results.length === 0 ? `「${q}」に一致するページはありません。語を減らすか、別の言い方を試してください。` : `${results.length}件${results.length >= 50 ? "（最初の50件）" : ""}`}</Muted>
+        <Muted role="status" sx={{ overflowWrap: "anywhere" }}>{results.length === 0 ? `「${q}」に一致するページはありません。語を減らすか、別の言い方を試してください。` : `${results.length}件${results.length >= 50 ? "（最初の50件）" : ""}`}</Muted>
       )}
       {q !== "" && (search.isPending || (results && results.length > 0)) && (
         // 結果が確かめられるまで（初回の検索中）は、行の形の Skeleton を出す
