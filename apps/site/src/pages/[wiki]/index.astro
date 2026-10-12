@@ -22,8 +22,8 @@ const items = primaryTree ? await fullNav(manifest.key, primaryTree) : [];
 const tree = items.length > 0 ? primaryTree : undefined;
 ---
 
-<Base wiki={manifest.key} title={manifest.name} canonical="/" nav={tree && "/"}>
-  <div class={tree ? page.withNav : undefined}>
+<Base wiki={manifest.key} title={manifest.name} canonical="/" nav="/">
+  <div class={page.withNav}>
     <main>
       {introHtml && <div class:list={[article.body, page.homeIntro]} data-home-intro set:html={introHtml} />}
       <h1 class={page.visuallyHidden}>新着記事</h1>
@@ -43,12 +43,8 @@ const tree = items.length > 0 ? primaryTree : undefined;
         }
       </ul>
     </main>
-    {
-      tree && (
-        <NavDrawer>
-          <TreeNav client:idle items={items} />
-        </NavDrawer>
-      )
-    }
+    <NavDrawer list={tree !== undefined}>
+      {tree && <TreeNav client:idle items={items} />}
+    </NavDrawer>
   </div>
 </Base>
