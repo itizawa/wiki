@@ -49,6 +49,8 @@ export const wikis = pgTable("wikis", {
   searchConsoleVerification: text("search_console_verification"),
   /** GA4 のプロパティ ID（数字だけ）。「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
   gaPropertyId: text("ga_property_id"),
+  /** 公開サイトを出しているか。false なら、ページごとの公開範囲は変えずに、サイトだけをビルドから外す（アーカイブとは別） */
+  sitePublic: boolean("site_public").notNull().default(true),
   /** nullなら使用中 */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),

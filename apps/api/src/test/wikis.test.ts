@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildManifest } from "../publishing/manifest";
+import { buildManifest, publicContentHash } from "../publishing/manifest";
 import { markBuildTriggered, requestBuild } from "../publishing/builds";
 import { runDueActions } from "../publishing/scheduler";
 import { ARCHIVED_REASON } from "../wikis/service";
@@ -471,5 +471,90 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     expect((await stranger.call("PATCH", `${W}/settings`, { gaMeasurementId: GA })).status).toBe(403);
     expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: GA }, { cookie: "" })).status).toBe(401);
     expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+  });
+});
+
+describe("site visibility (sitePublic)", () => {
+  const events = async () => (await ctx.client.query(`select 1 from publish_events where kind = 'wiki_site_visibility'`)).rows.length;
+
+  it("starts public, and takes only that wiki out of the manifest while private, without touching page visibility", async () => {
+    ctx = await setup();
+    await createNotes();
+    const a = await newPage(W, "公開");
+    const b = await newPage(W, "限定");
+    const c = await newPage(N, "ノートの記事");
+    await publish(W, a);
+    await publish(W, b, "unlisted");
+    await publish(N, c);
+    expect((await ctx.call("GET", "/admin/wikis")).body.wikis.map((w: any) => [w.key, w.sitePublic])).toEqual([["wiki", true], ["notes", true]]);
+    const before = (await buildManifest(ctx.db)).contentHash;
+
+    expect((await ctx.call("PATCH", `${W}/settings`, { sitePublic: false })).status).toBe(200);
+    const hidden = await buildManifest(ctx.db);
+    expect(hidden.wikis.map((w) => w.key)).toEqual(["notes"]);
+    expect(hidden.contentHash).not.toBe(before);
+    // ビルドを決める側の計算と、/export/public の contentHash は同じ
+    expect(await publicContentHash(ctx.db)).toBe(hidden.contentHash);
+    expect(((await ctx.call("GET", "/export/public", undefined, { authorization: "Bearer export-token", cookie: "" })).body as any).contentHash).toBe(hidden.contentHash);
+    // 管理画面では今までどおり使え、ページの公開範囲は変わらない
+    expect((await ctx.call("GET", `${W}/pages/${a.id}`)).body.visibility).toBe("public");
+    expect((await ctx.call("GET", `${W}/pages/${b.id}`)).body.visibility).toBe("unlisted");
+    expect((await ctx.call("GET", "/admin/wikis")).body.wikis.map((w: any) => [w.key, w.sitePublic])).toEqual([["wiki", false], ["notes", true]]);
+
+    // 公開に戻すと、元のとおりに出る
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: true });
+    const back = await buildManifest(ctx.db);
+    expect(back.contentHash).toBe(before);
+    const wiki = back.wikis.find((w) => w.key === "wiki")!;
+    expect(wiki.pages.map((p) => p.id)).toEqual([a.id]);
+    expect(wiki.unlisted).toHaveLength(1);
+  });
+
+  it("rebuilds only when the value changes, and settles on the last state after repeated toggles", async () => {
+    ctx = await setup();
+    let now = Date.now();
+    const build = async () => {
+      now += 1000_000;
+      const decision = await requestBuild(ctx.db, { now: new Date(now) });
+      if (decision.trigger) await markBuildTriggered(ctx.db, decision.buildId);
+      return decision;
+    };
+    const page = await newPage(W, "記事");
+    await publish(W, page);
+    await ctx.client.query(`insert into publish_events (wiki_id, kind) select id, 'test' from wikis where key = 'wiki'`);
+    expect((await build()).trigger).toBe(true);
+
+    // 同じ値の保存は何も起こさない
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: true });
+    expect(await events()).toBe(0);
+    expect(await build()).toEqual({ trigger: false, reason: "no_changes" });
+
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: false });
+    expect(await events()).toBe(1);
+    expect((await build()).trigger).toBe(true);
+    // 非公開 → 公開 → 非公開と続けても、最後の状態（非公開）と同じなら、ビルドし直さない
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: true });
+    await ctx.call("PATCH", `${W}/settings`, { sitePublic: false });
+    // 出力が前のビルドと同じなので、省かれる
+    expect(await build()).toEqual({ trigger: false, reason: "unchanged" });
+  });
+
+  it("is changed by owners only, and recorded in the audit log", async () => {
+    ctx = await setup();
+    await createNotes();
+    const admin = await ctx.addUser("notes-admin@example.com", { notes: "admin" });
+    expect((await admin.call("PATCH", `${N}/settings`, { sitePublic: false })).status).toBe(403);
+    expect((await ctx.call("GET", "/admin/wikis")).body.wikis.find((w: any) => w.key === "notes").sitePublic).toBe(true);
+
+    await ctx.call("PATCH", `${N}/settings`, { sitePublic: false });
+    await ctx.call("PATCH", `${N}/settings`, { sitePublic: false });
+    await ctx.call("PATCH", `${N}/settings`, { sitePublic: true });
+    const res = await ctx.call("GET", "/admin/audit-logs?wiki=notes");
+    const entries = res.body.entries as any[];
+    const site = entries.filter((e) => e.action === "wiki_site_visibility").reverse();
+    expect(site.map((e) => [e.detail.sitePublic, e.actor.type, e.wiki.key])).toEqual([
+      [false, "user", "notes"],
+      [true, "user", "notes"],
+    ]);
   });
 });

@@ -77,14 +77,14 @@ export const wikiRoutes = new Hono<AppEnv>()
   });
 
 /**
- * /admin/w/:wikiKey/settings：wiki ごとの設定（公開サイトの外部サービスとの連携）。
+ * /admin/w/:wikiKey/settings：wiki ごとの設定（公開サイトの外部サービスとの連携と、公開サイトの公開・非公開）。
  * 読むのはその wiki を開ける人の全員、変えるのはオーナーだけ。アーカイブ中の wiki は resolveWiki が 404 にする。
  */
 export const wikiSettingsRoutes = new Hono<AppEnv>()
   .get("/", (c) => c.json(toWikiSettings(c.get("wiki"))))
   .patch("/", requireOwner, async (c) => {
     const input = await parseJson(c, updateWikiSettingsInput);
-    return c.json(toWikiSettings(await updateWikiSettings(c.get("deps").db, c.get("wiki").key, input)));
+    return c.json(toWikiSettings(await updateWikiSettings(c.get("deps").db, c.get("wiki").key, input, auditActor(c))));
   });
 
 async function summary(db: Parameters<typeof listWikis>[0], config: Parameters<typeof listWikis>[1], key: string): Promise<WikiSummary> {

@@ -19,7 +19,7 @@ import { getBranch, getPrimaryTree, loadCommit, MAIN_BRANCH } from "../structure
 type WikiRow = typeof wikis.$inferSelect;
 
 /**
- * 公開ビルド用マニフェスト。wiki ごとにまとめて返す（アーカイブ中の wiki は含めない）。
+ * 公開ビルド用マニフェスト。wiki ごとにまとめて返す（アーカイブ中・サイトが非公開の wiki は含めない）。
  * contentHash は wiki ごとにも持つ。全体の contentHash は、wiki の key と wiki ごとの contentHash から作る
  * （wiki の作成・アーカイブ・復元でも変わる）。
  */
@@ -37,7 +37,7 @@ export async function publicContentHash(db: Db): Promise<string> {
 }
 
 async function loadWikis(db: Db, withBodies: boolean): Promise<WikiManifest[]> {
-  const rows = await db.select().from(wikis).where(isNull(wikis.archivedAt)).orderBy(asc(wikis.key));
+  const rows = await db.select().from(wikis).where(and(isNull(wikis.archivedAt), eq(wikis.sitePublic, true))).orderBy(asc(wikis.key));
   const content: WikiManifest[] = [];
   for (const wiki of rows) content.push(await buildWikiManifest(db, wiki, withBodies));
   return content;
