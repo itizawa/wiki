@@ -2,6 +2,7 @@
 import { resolveTheme } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
+import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
 import "../styles/global.css";
 import s from "./Base.module.css";
 
@@ -18,7 +19,8 @@ interface Props {
   notFound?: boolean;
   /**
    * ツリーナビ（NavDrawer）を置いたページだけ渡す、ツリーの一覧ページ（/t/{key}/）のパス。
-   * 渡すと、狭い画面のヘッダーに「階層を開く」を出す（スクリプトが動かなければ、このパスへのリンクのまま）
+   * 渡すと、広い画面ではツリーナビを左のサイドバーにし（閉じている間は、ヘッダーに「サイドバーを開く」を出す）、
+   * 狭い画面ではヘッダーに「階層を開く」を出す（スクリプトが動かなければ、このパスへのリンクのまま）
    */
   nav?: string;
 }
@@ -49,6 +51,18 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       )
     }
     <style is:inline set:html={themeCss} />
+    {
+      nav && (
+        <script is:inline define:vars={{ key: SIDEBAR_STORAGE_KEY, closed: SIDEBAR_CLOSED }}>
+          // サイドバーを閉じていたら、描く前に閉じた状態にする（読み込みの途中で列が出たり消えたりしない）。開閉は NavDrawer.astro
+          try {
+            if (localStorage.getItem(key) === closed) document.documentElement.setAttribute("data-sidebar-closed", "");
+          } catch {
+            // localStorage を読めないブラウザでは、開いたままにする
+          }
+        </script>
+      )
+    }
     <title>{fullTitle}</title>
     {description && <meta name="description" content={description} />}
     {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
@@ -90,7 +104,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       )
     }
   </head>
-  <body>
+  <body class={nav ? s.hasNav : undefined}>
     <header class={s.header} data-site-header>
       {
         nav && (

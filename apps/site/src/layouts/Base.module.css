@@ -17,7 +17,8 @@
 @media (prefers-reduced-motion: reduce) {
   .header { transition: none; }
 }
-/* ツリーを開くボタン（狭い画面で、ツリーナビのあるページだけ）。広い画面ではツリーが左の列に出ているので出さない */
+/* ツリーを開くボタン（ツリーナビのあるページだけ）。狭い画面ではドロワーを開く。
+   広い画面ではツリーが左の列に出ているので出さず、列を閉じている間だけ「サイドバーを開く」として出す（下の .hasNav） */
 .navToggle {
   display: none; align-items: center; justify-content: center; width: 40px; height: 40px; margin: -8px -4px -8px -8px;
   border: 0; border-radius: 6px; background: none; color: var(--text); cursor: pointer;
@@ -32,3 +33,20 @@
 .nav { display: flex; gap: 14px; margin-left: auto; font-size: 0.9rem; }
 .body { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
 .footer { max-width: 1200px; margin: 0 auto; padding: 24px 16px; color: var(--muted); font-size: 0.85rem; }
+
+/* ツリーナビのあるページ（Base.astro に nav を渡したページ）の、広い画面での並べ方。
+   左にサイドバー、右に本文とフッターを置く。サイドバーは、ヘッダーの下からページの下端まで、ウィンドウの左端に付ける。
+   .body と .withNav（page.module.css）は箱を作らず、中の main と aside をこのグリッドに直接並べる */
+@media (width > 800px) {
+  .hasNav {
+    display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); grid-template-rows: auto 1fr auto;
+    grid-template-areas: "header header" "nav main" "nav footer"; min-height: 100vh;
+  }
+  /* ヘッダーもウィンドウの幅いっぱいにする（サイト名と「サイドバーを開く」が、サイドバーと同じ左端に揃う） */
+  .hasNav > .header { grid-area: header; width: 100%; max-width: none; margin: 0; }
+  .hasNav > .body { display: contents; }
+  .hasNav > .footer { grid-area: footer; justify-self: center; width: 100%; max-width: var(--main-width); margin: 0; padding-inline: clamp(16px, 3vw, 32px); }
+  /* サイドバーを閉じている間（data-sidebar-closed は NavDrawer.astro が付ける）。本文は広げず、同じ幅のまま中央に寄せる */
+  :global(html[data-sidebar-closed]) .hasNav { grid-template-columns: minmax(0, 1fr); grid-template-areas: "header" "main" "footer"; }
+  :global(html[data-sidebar-closed]) .navToggle { display: inline-flex; }
+}
