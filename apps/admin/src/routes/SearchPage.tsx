@@ -2,15 +2,15 @@ import { Search } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import InputAdornment from "@mui/material/InputAdornment";
-import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { parseSearchQuery, searchTerms, splitByTerms } from "@wiki/shared";
-import { useEffect, useState } from "react";
+import { parseSearchQuery, searchTerms, splitByTerms, type SearchResult } from "@wiki/shared";
+import { useEffect, useRef, useState } from "react";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpTip } from "../components/HelpTip";
-import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Mono, Muted, RouterLink, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useComposition, useSearchTerm } from "../lib/searchTerm";
@@ -39,6 +39,43 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
   const search = useQuery({ queryKey: ["search", q], queryFn: () => api.search(q), enabled: q !== "", placeholderData: keepPreviousData });
   const results = q === "" ? undefined : search.data?.results;
 
+  const list = useRef<HTMLDivElement>(null);
+  const columns: DataListColumn<SearchResult>[] = [
+    {
+      key: "title",
+      header: "タイトルと一致した文",
+      // 一致した前後の文も、タイトルの下に出す。狭い画面でも1文字ずつに潰れない幅を取る
+      width: "minmax(220px, 1fr)",
+      sx: { alignItems: "flex-start", overflowWrap: "anywhere" },
+      render: (r) => (
+        <Box sx={{ minWidth: 0 }}>
+          <RouterLink {...pageLink(r.id)} sx={{ fontWeight: 600 }}>
+            <Highlight text={r.title} terms={terms} />
+          </RouterLink>
+          {r.snippet && (
+            <Typography variant="body2" sx={{ mt: 0.5, color: "text.secondary" }}>
+              <Highlight text={r.snippet} terms={terms} />
+            </Typography>
+          )}
+        </Box>
+      ),
+    },
+    {
+      key: "visibility",
+      header: "状態",
+      width: "120px",
+      sx: { alignItems: "flex-start" },
+      render: (r) => <StatusChip status={r.visibility} label={visibilityLabel[r.visibility]} />,
+    },
+    {
+      key: "updatedAt",
+      header: "更新日時",
+      width: "160px",
+      sx: { alignItems: "flex-start", whiteSpace: "nowrap" },
+      render: (r) => <Muted component="span">{formatDateTime(r.updatedAt)}</Muted>,
+    },
+  ];
+
   return (
     <Stack spacing={1.5}>
       <Typography variant="h5" component="h1">
@@ -49,6 +86,14 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
         fullWidth
         value={input}
         onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          // ↓ で最初の結果へ（変換中の ↓ は、変換の候補を選ぶ操作なので奪わない）
+          if (e.key !== "ArrowDown" || e.nativeEvent.isComposing) return;
+          const first = list.current?.querySelector<HTMLElement>("[role='table'] a");
+          if (!first) return;
+          e.preventDefault();
+          first.focus();
+        }}
         placeholder="例：公開 予約"
         slotProps={{
           htmlInput: { "aria-label": "タイトルと本文を検索", "aria-describedby": "search-syntax", ...compositionProps },
@@ -69,44 +114,22 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
       </Muted>
 
       {search.error && <Alert severity="error">{errorMessage(search.error)}</Alert>}
-      {q !== "" && search.isPending && (
-        // 件数の行と、結果の行（タイトル + 前後の文）の形
-        <LoadingRegion label="検索中">
-          <Skeleton variant="text" width={48} sx={{ fontSize: "0.875rem", mb: 1.5 }} />
-          <Section sx={{ p: 0 }}>
-            {["38%", "52%", "30%"].map((width) => (
-              <Box key={width} sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: "divider", "&:last-of-type": { borderBottom: 0 } }}>
-                <Skeleton variant="text" width={width} />
-                <Skeleton variant="text" width="90%" sx={{ fontSize: "0.875rem", mt: 0.5 }} />
-              </Box>
-            ))}
-          </Section>
-        </LoadingRegion>
-      )}
       {results && (
         <Muted role="status">{results.length === 0 ? `「${q}」に一致するページはありません。語を減らすか、別の言い方を試してください。` : `${results.length}件${results.length >= 50 ? "（最初の50件）" : ""}`}</Muted>
       )}
-      {results && results.length > 0 && (
+      {q !== "" && (search.isPending || (results && results.length > 0)) && (
+        // 結果が確かめられるまで（初回の検索中）は、行の形の Skeleton を出す
         <Section sx={{ p: 0 }}>
-          <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0 }}>
-            {results.map((r) => (
-              <Box component="li" key={r.id} sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: "divider", "&:last-of-type": { borderBottom: 0 } }}>
-                <Row>
-                  <RouterLink {...pageLink(r.id)} sx={{ fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>
-                    <Highlight text={r.title} terms={terms} />
-                  </RouterLink>
-                  <StatusChip status={r.visibility} label={visibilityLabel[r.visibility]} />
-                  <Muted component="span" sx={{ ml: "auto" }}>
-                    {formatDateTime(r.updatedAt)}
-                  </Muted>
-                </Row>
-                {r.snippet && (
-                  <Typography variant="body2" sx={{ mt: 0.5, color: "text.secondary", overflowWrap: "anywhere" }}>
-                    <Highlight text={r.snippet} terms={terms} />
-                  </Typography>
-                )}
-              </Box>
-            ))}
+          <Box ref={list}>
+            <DataList
+              label="検索結果"
+              columns={columns}
+              rows={results}
+              rowKey={(r) => r.id}
+              rowLink={(r) => pageLink(r.id)}
+              empty=""
+              skeletonRows={3}
+            />
           </Box>
         </Section>
       )}

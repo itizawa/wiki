@@ -11,7 +11,7 @@ import { LoadingRegion, Muted, skeletonWidth } from "./ui";
 
 /**
  * 一覧（表）の共通コンポーネント。管理画面の一覧はこれで作る。
- * - `rowLink` を渡すと、行のどこを押してもそこへ移る。渡さない一覧は、押せる見た目にしない
+ * - `rowLink` を渡すと、行のどこを押してもそこへ移る。渡さない一覧は、押せる見た目にしない。行によって遷移先が無いときは、その行では `undefined` を返す
  * - `virtualized` で、見えている行とその前後だけを描く。スクロールは画面本体（いちばん近い、縦に送れる親）に乗せる
  * - `hasNextPage` `isFetchingNextPage` `fetchNextPage` を渡すと、末尾が見えたときに続きを読み込む
  * - 最初の読み込み中（行の形の Skeleton）・エラー・0件の表示も受け持つ
@@ -49,7 +49,7 @@ export type DataListProps<T> = {
   rows: T[] | undefined;
   rowKey: (row: T) => string;
   /** 行の遷移先。渡すと行全体が押せる。その行の中にも、同じ遷移先の本物のリンク（`RouterLink`）を置く（キーボードと、新しいタブで開く操作のため） */
-  rowLink?: (row: T) => RowLink;
+  rowLink?: (row: T) => RowLink | undefined;
   /** 最初の読み込みのエラー */
   error?: unknown;
   /** 0件のときに出す文言 */
@@ -271,22 +271,23 @@ function DataRow<T>({
 }: {
   row: T;
   columns: DataListColumn<T>[];
-  rowLink?: (row: T) => RowLink;
+  rowLink?: (row: T) => RowLink | undefined;
   rowIndex?: number;
   dataIndex?: number;
   measure?: (el: HTMLElement | null) => void;
 }) {
   const navigate = useNavigate();
-  const onClick = rowLink
+  const link = rowLink?.(row);
+  const onClick = link
     ? (e: MouseEvent<HTMLElement>) => {
         const hit = e.target instanceof Element ? e.target.closest(INTERACTIVE_SELECTOR) : null;
         const onInteractive = hit !== null && e.currentTarget.contains(hit);
         if (!shouldFollowRowClick(e, onInteractive, window.getSelection()?.toString() ?? "")) return;
-        void navigate(rowLink(row) as never);
+        void navigate(link as never);
       }
     : undefined;
   return (
-    <Box ref={measure} role="row" aria-rowindex={rowIndex} data-index={dataIndex} onClick={onClick} sx={[rowSx, rowLink ? clickableRowSx : null] as SxProps<Theme>}>
+    <Box ref={measure} role="row" aria-rowindex={rowIndex} data-index={dataIndex} onClick={onClick} sx={[rowSx, link ? clickableRowSx : null] as SxProps<Theme>}>
       {columns.map((c) => (
         <Box key={c.key} role="cell" data-sticky={c.stickyLeft !== undefined ? "" : undefined} sx={cellSx(c)}>
           {c.render(row)}
