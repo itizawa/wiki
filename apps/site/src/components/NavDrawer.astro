@@ -92,7 +92,12 @@ const { current, list = true } = Astro.props;
     };
 
     // 広い画面のサイドバーを閉じる・開く。次のページでも同じ状態にする（描く前に当てるのは Base.astro）
+    // 動かす間だけ付ける（読み込み時の状態は動かさない。CSS は Base.module.css と page.module.css）
+    let animating: ReturnType<typeof setTimeout> | undefined;
     const setSidebarClosed = (closed: boolean) => {
+      clearTimeout(animating);
+      root.setAttribute("data-sidebar-animating", "");
+      animating = setTimeout(() => root.removeAttribute("data-sidebar-animating"), 250);
       root.toggleAttribute("data-sidebar-closed", closed);
       try {
         if (closed) localStorage.setItem(SIDEBAR_STORAGE_KEY, SIDEBAR_CLOSED);

@@ -72,7 +72,10 @@
   .hasNav > .header { grid-area: header; width: 100%; max-width: none; margin: 0; }
   .hasNav > .body { display: contents; }
   .hasNav > .footer { grid-area: footer; justify-self: center; width: 100%; max-width: var(--main-width); margin: 0; padding-inline: clamp(16px, 3vw, 32px); }
-  /* サイドバーを閉じている間（data-sidebar-closed は NavDrawer.astro が付ける）。本文は広げず、同じ幅のまま中央に寄せる */
-  :global(html[data-sidebar-closed]) .hasNav { grid-template-columns: minmax(0, 1fr); grid-template-areas: "header" "main" "footer"; }
+  /* サイドバーを閉じている間（data-sidebar-closed は NavDrawer.astro が付ける）。列の幅を 0 にして、本文は広げず、同じ幅のまま中央に寄せる。
+     幅が動くのは、開閉したとき（html[data-sidebar-animating]。NavDrawer.astro が短い間だけ付ける）だけで、読み込み時には動かさない */
+  :global(html[data-sidebar-closed]) .hasNav { grid-template-columns: 0 minmax(0, 1fr); }
+  :global(html[data-sidebar-animating]) .hasNav { transition: grid-template-columns 0.18s ease; }
+  @media (prefers-reduced-motion: reduce) { :global(html[data-sidebar-animating]) .hasNav { transition: none; } }
   :global(html[data-sidebar-closed]) .navToggle { display: inline-flex; }
 }
