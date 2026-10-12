@@ -1,5 +1,5 @@
 ---
-import { resolveTheme } from "@wiki/shared";
+import { resolveTheme, themeCssVars, themePresetFor } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
@@ -31,8 +31,9 @@ const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
 const theme = resolveTheme(site.wiki.theme);
-// wiki ごとのアクセント色。global.css の :root より強い詳細度（html:root）で上書きし、読み込みの順番に頼らない
-const themeCss = `html:root{--accent:${theme.accentLight}}@media (prefers-color-scheme: dark){html:root{--accent:${theme.accentDark}}}`;
+// wiki ごとのテーマの色の変数一式。global.css の :root より強い詳細度（html:root）で上書きし、読み込みの順番に頼らない。
+// ライトのテーマを先に出し、端末の設定がダークのときだけ、あとからダークのテーマで上書きする
+const themeCss = `html:root{${themeCssVars(themePresetFor("light", theme.presetLight).colors)}}@media (prefers-color-scheme: dark){html:root{${themeCssVars(themePresetFor("dark", theme.presetDark).colors)}}}`;
 const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない

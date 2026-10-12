@@ -251,16 +251,15 @@ check(JSON.parse(await read("notes/page-routes.json")).gone.join() === "hhhhhhhh
 const notesFragments = await readdir(join(dist, "notes/pagefind/fragment")).catch(() => []);
 check(notesFragments.length === 1, `the notes wiki's search index holds only its 1 public page (got ${notesFragments.length})`);
 
-// ---- wiki ごとのテーマ：アクセント色・ロゴ・ファビコンは、その wiki の出力にだけ出る。設定の無い wiki は既定のまま
-check(
-  notesIndex.includes("html:root{--accent:#00716b}") && notesIndex.includes("html:root{--accent:#4fd1c5}"),
-  "the notes wiki's pages set its accent colors for light and dark",
-);
+// ---- wiki ごとのテーマ：テーマの色の変数一式・ロゴ・ファビコンは、その wiki の出力に出る。設定の無い wiki は既定のテーマのまま
+const lightVars = "html:root{--bg:#f6f7f9;--paper:#ffffff;--text:#1d2330;--muted:#6b7385;--border:#e2e5eb;--accent:#2257c5;--mark:#fff3a8;--ok:#1f8a4c;--warn:#b7791f;--danger:#c93636}";
+const darkVars = "@media (prefers-color-scheme: dark){html:root{--bg:#14171d;--paper:#1c2028;--text:#e4e7ee;--muted:#949bad;--border:#2d3340;--accent:#7aa5ff;--mark:#5b4f10;--ok:#57c27a;--warn:#e3b341;--danger:#ff7a7a}}";
+check(notesIndex.includes(lightVars + darkVars), "the notes wiki's pages set its theme's colors for light, then for dark under prefers-color-scheme");
 check(notesIndex.includes('<img class=') && notesIndex.includes('src="/images/notes0logo0sample0000000.png" alt="開発ノート" height="32"'), "the logo replaces the site name in the header, with the site name as its alt text");
 check(notesIndex.includes('<link rel="icon" type="image/webp" href="/images/notes0favicon0sample0000.webp">'), "the favicon is the wiki's own image");
-check(wikiIndex.includes("html:root{--accent:#2257c5}") && wikiIndex.includes("html:root{--accent:#7aa5ff}"), "a wiki without a theme keeps the default accent colors");
+check(wikiIndex.includes(lightVars + darkVars), "a wiki without a theme gets the default themes");
 check(wikiIndex.includes('href="/favicon.svg"') && !wikiIndex.includes("<img class="), "a wiki without a theme keeps the default favicon and the text site name");
-const themeLeaks = leaks(await readAll("wiki"), ["#00716b", "#4fd1c5", "notes0logo0sample0000000", "notes0favicon0sample0000"]);
+const themeLeaks = leaks(await readAll("wiki"), ["notes0logo0sample0000000", "notes0favicon0sample0000"]);
 check(themeLeaks.length === 0, `the notes wiki's theme does not appear in the first wiki's output${themeLeaks.length ? ` (${themeLeaks.join(", ")})` : ""}`);
 
 if (failures > 0) {

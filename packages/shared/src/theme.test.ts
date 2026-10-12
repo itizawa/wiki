@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACCENT_SWATCHES,
-  checkAccent,
   contrastRatio,
   DEFAULT_THEME,
-  formatContrast,
   MIN_CONTRAST,
   resolveTheme,
-  SITE_BACKGROUND,
-  suggestDarkAccent,
+  THEME_PRESETS,
+  themeCssVars,
+  themePresetFor,
   updateAppearanceInput,
 } from "./theme";
 
@@ -18,59 +16,55 @@ describe("contrastRatio", () => {
     expect(contrastRatio("#ffffff", "#ffffff")).toBe(1);
     expect(contrastRatio("#777777", "#ffffff")).toBeCloseTo(4.48, 2);
   });
-
-  it("does not show a failing ratio as meeting the bar", () => {
-    expect(formatContrast(4.49)).toBe("4.4 : 1");
-    expect(formatContrast(5.83)).toBe("5.8 : 1");
-  });
 });
 
-describe("checkAccent", () => {
-  it("checks the light color against the light background and the dark color against the dark one", () => {
-    expect(checkAccent(DEFAULT_THEME.accentLight, "light").ok).toBe(true);
-    expect(checkAccent(DEFAULT_THEME.accentDark, "dark").ok).toBe(true);
-    // 既定のダーク用は、ライトの背景の上では薄すぎる
-    expect(checkAccent(DEFAULT_THEME.accentDark, "light").ok).toBe(false);
+describe("THEME_PRESETS", () => {
+  it("has unique keys, and a light and a dark theme for the defaults", () => {
+    const keys = THEME_PRESETS.map((p) => p.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(themePresetFor("light", DEFAULT_THEME.presetLight)).toMatchObject({ key: DEFAULT_THEME.presetLight, mode: "light" });
+    expect(themePresetFor("dark", DEFAULT_THEME.presetDark)).toMatchObject({ key: DEFAULT_THEME.presetDark, mode: "dark" });
   });
 
-  it("rejects colors that are not # followed by 6 hex digits", () => {
-    for (const bad of ["2257c5", "#2257c", "#2257c5f", "#gggggg", "red", "", "#2257c5;}"]) {
-      expect(checkAccent(bad, "light")).toEqual({ valid: false, ratio: null, ok: false });
-    }
-  });
-});
-
-describe("swatches and the dark suggestion", () => {
-  it("offers only swatches that meet the bar in both modes", () => {
-    for (const s of ACCENT_SWATCHES) {
-      expect(contrastRatio(s.light, SITE_BACKGROUND.light), s.label).toBeGreaterThanOrEqual(MIN_CONTRAST);
-      expect(contrastRatio(s.dark, SITE_BACKGROUND.dark), s.label).toBeGreaterThanOrEqual(MIN_CONTRAST);
-    }
-    expect(ACCENT_SWATCHES[0]).toMatchObject({ light: DEFAULT_THEME.accentLight, dark: DEFAULT_THEME.accentDark });
+  it("keeps the colors of the site before themes existed", () => {
+    expect(THEME_PRESETS.find((p) => p.key === "simple-light")!.colors).toMatchObject({ bg: "#f6f7f9", text: "#1d2330", accent: "#2257c5" });
+    expect(THEME_PRESETS.find((p) => p.key === "simple-dark")!.colors).toMatchObject({ bg: "#14171d", text: "#e4e7ee", accent: "#7aa5ff" });
   });
 
-  it("suggests a dark color that meets the bar for any light color", () => {
-    expect(suggestDarkAccent("#2257C5")).toBe(DEFAULT_THEME.accentDark);
-    for (const light of ["#000000", "#123456", "#8a2be2", "#b00020", "#006400", "#ff8800", "#ffffff"]) {
-      expect(checkAccent(suggestDarkAccent(light), "dark").ok, light).toBe(true);
+  it("meets the contrast bar for text and the accent color on the background and on the surfaces", () => {
+    for (const p of THEME_PRESETS) {
+      for (const surface of ["bg", "paper"] as const) {
+        for (const fg of ["text", "accent"] as const) {
+          expect(contrastRatio(p.colors[fg], p.colors[surface]), `${p.key}: ${fg} on ${surface}`).toBeGreaterThanOrEqual(MIN_CONTRAST);
+        }
+      }
     }
+  });
+
+  it("writes every color as a #rrggbb CSS variable", () => {
+    for (const p of THEME_PRESETS) {
+      for (const v of Object.values(p.colors)) expect(v).toMatch(/^#[0-9a-f]{6}$/);
+    }
+    expect(themeCssVars(THEME_PRESETS[0]!.colors)).toMatch(/^--bg:#f6f7f9;--paper:#ffffff;--text:/);
   });
 });
 
 describe("updateAppearanceInput", () => {
-  const theme = { accentLight: "#2257C5", accentDark: "#7aa5ff", logo: null, favicon: null };
+  const theme = { presetLight: "simple-light", presetDark: "simple-dark", logo: null, favicon: null };
 
-  it("accepts readable colors and lower-cases them", () => {
+  it("accepts the keys of defined themes", () => {
     const parsed = updateAppearanceInput.parse({ name: " 開発ノート ", theme });
-    expect(parsed).toEqual({ name: "開発ノート", theme: { ...theme, accentLight: "#2257c5" } });
+    expect(parsed).toEqual({ name: "開発ノート", theme });
   });
 
-  it("rejects colors below the contrast bar, each against its own background", () => {
-    const light = updateAppearanceInput.safeParse({ name: "x", theme: { ...theme, accentLight: "#7aa5ff" } });
-    expect(light.success).toBe(false);
-    expect(light.error?.issues.map((i) => i.path.join("."))).toEqual(["theme.accentLight"]);
-    const dark = updateAppearanceInput.safeParse({ name: "x", theme: { ...theme, accentDark: "#2257c5" } });
-    expect(dark.error?.issues.map((i) => i.path.join("."))).toEqual(["theme.accentDark"]);
+  it("rejects unknown keys, and a theme of the other mode", () => {
+    for (const bad of ["", "unknown", "SIMPLE-LIGHT", "#2257c5"]) {
+      const res = updateAppearanceInput.safeParse({ name: "x", theme: { ...theme, presetLight: bad } });
+      expect(res.error?.issues.map((i) => i.path.join(".")), bad).toEqual(["theme.presetLight"]);
+    }
+    // ダーク用にライトのテーマは選べない（逆も同じ）
+    expect(updateAppearanceInput.safeParse({ name: "x", theme: { ...theme, presetDark: "simple-light" } }).success).toBe(false);
+    expect(updateAppearanceInput.safeParse({ name: "x", theme: { ...theme, presetLight: "simple-dark" } }).success).toBe(false);
   });
 
   it("accepts only uploaded PNG or WebP images for the logo and favicon", () => {
@@ -89,11 +83,13 @@ describe("updateAppearanceInput", () => {
 });
 
 describe("resolveTheme", () => {
-  it("falls back to the defaults for missing or broken values", () => {
+  it("falls back to the default themes for missing or broken values", () => {
     expect(resolveTheme(null)).toEqual(DEFAULT_THEME);
-    expect(resolveTheme({ accentLight: "red;}body{display:none", accentDark: "#ABCDEF", logo: "/etc/passwd", favicon: 1 })).toEqual({
-      ...DEFAULT_THEME,
-      accentDark: "#abcdef",
-    });
+    expect(resolveTheme({ presetLight: "red;}body{display:none", presetDark: "simple-light", logo: "/etc/passwd", favicon: 1 })).toEqual(DEFAULT_THEME);
+  });
+
+  it("reads a theme saved before themes existed (accent colors only) as the default themes, and keeps its images", () => {
+    const logo = "/images/abcdefghijklmnopqrstuvwx.png";
+    expect(resolveTheme({ accentLight: "#00716b", accentDark: "#4fd1c5", logo, favicon: null })).toEqual({ ...DEFAULT_THEME, logo });
   });
 });
