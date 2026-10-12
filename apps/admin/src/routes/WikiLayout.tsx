@@ -23,7 +23,8 @@ import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { useTabIcon } from "../lib/tabIcon";
-import { useAdminThemeFor } from "../lib/adminTheme";
+import { useThemeBackdrop } from "../components/ThemeBackdrop";
+import { useAdminThemeFor, useAdminThemePreset } from "../lib/adminTheme";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { TOUCH } from "../theme";
 import { Center, Loading, mainProps, mainSx, SkipLink, useSession, useWikis } from "./Layout";
@@ -101,6 +102,7 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
 
 function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: string | null; pictureUrl: string | null; onLogout: () => void }) {
   const { wiki } = useWiki();
+  const backdrop = useThemeBackdrop(useAdminThemePreset());
   const [sidebarWidth, setSidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
   const wide = useMediaQuery((t) => t.breakpoints.up("md"));
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -148,7 +150,8 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
   return (
     <Box
       style={{ "--sidebar-width": `${wide ? clampSidebarWidth(sidebarWidth) : SIDEBAR_WIDTH}px` } as CSSProperties}
-      sx={{ position: "relative", display: "flex", flexDirection: wide ? "row" : "column", height: "100vh", bgcolor: "background.paper" }}
+      // 背景画像のあるテーマ（星・方眼・水玉）では、本文側の面を透明にして、後ろの背景画像（ThemeBackdrop）を見せる
+      sx={{ position: "relative", display: "flex", flexDirection: wide ? "row" : "column", height: "100vh", bgcolor: backdrop ? "transparent" : "background.paper" }}
     >
       <SkipLink />
       {wide && open && <SidebarResizer value={clampSidebarWidth(sidebarWidth)} defaultValue={SIDEBAR_WIDTH} onChange={setSidebarWidth} />}

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { ThemeBackdrop } from "./components/ThemeBackdrop";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { ApiError } from "./lib/api";
 import { staleTimeFor } from "./lib/queryStaleTime";
@@ -36,6 +37,7 @@ function App() {
   return (
     <ThemeProvider theme={adminThemeFor(preset)}>
       <CssBaseline />
+      <ThemeBackdrop preset={preset} />
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>

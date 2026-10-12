@@ -110,19 +110,21 @@ const PASTEL_SVG = svgDoc(
   ].join(""),
 );
 
-/** 宇宙：星（360px の敷き詰め）。白と青白で、不透明度は 0.2 まで */
+/** 宇宙：星（360px の敷き詰め）。白・青白・淡い黄色で、不透明度は 0.22 まで（これ以上だと、リンクが 4.5:1 を切る） */
 const SPACE_SVG = (() => {
   const rand = seeded(257);
   const stars: string[] = [];
-  for (let i = 0; i < 34; i++) {
-    const r = (0.6 + rand() * 1.2).toFixed(1);
-    const op = (0.08 + rand() * 0.12).toFixed(2);
-    stars.push(`<circle cx="${Math.round(rand() * 360)}" cy="${Math.round(rand() * 360)}" r="${r}" fill="${rand() < 0.3 ? "#bcd0ff" : "#ffffff"}" fill-opacity="${op}"/>`);
+  for (let i = 0; i < 40; i++) {
+    const r = (1.2 + rand() * 1.8).toFixed(1);
+    const op = (0.17 + rand() * 0.05).toFixed(2);
+    const pick = rand();
+    const fill = pick < 0.5 ? "#ffd84d" : pick < 0.65 ? "#bcd0ff" : "#ffffff";
+    stars.push(`<circle cx="${Math.round(rand() * 360)}" cy="${Math.round(rand() * 360)}" r="${r}" fill="${fill}" fill-opacity="${op}"/>`);
   }
   return svgDoc(360, 360, stars.join(""));
 })();
 
-/** フクロウ：耳・体・目・くちばし・おなかの羽（64px）。不透明度は 0.3 まで */
+/** フクロウ：耳・体・目・くちばし・おなかの羽（64px）。不透明度は 0.22 まで（これ以上だと、リンクが 4.5:1 を切る） */
 const OWL_SVG = svgDoc(
   64,
   64,
@@ -174,7 +176,7 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
     name: "宇宙",
     dark: {
       colors: { bg: "#0b1020", paper: "#131a2e", text: "#e6e9f5", muted: "#9aa3c0", border: "#27304d", accent: "#8fb4ff", mark: "#4d4510", ok: "#57c27a", warn: "#e3b341", danger: "#ff8080" },
-      background: { svg: SPACE_SVG, repeat: "tile", tileSize: 360, ink: "#ffffff", alpha: 0.2 },
+      background: { svg: SPACE_SVG, repeat: "tile", tileSize: 360, ink: "#ffffff", alpha: 0.22 },
     },
   },
   {
