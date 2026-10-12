@@ -383,40 +383,39 @@ const MESSAGES: Record<string, string> = {
   x_unavailable: "X に届きませんでした。時間をおいて、もう一度お試しください。",
 };
 
+/** `details` を使って文言を組み立てる `code` */
+const DETAIL_MESSAGES: Record<string, (err: ApiError) => string> = {
+  invalid_input: (err) => invalidInputMessage(err.details),
+  draft_conflict: (err) => {
+    const editors = (err.details as { editors?: { name: string }[] } | undefined)?.editors ?? [];
+    const who = editors.length > 0 ? `${editors.map((e) => e.name).join("、")} さん` : "ほかの人";
+    return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
+  },
+  image_too_large: (err) => `画像が大きすぎます。${imageLimit(err)}です。`,
+  unsupported_image_type: (err) => `この形式の画像はアップロードできません。${imageLimit(err)}です。`,
+  x_rejected: (err) => {
+    const detail = (err.details as { detail?: unknown } | undefined)?.detail;
+    const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
+    return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
+  },
+  exceeds_parent: (err) => {
+    const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
+    const parent = d?.parentTitle ? `親ページ「${d.parentTitle}」` : "親ページ";
+    const label = d?.parentVisibility ? VISIBILITY_LABEL[d.parentVisibility] : "より狭い公開範囲";
+    return `${parent}が${label}のため、それより広い公開範囲にはできません。先に親ページを公開するか、このページの公開範囲を狭めてください。`;
+  },
+  descendants_wider: (err) => {
+    const count = (err.details as { count?: number } | undefined)?.count;
+    return `配下に、それより広い公開範囲のページが${count ? ` ${count} 件` : ""}あります。配下のページもまとめて変えるか、先に配下のページを狭めてください。`;
+  },
+};
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     const fixed = Object.hasOwn(MESSAGES, err.code) ? MESSAGES[err.code] : undefined;
     if (fixed !== undefined) return fixed;
-    switch (err.code) {
-      case "invalid_input":
-        return invalidInputMessage(err.details);
-      case "draft_conflict": {
-        const editors = (err.details as { editors?: { name: string }[] } | undefined)?.editors ?? [];
-        const who = editors.length > 0 ? `${editors.map((e) => e.name).join("、")} さん` : "ほかの人";
-        return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
-      }
-      case "image_too_large":
-        return `画像が大きすぎます。${imageLimit(err)}です。`;
-      case "unsupported_image_type":
-        return `この形式の画像はアップロードできません。${imageLimit(err)}です。`;
-      case "x_rejected": {
-        const detail = (err.details as { detail?: unknown } | undefined)?.detail;
-        const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
-        return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
-      }
-      case "exceeds_parent": {
-        const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
-        const parent = d?.parentTitle ? `親ページ「${d.parentTitle}」` : "親ページ";
-        const label = d?.parentVisibility ? VISIBILITY_LABEL[d.parentVisibility] : "より狭い公開範囲";
-        return `${parent}が${label}のため、それより広い公開範囲にはできません。先に親ページを公開するか、このページの公開範囲を狭めてください。`;
-      }
-      case "descendants_wider": {
-        const count = (err.details as { count?: number } | undefined)?.count;
-        return `配下に、それより広い公開範囲のページが${count ? ` ${count} 件` : ""}あります。配下のページもまとめて変えるか、先に配下のページを狭めてください。`;
-      }
-      default:
-        return err.message;
-    }
+    const detailed = Object.hasOwn(DETAIL_MESSAGES, err.code) ? DETAIL_MESSAGES[err.code] : undefined;
+    return detailed ? detailed(err) : err.message;
   }
   return err instanceof Error ? err.message : String(err);
 }
