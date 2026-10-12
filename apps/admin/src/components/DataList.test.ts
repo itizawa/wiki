@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INTERACTIVE_SELECTOR, shouldFollowRowClick } from "./DataList";
+import { INTERACTIVE_SELECTOR, gridTemplate, shouldFollowRowClick } from "./DataList";
 
 const click = { defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
 
@@ -29,5 +29,11 @@ describe("一覧の行を押したときに、行の遷移先へ移るか", () =
 
   it("押せる要素として、リンク・ボタン・入力欄・メニューの項目を数える", () => {
     for (const s of ["a", "button", "input", "[role='button']", "[role='menuitem']"]) expect(INTERACTIVE_SELECTOR.split(", ")).toContain(s);
+  });
+});
+
+describe("列の幅", () => {
+  it("幅を決めていない列は、中身より細く縮めない", () => {
+    expect(gridTemplate([{ width: "200px" }, {}, { width: "max-content" }])).toBe("200px minmax(max-content, auto) max-content");
   });
 });

@@ -66,7 +66,8 @@ export function PagesPage() {
     {
       key: "status",
       header: "状態",
-      width: "220px",
+      // 「公開」「AI下書き」のチップが並ぶ幅。広く取らず、狭い画面でタイトルに幅を残す
+      width: "168px",
       render: (p) => (
         <Row>
           <StatusChip status={p.visibility} label={visibilityLabel[p.visibility]} />
