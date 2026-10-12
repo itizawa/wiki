@@ -330,10 +330,22 @@ function InsertMenu({ editor }: { editor: Editor }) {
   };
   const insert = (run: () => void) => () => close(run);
   const [imageOpen, setImageOpen] = useState(false);
+  // 「挿入」の説明。FloatingMenu が隠れるとき、ボタンからは mouseleave が来ず、開いたまま画面の隅に残るので、
+  // 文字を打つ・選択が動くたびに閉じる（開閉は自分で持つ）
+  const [tipOpen, setTipOpen] = useState(false);
+  useEffect(() => {
+    const hide = () => setTipOpen(false);
+    editor.on("update", hide);
+    editor.on("selectionUpdate", hide);
+    return () => {
+      editor.off("update", hide);
+      editor.off("selectionUpdate", hide);
+    };
+  }, [editor]);
 
   return (
     <FloatingMenu editor={editor} options={insertMenuOptions} className="insert-menu" style={{ zIndex: 1 }}>
-      <Tooltip title="挿入">
+      <Tooltip title="挿入" open={tipOpen && !anchor} onOpen={() => setTipOpen(true)} onClose={() => setTipOpen(false)}>
         <IconButton
           size="small"
           aria-label="挿入"

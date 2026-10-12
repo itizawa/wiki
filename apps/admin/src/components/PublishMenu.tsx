@@ -1,17 +1,42 @@
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import Button from "@mui/material/Button";
 import Drawer from "@mui/material/Drawer";
 import Popover from "@mui/material/Popover";
 import type { PageDetail } from "@wiki/shared";
+import type { ScheduledAction } from "@wiki/shared";
 import { useState } from "react";
+import { api } from "../lib/api";
+import { formatShortDateTime } from "../lib/format";
 import { PublishPanel, type EnsureVersion } from "./PublishPanel";
 
 const PANEL_ID = "publish-menu";
 
-/** いまの公開範囲。ヘッダーのボタンと、「…」メニューの「公開・予約」に出す。 */
-export function publishState(page: PageDetail): { label: string; color: "success" | "warning" | "inherit" } {
-  if (page.publishedVersionId === null || page.visibility === "private") return { label: "非公開", color: "inherit" };
-  return page.visibility === "unlisted" ? { label: "限定公開中", color: "warning" } : { label: "公開中", color: "success" };
+/** 一番近い予約（実行を待っているもの）。無ければ null。 */
+export function nextScheduled(actions: readonly ScheduledAction[]): ScheduledAction | null {
+  return actions.filter((a) => a.status === "scheduled").sort((a, b) => a.runAt.localeCompare(b.runAt))[0] ?? null;
+}
+
+/**
+ * いまの公開範囲と、予約。ヘッダーのボタンと、「…」メニューの「公開・予約」に出す。
+ * 予約があるときは、直近の1件の日時を添える。非公開のページは「予約中 10/20 10:00」、公開中のページは「公開中・予約中 10/20 10:00」。
+ */
+export function publishState(page: PageDetail, next: ScheduledAction | null = null): { label: string; color: "success" | "warning" | "info" | "inherit" } {
+  const base: { label: string; color: "success" | "warning" | "inherit" } =
+    page.publishedVersionId === null || page.visibility === "private"
+      ? { label: "非公開", color: "inherit" }
+      : page.visibility === "unlisted"
+        ? { label: "限定公開中", color: "warning" }
+        : { label: "公開中", color: "success" };
+  if (!next) return base;
+  const reserved = `予約中 ${formatShortDateTime(next.runAt)}`;
+  return base.label === "非公開" ? { label: reserved, color: "info" } : { label: `${base.label}・${reserved}`, color: base.color };
+}
+
+/** `publishState` に、このページの予約（公開の枠と同じ取得）を合わせたもの。 */
+export function usePublishState(page: PageDetail) {
+  const schedule = useQuery({ queryKey: ["schedule", page.id], queryFn: () => api.listSchedule({ pageId: page.id }) });
+  return publishState(page, nextScheduled(schedule.data?.actions ?? []));
 }
 
 type PanelProps = { page: PageDetail; dirty: boolean; ensureVersion: EnsureVersion };
@@ -36,7 +61,7 @@ export function PublishSheet({ open, onClose, ...props }: PanelProps & { open: b
  */
 export function PublishMenu(props: PanelProps) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const state = publishState(props.page);
+  const state = usePublishState(props.page);
   const open = anchor !== null;
 
   return (

@@ -2,12 +2,13 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import InputBase from "@mui/material/InputBase";
+import Typography from "@mui/material/Typography";
 import Snackbar from "@mui/material/Snackbar";
 import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useBlocker, useNavigate } from "@tanstack/react-router";
-import type { AppliedEditRequests, PageDetail, PageDraft } from "@wiki/shared";
+import { PAGE_TITLE_MAX, type AppliedEditRequests, type PageDetail, type PageDraft } from "@wiki/shared";
 import { GitPullRequestArrow } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,20 +16,23 @@ import { sameContent, useDraftAutosave } from "../editor/useDraftAutosave";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { caretOnLastLine, enterBodyFromTitle } from "../editor/titleBridge";
 import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
-import { api, ApiError, errorMessage } from "../lib/api";
+import { api, ApiError, currentWikiKey, errorMessage } from "../lib/api";
 import { editRequestsLink, mergeAppliedEdits, useOpenEditRequestCount } from "../lib/editRequests";
 import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
 import { formatDateTime } from "../lib/format";
+import { takeJustCreated } from "../lib/newPage";
 import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
 import { PublishMenu } from "../components/PublishMenu";
+import { SaveStatus, saveState } from "../components/SaveStatus";
 import { StarButton } from "../components/StarButton";
 import { VersionHistory } from "../components/VersionHistory";
-import { Muted, SkeletonEditor } from "../components/ui";
+import { Muted, RouterLink, SkeletonEditor } from "../components/ui";
+import { TITLE_TOO_LONG, titleCounter } from "../lib/titleLimit";
 import { TemplatePicker } from "./TemplatePicker";
 
 type Draft = { title: string; bodyMd: string };
@@ -149,6 +153,11 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       setTitleRequired(true);
       throw new Error(TITLE_REQUIRED);
     }
+    // 上限を超えたタイトルは版にできない（本文の下書きは保存されている）
+    if (draft.title.length > PAGE_TITLE_MAX) {
+      titleInput.current?.focus();
+      throw new Error(TITLE_TOO_LONG);
+    }
     if (!dirty && page.data.head.keep) return page.data;
     return save.mutateAsync(draft);
   };
@@ -223,6 +232,14 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     setNotice("採用された変更を、手元の内容に取り込みました");
   };
 
+  // 作った直後のページだけ、タイトルにフォーカスして全部選ぶ（「無題」をそのまま上書きして打てる）。既存のページを開いたときは動かさない
+  const ready = draft !== null;
+  useEffect(() => {
+    if (!ready || !takeJustCreated(pageId)) return;
+    titleInput.current?.focus();
+    titleInput.current?.select();
+  }, [ready, pageId]);
+
   const openRequests = useOpenEditRequestCount(pageId);
 
   // ゴミ箱に入れる。サイドバーの行の「…」と同じもの（そちらからこのページを入れたときも、下の移動の確認は出さない）
@@ -261,6 +278,18 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
 
   const loadError = page.error ?? savedDraft.error;
   if (loadError) {
+    if (loadError instanceof ApiError && loadError.status === 404) {
+      return (
+        <Alert severity="error" sx={{ m: 3 }}>
+          このページは見つかりません。ゴミ箱に入れられたか、URL が違います。
+          <Box sx={{ mt: 1 }}>
+            <RouterLink to="/w/$wikiKey" params={{ wikiKey: currentWikiKey() }}>
+              すべてのページへ
+            </RouterLink>
+          </Box>
+        </Alert>
+      );
+    }
     return (
       <Alert severity="error" sx={{ m: 3 }}>
         {errorMessage(loadError)}
@@ -269,6 +298,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   }
   if (!page.data || !draft) return <SkeletonEditor />;
   const p = page.data;
+  const counter = titleCounter(draft.title.length);
 
   const pageMenu = (
     <PageMenu
@@ -287,6 +317,16 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       ensureVersion={ensureVersion}
       editor={editor}
       headings={headings}
+    />
+  );
+
+  // 本文の下書きの保存の状態。タイトルの誤りは本文の保存を止めない（タイトルの上限は本文の上の表示で伝える）ので、ここには含めない
+  const saveStatus = (
+    <SaveStatus
+      state={saveState(autosave)}
+      savedAt={autosave.savedAt}
+      // 別の画面で版が進んだ（409）ときは、もう一度試しても保存できない。本文の上の帯の操作で直す
+      onRetry={autosave.conflict ? undefined : () => void autosave.flush()}
     />
   );
 
@@ -320,6 +360,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         {barBelow ? (
           // 狭い画面（md 未満）では、この画面の帯を置かず、上の帯（サイドバーを開くボタンと wiki 名）の右端に出す。パンくずは出さない（タイトルは本文の上で見える）
           <NarrowBarActions>
+            {saveStatus}
             {!narrow && actions}
             {pageMenu}
           </NarrowBarActions>
@@ -339,6 +380,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             }}
           >
             <Breadcrumb pageId={pageId} title={draft.title} />
+            {saveStatus}
             {actions}
             {pageMenu}
           </Box>
@@ -376,10 +418,12 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
                 severity="error"
                 sx={{ mb: 2 }}
                 action={
-                  // 競合時：サーバーの最新版を読み直す（ローカルの編集と下書きは破棄される）
-                  <Button color="inherit" onClick={() => void revertToLatest()}>
-                    最新版を読み込む
-                  </Button>
+                  // 競合のときだけ：サーバーの最新版を読み直す（ローカルの編集と下書きは破棄される）。直せる誤りには、編集を捨てるボタンを出さない
+                  isVersionConflict(saveError) ? (
+                    <Button color="inherit" onClick={() => void revertToLatest()}>
+                      最新版を読み込む
+                    </Button>
+                  ) : undefined
                 }
               >
                 {errorMessage(saveError)}
@@ -429,11 +473,26 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
                 }}
                 placeholder="無題"
                 inputRef={titleInput}
-                inputProps={{ "aria-label": "タイトル" }}
+                inputProps={{
+                  "aria-label": "タイトル",
+                  "aria-invalid": counter?.kind === "over" || undefined,
+                  "aria-describedby": counter ? "title-counter" : undefined,
+                }}
                 // 本文とひと続きに見えるよう、間は本文の見出しと段落の間と同じにする
                 sx={{ p: 0, mb: 1, fontSize: "2.25rem", fontWeight: 700, lineHeight: 1.25 }}
               />
             </Box>
+            {counter && (
+              <Typography
+                id="title-counter"
+                variant="body2"
+                role={counter.kind === "over" ? "alert" : "status"}
+                sx={{ mb: 1, color: counter.kind === "over" ? "error.main" : "text.secondary", fontWeight: counter.kind === "over" ? 600 : 400 }}
+              >
+                {counter.text}
+                {counter.kind === "over" && " 本文は、このまま保存されます。"}
+              </Typography>
+            )}
             <PageIconPicker pageId={pageId} icon={p.icon} anchorEl={titleRow.current} open={iconPickerOpen} onClose={() => setIconPickerOpen(false)} />
             {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
             {draft.bodyMd.trim() === "" && (

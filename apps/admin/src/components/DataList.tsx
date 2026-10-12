@@ -11,7 +11,7 @@ import { LoadingRegion, Muted, skeletonWidth } from "./ui";
 
 /**
  * 一覧（表）の共通コンポーネント。管理画面の一覧はこれで作る。
- * - `rowLink` を渡すと、行のどこを押してもそこへ移る。渡さない一覧は、押せる見た目にしない
+ * - `rowLink` を渡すと、行のどこを押してもそこへ移る。渡さない一覧は、押せる見た目にしない。行によって遷移先が無いときは、その行では `undefined` を返す
  * - `virtualized` で、見えている行とその前後だけを描く。スクロールは画面本体（いちばん近い、縦に送れる親）に乗せる
  * - `hasNextPage` `isFetchingNextPage` `fetchNextPage` を渡すと、末尾が見えたときに続きを読み込む
  * - 最初の読み込み中（行の形の Skeleton）・エラー・0件の表示も受け持つ
@@ -24,7 +24,7 @@ export type DataListColumn<T> = {
   /** 見出し。どの列にも無ければ、見出しの行を出さない */
   header?: ReactNode;
   /**
-   * 列の幅（CSS グリッドの値。例: `"36px"` `"minmax(140px, 1fr)"`）。省くと中身に合わせる。
+   * 列の幅（CSS グリッドの値。例: `"36px"` `"minmax(140px, 1fr)"`）。省くと、中身の幅を下回らない（足りないぶんは表を横に送る）。
    * `virtualized` の一覧では、描いている行が入れ替わるたびに幅が動かないよう、どの列にも決まった幅を渡す。
    */
   width?: string;
@@ -49,7 +49,7 @@ export type DataListProps<T> = {
   rows: T[] | undefined;
   rowKey: (row: T) => string;
   /** 行の遷移先。渡すと行全体が押せる。その行の中にも、同じ遷移先の本物のリンク（`RouterLink`）を置く（キーボードと、新しいタブで開く操作のため） */
-  rowLink?: (row: T) => RowLink;
+  rowLink?: (row: T) => RowLink | undefined;
   /** 最初の読み込みのエラー */
   error?: unknown;
   /** 0件のときに出す文言 */
@@ -116,6 +116,29 @@ const clickableRowSx = {
   "&:hover > [data-sticky]": { backgroundImage: (t: Theme) => `linear-gradient(${t.vars!.palette.action.hover}, ${t.vars!.palette.action.hover})` },
 } as const;
 
+/** 列の幅を、グリッドの値にする。決めていない列は、中身の幅を下回らず、余りがあれば広がる。 */
+export function gridTemplate(columns: { width?: string }[]): string {
+  return columns.map((c) => c.width ?? "minmax(max-content, auto)").join(" ");
+}
+
+/**
+ * 横に送れる箱の、続きがあることを示す影。送れる側の端にだけ出る（`background-attachment` の `local` の覆いが、端まで送ると影を隠す）。
+ * 覆いは箱の地の色（`background.paper`）で塗る。
+ */
+const scrollShadowSx = (t: Theme) => {
+  const paper = t.vars!.palette.background.paper;
+  const shadow = "rgba(0, 0, 0, 0.28)";
+  return {
+    overflowX: "auto",
+    backgroundColor: "background.paper",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "24px 100%, 24px 100%, 12px 100%, 12px 100%",
+    backgroundPosition: "left center, right center, left center, right center",
+    backgroundAttachment: "local, local, scroll, scroll",
+    backgroundImage: `linear-gradient(to right, ${paper}, ${paper}), linear-gradient(to left, ${paper}, ${paper}), linear-gradient(to right, ${shadow}, transparent), linear-gradient(to left, ${shadow}, transparent)`,
+  } as const;
+};
+
 /** セルのスタイル。`extra` は、見出しのセルなどで足すもの（sx の配列は入れ子にできないので、ここで並べる）。 */
 function cellSx<T>(column: DataListColumn<T>, extra?: SxProps<Theme>): SxProps<Theme> {
   return [
@@ -124,7 +147,8 @@ function cellSx<T>(column: DataListColumn<T>, extra?: SxProps<Theme>): SxProps<T
       alignItems: "center",
       justifyContent: column.align === "right" ? "flex-end" : "flex-start",
       textAlign: column.align ?? "left",
-      minWidth: 0,
+      // 幅を決めた列は、中身が長ければ折り返すか省略する。決めていない列は、中身の幅を保つ（縮めて隣に重ねない）
+      minWidth: column.width === undefined ? "auto" : 0,
       px: 2,
       py: 0.75,
       fontSize: "0.875rem",
@@ -187,14 +211,14 @@ export function DataList<T>(props: DataListProps<T>) {
   return (
     <>
       {/* 幅が足りないときは、表だけを横に送る（画面ごと横に動かさない） */}
-      <Box ref={wrapper} sx={{ overflowX: "auto" }}>
+      <Box ref={wrapper} sx={scrollShadowSx}>
         <Box
           role="table"
           aria-label={props.label}
           // 描いていない行があるので、行の数を伝える。続きがあるうちは、全部でいくつかは分からない（-1）
           aria-rowcount={props.virtualized && rows ? (hasNextPage ? -1 : rows.length + (hasHeader ? 1 : 0)) : undefined}
           aria-busy={rows === undefined || isFetchingNextPage}
-          sx={{ display: "grid", gridTemplateColumns: columns.map((c) => c.width ?? "auto").join(" "), minWidth: "100%" }}
+          sx={{ display: "grid", gridTemplateColumns: gridTemplate(columns), minWidth: "100%" }}
         >
           {hasHeader && (
             <Box role="row" aria-rowindex={props.virtualized ? 1 : undefined} sx={rowSx}>
@@ -247,22 +271,23 @@ function DataRow<T>({
 }: {
   row: T;
   columns: DataListColumn<T>[];
-  rowLink?: (row: T) => RowLink;
+  rowLink?: (row: T) => RowLink | undefined;
   rowIndex?: number;
   dataIndex?: number;
   measure?: (el: HTMLElement | null) => void;
 }) {
   const navigate = useNavigate();
-  const onClick = rowLink
+  const link = rowLink?.(row);
+  const onClick = link
     ? (e: MouseEvent<HTMLElement>) => {
         const hit = e.target instanceof Element ? e.target.closest(INTERACTIVE_SELECTOR) : null;
         const onInteractive = hit !== null && e.currentTarget.contains(hit);
         if (!shouldFollowRowClick(e, onInteractive, window.getSelection()?.toString() ?? "")) return;
-        void navigate(rowLink(row) as never);
+        void navigate(link as never);
       }
     : undefined;
   return (
-    <Box ref={measure} role="row" aria-rowindex={rowIndex} data-index={dataIndex} onClick={onClick} sx={[rowSx, rowLink ? clickableRowSx : null] as SxProps<Theme>}>
+    <Box ref={measure} role="row" aria-rowindex={rowIndex} data-index={dataIndex} onClick={onClick} sx={[rowSx, link ? clickableRowSx : null] as SxProps<Theme>}>
       {columns.map((c) => (
         <Box key={c.key} role="cell" data-sticky={c.stickyLeft !== undefined ? "" : undefined} sx={cellSx(c)}>
           {c.render(row)}

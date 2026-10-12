@@ -42,6 +42,8 @@ export function xHttpError(err: unknown): unknown {
       return new HttpError(422, "x_rejected", "x rejected the request", { detail: err.detail });
     case "rate_limited":
       return new HttpError(429, "x_rate_limited", "x rate limit exceeded");
+    case "payment_required":
+      return new HttpError(422, "x_payment_required", "x requires payment; the developer app has no api credits left");
     case "unavailable":
       return new HttpError(502, "x_unavailable", "could not reach x");
   }
@@ -155,6 +157,8 @@ export async function postAsWiki(db: Db, x: XDeps, wikiId: string, text: string,
     const { id } = await x.client.createPost(accessToken, text);
     return { id, url: xPostUrl(username, id), username };
   } catch (err) {
+    // 原因の切り分け用。種類とステータスだけを残す（トークンも本文も残さない）
+    if (err instanceof XApiError) console.warn(`x post failed: ${err.kind}${err.status ? ` (${err.status})` : ""}`);
     throw xHttpError(err);
   }
 }

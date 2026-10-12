@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVerification, type GoogleConnection, type WikiSettings } from "@wiki/shared";
 import { useEffect, useState, type ReactNode } from "react";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
-import { Mono, Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
+import { Mono, Muted, RouterLink, Row, SaveNotice, Section, SkeletonSection } from "../components/ui";
 import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_SECRET, type AnalyticsTarget } from "../lib/analytics";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { screenLink, useWiki } from "../lib/wiki";
@@ -312,22 +312,22 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
         </ReadNumbers>
       </Section>
 
-      {/* 結果は、押したボタンのそばに出す */}
+      {/* 結果は、押したボタンのすぐ上に出す（一般・外観・トップページと同じ場所） */}
       <Stack spacing={1} sx={{ alignItems: "flex-start" }}>
-        <Button type="submit" variant="contained" size="medium" disabled={!changed || save.isPending}>
-          設定を保存する
-        </Button>
-        {!changed && !done && <Muted>値を変えると、保存できます。</Muted>}
-        {done && (
-          <Alert severity="success" onClose={() => setDone(null)} sx={textSx}>
-            {done}
-          </Alert>
-        )}
         {save.error && (
           <Alert severity="error" sx={textSx}>
             {saveErrorMessage(save.error)}
           </Alert>
         )}
+        {done && (
+          <SaveNotice onClose={() => setDone(null)} sx={textSx}>
+            {done}
+          </SaveNotice>
+        )}
+        <Button type="submit" variant="contained" size="medium" disabled={!changed || save.isPending}>
+          設定を保存する
+        </Button>
+        {!changed && !done && <Muted>値を変えると、保存できます。</Muted>}
       </Stack>
     </Stack>
   );
@@ -456,11 +456,14 @@ function ReadNumbers({ target, connection, blocked, children }: { target: Analyt
 }
 
 function ServiceAccountMissing({ state }: { state: GoogleConnection["serviceAccount"] }) {
+  const secret = <Mono sx={{ wordBreak: "break-all" }}>{SERVICE_ACCOUNT_SECRET}</Mono>;
   return (
     <Alert severity="info" sx={textSx}>
-      {state === "invalid"
-        ? `サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）が登録されていますが、鍵として読めません。`
-        : `この管理画面には、サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）がまだ登録されていないため、足すメールアドレスを出せません。`}
+      {state === "invalid" ? (
+        <>サービスアカウントの鍵（{secret}）が登録されていますが、鍵として読めません。</>
+      ) : (
+        <>この管理画面には、サービスアカウントの鍵（{secret}）がまだ登録されていないため、足すメールアドレスを出せません。</>
+      )}
       登録の手順は、
       <RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">
         「アクセス解析」

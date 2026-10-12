@@ -23,7 +23,8 @@ const DEFAULT_ON: OAuthScope[] = ["wiki.read", "wiki.write", "wiki.suggest"];
 export function ConsentPage() {
   const session = useSession();
   const request = new URLSearchParams(location.search).get("request") ?? "";
-  const info = useQuery({ queryKey: ["oauth-request", request], queryFn: () => api.oauthRequest(request), retry: false });
+  // request が無いときは、API に問い合わせない
+  const info = useQuery({ queryKey: ["oauth-request", request], queryFn: () => api.oauthRequest(request), retry: false, enabled: request !== "" });
   const [checked, setChecked] = useState<OAuthScope[] | null>(null);
   const scopes = checked ?? info.data?.scopes.filter((s) => DEFAULT_ON.includes(s)) ?? [];
 
@@ -33,6 +34,15 @@ export function ConsentPage() {
     onSuccess: ({ redirectTo }) => location.assign(redirectTo),
   });
 
+  if (request === "") {
+    return (
+      <Center>
+        <Alert severity="error" sx={{ maxWidth: 480 }}>
+          接続の依頼が見つかりません。接続するアプリから、もう一度始めてください。
+        </Alert>
+      </Center>
+    );
+  }
   if (info.isPending) {
     // あとに出るのは中央のカードなので、同じ位置と幅のカードの形を出す
     return (

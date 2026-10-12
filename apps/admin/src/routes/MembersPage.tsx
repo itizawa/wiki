@@ -5,11 +5,6 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +12,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { INVITE_TTL_DAYS, WIKI_ROLE_LABELS, WIKI_ROLES, type Invite, type InviteStatus, type Member, type WikiRole } from "@wiki/shared";
 import { useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
 import { Tooltip } from "../components/Tooltip";
 import { Muted, Row, Section } from "../components/ui";
@@ -31,6 +27,10 @@ const STATUS_LABELS: Record<InviteStatus, { label: string; color: "success" | "d
   expired: { label: "期限切れ", color: "warning" },
   revoked: { label: "無効", color: "default" },
 };
+
+/** 一覧の行の高さ（読み込み中の行も、この高さで出す） */
+const MEMBER_ROW_HEIGHT = 64;
+const INVITE_ROW_HEIGHT = 49;
 
 /** メンバー：一覧（メンバーなら誰でも見られる）、ロールの変更・削除と招待リンク（管理者だけ）、自分で抜ける。 */
 export function MembersPage() {
@@ -111,89 +111,95 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
     if (ok) remove.mutate(member);
   };
 
+  const columns: DataListColumn<Member>[] = [
+    {
+      key: "name",
+      header: "名前 / メールアドレス",
+      width: "minmax(200px, 1fr)",
+      render: (m) => (
+        <Box>
+          <Box sx={{ fontWeight: 600 }}>
+            {m.name ?? m.email}
+            {m.userId === session.id && <Chip size="small" label="自分" sx={{ ml: 1 }} />}
+            {m.isOwner && <Chip size="small" label="オーナー" variant="outlined" sx={{ ml: 1 }} />}
+          </Box>
+          {m.name && <Muted>{m.email}</Muted>}
+        </Box>
+      ),
+    },
+    {
+      key: "role",
+      header: "ロール",
+      render: (m) => {
+        // メンバーの管理者が0人になる操作は止める（オーナーは数えない）
+        const lastAdmin = m.role === "admin" && admins <= 1;
+        if (!isAdmin) return WIKI_ROLE_LABELS[m.role];
+        return (
+          <Box>
+            <TextField
+              select
+              size="small"
+              value={m.role}
+              disabled={lastAdmin || changeRole.isPending}
+              onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as WikiRole })}
+              slotProps={{ htmlInput: { "aria-label": `${m.name ?? m.email} のロール` } }}
+              sx={{ minWidth: 120 }}
+            >
+              {WIKI_ROLES.map((r) => (
+                <MenuItem key={r} value={r}>
+                  {WIKI_ROLE_LABELS[r]}
+                </MenuItem>
+              ))}
+            </TextField>
+            {lastAdmin && <Muted sx={{ mt: 0.5, whiteSpace: "nowrap" }}>最後の管理者なので、変えられません</Muted>}
+          </Box>
+        );
+      },
+    },
+    { key: "createdAt", header: "参加した日", sx: { whiteSpace: "nowrap" }, render: (m) => formatDateTime(m.createdAt) },
+    {
+      key: "actions",
+      header: "操作",
+      width: "max-content",
+      render: (m) => {
+        const self = m.userId === session.id;
+        const lastAdmin = m.role === "admin" && admins <= 1;
+        if (!self && !isAdmin) return null;
+        return (
+          <Tooltip title={lastAdmin ? "最後の管理者です。先にほかのメンバーを管理者にしてください" : ""}>
+            {/* 無効のボタンにもツールチップを出すため、span で包む */}
+            <span>
+              <Button variant="outlined" color="error" disabled={lastAdmin || remove.isPending} onClick={() => confirmRemove(m)} sx={{ whiteSpace: "nowrap" }}>
+                {self ? "抜ける" : "外す"}
+              </Button>
+            </span>
+          </Tooltip>
+        );
+      },
+    },
+  ];
+
   return (
     <Section>
       <Typography variant="h6" component="h3" gutterBottom>
         メンバーの一覧
       </Typography>
-      {members.isPending && <Muted>読み込み中…</Muted>}
-      {members.error && <Alert severity="error">{errorMessage(members.error)}</Alert>}
+      {/* 読み込みのエラーは、DataList が出す */}
       {error && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {errorMessage(error)}
         </Alert>
       )}
-      {members.data && list.length === 0 && <Muted>メンバーはいません。オーナーだけが入れます。</Muted>}
-      {list.length > 0 && (
-        <Box sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>名前 / メールアドレス</TableCell>
-                <TableCell>ロール</TableCell>
-                <TableCell>参加した日</TableCell>
-                <TableCell>操作</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {list.map((m) => {
-                const self = m.userId === session.id;
-                // メンバーの管理者が0人になる操作は止める（オーナーは数えない）
-                const lastAdmin = m.role === "admin" && admins <= 1;
-                return (
-                  <TableRow key={m.userId}>
-                    <TableCell>
-                      <Box sx={{ fontWeight: 600 }}>
-                        {m.name ?? m.email}
-                        {self && <Chip size="small" label="自分" sx={{ ml: 1 }} />}
-                        {m.isOwner && <Chip size="small" label="オーナー" variant="outlined" sx={{ ml: 1 }} />}
-                      </Box>
-                      {m.name && <Muted>{m.email}</Muted>}
-                    </TableCell>
-                    <TableCell>
-                      {isAdmin ? (
-                        <>
-                          <TextField
-                            select
-                            size="small"
-                            value={m.role}
-                            disabled={lastAdmin || changeRole.isPending}
-                            onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as WikiRole })}
-                            slotProps={{ htmlInput: { "aria-label": `${m.name ?? m.email} のロール` } }}
-                            sx={{ minWidth: 120 }}
-                          >
-                            {WIKI_ROLES.map((r) => (
-                              <MenuItem key={r} value={r}>
-                                {WIKI_ROLE_LABELS[r]}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                          {lastAdmin && <Muted sx={{ mt: 0.5 }}>最後の管理者なので、変えられません</Muted>}
-                        </>
-                      ) : (
-                        WIKI_ROLE_LABELS[m.role]
-                      )}
-                    </TableCell>
-                    <TableCell>{formatDateTime(m.createdAt)}</TableCell>
-                    <TableCell>
-                      {(self || isAdmin) && (
-                        <Tooltip title={lastAdmin ? "最後の管理者です。先にほかのメンバーを管理者にしてください" : ""}>
-                          {/* 無効のボタンにもツールチップを出すため、span で包む */}
-                          <span>
-                            <Button variant="outlined" color="error" disabled={lastAdmin || remove.isPending} onClick={() => confirmRemove(m)}>
-                              {self ? "抜ける" : "外す"}
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
+      <DataList
+        label="メンバーの一覧"
+        columns={columns}
+        rows={members.data ? list : undefined}
+        rowKey={(m) => m.userId}
+        error={members.error}
+        empty="メンバーはいません。オーナーだけが入れます。"
+        rowHeight={MEMBER_ROW_HEIGHT}
+        skeletonRows={3}
+      />
     </Section>
   );
 }
@@ -234,6 +240,33 @@ function Invites() {
     if (ok) revoke.mutate(invite);
   };
 
+  const inviteColumns: DataListColumn<Invite>[] = [
+    { key: "role", header: "ロール", render: (i) => WIKI_ROLE_LABELS[i.role] },
+    { key: "createdBy", header: "発行した人", width: "minmax(160px, 1fr)", render: (i) => i.createdBy.name ?? i.createdBy.email },
+    { key: "expiresAt", header: "期限", sx: { whiteSpace: "nowrap" }, render: (i) => formatDateTime(i.expiresAt) },
+    {
+      key: "status",
+      header: "状態",
+      render: (i) => (
+        <Box>
+          <Chip size="small" label={STATUS_LABELS[i.status].label} color={STATUS_LABELS[i.status].color} />
+          {i.usedBy && <Muted component="span">　{i.usedBy.name ?? i.usedBy.email} が参加</Muted>}
+        </Box>
+      ),
+    },
+    {
+      key: "actions",
+      header: "操作",
+      width: "max-content",
+      render: (i) =>
+        i.status === "active" && (
+          <Button variant="text" color="error" disabled={revoke.isPending} onClick={() => confirmRevoke(i)} sx={{ whiteSpace: "nowrap" }}>
+            無効にする
+          </Button>
+        ),
+    },
+  ];
+
   return (
     <Section>
       <HelpHeading variant="h6" component="h3" help="メールは送りません。発行したリンクを、参加する人に自分で伝えてください。">
@@ -265,7 +298,16 @@ function Invites() {
           <Box sx={{ mb: 1 }}>
             {WIKI_ROLE_LABELS[issued.role]}として参加するリンクを発行しました。<strong>このリンクは今だけ表示します。</strong>コピーして、参加する人に伝えてください。
           </Box>
-          <Row sx={{ flexWrap: "nowrap" }}>
+          {/* sm 未満は、URL を折り返して全部見せ、「コピー」をその下に置く。sm 以上は、欄とボタンを横に並べる */}
+          <Box sx={{ display: { xs: "block", sm: "none" } }}>
+            <Typography component="div" sx={{ fontFamily: "monospace", fontSize: 13, overflowWrap: "anywhere", mb: 1 }}>
+              {issued.url}
+            </Typography>
+            <Button variant="outlined" startIcon={<Copy size={16} />} onClick={copy}>
+              {copied ? "コピーしました" : "コピー"}
+            </Button>
+          </Box>
+          <Row sx={{ flexWrap: "nowrap", display: { xs: "none", sm: "flex" } }}>
             <TextField
               size="small"
               value={issued.url}
@@ -282,45 +324,17 @@ function Invites() {
       <Typography variant="subtitle2" component="h4" sx={{ mt: 2.5, mb: 0.5 }}>
         発行したリンク
       </Typography>
-      {invites.isPending && <Muted>読み込み中…</Muted>}
-      {invites.error && <Alert severity="error">{errorMessage(invites.error)}</Alert>}
       {revoke.error && <Alert severity="error">{errorMessage(revoke.error)}</Alert>}
-      {invites.data && invites.data.invites.length === 0 && <Muted>まだ発行していません。</Muted>}
-      {invites.data && invites.data.invites.length > 0 && (
-        <Box sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>ロール</TableCell>
-                <TableCell>発行した人</TableCell>
-                <TableCell>期限</TableCell>
-                <TableCell>状態</TableCell>
-                <TableCell>操作</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {invites.data.invites.map((i) => (
-                <TableRow key={i.id}>
-                  <TableCell>{WIKI_ROLE_LABELS[i.role]}</TableCell>
-                  <TableCell>{i.createdBy.name ?? i.createdBy.email}</TableCell>
-                  <TableCell>{formatDateTime(i.expiresAt)}</TableCell>
-                  <TableCell>
-                    <Chip size="small" label={STATUS_LABELS[i.status].label} color={STATUS_LABELS[i.status].color} />
-                    {i.usedBy && <Muted component="span">　{i.usedBy.name ?? i.usedBy.email} が参加</Muted>}
-                  </TableCell>
-                  <TableCell>
-                    {i.status === "active" && (
-                      <Button variant="text" color="error" disabled={revoke.isPending} onClick={() => confirmRevoke(i)}>
-                        無効にする
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
+      <DataList
+        label="発行したリンク"
+        columns={inviteColumns}
+        rows={invites.data?.invites}
+        rowKey={(i) => i.id}
+        error={invites.error}
+        empty="まだ発行していません。"
+        rowHeight={INVITE_ROW_HEIGHT}
+        skeletonRows={2}
+      />
     </Section>
   );
 }
