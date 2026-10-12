@@ -218,6 +218,13 @@
       "when": 1791763821020,
       "tag": "0030_wiki_sns_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791772442523,
+      "tag": "0031_drop_page_views",
+      "breakpoints": true
     }
   ]
 }

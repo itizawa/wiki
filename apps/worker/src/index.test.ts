@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { handleScheduled } from "./index";
 import { prune, PRUNE_CRON } from "./prune";
 import type { Env } from "./tick";
-import { VIEWS_CRON } from "./views";
 
 const env: Env = { API_ORIGIN: "https://api.test", CRON_TOKEN: "t", SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy" };
 const PRUNE_URL = "https://api.test/internal/versions/prune";
@@ -102,9 +101,9 @@ describe("scheduled", () => {
     expect(asked).toEqual([true, false]);
   });
 
-  it("is registered in wrangler.toml with the same cron string, next to the 5-minute and the hourly ones", () => {
+  it("is registered in wrangler.toml with the same cron string, next to the 5-minute one", () => {
     const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
     const crons = /^crons = \[(.*)\]$/m.exec(toml)![1]!.split(",").map((s) => s.trim().replace(/"/g, ""));
-    expect(crons).toEqual(["*/5 * * * *", PRUNE_CRON, VIEWS_CRON]);
+    expect(crons).toEqual(["*/5 * * * *", PRUNE_CRON]);
   });
 });

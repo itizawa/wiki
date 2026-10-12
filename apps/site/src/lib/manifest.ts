@@ -1,7 +1,8 @@
 import { wikiOrigin, type ManifestPage, type ManifestTree, type PublicManifest, type WikiManifest } from "@wiki/shared";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { initialNavItems, type NavItem } from "./nav";
+import { initialNavItems, type NavData, type NavItem } from "./nav";
 import { ancestors, navItems } from "./tree";
 
 let cached: Promise<PublicManifest> | undefined;
@@ -63,7 +64,7 @@ async function loadSiteData(wikiKey: string): Promise<SiteData> {
 
 const fullNavByTree = new WeakMap<ManifestTree, NavItem[]>();
 
-/** ツリー全体のナビ。`/nav.json` と、トップに出す。公開ページだけが入る（マニフェストのツリーがそうなっている）。 */
+/** ツリー全体のナビ。`/nav.{hash}.json`（navFile）と、トップに出す。公開ページだけが入る（マニフェストのツリーがそうなっている）。 */
 export async function fullNav(wikiKey: string, tree: ManifestTree): Promise<NavItem[]> {
   let items = fullNavByTree.get(tree);
   if (!items) {
@@ -74,9 +75,38 @@ export async function fullNav(wikiKey: string, tree: ManifestTree): Promise<NavI
   return items;
 }
 
+export type NavFile = {
+  /** 中身の SHA-256 の先頭16文字。中身が変われば名前も変わる */
+  hash: string;
+  /** 置き場所（`/nav.{hash}.json`）。Worker が Host から wiki を決め、その wiki のディレクトリのものを返す */
+  path: string;
+  json: string;
+};
+
+const navFileByWiki = new Map<string, Promise<NavFile>>();
+
+/**
+ * ツリー全体（NavData）のファイル。wiki ごとに1つで、ツリーの key ごとにツリー全体を持つ。
+ * 名前に中身のハッシュを入れ、ブラウザに長くキャッシュさせる（記事を開くたびに確かめに行かない）。記事のページの HTML が、この名前を参照する。
+ */
+export function navFile(wikiKey: string): Promise<NavFile> {
+  let file = navFileByWiki.get(wikiKey);
+  if (!file) navFileByWiki.set(wikiKey, (file = loadNavFile(wikiKey)));
+  return file;
+}
+
+async function loadNavFile(wikiKey: string): Promise<NavFile> {
+  const { wiki } = await siteData(wikiKey);
+  const data: NavData = { trees: {} };
+  for (const tree of wiki.trees) data.trees[tree.key] = await fullNav(wiki.key, tree);
+  const json = JSON.stringify(data);
+  const hash = createHash("sha256").update(json).digest("hex").slice(0, 16);
+  return { hash, path: `/nav.${hash}.json`, json };
+}
+
 /**
  * 記事のページの HTML に入れるナビ。最初の表示に出る分だけ（最上位とその子、現在地までの祖先とその兄弟、現在地の子）。
- * 残りは、ツリーナビが `/nav.json` から読む。current は、そのツリーに無いページなら渡さない。
+ * 残りは、ツリーナビが `/nav.{hash}.json`（navFile）から読む。current は、そのツリーに無いページなら渡さない。
  */
 export async function pageNav(wikiKey: string, tree: ManifestTree, current?: string): Promise<NavItem[]> {
   const openIds = new Set(current ? ancestors(tree, current).map((n) => n.nodeId) : []);

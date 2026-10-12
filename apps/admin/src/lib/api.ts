@@ -21,7 +21,6 @@ import type {
   PageDetail,
   PageDraft,
   SavePageDraftResult,
-  PageViews,
   PageTemplate,
   PageSummary,
   PageVersion,
@@ -47,7 +46,6 @@ import type {
   SnsStatus,
   WikiSettings,
   WikiSummary,
-  WikiViews,
 } from "@wiki/shared";
 import { IMAGE_LIMIT_LABEL } from "@wiki/shared";
 
@@ -282,11 +280,6 @@ export const api = {
   analyticsConnection: () => request<GoogleConnection>("GET", w("/analytics/connection")),
   /** 「接続を確かめる」：保存してある設定で、Google へ問い合わせてみる */
   checkAnalytics: (target: "ga" | "search_console") => request<ConnectionCheck>("POST", w("/analytics/check"), { target }),
-
-  /** 閲覧数（ページごとの合計・直近30日） */
-  listViews: () => request<WikiViews>("GET", w("/views")),
-  /** 1ページの閲覧数（直近30日の日別を含む） */
-  pageViews: (id: string) => request<PageViews>("GET", w(`/views/pages/${id}`)),
 
   listStars: () => request<{ pageIds: string[] }>("GET", w("/stars")),
   addStar: (pageId: string) => request<{ pageIds: string[] }>("PUT", w(`/stars/${pageId}`)),

@@ -423,7 +423,7 @@ export async function restorePage(
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
  * 版・下書き・リンク・スター・予約・編集リクエストと、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
- * 構造の履歴（過去のツリー）がこの行を指しているため。閲覧数の行も残す（画面には出ない）。監査ログに残す。トランザクション内で呼ぶ。
+ * 構造の履歴（過去のツリー）がこの行を指しているため。監査ログに残す。トランザクション内で呼ぶ。
  */
 export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
   const { root, members } = await lockTrashGroup(tx, wikiId, id);

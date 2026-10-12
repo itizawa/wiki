@@ -9,16 +9,13 @@ export type NavItem = {
   children: NavItem[];
   /**
    * 子があるが、ここには入れていない（ページの HTML に入れる、最初の表示の分だけのツリー）。
-   * 子は、ツリー全体（`/nav.json`）を読み込むと出せる
+   * 子は、ツリー全体（`/nav.{hash}.json`）を読み込むと出せる
    */
   more?: true;
 };
 
-/** `/nav.json` の中身。wiki ごとに1つで、ツリーの key ごとにツリー全体を持つ。公開ページだけが入る。 */
+/** `/nav.{hash}.json` の中身。wiki ごとに1つで、ツリーの key ごとにツリー全体を持つ。公開ページだけが入る。 */
 export type NavData = { trees: Record<string, NavItem[]> };
-
-/** ツリー全体（`NavData`）を置く場所。Worker が Host から wiki を決め、その wiki のディレクトリのものを返す */
-export const NAV_DATA_PATH = "/nav.json";
 
 /**
  * 広い画面で、左の列（サイドバー）を閉じたことを覚える localStorage のキー。閉じている間だけ `SIDEBAR_CLOSED` が入る。

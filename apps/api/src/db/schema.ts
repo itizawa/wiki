@@ -366,30 +366,6 @@ export const pageStars = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.pageId] })],
 );
 
-/**
- * 公開サイトの閲覧数（日ごとの合計）。公開（public）の記事だけを数え、1件ずつの記録は持たない。
- * 同じブラウザが同じ記事を同じ日（JST）に何度開いても1回（判定はブラウザ側）。Bot を除いた目安の数字。
- * ページを削除しても行は残す（画面には出さない）。
- */
-export const pageViewsDaily = pgTable(
-  "page_views_daily",
-  {
-    wikiId: wikiId(),
-    pageId: text("page_id")
-      .notNull()
-      .references(() => pages.id),
-    /** JST の日付 */
-    day: date("day", { mode: "string" }).notNull(),
-    count: integer("count").notNull().default(0),
-  },
-  (t) => [
-    primaryKey({ columns: [t.pageId, t.day] }),
-    index("page_views_daily_wiki_day_idx").on(t.wikiId, t.day),
-    // 計測を始めた日（wiki をまたいだ、いちばん古い日）を、表全体を読まずに取る
-    index("page_views_daily_day_idx").on(t.day),
-  ],
-);
-
 // ---------------------------------------------------------------------------
 // 4.2 ツリーと構造の履歴
 // 運用するのは、wiki ごとに primary ツリー1本と main だけ。複数ツリー・ブランチ前提のテーブル形は変えずに残している。

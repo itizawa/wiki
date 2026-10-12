@@ -2,6 +2,7 @@
 // - 限定公開ページが検索・サイトマップ・RSS・ナビに漏れていないこと
 // - ある wiki の内容（非公開・限定公開を含む）が、別の wiki の出力に混ざっていないこと
 // - Google のタグ（Analytics・サーチコンソール）が、設定した wiki の公開ページにだけ入り、限定公開のページに入っていないこと
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -53,36 +54,49 @@ check(
 
 const unlisted = await read(`wiki/u/${key}/index.html`);
 
-// ---- ツリーナビ：記事の HTML には最初の表示の分だけを入れ、ツリー全体は wiki ごとの nav.json に出す
+// ---- ツリーナビ：記事の HTML には最初の表示の分だけを入れ、ツリー全体は wiki ごとの nav.{hash}.json に出す
 /** ページに埋め込んだツリーナビのアイランドの props（`items` がツリー、`src` がツリー全体の URL） */
 const treeNavProps = (html) =>
   [...html.matchAll(/<astro-island[^>]*\sprops="([^"]*)"/g)].map((m) => m[1].replaceAll("&quot;", '"')).filter((p) => p.includes('"items"'));
 const navIds = (items) => items.flatMap((i) => [i.nodeId, ...navIds(i.children)]);
-const navText = await read("wiki/nav.json");
+/** wiki のディレクトリにある、ツリー全体のファイル（名前に中身のハッシュが入る）。1つだけのはず */
+const navFiles = async (wiki) => (await readdir(join(dist, wiki))).filter((name) => /^nav\.[0-9a-f]{16}\.json$/.test(name));
+const [navName, ...extraNav] = await navFiles("wiki");
+const [notesNavName] = await navFiles("notes");
+check(navName !== undefined && extraNav.length === 0 && notesNavName !== undefined, "each wiki has exactly one nav.{hash}.json");
+check(!(await exists("wiki/nav.json")), "the old unhashed nav.json is not emitted");
+const navText = await read(`wiki/${navName}`);
 const navData = JSON.parse(navText);
 check(
+  navName === `nav.${createHash("sha256").update(navText).digest("hex").slice(0, 16)}.json`,
+  "the name of nav.{hash}.json is the hash of its content (so a change in the tree changes the name)",
+);
+check(navName !== notesNavName, "wikis with different trees get different nav file names");
+check(
   Object.keys(navData.trees).sort().join() === "by-theme,main" && navIds(navData.trees.main).join() === "aaaaaaaaa1,aaaaaaaaa2" && navIds(navData.trees["by-theme"]).join() === "aaaaaaaaa2",
-  "nav.json holds every tree of the wiki, with the public pages only",
+  "the nav file holds every tree of the wiki, with the public pages only",
 );
 check(
   navData.trees.main[0].title === "はじめに" && navData.trees.main[0].icon === "👋" && navData.trees.main[0].children[0].href === "/t/main/aaaaaaaaa2",
-  "nav.json has the title, icon and link of each node",
+  "the nav file has the title, icon and link of each node",
 );
 const navLeaks = [key, "限定公開のメモ", "ひみつのあいことば", "zzzzzzzzz9", "ggggggggg1"].filter((w) => navText.includes(w));
-check(navLeaks.length === 0, `nav.json has nothing of unlisted, private or deleted pages${navLeaks.length ? ` (${navLeaks.join(", ")})` : ""}`);
-check(navIds(JSON.parse(await read("notes/nav.json")).trees.main).join() === "bbbbbbbbb1", "each wiki has its own nav.json (the other wiki's pages are checked below, with the rest of the output)");
+check(navLeaks.length === 0, `the nav file has nothing of unlisted, private or deleted pages${navLeaks.length ? ` (${navLeaks.join(", ")})` : ""}`);
+check(navIds(JSON.parse(await read(`notes/${notesNavName}`)).trees.main).join() === "bbbbbbbbb1", "each wiki has its own nav file (the other wiki's pages are checked below, with the rest of the output)");
 const articleNav = treeNavProps(noIconPage);
 check(
-  articleNav.length === 1 && articleNav[0].includes('"src":[0,"/nav.json"]') && articleNav[0].includes('"treeKey":[0,"main"]'),
-  "an article page's tree nav loads the whole tree from /nav.json",
+  articleNav.length === 1 && articleNav[0].includes(`"src":[0,"/${navName}"]`) && articleNav[0].includes('"treeKey":[0,"main"]'),
+  "an article page's tree nav loads the whole tree from the hashed nav file",
 );
 const tNav = treeNavProps(tPage);
-check(tNav.length === 1 && tNav[0].includes('"src":[0,"/nav.json"]') && tNav[0].includes('"treeKey":[0,"by-theme"]'), "a page viewed through a tree loads that tree from /nav.json");
+check(tNav.length === 1 && tNav[0].includes(`"src":[0,"/${navName}"]`) && tNav[0].includes('"treeKey":[0,"by-theme"]'), "a page viewed through a tree loads that tree from the hashed nav file");
+const notesNav = treeNavProps(await read("notes/p/bbbbbbbbb1.html"));
+check(notesNav.length === 1 && notesNav[0].includes(`"src":[0,"/${notesNavName}"]`), "another wiki's pages load that wiki's own nav file");
 check(
   /<a href="\/t\/main\/aaaaaaaaa2" aria-current="page">設計メモ<\/a>/.test(noIconPage) && /<a href="\/t\/main\/aaaaaaaaa1">/.test(noIconPage),
   "an article's HTML has the page's place in the tree (its parent and itself) before any script runs",
 );
-check(!unlisted.includes("nav.json") && !unlisted.includes('"items"'), "an unlisted page has no tree nav and does not load nav.json");
+check(!/nav\.[0-9a-f]{16}\.json/.test(unlisted) && !unlisted.includes('"items"'), "an unlisted page has no tree nav and does not load the nav file");
 
 check(unlisted.includes('content="noindex, nofollow"'), "unlisted page has noindex");
 check(!unlisted.includes("/feed.xml"), "unlisted page does not advertise RSS");
@@ -136,20 +150,18 @@ check(notesPage.includes("広告を含みます") && notesPage.includes('rel="sp
 check(notesPage.includes("このページにリンクしているページ") && !intro.includes("このページにリンクしているページ"), "backlinks are listed only on pages that are linked from another public page");
 check(!unlisted.includes("このページにリンクしているページ"), "unlisted page shows no backlinks");
 
-// 閲覧数：公開の記事（/p/ と /t/）だけが数え、限定公開のページからは何も送らない
-const counterScript = async (html) => {
-  // スクリプトは小さければページに埋め込まれ、大きければ _astro/ のファイルになる。どちらでも送り先（/_v）を探す
+// 閲覧数は数えない（Worker の呼び出しを増やさない）：どのページからも /_v へ送らない
+const sendsView = async (html) => {
+  // スクリプトは小さければページに埋め込まれ、大きければ _astro/ のファイルになる。どちらも見る
   const srcs = [...html.matchAll(/<script[^>]*src="(\/_astro\/[^"]+)"/g)].map((m) => m[1]);
   const external = await Promise.all(srcs.map((src) => read(src.slice(1))));
-  // 圧縮のしかたで引用符が変わる（Astro 7 は `/_v` と出す）ので、引用符の種類は問わない
-  return [html, ...external].some((t) => /["'`]\/_v["'`]/.test(t));
+  return [html, ...external].some((t) => /["'`]\/_v["'`]/.test(t) || t.includes("data-count-view"));
 };
 // レイアウトのスクリプトは <body> の中に出る（</html> のあとに書くと、Astro 7 はそのまま </html> のあとへ出す）
 check(/<\/body>\s*<\/html>\s*$/.test(intro), "nothing is emitted after </body></html>");
-check(intro.includes('data-count-view="aaaaaaaaa1"') && (await counterScript(intro)), "a public page counts its views with its own id");
-check(tPage.includes('data-count-view="aaaaaaaaa2"') && (await counterScript(tPage)), "a page viewed through the tree counts as the same page");
-check(!unlisted.includes("data-count-view") && !(await counterScript(unlisted)), "an unlisted page does not count views or send anything");
-check(!(await counterScript(await read("wiki/index.html"))), "list pages (the top) do not count views");
+for (const [path, html] of Object.entries({ "wiki/p/aaaaaaaaa1.html": intro, "wiki/t/by-theme/aaaaaaaaa2.html": tPage, "wiki/index.html": await read("wiki/index.html") })) {
+  check(!(await sendsView(html)), `${path} does not count views`);
+}
 check(!(await read("notes/p/bbbbbbbbb1.html")).includes("このページにリンクしているページ"), "a link from another wiki is not a backlink");
 
 // Google のタグ：設定のある wiki（サンプルでは wiki）の公開ページ・一覧・検索・404 に入れる。限定公開のページからは何も送らない

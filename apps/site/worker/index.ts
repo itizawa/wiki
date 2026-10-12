@@ -1,7 +1,6 @@
 import { imageNameFromPath, isValidWikiKey, resolvePagePath, wikiKeyFromHost, type PublicRoutes } from "@wiki/shared";
-import { recordView, VIEW_PATH, type ViewEnv } from "./views";
 
-export type Env = ViewEnv & {
+export type Env = {
   ASSETS: { fetch(input: Request | URL): Promise<Response> };
   /** アップロードした画像（R2。管理画面の Worker と同じバケット） */
   IMAGES?: { get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null> };
@@ -18,8 +17,11 @@ const WIKI_COOKIE = "wiki";
  * `/_astro/*` は Worker を通らずに返る（wrangler.toml の run_worker_first）ので、ふつうはここに来ない。無いファイルの 404 も静的アセットの側が返す
  */
 const SHARED = /^\/(_astro\/|favicon\.svg$)/;
-/** Pagefind の索引のうち、名前にハッシュが入るもの（中身が変われば名前も変わる）。wiki のディレクトリを除いたパスで見る */
-const PAGEFIND_HASHED = /^\/pagefind\/(fragment|index)\/[^/]+$/;
+/**
+ * 名前にハッシュが入るもの（中身が変われば名前も変わる）。wiki のディレクトリを除いたパスで見る。
+ * Pagefind の索引の断片と、ツリーナビの全体（`/nav.{hash}.json`。src/lib/manifest.ts の navFile）
+ */
+const HASHED = /^\/(pagefind\/(fragment|index)\/[^/]+|nav\.[0-9a-f]+\.json)$/;
 /** 名前が同じなら中身も同じファイルのキャッシュ。`/_astro/*` に付ける `_headers`（src/integrations/public-files.mjs）と同じ値 */
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
@@ -36,7 +38,6 @@ const notFound = () => new Response("Not Found", { status: 404, headers: { "cont
  * - 知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404
  * - 廃止したツリーの一覧（`/t/{treeKey}` と `/t/{treeKey}/`）→ トップへ 301（ツリーはトップのサイドバーに出る。`/t/{treeKey}/{nodeId}` は残っている）
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
- * - `POST /_v`：記事の閲覧数を数える（worker/views.ts）
  * - `/images/{name}`：アップロードした画像。エッジのキャッシュにあれば、R2 を読まずに返す
  */
 type Ctx = { waitUntil(promise: Promise<unknown>): void };
@@ -83,15 +84,9 @@ async function serve(request: Request, url: URL, env: Env, target: string, ctx: 
     assetUrl.pathname = prefix + pathname;
     return assetUrl;
   };
-  if (url.pathname === VIEW_PATH && request.method === "POST") {
-    return recordView(request, env, target, async () => {
-      const res = await env.ASSETS.fetch(asset("/page-routes.json"));
-      return res.ok ? ((await res.json()) as PublicRoutes) : null;
-    });
-  }
   const res = withoutPrefix(await env.ASSETS.fetch(new Request(asset(url.pathname), request)), url, prefix);
   if (url.pathname.startsWith("/u/")) return unlisted(res);
-  if (PAGEFIND_HASHED.test(url.pathname)) return immutable(res);
+  if (HASHED.test(url.pathname)) return immutable(res);
   if (res.status !== 404 || !url.pathname.startsWith("/p/")) return res;
 
   const routesRes = await env.ASSETS.fetch(asset("/page-routes.json"));

@@ -5,12 +5,10 @@ import Article from "../../../components/Article.astro";
 import NavDrawer from "../../../components/NavDrawer.astro";
 import TreeNav from "../../../components/TreeNav";
 import Base from "../../../layouts/Base.astro";
-import { allWikis, pageNav, siteData } from "../../../lib/manifest";
+import { allWikis, navFile, pageNav, siteData } from "../../../lib/manifest";
 import { excerpt } from "../../../lib/markdown";
-import { NAV_DATA_PATH } from "../../../lib/nav";
 import { ancestors } from "../../../lib/tree";
 import Backlinks from "../../../components/Backlinks.astro";
-import ViewCounter from "../../../components/ViewCounter.astro";
 import { siteBacklinks } from "../../../lib/backlinks";
 
 export async function getStaticPaths() {
@@ -26,6 +24,7 @@ const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
 const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
 // ツリーは、最初の表示に出る分だけを HTML に入れる。残りは、ツリーナビが wiki ごとの JSON から読む
 const nav = primaryTree && (await pageNav(wiki, primaryTree, inPrimary ? page.id : undefined));
+const navSrc = (await navFile(wiki)).path;
 ---
 
 <Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"}>
@@ -54,12 +53,11 @@ const nav = primaryTree && (await pageNav(wiki, primaryTree, inPrimary ? page.id
         origin={origin}
       />
       <Backlinks pages={backlinks} />
-      <ViewCounter pageId={page.id} />
     </main>
     {
       primaryTree && nav && (
         <NavDrawer>
-          <TreeNav client:idle items={nav} current={inPrimary ? page.id : undefined} src={NAV_DATA_PATH} treeKey={primaryTree.key} />
+          <TreeNav client:idle items={nav} current={inPrimary ? page.id : undefined} src={navSrc} treeKey={primaryTree.key} />
         </NavDrawer>
       )
     }
