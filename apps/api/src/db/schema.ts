@@ -768,3 +768,24 @@ export const analyticsSnapshots = pgTable(
   },
   (t) => [primaryKey({ columns: [t.wikiId, t.kind, t.days] }), check("analytics_snapshots_kind_check", sql`${t.kind} in ('ga', 'search_console')`)],
 );
+
+/**
+ * 運用コスト（使用量）の控え。サービスと月（UTC の `YYYY-MM`）ごとに1行。
+ * 取得に失敗しても、前に取れた usage は残す（画面は「◯時点の数字」として出す）。月ごとに1行なので増え方は小さく、消す仕組みは無い
+ */
+export const costSnapshots = pgTable(
+  "cost_snapshots",
+  {
+    service: text("service").notNull(),
+    period: text("period").notNull(),
+    /** 取れた使用量（`CostUsage`）。1回も取れていなければ null */
+    usage: jsonb("usage"),
+    /** usage を取った日時 */
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** 最後に取りにいった日時（失敗したときも入る） */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull(),
+    /** 最後の取得が失敗した理由（`CostFailure`）。成功したら null */
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.service, t.period] })],
+);

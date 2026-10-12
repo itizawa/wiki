@@ -24,6 +24,11 @@ export type AppConfig = {
    */
   googleServiceAccount: GoogleServiceAccount | "invalid" | null;
   /**
+   * 「コスト」が Neon の使用量を読むための API キーと組織 ID（`NEON_API_KEY`・`NEON_ORG_ID`）。
+   * 2つがそろっていなければ null（この機能は無効）
+   */
+  neon: { apiKey: string; orgId: string } | null;
+  /**
    * SNS 連携の X の開発者アプリ（OAuth 2.0 のクライアント）と、トークンを暗号化して DB に持つための鍵。
    * 3つ（`X_CLIENT_ID`・`X_CLIENT_SECRET`・`SNS_TOKEN_KEY`）がそろっていなければ null（X 連携は無効）
    */
@@ -73,6 +78,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     exportToken: env.EXPORT_TOKEN || undefined,
     cronToken: env.CRON_TOKEN || undefined,
     googleServiceAccount: parseServiceAccount(env.GOOGLE_SERVICE_ACCOUNT_JSON),
+    neon: env.NEON_API_KEY?.trim() && env.NEON_ORG_ID?.trim() ? { apiKey: env.NEON_API_KEY.trim(), orgId: env.NEON_ORG_ID.trim() } : null,
     x:
       env.X_CLIENT_ID && env.X_CLIENT_SECRET && env.SNS_TOKEN_KEY && env.SNS_TOKEN_KEY.length >= SNS_TOKEN_KEY_MIN
         ? {
