@@ -59,11 +59,12 @@ export function WikisPage() {
         </WikiName>
       ),
     },
-    { key: "origin", header: "公開 URL", render: (w) => <SiteLink origin={w.origin} /> },
-    { key: "publishedPages", header: "公開中のページ", align: "right", sx: { whiteSpace: "nowrap" }, render: (w) => `${w.publishedPages}件` },
+    { key: "origin", header: "公開 URL", width: "max-content", render: (w) => <SiteLink origin={w.origin} /> },
+    { key: "publishedPages", header: "公開中のページ", width: "max-content", align: "right", sx: { whiteSpace: "nowrap" }, render: (w) => `${w.publishedPages}件` },
     {
       key: "actions",
       header: "操作",
+      width: "max-content",
       render: (w) => (
         // 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く
         <Row sx={{ flexWrap: "nowrap" }}>
@@ -366,10 +367,11 @@ function ArchivedWikis({ wikis }: { wikis: WikiSummary[] }) {
               </WikiName>
             ),
           },
-          { key: "archivedAt", header: "アーカイブした日時", sx: { whiteSpace: "nowrap" }, render: (w) => formatDateTime(w.archivedAt!) },
+          { key: "archivedAt", header: "アーカイブした日時", width: "max-content", sx: { whiteSpace: "nowrap" }, render: (w) => formatDateTime(w.archivedAt!) },
           {
             key: "actions",
             header: "操作",
+            width: "max-content",
             render: (w) => (
               <Button variant="outlined" disabled={restore.isPending} onClick={() => restore.mutate(w.key)}>
                 元に戻す
