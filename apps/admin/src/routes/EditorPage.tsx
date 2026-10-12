@@ -22,7 +22,6 @@ import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deleteP
 import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
 import { formatDateTime } from "../lib/format";
 import { textStats } from "../lib/stats";
-import { isCounted } from "../lib/views";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
@@ -274,7 +273,6 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const pageMenu = (
     <PageMenu
       pageId={p.id}
-      counted={isCounted(p)}
       title={draft.title}
       bodyMd={draft.bodyMd}
       hasIcon={p.icon !== null}

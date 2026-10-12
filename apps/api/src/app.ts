@@ -20,7 +20,6 @@ import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
 import { globalAuditRoutes, wikiAuditRoutes } from "./routes/audit";
-import { viewRoutes } from "./routes/views";
 import { resolveWiki, wikiRoutes, wikiSettingsRoutes } from "./routes/wikis";
 
 /**
@@ -119,7 +118,6 @@ export function createApp(deps: Deps) {
   wiki.route("/audit-logs", wikiAuditRoutes);
   wiki.route("/appearance", appearanceRoutes);
   wiki.route("/home", homeRoutes);
-  wiki.route("/views", viewRoutes);
   wiki.route("/settings", wikiSettingsRoutes);
   wiki.route("/analytics", analyticsRoutes);
   admin.route("/w/:wikiKey", wiki);

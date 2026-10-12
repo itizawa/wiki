@@ -134,7 +134,6 @@ describe("the tokens of the site build and the cron worker", () => {
   const INTERNAL_PATHS = [
     "/internal/tick",
     "/internal/versions/prune",
-    "/internal/views/totals",
     "/internal/builds/00000000-0000-4000-8000-000000000000/triggered",
     "/internal/added-later",
   ];

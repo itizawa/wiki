@@ -25,10 +25,10 @@ const files = {
   "/wiki/": "<h1>wiki のトップ</h1>",
   "/wiki/p/abcdefghij": "<h1>記事</h1>",
   "/wiki/page-routes.json": JSON.stringify(routes),
-  "/wiki/nav.json": '{"trees":{"main":[{"nodeId":"abcdefghij"}]}}',
+  "/wiki/nav.0123456789abcdef.json": '{"trees":{"main":[{"nodeId":"abcdefghij"}]}}',
   "/wiki/u/SecretKey/": "<h1>限定公開</h1>",
   "/notes/": "<h1>notes のトップ</h1>",
-  "/notes/nav.json": '{"trees":{"main":[{"nodeId":"nnnnnnnnnn"}]}}',
+  "/notes/nav.fedcba9876543210.json": '{"trees":{"main":[{"nodeId":"nnnnnnnnnn"}]}}',
   "/notes/p/nnnnnnnnnn": "<h1>ノートの記事</h1>",
   "/notes/page-routes.json": JSON.stringify({ canonical: { nnnnnnnnnn: "/p/nnnnnnnnnn" }, gone: ["abcdefghij"] }),
   "/_astro/app.js": "console.log(1)",
@@ -57,15 +57,16 @@ describe("site worker", () => {
 
   it("serves the tree nav data of the host's wiki only", async () => {
     const e = env(files);
-    const own = await wiki("/nav.json", e);
+    const own = await wiki("/nav.0123456789abcdef.json", e);
     expect(own.status).toBe(200);
     expect(await own.text()).toContain("abcdefghij");
-    expect(e.requested).toEqual(["/wiki/nav.json"]);
-    expect(await (await notes("/nav.json")).text()).toContain("nnnnnnnnnn");
-    // ほかの wiki のツリーは、パスに key を書いても開けない
-    expect((await wiki("/notes/nav.json")).status).toBe(404);
+    expect(e.requested).toEqual(["/wiki/nav.0123456789abcdef.json"]);
+    expect(await (await notes("/nav.fedcba9876543210.json")).text()).toContain("nnnnnnnnnn");
+    // ほかの wiki のツリーは、名前を知っていても、パスに key を書いても開けない
+    expect((await wiki("/nav.fedcba9876543210.json")).status).toBe(404);
+    expect((await wiki("/notes/nav.fedcba9876543210.json")).status).toBe(404);
     // 知らないサブドメインには、ツリーが無い
-    expect((await get("https://nope.site.test/nav.json")).status).toBe(404);
+    expect((await get("https://nope.site.test/nav.0123456789abcdef.json")).status).toBe(404);
   });
 
   it("never serves another wiki's directory, even when the path names it", async () => {
@@ -102,10 +103,11 @@ describe("site worker", () => {
     expect(await (await notes("/_astro/app.js")).text()).toBe("console.log(1)");
   });
 
-  it("lets the hashed files of the search index be cached for long, and nothing else", async () => {
+  it("lets the hashed files (the search index and the tree nav data) be cached for long, and nothing else", async () => {
     const immutable = "public, max-age=31536000, immutable";
     expect((await wiki("/pagefind/fragment/ja_1234abc.pf_fragment")).headers.get("cache-control")).toBe(immutable);
     expect((await wiki("/pagefind/index/ja_5678def.pf_index")).headers.get("cache-control")).toBe(immutable);
+    expect((await wiki("/nav.0123456789abcdef.json")).headers.get("cache-control")).toBe(immutable);
     // 名前にハッシュの無いファイルと HTML は、今までどおり毎回確かめさせる
     expect((await wiki("/pagefind/pagefind.js")).headers.get("cache-control")).toBeNull();
     expect((await wiki("/p/abcdefghij")).headers.get("cache-control")).toBeNull();
@@ -113,6 +115,9 @@ describe("site worker", () => {
     const missing = await wiki("/pagefind/fragment/ja_0000000.pf_fragment");
     expect(missing.status).toBe(404);
     expect(missing.headers.get("cache-control")).toBeNull();
+    const oldNav = await wiki("/nav.0000000000000000.json");
+    expect(oldNav.status).toBe(404);
+    expect(oldNav.headers.get("cache-control")).toBeNull();
     // 断片も wiki ごと。ほかの wiki のものは、パスを直接指定しても開けない
     const e = env(files);
     expect((await wiki("/pagefind/fragment/ja_notes00.pf_fragment", e)).status).toBe(404);

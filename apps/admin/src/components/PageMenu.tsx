@@ -1,7 +1,6 @@
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import {
-  ChartColumn,
   Copy,
   Download,
   Ellipsis,
@@ -37,7 +36,6 @@ import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { useStars } from "../lib/stars";
 import { templateLink } from "../lib/wiki";
-import { PageViewsPopover, usePageViews } from "./PageViews";
 import { Presentation } from "./Presentation";
 import { publishState, PublishSheet } from "./PublishMenu";
 import type { EnsureVersion } from "./PublishPanel";
@@ -48,15 +46,13 @@ import { Muted } from "./ui";
 const MenuItemLink = createLink(MenuItem);
 
 /**
- * 編集画面の「…」メニュー。本文を検索・置換する・プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・閲覧数を見る・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
+ * 編集画面の「…」メニュー。本文を検索・置換する・プレゼンモードで表示する・アイコン（絵文字）を付ける・いまの内容を版として残す・版履歴を開く・いま画面にある内容（版になる前の変更も含む）を Markdown で持ち出す・
  * テンプレートにする・ページをゴミ箱に入れる。
  *
  * スマホ幅（`narrow`）では、ヘッダーに置けない操作（公開・予約、スター、目次）も、このメニューの先頭に並べる。
  */
 export function PageMenu(props: {
   pageId: string;
-  /** 閲覧を数えている記事か（公開していない記事の閲覧数は「—」） */
-  counted: boolean;
   title: string;
   bodyMd: string;
   /** アイコン（絵文字）が付いているか */
@@ -84,10 +80,8 @@ export function PageMenu(props: {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // 「閲覧数」の中身は、メニューを閉じたあと「…」ボタンの下に開く
+  // 「…」ボタン。メニューを閉じたあとに開く目次の基準と、プレゼンモードを閉じたあとのフォーカスの戻り先
   const menuButton = useRef<HTMLButtonElement>(null);
-  const [viewsOpen, setViewsOpen] = useState(false);
-  const { views, totalLabel } = usePageViews(props.pageId, props.counted);
   const [createdTemplate, setCreatedTemplate] = useState<string | null>(null);
   // スマホ幅でだけメニューから開くもの。開いたあとに幅が広がっても、閉じるまでは出しておく
   const [publishOpen, setPublishOpen] = useState(false);
@@ -273,18 +267,6 @@ export function PageMenu(props: {
             </Muted>
           )}
         </MenuItemLink>
-        <MenuItem
-          aria-haspopup="dialog"
-          onClick={() => {
-            setAnchor(null);
-            setViewsOpen(true);
-          }}
-        >
-          <ListItemIcon>
-            <ChartColumn size={18} />
-          </ListItemIcon>
-          <ListItemText>閲覧数 {totalLabel}</ListItemText>
-        </MenuItem>
         <Divider />
         <MenuItem onClick={copy}>
           <ListItemIcon>
@@ -332,7 +314,6 @@ export function PageMenu(props: {
       {props.editor && (
         <OutlinePopover editor={props.editor} headings={props.headings} anchorEl={menuButton.current} open={outlineOpen} onClose={() => setOutlineOpen(false)} />
       )}
-      <PageViewsPopover views={views} counted={props.counted} anchorEl={menuButton.current} open={viewsOpen} onClose={() => setViewsOpen(false)} />
       {/* 結果は、押したメニューの近く（右上）に出す */}
       <Snackbar
         open={notice !== null}

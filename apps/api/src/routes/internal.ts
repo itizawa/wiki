@@ -1,5 +1,4 @@
 import { Hono, type MiddlewareHandler } from "hono";
-import { viewTotalsInput } from "@wiki/shared";
 import { z } from "zod";
 import type { AppEnv } from "../env";
 import { runTick } from "../cron/tick";
@@ -11,8 +10,6 @@ import { markBuildTriggered } from "../publishing/builds";
 import { cleanupBuilds } from "../publishing/cleanup";
 import { buildManifest } from "../publishing/manifest";
 import { pruneStructure } from "../structure/prune";
-import { parseJson } from "../validation";
-import { applyViewTotals } from "./views";
 
 /**
  * `Authorization: Bearer <トークン>` を確かめる。トークンは呼ぶ側ごとに分けてあり、片方が漏れても、もう片方の経路は通らない。
@@ -94,10 +91,4 @@ export const internalRoutes = new Hono<AppEnv>()
       throw new HttpError(404, "not_found", "build not found");
     }
     return c.json({ ok: true });
-  })
-  // 1時間に1回、ワーカーが Workers Analytics Engine に貯めた閲覧を集計して渡す。
-  // 受け取るのは記事と日ごとの合計で、何度受け取っても数は変わらない。数えない記事の行は飛ばす
-  .post("/views/totals", async (c) => {
-    const input = await parseJson(c, viewTotalsInput);
-    return c.json(await applyViewTotals(c.get("deps").db, input.rows));
   });

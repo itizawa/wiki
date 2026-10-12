@@ -11,7 +11,7 @@ import { Muted } from "./ui";
 const CHART_HEIGHT = 64;
 
 /**
- * 日別の棒グラフ（記事の「閲覧数」と「アクセス解析」で使う）。棒に触れると日付と数が出る。数値の表も開ける。
+ * 日別の棒グラフ（「アクセス解析」で使う）。棒に触れると日付と数が出る。数値の表も開ける。
  * `title`：グラフの上に出す名前（「直近30日の日別」）。`unit`：数のあとに付ける語（「回」）。`valueLabel`：表の数の列の見出し。
  */
 export function DailyBars(props: { days: { day: string; count: number }[]; title: string; ariaLabel: string; unit: string; valueLabel: string; height?: number }) {

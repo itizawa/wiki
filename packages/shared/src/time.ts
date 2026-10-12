@@ -17,3 +17,10 @@ export function isoToJstLocal(iso: string): string {
 export function jstDate(iso: string): string {
   return isoToJstLocal(iso).slice(0, 10);
 }
+
+/** `YYYY-MM-DD` に日数を足す。 */
+export function addDays(day: string, days: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}

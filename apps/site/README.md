@@ -21,7 +21,7 @@ pnpm build:sample   # fixtures/manifest.sample.json でビルドし、scripts/ve
 dist/
   _astro/ favicon.svg     どの wiki にも共通のファイル
   {key}/                  wiki 1つ分（index.html, p/, t/, u/, search.html, feed.xml, sitemap.xml, robots.txt, 404.html,
-                          nav.json, page-routes.json, pagefind/）
+                          nav.{hash}.json, page-routes.json, pagefind/）
 ```
 
 `worker/index.ts` が `Host` のサブドメイン（`{key}.{SITE_BASE_DOMAIN}`）から wiki を決め、その wiki のディレクトリから返す。アセットより先に Worker を通す（`run_worker_first`）ので、パスを直接指定してもほかの wiki のディレクトリは開けない。知らないサブドメインとアーカイブ中の wiki は、ディレクトリが無いので 404 になる。
@@ -40,7 +40,7 @@ Worker を通さないのは `/_astro/*` だけ（`wrangler.toml` の `run_worke
 | `/images/{name}` | 同上 | `worker/index.ts`。エッジのキャッシュ（`caches.default`）にも入れる |
 | ほか（HTML、`pagefind.js`、`feed.xml` など） | 静的アセットの既定（`public, max-age=0, must-revalidate`） | — |
 
-検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、ツリーナビの全体（`nav.json`）、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。アクセント色（`--accent`）・ロゴ・ファビコンも wiki ごとのテーマ（マニフェストの `theme`）から出し分ける（`src/layouts/Base.astro`）。
+検索の索引（Pagefind）、RSS、サイトマップ、`robots.txt`、ツリーナビの全体（`nav.{hash}.json`）、`page-routes.json` は wiki ごとに分かれる。canonical などのオリジンは `SITE_BASE_DOMAIN` と key から決め、サイト名は wiki の表示名を使う。アクセント色（`--accent`）・ロゴ・ファビコンも wiki ごとのテーマ（マニフェストの `theme`）から出し分ける（`src/layouts/Base.astro`）。
 
 `build:sample` の検査は、限定公開の漏れに加えて、ある wiki の内容（テーマを含む）が別の wiki の出力に混ざっていないことも確かめる。
 
@@ -61,11 +61,10 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 |---|---|
 | `/p/{id}` | 記事（正規）。slug つきの旧URL（`/p/{id}-{slug}`）は301、削除済みは410（`worker/index.ts`） |
 | `/t/{treeKey}/` , `/t/{treeKey}/{nodeId}` | ツリー経由の閲覧。本文を再掲し、canonicalは `/p/`。本文の HTML は `/p/` で作ったものを使い回す（Markdown の変換と色分けは1回） |
-| `/nav.json` | ツリーナビの全体。記事のページのツリーナビが読む（下の「ツリーナビ（階層）」） |
+| `/nav.{hash}.json` | ツリーナビの全体。記事のページのツリーナビが読む。名前に中身のハッシュが入り、ブラウザに1年キャッシュさせる（下の「ツリーナビ（階層）」） |
 | `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（下の「Google Analytics とサーチコンソール」）も出さない |
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
-| `POST /_v` | 閲覧数の記録。公開の記事のページのスクリプトが記事の ID だけを送り、Worker が Bot と記事を確かめてから Workers Analytics Engine（バインディング `PAGE_VIEWS`）に1行書く。API も DB も呼ばない。いつも 204（`worker/views.ts`、ルートの README「閲覧数」） |
 | `/images/{name}` | アップロードした画像。R2 のバケット（バインディング `IMAGES`）から返す。どの wiki でも同じ（`worker/index.ts`）。2回目からはエッジのキャッシュから返し、R2 を読まない（キーは Host を含む URL。プレビューの `*.workers.dev` ではキャッシュが働かず、毎回 R2 から返す） |
 
 別の wiki のページへのリンクは、外部リンクと同じ扱いになる（`/p/{id}` と書いても、その wiki に無いページなのでテキストだけになる）。
@@ -86,15 +85,16 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 記事のページ（`/p/` と `/t/.../{nodeId}`）の HTML には、ツリーのうち最初の表示に出る分だけを入れる。ツリー全体を全ページに入れると、ページの大きさがページ数に比例し、出力の合計がページ数の2乗で増えるため。
 
 - HTML に入れる分（`src/lib/nav.ts` の `initialNavItems`）：最上位とその子、現在地までの祖先とその兄弟、現在地の子。これは、ツリーナビが最初に開いて見せる範囲と同じ。閉じている枝の子は入れず、「子がある」という印（`more`）だけを付ける
-- ツリー全体は、wiki ごとに1つの JSON（`dist/{key}/nav.json`、URL は `/nav.json`。`src/pages/[wiki]/nav.json.ts`）に出す。形は `{ "trees": { "{treeKey}": NavItem[] } }` で、`NavItem` は `{ nodeId, title, icon, href, children }`
+- ツリー全体は、wiki ごとに1つの JSON（`dist/{key}/nav.{hash}.json`、URL は `/nav.{hash}.json`。`src/pages/[wiki]/nav.[hash].json.ts`）に出す。形は `{ "trees": { "{treeKey}": NavItem[] } }` で、`NavItem` は `{ nodeId, title, icon, href, children }`
   - 入るのは公開ツリー（マニフェストの `trees`。API が公開ページだけに絞ったもの）だけ。限定公開・非公開のページは、題名も id も入らない
   - Worker が `Host` から wiki を決めて返すので、ほかの wiki のツリーは開けない
-- ツリーナビ（`src/components/TreeNav.tsx`）は、動き出したあと（`client:idle`）に `/nav.json` を読み、届いたら中身を入れ替える。開閉の状態はそのまま残る
+  - 名前の `{hash}` は中身の SHA-256 の先頭16文字（`src/lib/manifest.ts` の `navFile`）。記事のページの HTML が、その名前を参照する。中身が変われば名前も変わるので、Worker が `Cache-Control: public, max-age=31536000, immutable` を付け（見つかったときだけ。`worker/index.ts`）、ブラウザは2ページ目から読みに行かない（Worker の呼び出しが、記事を開くたびに1回減る）。ツリーが変わったあとに開いた記事は、新しい名前を読む
+- ツリーナビ（`src/components/TreeNav.tsx`）は、動き出したあと（`client:idle`）に `/nav.{hash}.json` を読み、届いたら中身を入れ替える。開閉の状態はそのまま残る
   - 読み込む前・JavaScript が動かないとき：HTML に入れた分がそのまま出る（今までの最初の表示と同じ）
   - 読み込みが終わる前に閉じている枝を開いたとき：その枝の下に「読み込み中…」を出し、届いたら中身に変わる
   - 読み込めなかったとき：見た目は変わらず、HTML に入れた分のリンクで移れる（移った先のページには、その周りの分が入っている）。閉じている枝を開くともう一度読みに行き、だめならその枝の下に「下のページを読み込めませんでした。」と「もう一度読み込む」を出す
 - トップ（`/`）とツリーの一覧（`/t/{treeKey}/`）は、wiki に1枚ずつなので、今までどおりツリー全体を HTML に入れる
-- `build:sample` の検査で、`nav.json` に限定公開・非公開・削除済みのページと別の wiki のページが無いこと、限定公開のページが `nav.json` を読まないことを確かめる
+- `build:sample` の検査で、`nav.{hash}.json` に限定公開・非公開・削除済みのページと別の wiki のページが無いこと、名前が中身のハッシュになっていて記事の HTML がその名前を読むこと、限定公開のページがツリーを読まないことを確かめる
 
 ## コードブロック
 

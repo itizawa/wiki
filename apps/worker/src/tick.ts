@@ -21,13 +21,6 @@ export type Env = {
    * 手元の API（Node）は印を書かないので、手元の KV を見ると、いつまでも「やることなし」になる
    */
   IGNORE_CRON_MARKS?: string;
-  /**
-   * 閲覧数の集計（src/views.ts）が、Workers Analytics Engine の SQL API を呼ぶのに使う。
-   * アカウント ID と、「Account Analytics の読み取り」だけを許した API トークン（どちらも secret）。
-   * どちらかが無ければ、集計を飛ばす（閲覧数が管理画面に反映されないだけで、ほかの処理は動く）
-   */
-  CLOUDFLARE_ACCOUNT_ID?: string;
-  CLOUDFLARE_ANALYTICS_TOKEN?: string;
 };
 
 type RunSummary = { done: string[]; retrying: string[]; failed: { id: string; error: string; wikiName: string }[] };
