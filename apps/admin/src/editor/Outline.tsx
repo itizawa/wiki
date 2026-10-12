@@ -166,16 +166,36 @@ export function OutlineSide({ editor, headings, title, onJumpTitle }: { editor: 
 /** ボタンの下に開く目次。見出しを選ぶと閉じる。スマホ幅では「…」メニューから開く。 */
 export function OutlinePopover(props: { editor: Editor; headings: OutlineHeading[]; title: string; onJumpTitle: () => void; anchorEl: HTMLElement | null; open: boolean; onClose: () => void }) {
   const current = useCurrentHeading(props.editor, props.headings);
+  // タイトルへ移るのは、閉じ終わってから（開いているあいだはフォーカスが目次の中に留められ、閉じるとボタンに戻されるため）
+  const toTitle = useRef(false);
+  // タイトルへ移るときだけ、フォーカスをボタンへ戻さない。見出しへ移るときは、これまでどおりボタンへ戻す
+  const [skipRestore, setSkipRestore] = useState(false);
+  useEffect(() => {
+    if (props.open) setSkipRestore(false);
+  }, [props.open]);
   return (
     <Popover
       open={props.open}
+      disableRestoreFocus={skipRestore}
       anchorEl={props.anchorEl}
       onClose={props.onClose}
       anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       transformOrigin={{ vertical: "top", horizontal: "right" }}
-      slotProps={{ paper: { component: "nav", "aria-label": "目次", sx: { width: 280, maxWidth: "calc(100vw - 32px)", maxHeight: "60vh", p: 1.5, fontSize: "0.875rem" } } as object }}
+      slotProps={{
+        transition: {
+          onExited: () => {
+            if (!toTitle.current) return;
+            toTitle.current = false;
+            props.onJumpTitle();
+          },
+        },
+        paper: { component: "nav", "aria-label": "目次", sx: { width: 280, maxWidth: "calc(100vw - 32px)", maxHeight: "60vh", p: 1.5, fontSize: "0.875rem" } } as object,
+      }}
     >
-      <OutlineList editor={props.editor} headings={props.headings} title={props.title} onJumpTitle={props.onJumpTitle} current={current} onJump={props.onClose} />
+      <OutlineList editor={props.editor} headings={props.headings} title={props.title} onJumpTitle={() => {
+        toTitle.current = true;
+        setSkipRestore(true);
+      }} current={current} onJump={props.onClose} />
     </Popover>
   );
 }
