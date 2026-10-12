@@ -265,7 +265,16 @@ function Invites() {
           <Box sx={{ mb: 1 }}>
             {WIKI_ROLE_LABELS[issued.role]}として参加するリンクを発行しました。<strong>このリンクは今だけ表示します。</strong>コピーして、参加する人に伝えてください。
           </Box>
-          <Row sx={{ flexWrap: "nowrap" }}>
+          {/* sm 未満は、URL を折り返して全部見せ、「コピー」をその下に置く。sm 以上は、欄とボタンを横に並べる */}
+          <Box sx={{ display: { xs: "block", sm: "none" } }}>
+            <Typography component="div" sx={{ fontFamily: "monospace", fontSize: 13, overflowWrap: "anywhere", mb: 1 }}>
+              {issued.url}
+            </Typography>
+            <Button variant="outlined" startIcon={<Copy size={16} />} onClick={copy}>
+              {copied ? "コピーしました" : "コピー"}
+            </Button>
+          </Box>
+          <Row sx={{ flexWrap: "nowrap", display: { xs: "none", sm: "flex" } }}>
             <TextField
               size="small"
               value={issued.url}
