@@ -11,11 +11,13 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { actionLabel } from "../components/PublishPanel";
 import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
+import { focusAfterRemoval } from "../lib/focus";
+import { useScheduleToasts } from "../lib/scheduleActions";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime, formatDay } from "../lib/format";
 
@@ -51,6 +53,20 @@ export function CalendarPage() {
     mutationFn: (fn: () => Promise<unknown>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule"] }),
   });
+  const toasts = useScheduleToasts();
+  /**
+   * 予約を取り消す。確認は挟まず、取り消したことを知らせて「元に戻す」を出す。
+   * 押したボタンは行ごと消えるので、次の行（無ければ前の行、全部消えたら見出し）にフォーカスを移す。
+   */
+  const cancel = (e: MouseEvent<HTMLElement>, action: ScheduledAction) => {
+    const row = e.currentTarget.closest("[role=row], li");
+    const restore = focusAfterRemoval(row, {
+      scope: e.currentTarget.closest("[data-focus-scope]"),
+      focusSelector: "[role=row] a[href], li a[href]",
+      fallback: () => document.getElementById("calendar-heading"),
+    });
+    mutate.mutate(() => toasts.cancel(action), { onSuccess: restore });
+  };
 
   const days = useMemo(() => {
     const entries: Entry[] = [];
@@ -149,7 +165,7 @@ export function CalendarPage() {
             <Button variant="text" onClick={() => setRescheduling(e.action)} sx={{ whiteSpace: "nowrap" }}>
               日時を変更…
             </Button>
-            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))} sx={{ whiteSpace: "nowrap" }}>
+            <Button variant="text" color="error" onClick={(ev) => cancel(ev, e.action)} sx={{ whiteSpace: "nowrap" }}>
               予約を取り消す
             </Button>
           </Row>
@@ -158,7 +174,7 @@ export function CalendarPage() {
   ];
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1.5} data-focus-scope>
       <Section sx={lowStock ? { borderColor: "warning.main" } : undefined}>
         <Typography variant="h6" component="h2" gutterBottom>
           予約ストック
@@ -195,7 +211,7 @@ export function CalendarPage() {
                     {a.lastError}
                   </Typography>
                 </Box>
-                <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(a.id))}>
+                <Button variant="text" color="error" onClick={(e) => cancel(e, a)}>
                   予約を取り消す
                 </Button>
               </Row>
@@ -205,7 +221,8 @@ export function CalendarPage() {
       )}
 
       <Section>
-        <Typography variant="h6" component="h2">
+        {/* 予約を取り消して一覧が空になったとき、フォーカスの移し先になる */}
+        <Typography id="calendar-heading" tabIndex={-1} variant="h6" component="h2" sx={{ outline: "none" }}>
           編集カレンダー
         </Typography>
         <Muted gutterBottom>過去14日〜60日先。時刻はJST。</Muted>

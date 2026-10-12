@@ -23,7 +23,9 @@ import {
 } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { api, errorMessage } from "../lib/api";
+import { useScheduleToasts } from "../lib/scheduleActions";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
+import { focusAfterRemoval } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
 import { publicPageUrl } from "../lib/publicUrl";
 import { scheduleChoices, type ScheduleKind } from "../lib/scheduleKind";
@@ -84,6 +86,8 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
   const impact = descendantImpact(descendants, visibility);
   const publishedDescendants = descendants.filter((d) => d.published).length;
   const blockedByDescendants = impact.wider > 0 && !applyToDescendants;
+
+  const toasts = useScheduleToasts();
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ["page", page.id] });
@@ -274,8 +278,8 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                 variant="outlined"
                 disabled={action.isPending || !runAt}
                 onClick={() =>
-                  action.mutate(async () =>
-                    api.createSchedule(
+                  action.mutate(async () => {
+                    const created = await api.createSchedule(
                       scheduleKind === "publish_page"
                         ? {
                             actionType: "publish_page",
@@ -285,8 +289,9 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                             runAt: jstLocalToIso(runAt),
                           }
                         : { actionType: "unpublish_page", pageId: page.id, runAt: jstLocalToIso(runAt) },
-                    ),
-                  )
+                    );
+                    toasts.created(created, page.title);
+                  })
                 }
               >
                 予約する
@@ -307,7 +312,19 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                         {formatDateTime(a.runAt)} に{actionLabel(a)}
                       </Typography>
                       {(a.status === "scheduled" || a.status === "failed") && (
-                        <Button variant="text" color="error" onClick={() => action.mutate(() => api.cancelSchedule(a.id))}>
+                        <Button
+                          variant="text"
+                          color="error"
+                          onClick={(e) => {
+                            // 押したボタンは行ごと消えるので、次の予約（無ければ「予約」のタブ）にフォーカスを移す
+                            const restore = focusAfterRemoval(e.currentTarget.closest("li"), {
+                              scope: e.currentTarget.closest("ul"),
+                              focusSelector: "li button",
+                              fallback: () => document.getElementById(tabId("schedule")),
+                            });
+                            action.mutate(() => toasts.cancel({ ...a, pageTitle: a.pageTitle ?? page.title }), { onSuccess: restore });
+                          }}
+                        >
                           予約を取り消す
                         </Button>
                       )}
