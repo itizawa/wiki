@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
 import { useMemo, useState } from "react";
+import { DataList, type DataListColumn } from "../components/DataList";
 import { actionLabel } from "../components/PublishPanel";
 import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
@@ -28,7 +29,11 @@ const STOCK_MIN = 3;
  */
 const titleCellSx = { flex: "1 1 10em", minWidth: 0 } as const;
 
-type Entry =
+/** 行の遷移先。ページが無い予約（ブランチの操作）には無い。 */
+export const entryLink = (e: Entry) => (e.kind === "action" ? (e.action.pageId ? pageLink(e.action.pageId) : undefined) : pageLink(e.pageId));
+const entryKey = (e: Entry) => (e.kind === "action" ? `action-${e.action.id}` : `${e.kind}-${e.pageId}-${e.at}`);
+
+export type Entry =
   | { kind: "action"; at: string; action: ScheduledAction }
   | { kind: "published"; at: string; pageId: string; title: string; unlisted: boolean }
   | { kind: "draft"; at: string; pageId: string; title: string };
@@ -86,6 +91,71 @@ export function CalendarPage() {
   // 予約を読み込む前は件数が分からないので、少ないとは言わない
   const lowStock = !schedule.isPending && stock < STOCK_MIN;
   if (schedule.error) return <Alert severity="error">{errorMessage(schedule.error)}</Alert>;
+
+  const entryColumns: DataListColumn<Entry>[] = [
+    {
+      key: "time",
+      width: "56px",
+      sx: { px: 1, color: "text.secondary" },
+      render: (e) => <Mono sx={{ color: "text.secondary" }}>{isoToJstLocal(e.at).slice(11)}</Mono>,
+    },
+    {
+      key: "status",
+      width: "136px",
+      render: (e) =>
+        e.kind === "action" ? (
+          <StatusChip status={e.action.status} label={actionLabel(e.action)} />
+        ) : e.kind === "published" ? (
+          <StatusChip status={e.unlisted ? "unlisted" : "public"} label={e.unlisted ? "限定公開済み" : "公開済み"} />
+        ) : (
+          <StatusChip label="AI下書き" />
+        ),
+    },
+    {
+      key: "page",
+      // ページの名前は長ければ折り返す。狭い画面でも1文字ずつに潰れない幅を取る
+      width: "minmax(160px, 1fr)",
+      sx: { overflowWrap: "anywhere" },
+      render: (e) =>
+        e.kind === "action" ? (
+          <Box>
+            <PageLink action={e.action} />
+            {e.action.editedAfterSchedule && (
+              <Box component="span" sx={{ color: "warning.main" }}>
+                {" "}
+                予約後に編集あり
+              </Box>
+            )}
+            {e.action.status === "done" && (
+              <Box component="span" sx={{ color: "text.secondary" }}>
+                {" "}
+                実行済み
+              </Box>
+            )}
+          </Box>
+        ) : (
+          <RouterLink {...pageLink(e.pageId)}>{e.title}</RouterLink>
+        ),
+    },
+    {
+      key: "actions",
+      // 予約中の行だけにある操作。日をまたいで列がそろうよう、幅を決める
+      width: "250px",
+      align: "right",
+      sx: { px: 1 },
+      render: (e) =>
+        e.kind === "action" && e.action.status === "scheduled" ? (
+          <Row sx={{ flexWrap: "nowrap", justifyContent: "flex-end" }} spacing={0}>
+            <Button variant="text" onClick={() => setRescheduling(e.action)} sx={{ whiteSpace: "nowrap" }}>
+              日時を変更…
+            </Button>
+            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))} sx={{ whiteSpace: "nowrap" }}>
+              予約を取り消す
+            </Button>
+          </Row>
+        ) : null,
+    },
+  ];
 
   return (
     <Stack spacing={1.5}>
@@ -165,59 +235,14 @@ export function CalendarPage() {
                 </Typography>
                 {day === today && <StatusChip label="今日" />}
               </Row>
-              <Stack component="ul" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0, typography: "body2" }}>
-                {entries.map((e, i) => (
-                  <Row component="li" key={i}>
-                    <Mono sx={{ color: "text.secondary" }}>{isoToJstLocal(e.at).slice(11)}</Mono>
-                    {e.kind === "action" && (
-                      <>
-                        <StatusChip status={e.action.status} label={actionLabel(e.action)} />
-                        <Box sx={titleCellSx}>
-                          <PageLink action={e.action} />
-                          {e.action.editedAfterSchedule && (
-                            <Box component="span" sx={{ color: "warning.main" }}>
-                              {" "}
-                              予約後に編集あり
-                            </Box>
-                          )}
-                          {e.action.status === "done" && (
-                            <Box component="span" sx={{ color: "text.secondary" }}>
-                              {" "}
-                              実行済み
-                            </Box>
-                          )}
-                        </Box>
-                        {e.action.status === "scheduled" && (
-                          <>
-                            <Button variant="text" onClick={() => setRescheduling(e.action)}>
-                              日時を変更…
-                            </Button>
-                            <Button variant="text" color="error" onClick={() => mutate.mutate(() => api.cancelSchedule(e.action.id))} sx={{ ml: 1 }}>
-                              予約を取り消す
-                            </Button>
-                          </>
-                        )}
-                      </>
-                    )}
-                    {e.kind === "published" && (
-                      <>
-                        <StatusChip status={e.unlisted ? "unlisted" : "public"} label={e.unlisted ? "限定公開済み" : "公開済み"} />
-                        <RouterLink {...pageLink(e.pageId)}>
-                          {e.title}
-                        </RouterLink>
-                      </>
-                    )}
-                    {e.kind === "draft" && (
-                      <>
-                        <StatusChip label="AI下書き" />
-                        <RouterLink {...pageLink(e.pageId)}>
-                          {e.title}
-                        </RouterLink>
-                      </>
-                    )}
-                  </Row>
-                ))}
-              </Stack>
+              <DataList
+                label={`${formatDay(day, thisYear)}の予定`}
+                columns={entryColumns}
+                rows={entries}
+                rowKey={entryKey}
+                rowLink={entryLink}
+                empty=""
+              />
             </Box>
           ))}
         </Stack>
