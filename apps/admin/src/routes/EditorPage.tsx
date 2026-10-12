@@ -22,6 +22,7 @@ import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
 import { formatDateTime } from "../lib/format";
+import { ancestorTitles } from "../lib/ancestorTitles";
 import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { takeJustCreated } from "../lib/newPage";
 import { textStats } from "../lib/stats";
@@ -615,18 +616,7 @@ function EditingStats({ bodyMd }: { bodyMd: string }) {
 /** ツリー上の置き場所（親ページの並び）とタイトル。 */
 function Breadcrumb({ pageId, title }: { pageId: string; title: string }) {
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
-  const ancestors = useMemo(() => {
-    const data = structure.data;
-    const nodes = data?.trees[0]?.nodes ?? [];
-    const byId = new Map(nodes.map((n) => [n.nodeId, n]));
-    const names: string[] = [];
-    for (let cur = byId.get(pageId)?.parentNodeId ?? null; cur !== null; cur = byId.get(cur)?.parentNodeId ?? null) {
-      const node = byId.get(cur);
-      if (!node) break;
-      names.unshift(data?.pages[node.pageId]?.title ?? node.pageId);
-    }
-    return names;
-  }, [structure.data, pageId]);
+  const ancestors = useMemo(() => ancestorTitles(structure.data, pageId), [structure.data, pageId]);
 
   return (
     <Muted
