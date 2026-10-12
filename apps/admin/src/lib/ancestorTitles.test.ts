@@ -1,18 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { ancestorTitles } from "./ancestorTitles";
 import type { StructureResponse } from "./api";
-
-/** EditorPage.tsx の Breadcrumb の useMemo の中身を、そのまま写したもの（data = structure.data） */
-function ancestorTitles(data: StructureResponse | undefined, pageId: string): string[] {
-  const nodes = data?.trees[0]?.nodes ?? [];
-  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
-  const names: string[] = [];
-  for (let cur = byId.get(pageId)?.parentNodeId ?? null; cur !== null; cur = byId.get(cur)?.parentNodeId ?? null) {
-    const node = byId.get(cur);
-    if (!node) break;
-    names.unshift(data?.pages[node.pageId]?.title ?? node.pageId);
-  }
-  return names;
-}
 
 type N = { nodeId: string; pageId: string; parentNodeId: string | null };
 
