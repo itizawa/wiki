@@ -8,7 +8,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
-import { Mono, Muted, Row, Section, StatusChip } from "../components/ui";
+import { Mono, Muted, Row, SaveNotice, Section, StatusChip } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { useWikiIdentityForm } from "../components/WikiIdentityForm";
 import { api, errorMessage } from "../lib/api";
@@ -86,6 +86,11 @@ function IdentityForm() {
       }}
     >
       {form.fields}
+      {done && !form.changed && (
+        <SaveNotice onClose={() => setDone(null)} sx={{ mt: 2, mb: 0 }}>
+          {done}
+        </SaveNotice>
+      )}
       <Row sx={{ mt: 2 }}>
         <Button type="submit" variant="contained" size="medium" disabled={!form.canSave}>
           保存する
@@ -96,11 +101,6 @@ function IdentityForm() {
           </Button>
         )}
       </Row>
-      {done && !form.changed && (
-        <Alert severity="success" role="status" sx={{ mt: 1.5 }} onClose={() => setDone(null)}>
-          {done}
-        </Alert>
-      )}
     </Box>
   );
 }
@@ -154,6 +154,12 @@ function SitePublicSection() {
         <Muted>いまの状態</Muted>
         {wiki.sitePublic ? <StatusChip status="public" label="公開中" /> : <StatusChip label="非公開" />}
       </Row>
+      {save.error && (
+        <Alert severity="error" sx={{ mb: 1.5 }}>
+          {errorMessage(save.error)}
+        </Alert>
+      )}
+      {done && <SaveNotice onClose={() => setDone(null)}>{done}</SaveNotice>}
       {isOwner ? (
         <Button
           variant={wiki.sitePublic ? "outlined" : "contained"}
@@ -166,16 +172,6 @@ function SitePublicSection() {
         </Button>
       ) : (
         <Alert severity="info">公開サイトの公開・非公開の切り替えは、オーナーだけが行えます。</Alert>
-      )}
-      {save.error && (
-        <Alert severity="error" sx={{ mt: 1.5 }}>
-          {errorMessage(save.error)}
-        </Alert>
-      )}
-      {done && (
-        <Alert severity="success" role="status" sx={{ mt: 1.5 }} onClose={() => setDone(null)}>
-          {done}
-        </Alert>
       )}
     </Section>
   );

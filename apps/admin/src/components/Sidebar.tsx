@@ -43,6 +43,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
+import { markJustCreated } from "../lib/newPage";
 import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { createSelectStore, useSelect, type SelectStore } from "../lib/selectStore";
@@ -165,6 +166,7 @@ export function Sidebar(props: {
       void qc.invalidateQueries({ queryKey: ["search"] });
     },
     onSuccess: async (page) => {
+      markJustCreated(page.id);
       await navigate(pageLink(page.id));
       props.onNavigate?.();
     },

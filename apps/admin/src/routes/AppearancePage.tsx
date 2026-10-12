@@ -32,11 +32,14 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
 import { ImageUploader } from "../components/ImageUploader";
 import type { ImageRule } from "../editor/imageFile";
-import { Muted, Row, Section } from "../components/ui";
+import { Muted, Row, SaveNotice, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
 
 const visuallyHidden = { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap" } as const;
+
+/** 本文の幅がこれ以上なら、フォームとプレビューを2列にする（px） */
+const TWO_COLUMN_MIN = 800;
 
 const MODE_LABEL: Record<ThemeMode, string> = { light: "ライト", dark: "ダーク" };
 
@@ -139,9 +142,24 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
   });
 
   return (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) minmax(0, 1fr)" }, gap: 1.5, alignItems: "start" }}>
-      <Stack spacing={1.5}>
-        <Section>
+    // 2列にする区切りは、画面の幅ではなく本文の幅で決める（サイドバーがあると、同じ画面幅でも本文は狭い）。
+    // 1列のときは、プレビューをテーマの欄のすぐ下（保存より上）に置き、色を選びながら見られるようにする。
+    <Box sx={{ containerType: "inline-size" }}>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 1.5,
+          alignItems: "start",
+          gridTemplateColumns: "minmax(0, 1fr)",
+          gridTemplateAreas: '"name" "theme" "preview" "background" "logo" "save"',
+          [`@container (min-width: ${TWO_COLUMN_MIN}px)`]: {
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+            gridTemplateRows: "repeat(5, auto) 1fr",
+            gridTemplateAreas: '"name preview" "theme preview" "background preview" "logo preview" "save preview" ". preview"',
+          },
+        }}
+      >
+        <Section sx={{ gridArea: "name" }}>
           <HelpHeading variant="subtitle1" component="h3" help="ヘッダー・タブのタイトル・RSS・フッターに出ます。wiki の表示名と同じものです。" sx={{ mb: 1 }}>
             サイト名
           </HelpHeading>
@@ -157,7 +175,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           />
         </Section>
 
-        <Section>
+        <Section sx={{ gridArea: "theme" }}>
           <HelpHeading
             variant="subtitle1"
             component="h3"
@@ -169,7 +187,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <ThemeField value={theme.preset} onChange={(preset) => setTheme((t) => ({ ...t, preset }))} />
         </Section>
 
-        <Section>
+        <Section sx={{ gridArea: "background" }}>
           <HelpHeading
             variant="subtitle1"
             component="h3"
@@ -190,7 +208,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           </Stack>
         </Section>
 
-        <Section>
+        <Section sx={{ gridArea: "logo" }}>
           <Typography variant="subtitle1" component="h3" gutterBottom>
             ロゴとファビコン
           </Typography>
@@ -213,7 +231,14 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           </Stack>
         </Section>
 
-        <Section>
+        <Section sx={{ gridArea: "save" }}>
+          {/* 結果は、押した保存ボタンの上に出す（一般・連携・トップページと同じ場所） */}
+          {save.error && (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              {errorMessage(save.error)}
+            </Alert>
+          )}
+          {justSaved && !dirty && <SaveNotice>保存しました。数分後に公開サイトに反映されます。</SaveNotice>}
           <Row>
             <Button variant="contained" size="medium" disabled={!canSave} onClick={() => save.mutate()}>
               保存する
@@ -224,29 +249,19 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
               </Button>
             )}
           </Row>
-          {save.error && (
-            <Alert severity="error" sx={{ mt: 1 }}>
-              {errorMessage(save.error)}
-            </Alert>
-          )}
-          {justSaved && !dirty && (
-            <Alert severity="success" sx={{ mt: 1 }} role="status">
-              保存しました。数分後に公開サイトに反映されます。
-            </Alert>
-          )}
         </Section>
-      </Stack>
 
-      <Section sx={{ position: { lg: "sticky" }, top: { lg: 16 } }}>
-        <HelpHeading variant="subtitle1" component="h3" help="保存するまでは、ここだけが変わります。公開サイトは、保存してから数分で変わります。" sx={{ mb: 1 }}>
-          プレビュー
-        </HelpHeading>
-        <Stack spacing={1.5}>
-          {themeModes(themePresetFor(theme.preset)).map((mode) => (
-            <Preview key={mode} mode={mode} name={name.trim() || saved.name} theme={theme} />
-          ))}
-        </Stack>
-      </Section>
+        <Section sx={{ gridArea: "preview", position: "sticky", top: 16, [`@container (max-width: ${TWO_COLUMN_MIN - 1}px)`]: { position: "static" } }}>
+          <HelpHeading variant="subtitle1" component="h3" help="保存するまでは、ここだけが変わります。公開サイトは、保存してから数分で変わります。" sx={{ mb: 1 }}>
+            プレビュー
+          </HelpHeading>
+          <Stack spacing={1.5}>
+            {themeModes(themePresetFor(theme.preset)).map((mode) => (
+              <Preview key={mode} mode={mode} name={name.trim() || saved.name} theme={theme} />
+            ))}
+          </Stack>
+        </Section>
+      </Box>
     </Box>
   );
 }

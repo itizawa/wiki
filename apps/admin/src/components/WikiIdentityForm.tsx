@@ -15,6 +15,11 @@ import { ImageUploader } from "./ImageUploader";
 import { Muted } from "./ui";
 import { WikiIcon } from "./WikiIcon";
 
+/** 表示名の欄の確かめ。空だと保存できない。 */
+export function nameProblem(value: string): string | null {
+  return value.trim() === "" ? "表示名を入れてください" : null;
+}
+
 /** 画像の URL の欄の確かめ。空なら「画像なし」。 */
 export function iconUrlProblem(value: string): string | null {
   const v = value.trim();
@@ -34,6 +39,8 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
   const refreshWikis = useRefreshWikis();
   const [name, setName] = useState(wiki.name);
   const [iconUrl, setIconUrl] = useState(wiki.iconUrl ?? "");
+  // 触る前から赤くしない。欄を離れたとき（または保存を試みたとき）から出す
+  const [nameTouched, setNameTouched] = useState(false);
   const [uploading, setUploading] = useState(false);
   const nextIcon = iconUrl.trim() === "" ? null : iconUrl.trim();
   const problem = iconUrlProblem(iconUrl);
@@ -45,7 +52,8 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
       opts.onSaved?.(wiki, w);
     },
   });
-  const canSave = Boolean(name.trim()) && problem === null && changed && !uploading && !save.isPending;
+  const nameError = nameTouched ? nameProblem(name) : null;
+  const canSave = nameProblem(name) === null && problem === null && changed && !uploading && !save.isPending;
 
   const fields: ReactNode = (
     <Stack spacing={2.5}>
@@ -53,7 +61,11 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
         label="表示名"
         value={name}
         onChange={(e) => setName(e.target.value)}
+        onBlur={() => setNameTouched(true)}
         fullWidth
+        required
+        error={nameError !== null}
+        helperText={nameError ?? undefined}
         slotProps={{
           htmlInput: { maxLength: SITE_NAME_MAX },
           input: {
@@ -122,6 +134,7 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
     reset: () => {
       setName(wiki.name);
       setIconUrl(wiki.iconUrl ?? "");
+      setNameTouched(false);
     },
   };
 }

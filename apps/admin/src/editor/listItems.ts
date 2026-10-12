@@ -1,5 +1,5 @@
 import { ListItem, TaskItem } from "@tiptap/extension-list";
-import type { JSONContent, MarkdownRendererHelpers } from "@tiptap/react";
+import type { Editor, JSONContent, MarkdownRendererHelpers } from "@tiptap/react";
 
 /**
  * リストの項目の中で、段落のすぐ後ろに1行で続けると、段落の続きとして読み直されてしまうブロック。
@@ -26,13 +26,34 @@ function withBlankLines(render: (node: JSONContent, h: MarkdownRendererHelpers, 
   };
 }
 
+/**
+ * リストの項目の中で Tab / Shift+Tab を押したとき、字下げ・字上げを試し、できなくてもキーを受け取る。
+ * 受け取らないと、ブラウザの既定（次の要素へフォーカスを移す）になり、本文の外へカーソルが逃げる。
+ * コードブロックと表の中は、それぞれの Tab の動きに任せる。
+ */
+function indentShortcuts(editor: Editor, name: string): Record<string, () => boolean> {
+  const inList = () => editor.isActive(name) && !editor.isActive("codeBlock") && !editor.isActive("table");
+  const run = (command: "sinkListItem" | "liftListItem") => () => {
+    if (!inList()) return false;
+    editor.commands[command](name);
+    return true;
+  };
+  return { Tab: run("sinkListItem"), "Shift-Tab": run("liftListItem") };
+}
+
 export const MarkdownListItem = ListItem.extend({
+  addKeyboardShortcuts() {
+    return { ...this.parent?.(), ...indentShortcuts(this.editor, this.name) };
+  },
   renderMarkdown(node, h, ctx) {
     return withBlankLines(this.parent!)(node, h, ctx);
   },
 });
 
 export const MarkdownTaskItem = TaskItem.extend({
+  addKeyboardShortcuts() {
+    return { ...this.parent?.(), ...indentShortcuts(this.editor, this.name) };
+  },
   renderMarkdown(node, h, ctx) {
     return withBlankLines(this.parent!)(node, h, ctx);
   },
