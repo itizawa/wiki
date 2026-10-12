@@ -36,6 +36,7 @@ import { editRequestsLink } from "../lib/editRequests";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
 import { useStars } from "../lib/stars";
+import { UNTITLED_TITLE } from "../lib/untitled";
 import { templateLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
 import { Presentation } from "./Presentation";
@@ -99,7 +100,7 @@ export function PageMenu(props: {
   };
 
   const saveAsTemplate = useMutation({
-    mutationFn: () => api.createTemplate({ title: title.trim() || "無題", bodyMd }),
+    mutationFn: () => api.createTemplate({ title: title.trim() || UNTITLED_TITLE, bodyMd }),
     onSuccess: (t) => {
       void qc.invalidateQueries({ queryKey: ["templates"] });
       setCreatedTemplate(t.id);
