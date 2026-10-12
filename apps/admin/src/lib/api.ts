@@ -76,6 +76,12 @@ export function currentWikiKey(): string {
 /** 開いている wiki の経路。 */
 const w = (path: string) => `/admin/w/${encodeURIComponent(wikiKey)}${path}`;
 
+/** エラー応答（`{ error: { code, message, details } }`）から ApiError を作る。本文が読めなかった（null）ときは statusText を使う */
+function apiError(res: Response, data: any): ApiError {
+  const err = data?.error ?? {};
+  return new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
@@ -86,8 +92,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    const err = data?.error ?? {};
-    throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
+    throw apiError(res, data);
   }
   return data as T;
 }
@@ -102,8 +107,7 @@ async function upload(path: string, file: Blob): Promise<{ url: string }> {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const err = data?.error ?? {};
-    throw new ApiError(res.status, err.code ?? "error", err.message ?? res.statusText, err.details);
+    throw apiError(res, data);
   }
   return data as { url: string };
 }
