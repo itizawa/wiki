@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
+import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -213,12 +213,6 @@ export function Sidebar(props: {
         {/* Google Analytics とサーチコンソールの数字。その wiki を開ける人ならだれでも見られる */}
         <NavItem to="/w/$wikiKey/analytics" icon={<ChartColumn size={18} />} onClick={props.onNavigate}>
           アクセス解析
-        </NavItem>
-        <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
-          テンプレート
-        </NavItem>
-        <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
-          ゴミ箱
         </NavItem>
         {/* この wiki の設定（一般・外観・トップページ・連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
