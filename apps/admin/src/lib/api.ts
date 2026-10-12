@@ -97,6 +97,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+/** クエリ文字列を作る。空の値（`""`・`0`・null・undefined）は付けない。先頭の `?` 付きで返し、付ける値が無ければ `""` */
+function query(params: Record<string, string | null | undefined>): string {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+  return q.size ? `?${q}` : "";
+}
+
 /** 画像をアップロードする。本文はファイルの中身そのまま（multipart にしない） */
 async function upload(path: string, file: Blob): Promise<{ url: string }> {
   const res = await fetch(`/api${path}`, {
@@ -173,10 +179,10 @@ export const api = {
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   /** ページの一覧を、続きから取る（「すべてのページ」の一覧）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
   listPagesPage: (input: { q?: string; cursor?: string | null; limit: number }) => {
-    const params = new URLSearchParams({ limit: String(input.limit) });
-    if (input.q) params.set("q", input.q);
-    if (input.cursor) params.set("cursor", input.cursor);
-    return request<{ pages: PageSummary[]; nextCursor: string | null }>("GET", w(`/pages?${params}`));
+    return request<{ pages: PageSummary[]; nextCursor: string | null }>(
+      "GET",
+      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor })}`),
+    );
   },
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
   search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
@@ -208,9 +214,7 @@ export const api = {
   purgePage: (id: string) => request<{ ok: true; purgedPages: number }>("DELETE", w(`/pages/${id}/trash`)),
   /** 版履歴を、新しい順に続きから取る。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
   listVersions: (id: string, input: { cursor?: string | null; limit: number }) => {
-    const params = new URLSearchParams({ limit: String(input.limit) });
-    if (input.cursor) params.set("cursor", input.cursor);
-    return request<PageVersionList>("GET", w(`/pages/${id}/versions?${params}`));
+    return request<PageVersionList>("GET", w(`/pages/${id}/versions${query({ limit: String(input.limit), cursor: input.cursor })}`));
   },
   getVersion: (id: string, versionId: string) => request<PageVersion>("GET", w(`/pages/${id}/versions/${versionId}`)),
 
@@ -242,9 +246,7 @@ export const api = {
     request<{ withdrawn: number }>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/withdraw`)),
   /** この wiki の編集リクエストの一覧を、続きから取る（出した日時の新しい順）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
   listWikiEditRequests: (input: { status: EditRequestListStatus; cursor?: string | null; limit: number }) => {
-    const params = new URLSearchParams({ status: input.status, limit: String(input.limit) });
-    if (input.cursor) params.set("cursor", input.cursor);
-    return request<EditRequestList>("GET", w(`/edit-requests?${params}`));
+    return request<EditRequestList>("GET", w(`/edit-requests${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`));
   },
   /** この wiki で、未対応の編集リクエストがあるページの数（サイドバーに出す） */
   countEditRequestPages: () => request<EditRequestPageCount>("GET", w("/edit-requests/count")),
@@ -281,8 +283,7 @@ export const api = {
   rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", w(`/pages/${id}/unlisted-key`)),
 
   listSchedule: (params: { from?: string; to?: string; pageId?: string; status?: string } = {}) => {
-    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
-    return request<{ actions: ScheduledAction[] }>("GET", w(`/schedule${q.size ? `?${q}` : ""}`));
+    return request<{ actions: ScheduledAction[] }>("GET", w(`/schedule${query(params)}`));
   },
   createSchedule: (
     input:
@@ -308,8 +309,7 @@ export const api = {
   revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
 
   listAuditLogs: (scope: AuditScope, filter: AuditLogFilter, cursor?: string) => {
-    const q = new URLSearchParams(Object.entries({ ...filter, cursor }).filter(([, v]) => v) as [string, string][]);
-    return request<AuditLogPage>("GET", auditPath(scope, q.size ? `?${q}` : ""));
+    return request<AuditLogPage>("GET", auditPath(scope, query({ ...filter, cursor })));
   },
   listAuditActors: (scope: AuditScope) => request<{ actors: AuditActorOption[] }>("GET", auditPath(scope, "/actors")),
   /** 公開サイトの「外観」（管理者だけ） */
