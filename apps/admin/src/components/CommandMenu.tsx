@@ -18,6 +18,7 @@ import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/findBarState";
 import { usePageActions } from "../lib/pageActions";
 import { useCreateFromTemplate } from "../lib/createFromTemplate";
+import { markJustCreated } from "../lib/newPage";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
@@ -57,6 +58,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       void qc.invalidateQueries({ queryKey: ["pages"] });
       void qc.invalidateQueries({ queryKey: ["search"] });
       onClose();
+      markJustCreated(page.id);
       await navigate(pageLink(page.id));
     },
   });

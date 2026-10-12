@@ -22,6 +22,7 @@ import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
 import { FULL_HEIGHT, NarrowBarActions } from "./WikiLayout";
 import { formatDateTime } from "../lib/format";
+import { takeJustCreated } from "../lib/newPage";
 import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
@@ -229,6 +230,14 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     refreshAfterNewVersion();
     setNotice("採用された変更を、手元の内容に取り込みました");
   };
+
+  // 作った直後のページだけ、タイトルにフォーカスして全部選ぶ（「無題」をそのまま上書きして打てる）。既存のページを開いたときは動かさない
+  const ready = draft !== null;
+  useEffect(() => {
+    if (!ready || !takeJustCreated(pageId)) return;
+    titleInput.current?.focus();
+    titleInput.current?.select();
+  }, [ready, pageId]);
 
   const openRequests = useOpenEditRequestCount(pageId);
 
