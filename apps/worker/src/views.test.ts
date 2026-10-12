@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleScheduled } from "./index";
 import type { Env } from "./tick";
 import { syncViews, VIEW_DATASET, VIEW_TOTALS_CHUNK, VIEWS_CRON, VIEWS_SQL } from "./views";
@@ -36,7 +36,13 @@ function fakeFetch(data: unknown[], opts: { sqlStatus?: number; totalsStatus?: n
 const posted = (calls: Call[]) => calls.filter((c) => c.url === TOTALS_URL).map((c) => (JSON.parse(c.body) as { rows: unknown[] }).rows);
 
 describe("syncViews", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("asks the SQL API for the totals and passes today's and yesterday's (JST) to the API", async () => {
+    // syncViews は AT と今の時刻の遅いほうで「今日」を決めるので、今の時刻も AT に止める（止めないと、AT の翌日から落ちる）
+    vi.useFakeTimers({ now: AT, toFake: ["Date"] });
     const { impl, calls } = fakeFetch([
       // 数は文字列で返ることがある
       { wiki: "wiki", pageId: "abcdefghij", day: "2026-10-11", views: "12" },
