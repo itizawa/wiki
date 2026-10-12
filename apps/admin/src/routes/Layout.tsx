@@ -208,7 +208,7 @@ export function Loading() {
                 </Box>
                 {/* ナビの行 */}
                 <Box sx={{ px: 1 }}>
-                  {["52%", "74%", "66%", "70%", "40%", "62%", "58%"].map((width, i) => (
+                  {["52%", "74%", "66%", "70%", "40%"].map((width, i) => (
                     <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.75, minHeight: 30, px: 1 }}>
                       <Skeleton variant="rounded" width={18} height={18} sx={{ flexShrink: 0 }} />
                       <Skeleton variant="text" width={width} sx={{ fontSize: "0.9rem" }} />
