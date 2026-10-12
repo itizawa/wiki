@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { WikiHome } from "./home";
+import type { LinkCardData } from "./linkCard";
 import type { WikiTheme } from "./theme";
 
 /** 公開操作で選べる公開範囲（private は「非公開化」で扱う）。 */
@@ -130,6 +131,11 @@ export type WikiManifest = {
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];
   trees: ManifestTree[];
+  /**
+   * 本文の「URL だけの段落」（リンクカードにする外部 URL）の OGP。API が取って保存した値（link_previews）で、ビルドは外へ取りにいかない。
+   * 取れていない URL は含めない（その URL は、ふつうのリンクで出す）。contentHash には入れない
+   */
+  linkPreviews?: Record<string, LinkCardData>;
   /** 公開後に削除された記事の id（410） */
   gone: string[];
 };

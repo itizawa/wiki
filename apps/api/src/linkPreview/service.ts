@@ -65,3 +65,16 @@ export async function savedLinkPreviews(db: Db, urls: readonly string[]): Promis
   }
   return out;
 }
+
+/** 取りにいく必要のある URL（まだ一度も取っていない・期限が切れた）。取りにいってよい URL だけ。 */
+export async function staleLinkPreviewUrls(db: Db, urls: readonly string[], now: Date): Promise<string[]> {
+  const targets = new Map<string, string>();
+  for (const u of urls) {
+    const t = parseFetchableUrl(u);
+    if (t) targets.set(t.href, u);
+  }
+  if (targets.size === 0) return [];
+  const rows = await db.select().from(linkPreviews).where(inArray(linkPreviews.url, [...targets.keys()]));
+  const fresh = new Set(rows.filter((r) => isFresh(r, now)).map((r) => r.url));
+  return [...targets].filter(([href]) => !fresh.has(href)).map(([, original]) => original);
+}

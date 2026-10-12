@@ -261,7 +261,7 @@ describe("GET /link-preview", () => {
     const anonymous = await ctx.callAs(null);
     expect((await anonymous("GET", `${W}/link-preview?url=${encodeURIComponent(url)}`)).status).toBe(401);
     const outsider = await ctx.addUser("outsider@example.com", {});
-    expect((await outsider.call("GET", `${W}/link-preview?url=${encodeURIComponent(url)}`)).status).toBe(404);
+    expect((await outsider.call("GET", `${W}/link-preview?url=${encodeURIComponent(url)}`)).status).toBe(403);
     expect(calls).toEqual([]);
   });
 

@@ -1,5 +1,7 @@
 import {
   childrenByParent,
+  linkCardUrls,
+  type LinkCardData,
   pagePath,
   resolveHome,
   resolveTheme,
@@ -14,7 +16,12 @@ import {
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pages, pageVersions, wikis } from "../db/schema";
+import type { LinkFetch } from "../linkPreview/fetch";
+import { getLinkPreview, savedLinkPreviews, staleLinkPreviewUrls } from "../linkPreview/service";
 import { getPrimaryTree, loadStructure } from "../structure/repo";
+
+/** 1回のビルドで新しく取りにいく URL の数の上限（残りは次のビルドで取る） */
+const REFRESH_LIMIT = 30;
 
 type WikiRow = typeof wikis.$inferSelect;
 
@@ -129,7 +136,26 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
     trees,
     gone,
   };
-  return { ...content, contentHash: await wikiContentHash(content, versionIds) };
+  // リンクカードにする URL の OGP（保存してある値だけ。ビルドから外へは取りにいかない）。contentHash には入れない
+  const linkPreviews: Record<string, LinkCardData> = {};
+  if (withBodies) {
+    const urls = [...new Set([...publicPages, ...unlisted].flatMap((p) => linkCardUrls(p.bodyMd)))];
+    for (const [url, p] of await savedLinkPreviews(db, urls)) linkPreviews[url] = { title: p.title, description: p.description, siteName: p.siteName };
+  }
+  return { ...content, linkPreviews, contentHash: await wikiContentHash(content, versionIds) };
+}
+
+/**
+ * 公開内容に出る URL だけの段落のうち、OGP がまだ無い・期限が切れたものを取って保存する（書き込むのは link_previews だけ）。
+ * 公開サイトのビルドが `/export/public` を読むときに先に呼ぶ。外のサイトを待つので、数を絞り、同時に取り、取れなくてもビルドは止めない。
+ * 返すのは、取りにいった URL の数。
+ */
+export async function refreshLinkPreviews(db: Db, manifest: PublicManifest, fetchImpl?: LinkFetch, now = new Date()): Promise<number> {
+  const urls = [...new Set(manifest.wikis.flatMap((w) => [...w.pages, ...w.unlisted].flatMap((p) => linkCardUrls(p.bodyMd))))];
+  const stale = await staleLinkPreviewUrls(db, urls, now);
+  const batch = stale.slice(0, REFRESH_LIMIT);
+  await Promise.all(batch.map((url) => getLinkPreview(db, url, { fetch: fetchImpl, now }).catch(() => null)));
+  return batch.length;
 }
 
 /**
@@ -142,7 +168,7 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
  * マニフェストに公開サイトが使う項目を足したら、ここにも足す（足し忘れると、変えてもビルドが「unchanged」で省かれる）。
  */
 function wikiContentHash(wiki: Omit<WikiManifest, "contentHash">, versionIds: ReadonlyMap<string, string>): Promise<string> {
-  const { pages: publicPages, unlisted, trees, ...settings } = wiki;
+  const { pages: publicPages, unlisted, trees, linkPreviews: _linkPreviews, ...settings } = wiki;
   return sha256(
     JSON.stringify({
       ...settings,
