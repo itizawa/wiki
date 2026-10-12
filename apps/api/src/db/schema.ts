@@ -34,7 +34,7 @@ export const wikis = pgTable("wikis", {
   /** 管理画面で wiki を見分けるための画像の URL（http(s)）。null なら表示名の頭文字を出す */
   iconUrl: text("icon_url"),
   /**
-   * 公開サイトの見た目（アクセント色・ロゴ・ファビコン。`WikiTheme`）。null なら既定。
+   * 公開サイトの見た目（テーマの key・ロゴ・ファビコン。`WikiTheme`）。null なら既定。
    * 読むときは resolveTheme を通し、欠けた・正しくない項目は既定に戻す
    */
   theme: jsonb("theme"),

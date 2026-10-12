@@ -9,7 +9,7 @@ import { toAppearance, updateAppearance } from "../wikis/service";
 import { requireWikiAdmin } from "./wikis";
 
 /**
- * /admin/w/:wikiKey/appearance：公開サイトの「外観」（サイト名・アクセント色・ロゴ・ファビコン）。
+ * /admin/w/:wikiKey/appearance：公開サイトの「外観」（サイト名・テーマ・ロゴ・ファビコン）。
  * 見るのも変えるのも、wiki の管理者（とオーナー）だけ。
  */
 export const appearanceRoutes = new Hono<AppEnv>()
