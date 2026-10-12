@@ -1,9 +1,9 @@
-import { childrenByParent, type ManifestTree, type TreeNode } from "@wiki/shared";
+import { childrenByParent, pagePath, type ManifestTree, type TreeNode } from "@wiki/shared";
 import type { NavItem } from "./nav";
 
 export type { NavItem } from "./nav";
 
-/** ツリーをナビ用の入れ子構造にする。href は `/t/{key}/{nodeId}`（ツリー経由の閲覧）。 */
+/** ツリーをナビ用の入れ子構造にする。href は記事の正規URL（`/p/{pageId}`）。 */
 export function navItems(
   tree: ManifestTree,
   titleOf: (pageId: string) => string | undefined,
@@ -15,7 +15,7 @@ export function navItems(
       nodeId: n.nodeId,
       title: titleOf(n.pageId) ?? n.pageId,
       icon: iconOf(n.pageId) ?? null,
-      href: `/t/${tree.key}/${n.nodeId}`,
+      href: pagePath(n.pageId),
       children: build(n.nodeId),
     }));
   return build(null);
