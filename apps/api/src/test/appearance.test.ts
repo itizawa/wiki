@@ -1,4 +1,4 @@
-import { DEFAULT_THEME, THEME_IMAGE_MAX_BYTES, auditSentenceText, type AuditLogEntry } from "@wiki/shared";
+import { DEFAULT_THEME, THEME_BACKGROUND_MAX_BYTES, THEME_IMAGE_MAX_BYTES, auditSentenceText, type AuditLogEntry } from "@wiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { issueSession, SESSION_COOKIE } from "../auth/session";
 import { chunkedBody, setup, W, wikiManifest } from "./harness";
@@ -11,7 +11,8 @@ afterEach(async () => {
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 2, 3]);
-const base = { presetLight: "simple-light", presetDark: "simple-dark", logo: null, favicon: null };
+const base = { presetLight: "simple-light", presetDark: "simple-dark", logo: null, favicon: null, backgroundLight: null, backgroundDark: null };
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
 
 async function events(kind = "wiki_theme") {
   const res = await ctx.client.query<{ wiki_id: string }>(`select wiki_id from publish_events where kind = $1`, [kind]);
@@ -168,5 +169,44 @@ describe("appearance", () => {
     expect(res.status).toBe(413);
     expect(((await res.json()) as any).error.details).toMatchObject({ maxBytes: THEME_IMAGE_MAX_BYTES });
     expect(big.pulled()).toBeLessThan(20);
+  });
+  it("accepts PNG, JPEG and WebP up to 2MB for a background image, and saves its path for light and dark", async () => {
+    ctx = await setup();
+    const res = await ctx.call("POST", `${W}/appearance/background-images`, JPEG);
+    expect(res.status).toBe(201);
+    expect(res.body.url).toMatch(/^\/images\/[0-9a-z]{24}\.jpg$/);
+    const png = await ctx.call("POST", `${W}/appearance/background-images`, PNG);
+    expect(png.status).toBe(201);
+
+    expect((await ctx.call("POST", `${W}/appearance/background-images`, GIF)).status).toBe(415);
+    const big = new Uint8Array(THEME_BACKGROUND_MAX_BYTES + 1);
+    big.set(JPEG);
+    const tooBig = await ctx.call("POST", `${W}/appearance/background-images`, big);
+    expect(tooBig.status).toBe(413);
+    expect(tooBig.body.error.details).toMatchObject({ maxBytes: THEME_BACKGROUND_MAX_BYTES, limit: "PNG・JPEG・WebP、2MB まで" });
+    // ロゴ・ファビコンの上限（512KB）は変わらない
+    const mid = new Uint8Array(THEME_IMAGE_MAX_BYTES + 1);
+    mid.set(JPEG);
+    expect((await ctx.call("POST", `${W}/appearance/background-images`, mid)).status).toBe(201);
+    expect((await ctx.call("POST", `${W}/appearance/images`, mid)).status).toBe(413);
+
+    const theme = { ...base, presetLight: "notebook-light", presetDark: "space-dark", backgroundLight: res.body.url, backgroundDark: png.body.url };
+    expect((await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme })).status).toBe(200);
+    expect((await wikiManifest(ctx.db)).theme).toEqual(theme);
+
+    // 取り消すと、テーマの画像に戻る（null）
+    expect((await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme: { ...theme, backgroundLight: null } })).status).toBe(200);
+    expect((await wikiManifest(ctx.db)).theme).toMatchObject({ backgroundLight: null, backgroundDark: png.body.url });
+
+    // GIF・SVG・外部の URL・上げていない形のパスは、背景画像に指定できない
+    for (const backgroundDark of ["/images/abcdefghijklmnopqrstuvwx.gif", "/images/abcdefghijklmnopqrstuvwx.svg", "https://example.com/bg.png", "/images/x.png"]) {
+      expect((await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme: { ...theme, backgroundDark } })).status, backgroundDark).toBe(400);
+    }
+  });
+
+  it("lets only the wiki's admin upload a background image", async () => {
+    ctx = await setup();
+    const editor = await ctx.addUser("editor@example.com", { wiki: "editor" });
+    expect((await editor.call("POST", `${W}/appearance/background-images`, JPEG)).status).toBe(403);
   });
 });
