@@ -20,6 +20,7 @@ import { focusAfterRemoval } from "../lib/focus";
 import { useScheduleToasts } from "../lib/scheduleActions";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime, formatDay } from "../lib/format";
+import { checkRunAt } from "../lib/runAt";
 
 const DAY = 24 * 3600_000;
 /** 予約ストックがこれを下回ったら警告する（今後 STOCK_DAYS 日の公開予約数） */
@@ -286,9 +287,7 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
     setShown(props.action);
     setValue(isoToJstLocal(props.action.runAt));
   }
-  const min = isoToJstLocal(new Date(props.now).toISOString());
-  const valid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value);
-  const past = valid && value < min;
+  const { min, valid, past, error } = checkRunAt(value, props.now);
   const unchanged = shown !== null && value === isoToJstLocal(shown.runAt);
   return (
     <Dialog open={props.action !== null} onClose={props.onClose} fullWidth maxWidth="xs" aria-labelledby="reschedule-title">
@@ -310,8 +309,8 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
             label="新しい日時（JST）"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            error={past}
-            helperText={past ? "過去の日時です。いまより先の日時を選んでください。" : "いまより先の日時を選べます。"}
+            error={error !== null}
+            helperText={error ?? "いまより先の日時を選べます。"}
             slotProps={{ htmlInput: { min }, inputLabel: { shrink: true } }}
           />
         </DialogContent>

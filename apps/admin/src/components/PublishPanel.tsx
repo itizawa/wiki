@@ -27,6 +27,7 @@ import { useScheduleToasts } from "../lib/scheduleActions";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
 import { focusAfterRemoval } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
+import { checkRunAt } from "../lib/runAt";
 import { publicPageUrl } from "../lib/publicUrl";
 import { scheduleChoices, type ScheduleKind } from "../lib/scheduleKind";
 import { descendantImpact, pageHierarchy } from "../lib/visibility";
@@ -88,6 +89,8 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
   const blockedByDescendants = impact.wider > 0 && !applyToDescendants;
 
   const toasts = useScheduleToasts();
+  // 予約の日時は、送る前に過去・空を確かめる（編集カレンダーの日時の変更と同じ）
+  const runAtCheck = checkRunAt(runAt, Date.now());
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ["page", page.id] });
@@ -273,10 +276,23 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                 ))}
               </TextField>
               {scheduleKind === "publish_page" && visibilitySelect({ width: "100%" }, "公開範囲")}
-              <TextField type="datetime-local" label="日時（JST）" fullWidth value={runAt} onChange={(e) => setRunAt(e.target.value)} />
+              <TextField
+                type="datetime-local"
+                label="日時（JST）"
+                fullWidth
+                value={runAt}
+                onChange={(e) => {
+                  setRunAt(e.target.value);
+                  // 日時を直したら、前に送って返ったエラーは古いので消す
+                  action.reset();
+                }}
+                error={runAtCheck.error !== null}
+                helperText={runAtCheck.error ?? "いまより先の日時を選べます。"}
+                slotProps={{ htmlInput: { min: runAtCheck.min }, inputLabel: { shrink: true } }}
+              />
               <Button
                 variant="outlined"
-                disabled={action.isPending || !runAt}
+                disabled={action.isPending || runAtCheck.error !== null}
                 onClick={() =>
                   action.mutate(async () => {
                     const created = await api.createSchedule(
