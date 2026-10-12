@@ -31,6 +31,7 @@ import { openFindBar } from "../editor/findBarState";
 import { OutlinePopover } from "../editor/Outline";
 import type { OutlineHeading } from "../editor/outlineHeadings";
 import { api, errorMessage } from "../lib/api";
+import { COPY_FAILED_MESSAGE, copyText } from "../lib/clipboard";
 import { editRequestsLink } from "../lib/editRequests";
 import { markdownFileName, toMarkdownDocument } from "../lib/export";
 import { setPageActions } from "../lib/pageActions";
@@ -113,12 +114,11 @@ export function PageMenu(props: {
   const copy = async () => {
     setAnchor(null);
     setCreatedTemplate(null);
-    try {
-      await navigator.clipboard.writeText(toMarkdownDocument(title, bodyMd));
-      setNotice("Markdown をコピーしました");
-    } catch {
-      setNotice("コピーできませんでした。ブラウザでクリップボードの利用を許可してください");
-    }
+    await copyText(
+      toMarkdownDocument(title, bodyMd),
+      () => setNotice("Markdown をコピーしました"),
+      () => setNotice(COPY_FAILED_MESSAGE),
+    );
   };
 
   const download = () => {
