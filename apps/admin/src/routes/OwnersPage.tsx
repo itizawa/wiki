@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserSummary } from "@wiki/shared";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Tooltip } from "../components/Tooltip";
 import { Muted, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
@@ -64,12 +65,13 @@ export function OwnersPage() {
       <ConfirmHost />
       {/* 「wiki の画面に戻る」とページの見出し（h1）は、「全体の管理」の枠（GlobalAdminLayout）にある */}
       <Box>
-        <Typography variant="h6" component="h2">
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help="オーナーは、すべての wiki に管理者として入れ、wiki の作成・アーカイブと、オーナーの追加・解除ができます。オーナーにできるのは、招待で参加した人など、登録済みのユーザーです。"
+        >
           オーナー
-        </Typography>
-        <Muted>
-          オーナーは、すべての wiki に管理者として入れ、wiki の作成・アーカイブと、オーナーの追加・解除ができます。オーナーにできるのは、招待で参加した人など、登録済みのユーザーです。
-        </Muted>
+        </HelpHeading>
       </Box>
 
       {!session.isOwner && <Alert severity="info">オーナーの追加・解除は、オーナーだけが行えます。</Alert>}

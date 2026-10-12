@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { fileURLToPath } from "node:url";
@@ -42,6 +43,12 @@ export async function wikiManifest(db: Db, key = DEFAULT_WIKI_KEY) {
   return wiki;
 }
 
+/**
+ * PGlite に読み込む拡張。マイグレーション（0027）が `CREATE EXTENSION pg_trgm` を流すので、
+ * マイグレーションを流す側にも、その写しから始める側にも要る（無いと、索引を使う所で落ちる）。
+ */
+export const pgliteExtensions = { pg_trgm };
+
 let migrated: Promise<Blob | File> | undefined;
 
 /**
@@ -50,7 +57,7 @@ let migrated: Promise<Blob | File> | undefined;
  */
 function migratedDataDir() {
   return (migrated ??= (async () => {
-    const client = new PGlite();
+    const client = new PGlite({ extensions: pgliteExtensions });
     await migrate(drizzle(client) as never, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
     const dataDir = await client.dumpDataDir("none");
     await client.close();
@@ -68,7 +75,7 @@ export async function setup(
     cronMarks?: CronMarkStore | null;
   } = {},
 ) {
-  const client = new PGlite({ loadDataDir: await migratedDataDir() });
+  const client = new PGlite({ loadDataDir: await migratedDataDir(), extensions: pgliteExtensions });
   const db = drizzle(client, { schema }) as unknown as Db;
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };

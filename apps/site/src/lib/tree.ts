@@ -1,13 +1,7 @@
 import { childrenByParent, type ManifestTree, type TreeNode } from "@wiki/shared";
+import type { NavItem } from "./nav";
 
-export type NavItem = {
-  nodeId: string;
-  title: string;
-  /** アイコン（絵文字1つ）。付けていなければ null */
-  icon: string | null;
-  href: string;
-  children: NavItem[];
-};
+export type { NavItem } from "./nav";
 
 /** ツリーをナビ用の入れ子構造にする。href は `/t/{key}/{nodeId}`（ツリー経由の閲覧）。 */
 export function navItems(
@@ -27,9 +21,12 @@ export function navItems(
   return build(null);
 }
 
+const nodesById = new WeakMap<ManifestTree, Map<string, ManifestTree["nodes"][number]>>();
+
 /** ルートから nodeId までの祖先（自分を含む）。パンくず用。 */
 export function ancestors(tree: ManifestTree, nodeId: string) {
-  const byId = new Map(tree.nodes.map((n) => [n.nodeId, n]));
+  let byId = nodesById.get(tree);
+  if (!byId) nodesById.set(tree, (byId = new Map(tree.nodes.map((n) => [n.nodeId, n]))));
   const path = [];
   for (let cur = byId.get(nodeId); cur; cur = cur.parentNodeId ? byId.get(cur.parentNodeId) : undefined) {
     path.unshift(cur);

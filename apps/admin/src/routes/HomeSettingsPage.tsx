@@ -8,6 +8,7 @@ import { useBlocker } from "@tanstack/react-router";
 import { HOME_INTRO_MAX, type WikiHome } from "@wiki/shared";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Muted, Row, Section } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
@@ -24,12 +25,17 @@ export function HomeSettingsPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2">
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help={
+            <>
+              「{wiki.name}」の公開サイトのトップで、新着記事の上に出す紹介文などを書きます。保存するまで公開サイトには出ません。空にすると、トップには新着記事だけが出ます。
+            </>
+          }
+        >
           トップページ
-        </Typography>
-        <Muted>
-          「{wiki.name}」の公開サイトのトップで、新着記事の上に出す紹介文などを書きます。保存するまで公開サイトには出ません。空にすると、トップには新着記事だけが出ます。
-        </Muted>
+        </HelpHeading>
       </Section>
       {role !== "admin" ? (
         <Alert severity="info">トップページは、この wiki の管理者だけが変えられます。</Alert>
@@ -120,7 +126,6 @@ function HomeEditor({ saved }: { saved: WikiHome }) {
             </Button>
           )}
         </Row>
-        <Muted sx={{ mt: 1 }}>公開サイトへの反映には数分かかります。</Muted>
         {save.error && (
           <Alert severity="error" sx={{ mt: 1 }}>
             {errorMessage(save.error)}

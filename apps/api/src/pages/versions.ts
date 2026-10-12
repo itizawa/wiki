@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { pageDrafts, pageLinks, pages, pageVersions, wikis } from "../db/schema";
+import { pageDrafts, pageLinks, pages, pageSearch, pageVersions, wikis } from "../db/schema";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
@@ -40,6 +40,16 @@ export async function replaceLinks(db: Db, wikiId: string, pageId: string, bodyM
 }
 
 /**
+ * 検索用の写し（`page_search`）を、head 版のタイトルと本文に合わせる。
+ * **head 版を進めたら、同じトランザクションで必ず呼ぶ**（呼び忘れると、検索が前の本文を探し続ける）。
+ * `createPage` と `createVersion` が呼んでいるので、ふつうはこの2つを通せば足りる。
+ */
+export async function syncPageSearch(tx: Db, pageId: string, head: { title: string; bodyMd: string }): Promise<void> {
+  const values = { title: head.title, bodyMd: head.bodyMd };
+  await tx.insert(pageSearch).values({ pageId, ...values }).onConflictDoUpdate({ target: pageSearch.pageId, set: values });
+}
+
+/**
  * head が「この人の下書きから、ワーカーが自動で作った版」で、その下書きが `baseVersionId` をもとにしていたか。
  * 開いたままの画面は、ワーカーが版を作ったことを知らずに古い `baseVersionId` を送ってくる。
  * 中身は自分の続きなので、別の画面で先に保存された扱い（409）にはしない。
@@ -49,7 +59,7 @@ export const isOwnAutoVersion = (head: VersionRow, userId: string, baseVersionId
 
 /**
  * いまの head の次の版を作る。版を足す、`pages` の title / head_version_id / updated_at を進める、
- * 内部リンクを作り直す、下書きを消す、までを行う。トランザクション内で、ページを行ロックしてから呼ぶ。
+ * 検索用の写しを合わせる、内部リンクを作り直す、下書きを消す、までを行う。トランザクション内で、ページを行ロックしてから呼ぶ。
  * 内容が head と同じなら版は作らない。そのとき `keep` が true で head が間引ける版なら、head を残す版にする
  * （自動でできた版の上で、人が「版として残す」を選んだ）。
  */
@@ -92,6 +102,7 @@ export async function createVersion(
     .update(pages)
     .set({ title: content.title, headVersionId: version!.id, updatedAt: new Date() })
     .where(eq(pages.id, page.id));
+  await syncPageSearch(tx, page.id, content);
   await replaceLinks(tx, page.wikiId, page.id, content.bodyMd);
   return { versionId: version!.id, created: true };
 }

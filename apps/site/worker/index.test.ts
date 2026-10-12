@@ -25,11 +25,17 @@ const files = {
   "/wiki/": "<h1>wiki のトップ</h1>",
   "/wiki/p/abcdefghij": "<h1>記事</h1>",
   "/wiki/page-routes.json": JSON.stringify(routes),
+  "/wiki/nav.json": '{"trees":{"main":[{"nodeId":"abcdefghij"}]}}',
   "/wiki/u/SecretKey/": "<h1>限定公開</h1>",
   "/notes/": "<h1>notes のトップ</h1>",
+  "/notes/nav.json": '{"trees":{"main":[{"nodeId":"nnnnnnnnnn"}]}}',
   "/notes/p/nnnnnnnnnn": "<h1>ノートの記事</h1>",
   "/notes/page-routes.json": JSON.stringify({ canonical: { nnnnnnnnnn: "/p/nnnnnnnnnn" }, gone: ["abcdefghij"] }),
   "/_astro/app.js": "console.log(1)",
+  "/wiki/pagefind/fragment/ja_1234abc.pf_fragment": "fragment",
+  "/wiki/pagefind/index/ja_5678def.pf_index": "index",
+  "/wiki/pagefind/pagefind.js": "pagefind",
+  "/notes/pagefind/fragment/ja_notes00.pf_fragment": "notes fragment",
 };
 const get = (url: string, e = env(files), headers: Record<string, string> = {}) => worker.fetch(new Request(url, { headers }), e.env);
 const wiki = (path: string, e = env(files)) => get(`https://wiki.site.test${path}`, e);
@@ -47,6 +53,19 @@ describe("site worker", () => {
     expect(await res.text()).toBe("<h1>記事</h1>");
     // 静的ファイルがあるときはルート表を読まない
     expect(e.requested).toEqual(["/wiki/p/abcdefghij"]);
+  });
+
+  it("serves the tree nav data of the host's wiki only", async () => {
+    const e = env(files);
+    const own = await wiki("/nav.json", e);
+    expect(own.status).toBe(200);
+    expect(await own.text()).toContain("abcdefghij");
+    expect(e.requested).toEqual(["/wiki/nav.json"]);
+    expect(await (await notes("/nav.json")).text()).toContain("nnnnnnnnnn");
+    // ほかの wiki のツリーは、パスに key を書いても開けない
+    expect((await wiki("/notes/nav.json")).status).toBe(404);
+    // 知らないサブドメインには、ツリーが無い
+    expect((await get("https://nope.site.test/nav.json")).status).toBe(404);
   });
 
   it("never serves another wiki's directory, even when the path names it", async () => {
@@ -81,6 +100,24 @@ describe("site worker", () => {
   it("serves the shared assets on every wiki", async () => {
     expect(await (await wiki("/_astro/app.js")).text()).toBe("console.log(1)");
     expect(await (await notes("/_astro/app.js")).text()).toBe("console.log(1)");
+  });
+
+  it("lets the hashed files of the search index be cached for long, and nothing else", async () => {
+    const immutable = "public, max-age=31536000, immutable";
+    expect((await wiki("/pagefind/fragment/ja_1234abc.pf_fragment")).headers.get("cache-control")).toBe(immutable);
+    expect((await wiki("/pagefind/index/ja_5678def.pf_index")).headers.get("cache-control")).toBe(immutable);
+    // 名前にハッシュの無いファイルと HTML は、今までどおり毎回確かめさせる
+    expect((await wiki("/pagefind/pagefind.js")).headers.get("cache-control")).toBeNull();
+    expect((await wiki("/p/abcdefghij")).headers.get("cache-control")).toBeNull();
+    // 無い断片（404 のページ）には付けない
+    const missing = await wiki("/pagefind/fragment/ja_0000000.pf_fragment");
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("cache-control")).toBeNull();
+    // 断片も wiki ごと。ほかの wiki のものは、パスを直接指定しても開けない
+    const e = env(files);
+    expect((await wiki("/pagefind/fragment/ja_notes00.pf_fragment", e)).status).toBe(404);
+    expect((await wiki("/notes/pagefind/fragment/ja_notes00.pf_fragment", e)).status).toBe(404);
+    expect(e.requested).toEqual(["/wiki/pagefind/fragment/ja_notes00.pf_fragment", "/wiki/notes/pagefind/fragment/ja_notes00.pf_fragment"]);
   });
 
   it("hides the wiki directory in redirects issued by the asset handler", async () => {
@@ -183,5 +220,100 @@ describe("site worker without a wiki host (preview, local)", () => {
     const bare = env(files);
     expect((await wiki(`/images/${name}`, bare)).status).toBe(404);
     expect(bare.requested).toEqual([]);
+  });
+});
+
+describe("site worker image cache", () => {
+  const name = "abcdefghijklmnopqrstuvwx.png";
+  const other = "zzzzzzzzzzzzzzzzzzzzzzzz.png";
+
+  /** エッジのキャッシュ（caches.default）の代わり。キーごとに応答を覚える。 */
+  function setup() {
+    const stored = new Map<string, Response>();
+    const cache = {
+      match: vi.fn(async (key: string): Promise<Response | undefined> => stored.get(key)?.clone()),
+      put: vi.fn(async (key: string, res: Response): Promise<void> => void stored.set(key, res)),
+    };
+    vi.stubGlobal("caches", { default: cache });
+    const reads: string[] = [];
+    const IMAGES = {
+      get: async (key: string) => {
+        reads.push(key);
+        return key === name ? { body: new Response("png bytes").body!, httpMetadata: { contentType: "image/png" } } : null;
+      },
+    };
+    const pending: Promise<unknown>[] = [];
+    const e = env(files);
+    const fetchImage = async (url: string, init: RequestInit = {}) => {
+      const res = await worker.fetch(new Request(url, init), { ...e.env, IMAGES }, { waitUntil: (p) => void pending.push(p) });
+      await Promise.all(pending);
+      return res;
+    };
+    return { cache, stored, reads, fetchImage };
+  }
+
+  it("reads the bucket once, then answers from the edge cache", async () => {
+    const { cache, reads, fetchImage } = setup();
+    const first = await fetchImage(`https://wiki.site.test/images/${name}`);
+    expect(await first.text()).toBe("png bytes");
+    expect(reads).toEqual([name]);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+
+    // 2つ目のブラウザ（Cookie もキャッシュも持たない）から来ても、R2 は読まない
+    const second = await fetchImage(`https://wiki.site.test/images/${name}`);
+    expect(second.status).toBe(200);
+    expect(await second.text()).toBe("png bytes");
+    expect(second.headers.get("content-type")).toBe("image/png");
+    expect(second.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(second.headers.get("content-security-policy")).toContain("sandbox");
+    expect(second.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(reads).toEqual([name]);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+  });
+
+  it("keys the cache by the URL without the query, and stores nothing that carries a cookie", async () => {
+    const { stored, reads, fetchImage } = setup();
+    await fetchImage(`https://wiki.site.test/images/${name}?a=1`, { headers: { cookie: "wiki=notes" } });
+    expect([...stored.keys()]).toEqual([`https://wiki.site.test/images/${name}`]);
+    expect([...stored.values()][0]!.headers.get("set-cookie")).toBeNull();
+    await fetchImage(`https://wiki.site.test/images/${name}?a=2`);
+    expect(reads).toEqual([name]);
+    // 同じ画像でも、wiki のサブドメインが違えば別に入る
+    await fetchImage(`https://notes.site.test/images/${name}`);
+    expect(reads).toEqual([name, name]);
+    expect(stored.size).toBe(2);
+  });
+
+  it("does not cache a missing image, a malformed name or a request that is not GET", async () => {
+    const { cache, stored, reads, fetchImage } = setup();
+    expect((await fetchImage(`https://wiki.site.test/images/${other}`)).status).toBe(404);
+    expect((await fetchImage(`https://wiki.site.test/images/${other}`)).status).toBe(404);
+    expect(reads).toEqual([other, other]);
+    expect((await fetchImage("https://wiki.site.test/images/abc.svg")).status).toBe(404);
+    expect((await fetchImage(`https://wiki.site.test/images/${name}`, { method: "HEAD" })).status).toBe(200);
+    expect(stored.size).toBe(0);
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("still serves the image when the cache fails", async () => {
+    const { cache, reads, fetchImage } = setup();
+    cache.match.mockRejectedValue(new Error("cache down"));
+    cache.put.mockRejectedValue(new Error("cache down"));
+    const res = await fetchImage(`https://wiki.site.test/images/${name}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("png bytes");
+    expect(reads).toEqual([name]);
+  });
+
+  it("serves from the bucket every time when the runtime has no cache", async () => {
+    const reads: string[] = [];
+    const IMAGES = {
+      get: async (key: string) => (reads.push(key), { body: new Response("png bytes").body!, httpMetadata: { contentType: "image/png" } }),
+    };
+    const e = env(files);
+    for (let i = 0; i < 2; i++) {
+      expect(await (await worker.fetch(new Request(`https://wiki.site.test/images/${name}`), { ...e.env, IMAGES })).text()).toBe("png bytes");
+    }
+    expect(reads).toEqual([name, name]);
   });
 });

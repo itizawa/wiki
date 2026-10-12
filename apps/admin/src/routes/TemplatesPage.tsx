@@ -10,6 +10,7 @@ import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { TEMPLATE_VARIABLES, type PageTemplate } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, Section, SkeletonEditor, SkeletonSection } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
@@ -64,16 +65,17 @@ export function TemplatesPage() {
     <Stack spacing={1.5}>
       <Section>
         <Row sx={{ justifyContent: "space-between", mb: 1 }}>
-          <Typography variant="h6" component="h2">
+          <HelpHeading
+            variant="h6"
+            component="h2"
+            help="議事録のように同じ形のページを繰り返し作るときの、ひな形です。新しいページの編集画面で選ぶか、ここから作れます。テンプレートは公開サイトに出ません。エディタの「…」メニューの「テンプレートとして保存」で、いまのページから作ることもできます。"
+          >
             テンプレート
-          </Typography>
+          </HelpHeading>
           <Button variant="contained" startIcon={<Plus size={18} />} disabled={create.isPending} onClick={() => create.mutate()}>
             新しいテンプレート
           </Button>
         </Row>
-        <Muted gutterBottom>
-          議事録のように同じ形のページを繰り返し作るときの、ひな形です。新しいページの編集画面で選ぶか、ここから作れます。テンプレートは公開サイトに出ません。エディタの「…」メニューの「テンプレートとして保存」で、いまのページから作ることもできます。
-        </Muted>
         <Muted>ページを作るとき、タイトルと本文の次の変数を置き換えます。</Muted>
         <TemplateVariables />
       </Section>

@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TrashedPage } from "@wiki/shared";
 import { useMemo, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpHeading } from "../components/HelpTip";
 import { Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -75,12 +76,13 @@ export function TrashPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Typography variant="h6" component="h2" gutterBottom>
+        <HelpHeading
+          variant="h6"
+          component="h2"
+          help="削除したページが、配下のページといっしょに入ります。「元に戻す」で、配下ごとツリーに戻せます（非公開のページとして戻り、公開と予約は戻りません）。自動では消えず、「完全に削除」するまで残ります。"
+        >
           ゴミ箱
-        </Typography>
-        <Muted>
-          削除したページが、配下のページといっしょに入ります。「元に戻す」で、配下ごとツリーに戻せます（非公開のページとして戻り、公開と予約は戻りません）。自動では消えず、「完全に削除」するまで残ります。
-        </Muted>
+        </HelpHeading>
       </Section>
 
       {trash.error && <Alert severity="error">{errorMessage(trash.error)}</Alert>}
