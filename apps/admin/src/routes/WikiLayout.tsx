@@ -22,9 +22,10 @@ import { Muted, RouterLink, Section } from "../components/ui";
 import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
+import { useTabIcon } from "../lib/tabIcon";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { TOUCH } from "../theme";
-import { Center, Loading, useSession, useWikis } from "./Layout";
+import { Center, Loading, mainProps, mainSx, SkipLink, useSession, useWikis } from "./Layout";
 
 /** 閉じたサイドバーの幅（開くボタンだけが残る）。 */
 const COLLAPSED_WIDTH = 44;
@@ -64,6 +65,9 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
     if (wiki) rememberWiki(wiki.key);
   }, [wiki]);
 
+  // タブのアイコンを、開いている wiki のファビコンにする（未設定・wiki の外では既定のまま）
+  useTabIcon(wiki?.faviconUrl);
+
   if (wikis.isPending) return <Loading />;
   if (!wiki) {
     return (
@@ -86,13 +90,13 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
       value={{ wiki, wikis: active, isOwner: session.isOwner, role: wiki.role, refreshWikis: () => outer.invalidateQueries({ queryKey: ["wikis"] }) }}
     >
       <QueryClientProvider client={queryClient}>
-        <Shell email={session.email} onLogout={session.logout} />
+        <Shell email={session.email} name={session.name} pictureUrl={session.pictureUrl} onLogout={session.logout} />
       </QueryClientProvider>
     </WikiContext.Provider>
   );
 }
 
-function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
+function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: string | null; pictureUrl: string | null; onLogout: () => void }) {
   const { wiki } = useWiki();
   const [sidebarWidth, setSidebarWidth] = usePersistentState("wiki.sidebar.width", SIDEBAR_WIDTH);
   const wide = useMediaQuery((t) => t.breakpoints.up("md"));
@@ -143,6 +147,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
       style={{ "--sidebar-width": `${wide ? clampSidebarWidth(sidebarWidth) : SIDEBAR_WIDTH}px` } as CSSProperties}
       sx={{ position: "relative", display: "flex", flexDirection: wide ? "row" : "column", height: "100vh", bgcolor: "background.paper" }}
     >
+      <SkipLink />
       {wide && open && <SidebarResizer value={clampSidebarWidth(sidebarWidth)} defaultValue={SIDEBAR_WIDTH} onChange={setSidebarWidth} />}
       {wide ? (
         // 開閉は、幅を動かして出し入れする（どこが開いてどこが閉じたかを目で追えるように）。本文側も一緒に動く
@@ -163,7 +168,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
         >
           {/* 閉じている間は、見えない中身にフォーカスが入らないようにする */}
           <Box inert={!open} sx={{ height: "100%", opacity: open ? 1 : 0, visibility: open ? "visible" : "hidden", transition: `opacity ${MOTION_MS}ms ease, visibility ${MOTION_MS}ms`, ...noMotion }}>
-            <Sidebar email={email} onCollapse={() => setOpen(false)} onOpenCommands={() => setCommandOpen(true)} onLogout={onLogout} />
+            <Sidebar email={email} name={name} pictureUrl={pictureUrl} onCollapse={() => setOpen(false)} onOpenCommands={() => setCommandOpen(true)} onLogout={onLogout} />
           </Box>
           <Box
             inert={open}
@@ -211,6 +216,8 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
       >
         <Sidebar
           email={email}
+          name={name}
+          pictureUrl={pictureUrl}
           onNavigate={() => setDrawer(false)}
           onOpenCommands={() => {
             setDrawer(false);
@@ -223,7 +230,7 @@ function Shell({ email, onLogout }: { email: string; onLogout: () => void }) {
       <ConfirmHost />
       <ToastHost />
       <StarsHost />
-      <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
+      <Box {...mainProps} sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...mainSx }}>
         <NarrowBarSlot.Provider value={barSlot}>
           <Outlet />
         </NarrowBarSlot.Provider>

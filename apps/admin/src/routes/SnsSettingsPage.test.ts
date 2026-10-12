@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ApiError, errorMessage } from "../lib/api";
 import { defaultTestPostText, postTextProblem, xConnectResultMessage } from "./SnsSettingsPage";
 
 describe("postTextProblem", () => {
@@ -41,5 +42,12 @@ describe("xConnectResultMessage", () => {
       expect(message.text).toContain("もう一度「X と連携する」を押してください");
     }
     expect(xConnectResultMessage("forbidden", null).text).toContain("ログインし直して");
+  });
+});
+
+describe("errorMessage for x errors", () => {
+  it("tells to buy credits on payment required, and keeps the wait-and-retry text for unavailable", () => {
+    expect(errorMessage(new ApiError(422, "x_payment_required", "x requires payment"))).toContain("クレジットを購入");
+    expect(errorMessage(new ApiError(502, "x_unavailable", "could not reach x"))).toContain("時間をおいて");
   });
 });

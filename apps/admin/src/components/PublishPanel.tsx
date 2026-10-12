@@ -104,7 +104,7 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
 
   const published = page.publishedVersionId !== null && page.visibility !== "private";
   // 公開 URL は wiki ごとのサブドメイン
-  const { origin } = useWiki().wiki;
+  const { origin, sitePublic } = useWiki().wiki;
   const url = publicPageUrl(origin, page);
   const pending = (schedule.data?.actions ?? []).filter((a) => a.status === "scheduled" || a.status === "failed" || a.status === "running");
   // 何も変わらない予約（いまの版をすでに公開中のページの公開、非公開のページの非公開化）は選べなくする
@@ -153,6 +153,11 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
       <Stack spacing={1.5} role="tabpanel" id={tabPanelId(tab)} aria-labelledby={tabId(tab)} sx={{ p: 2 }}>
         {tab === "publish" && (
           <>
+            {!sitePublic && (
+              <Alert severity="warning">
+                この wiki の公開サイトは非公開です。公開しても、サイトを公開に戻すまで、まだだれにも見えません。
+              </Alert>
+            )}
             <Stack spacing={0.75} sx={{ alignItems: "flex-start" }}>
               {!published && <StatusChip label="非公開" />}
               {published && page.visibility === "public" && <StatusChip status="public" label="公開中" />}

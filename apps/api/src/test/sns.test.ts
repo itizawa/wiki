@@ -1,6 +1,6 @@
 import { auditSentenceText, type AuditLogEntry, type SnsStatus } from "@wiki/shared";
 import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { issueSession, SESSION_COOKIE, X_OAUTH_COOKIE } from "../auth/session";
 import { loadConfig } from "../config";
 import { wikiSnsAccounts } from "../db/schema";
@@ -239,7 +239,20 @@ describe("sns: x", () => {
 
     fake.x.post = () => json({ title: "Too Many Requests", status: 429 }, 429);
     expect((await ctx.call("POST", `${W}/sns/x/test-post`, { text: "多すぎ" })).body.error.code).toBe("x_rate_limited");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fake.x.post = () => json({ title: "Payment Required", detail: "Your enrolled account does not have any credits.", status: 402 }, 402);
+    const unpaid = await ctx.call("POST", `${W}/sns/x/test-post`, { text: "秘密の本文" });
+    expect(unpaid.status).toBe(422);
+    expect(unpaid.body.error.code).toBe("x_payment_required");
+    // 原因は種類とステータスでログに残り、トークンも本文も残らない
+    expect(warn).toHaveBeenCalledWith("x post failed: payment_required (402)");
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/access-|refresh-|秘密の本文/);
+    warn.mockRestore();
+
+    // 500 台や通信の失敗は、これまでどおり x_unavailable
     fake.x.post = () => json({ title: "Service Unavailable" }, 503);
+    expect((await ctx.call("POST", `${W}/sns/x/test-post`, { text: "障害" })).body.error.code).toBe("x_unavailable");
+    fake.x.post = () => json({ title: "Internal Server Error" }, 500);
     expect((await ctx.call("POST", `${W}/sns/x/test-post`, { text: "障害" })).status).toBe(502);
 
     // X の側で連携を外された：アクセストークンも、更新用のトークンも通らない

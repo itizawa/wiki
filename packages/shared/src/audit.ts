@@ -42,6 +42,7 @@ export const AUDIT_ACTIONS = {
   page_unpublish: "publish",
   page_visibility_change: "publish",
   unlisted_key_rotate: "publish",
+  wiki_site_visibility: "publish",
   schedule_create: "publish",
   schedule_update: "publish",
   schedule_cancel: "publish",
@@ -129,6 +130,8 @@ export type AuditDetailMap = {
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
   wiki_home_update: Record<string, never>;
+  /** 公開サイトを公開・非公開にした。sitePublic は変えたあとの状態 */
+  wiki_site_visibility: { key: string; sitePublic: boolean };
   /** SNS のアカウントをつないだ・外した。トークンは入れない */
   sns_connect: { provider: SnsProvider; username: string };
   sns_disconnect: { provider: SnsProvider; username: string };
@@ -302,6 +305,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       if (entry.detail.iconUrl) parts.push("画像を変更しました");
       return [{ text: "wiki の" }, { text: parts.join("。") || "設定を変更しました" }];
     }
+    case "wiki_site_visibility":
+      return [{ text: "wiki " }, ...quoted(t), { text: `の公開サイトを${entry.detail.sitePublic ? "公開" : "非公開"}にしました（${entry.detail.key}）` }];
     case "wiki_home_update":
       return plain("公開サイトのトップページの自由記述を変更しました");
     case "sns_connect":

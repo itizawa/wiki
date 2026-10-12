@@ -37,6 +37,7 @@ export function toWiki(row: WikiRow, config: Pick<AppConfig, "siteBaseDomain">):
     iconUrl: row.iconUrl,
     origin: wikiOrigin(row.key, config.siteBaseDomain),
     archivedAt: row.archivedAt?.toISOString() ?? null,
+    sitePublic: row.sitePublic,
     createdAt: row.createdAt.toISOString(),
     ...toWikiSettings(row),
   };
@@ -72,7 +73,7 @@ export async function listWikis(
     .orderBy(asc(wikis.createdAt), asc(wikis.key));
   return rows.flatMap((r) => {
     const role = opts.roles ? opts.roles.get(r.wiki.id) : "admin";
-    return role ? [{ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages), role }] : [];
+    return role ? [{ ...toWiki(r.wiki, config), publishedPages: Number(r.publishedPages), role, faviconUrl: resolveTheme(r.wiki.theme).favicon }] : [];
   });
 }
 
@@ -196,11 +197,12 @@ export async function updateHome(db: Db, wikiId: string, input: UpdateHomeInput,
 }
 
 /**
- * 連携の設定（GA の測定 ID・プロパティ ID、サーチコンソールの確認用の値）の変更。null で外す。
+ * wiki ごとの設定の変更：連携（GA の測定 ID・プロパティ ID、サーチコンソールの確認用の値。null で外す）と、公開サイトの公開・非公開（sitePublic）。
+ * 公開サイトの公開・非公開は、実際に変わったときだけビルドし直し、監査ログに残す。
  * 測定 ID と確認用の値は公開サイトの HTML に出るので、実際に変わったときだけビルドし直す。
  * プロパティ ID は管理画面の「アクセス解析」だけが使うので、変えてもビルドし直さない。
  */
-export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiSettingsInput): Promise<WikiRow> {
+export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiSettingsInput, actor: AuditActor): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const wiki = await findWiki(tx, key, true);
     // 行を待っている間にアーカイブされたら、開けない wiki として扱う
@@ -208,17 +210,30 @@ export async function updateWikiSettings(db: Db, key: string, input: UpdateWikiS
     const gaChanged = input.gaMeasurementId !== undefined && input.gaMeasurementId !== wiki.gaMeasurementId;
     const verificationChanged = input.searchConsoleVerification !== undefined && input.searchConsoleVerification !== wiki.searchConsoleVerification;
     const propertyChanged = input.gaPropertyId !== undefined && input.gaPropertyId !== wiki.gaPropertyId;
-    if (!gaChanged && !verificationChanged && !propertyChanged) return wiki;
+    const siteChanged = input.sitePublic !== undefined && input.sitePublic !== wiki.sitePublic;
+    if (!gaChanged && !verificationChanged && !propertyChanged && !siteChanged) return wiki;
     const [row] = await tx
       .update(wikis)
       .set({
         ...(gaChanged && { gaMeasurementId: input.gaMeasurementId }),
         ...(verificationChanged && { searchConsoleVerification: input.searchConsoleVerification }),
         ...(propertyChanged && { gaPropertyId: input.gaPropertyId }),
+        ...(siteChanged && { sitePublic: input.sitePublic }),
       })
       .where(eq(wikis.id, wiki.id))
       .returning();
     if (gaChanged || verificationChanged) await recordPublishEvent(tx, wiki.id, "wiki_settings");
+    if (siteChanged) {
+      // 公開サイトが出る・消える（ページの公開範囲は触らない）
+      await recordPublishEvent(tx, wiki.id, "wiki_site_visibility");
+      await writeAudit(tx, {
+        wikiId: wiki.id,
+        actor,
+        action: "wiki_site_visibility",
+        target: { type: "wiki", id: wiki.id, label: wiki.name },
+        detail: { key: wiki.key, sitePublic: input.sitePublic! },
+      });
+    }
     return row!;
   });
 }

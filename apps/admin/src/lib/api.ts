@@ -263,7 +263,7 @@ export const api = {
 
   /** wiki ごとの設定（Google Analytics の測定 ID・プロパティ ID、サーチコンソールの確認用の値）。変えられるのはオーナーだけ。null で外す */
   getSettings: () => request<WikiSettings>("GET", w("/settings")),
-  updateSettings: (input: Partial<WikiSettings>) => request<WikiSettings>("PATCH", w("/settings"), input),
+  updateSettings: (input: Partial<WikiSettings> & { sitePublic?: boolean }) => request<WikiSettings>("PATCH", w("/settings"), input),
 
   /** 「設定」の「SNS」：wiki につないだ SNS のアカウント（管理者だけ） */
   snsStatus: () => request<SnsStatus>("GET", w("/sns")),
@@ -331,6 +331,8 @@ export const api = {
   saveHome: (input: UpdateHomeInput) => request<WikiHome>("PUT", w("/home"), input),
   /** ロゴ・ファビコンをアップロードし、パス（`/images/{name}`）を返す。PNG・WebP の 512KB まで */
   uploadThemeImage: (file: Blob) => upload(w("/appearance/images"), file),
+  /** 背景画像をアップロードし、パス（`/images/{name}`）を返す。PNG・JPEG・WebP の 2MB まで */
+  uploadBackgroundImage: (file: Blob) => upload(w("/appearance/background-images"), file),
 
   structure: () => request<StructureResponse>("GET", w("/structure")),
   commit: (input: { expectedHeadCommitId: string; message?: string; ops: StructureOpInput[] }) =>
@@ -440,6 +442,8 @@ export function errorMessage(err: unknown): string {
       }
       case "x_rate_limited":
         return "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。";
+      case "x_payment_required":
+        return "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。";
       case "x_unavailable":
         return "X に届きませんでした。時間をおいて、もう一度お試しください。";
       case "exceeds_parent": {

@@ -1,4 +1,4 @@
-import { IMAGE_MAX_BYTES } from "@wiki/shared";
+import { IMAGE_MAX_BYTES, THEME_BACKGROUND_LIMIT_LABEL, THEME_BACKGROUND_MAX_BYTES, THEME_BACKGROUND_TYPES } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { pickImageFile } from "./ImageUploader";
 
@@ -23,5 +23,14 @@ describe("アップロードする画像の選び方", () => {
     expect(pickImageFile([])).toEqual({ problem: expect.stringMatching(/ファイルを選んで/) });
     const png = { type: "image/png", size: 10 };
     expect(pickImageFile([png, png])).toEqual({ problem: expect.stringMatching(/1枚だけ/) });
+  });
+
+  it("条件（形式と大きさ）を渡すと、その条件で断る（背景画像は PNG・JPEG・WebP の 2MB まで）", () => {
+    const rule = { types: THEME_BACKGROUND_TYPES, maxBytes: THEME_BACKGROUND_MAX_BYTES, limitLabel: THEME_BACKGROUND_LIMIT_LABEL };
+    expect(pickImageFile([{ type: "image/jpeg", size: THEME_BACKGROUND_MAX_BYTES }], rule)).toHaveProperty("file");
+    expect(pickImageFile([{ type: "image/gif", size: 10 }], rule)).toEqual({ problem: expect.stringContaining(THEME_BACKGROUND_LIMIT_LABEL) });
+    expect(pickImageFile([{ type: "image/png", size: THEME_BACKGROUND_MAX_BYTES + 1 }], rule)).toEqual({ problem: expect.stringMatching(/大きすぎます.*2MB/) });
+    // 条件を渡さなければ、これまでどおり本文の画像の条件
+    expect(pickImageFile([{ type: "image/gif", size: 10 }])).toHaveProperty("file");
   });
 });

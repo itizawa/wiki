@@ -150,22 +150,6 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
   return { html: marked.parse(md, { async: false }), headings };
 }
 
-const articlesByPaths = new WeakMap<ReadonlyMap<string, string>, Map<string, { html: string; headings: Heading[] }>>();
-
-/**
- * renderArticle と同じ結果を、同じ本文については1回だけ作って使い回す。
- * 公開ページは `/p/` と `/t/` の2か所に出るので、Markdown の変換と色分けを2回走らせないために使う。
- * 結果は publicPaths（wiki ごとに1つ。lib/manifest.ts の siteData が同じものを返す）・sponsored・origin・本文で決まる。
- */
-export function renderArticleOnce(md: string, opts: RenderOptions): { html: string; headings: Heading[] } {
-  let articles = articlesByPaths.get(opts.publicPaths);
-  if (!articles) articlesByPaths.set(opts.publicPaths, (articles = new Map()));
-  const key = `${opts.sponsored ? 1 : 0}\0${opts.origin ?? ""}\0${md}`;
-  let article = articles.get(key);
-  if (!article) articles.set(key, (article = renderArticle(md, opts)));
-  return article;
-}
-
 /** 一覧やRSS用の短い抜粋（Markdown記法を落とした先頭部分）。 */
 export function excerpt(md: string, length = 120): string {
   const text = md
@@ -174,7 +158,15 @@ export function excerpt(md: string, length = 120): string {
     .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[#>*_`~-]/g, "")
+    // 表: 区切りの行（`|---|---|`）は丸ごと落とし、ほかの行は `|` だけ落としてセルの文字を空白でつなぐ
+    .replace(/^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/gm, (line) => (line.includes("|") ? "" : line))
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.replace(/\|/g, " "))
+    // 行頭の記号（見出し・引用・リストの印・区切り線）
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+)/gm, "")
+    .replace(/^[ \t]*([-*_])([ \t]*\1){2,}[ \t]*$/gm, "")
+    // 語を囲む記号。`run_worker_first` や `well-known` のように語の中にある `_` `-` は残す
+    .replace(/`|\*+|~~/g, "")
+    .replace(/(^|[^\p{L}\p{N}_])_+(?=[\p{L}\p{N}])|(?<=[\p{L}\p{N}])_+(?![\p{L}\p{N}_])/gu, "$1")
     .replace(/\s+/g, " ")
     .trim();
   return text.length > length ? `${text.slice(0, length)}…` : text;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, headingId, renderArticle, renderArticleOnce, renderMarkdown } from "./markdown";
+import { excerpt, headingId, renderArticle, renderMarkdown } from "./markdown";
 
 const publicPaths = new Map([["abcdefghij", "/p/abcdefghij"]]);
 
@@ -137,26 +137,16 @@ describe("toggles", () => {
   });
 });
 
-describe("renderArticleOnce", () => {
-  const md = "# 見出し\n\n[公開](/p/abcdefghij) と [外](https://example.com/)";
-
-  it("gives the same result as renderArticle and converts the same body only once", () => {
-    const first = renderArticleOnce(md, { publicPaths, origin: "http://wiki.test" });
-    expect(first).toEqual(renderArticle(md, { publicPaths, origin: "http://wiki.test" }));
-    // 2回目（/t/ のページ）は、1回目（/p/ のページ）で作ったものをそのまま返す
-    expect(renderArticleOnce(md, { publicPaths, origin: "http://wiki.test" })).toBe(first);
+describe("excerpt のMarkdown記号", () => {
+  it("表は、セルの文字を残して | と区切り行だけ落とす", () => {
+    expect(excerpt("書き方\n\n| 記法 | 例 |\n|---|---|\n| 見出し | # 見出し |\n| リスト | - 項目 |")).toBe("書き方 記法 例 見出し # 見出し リスト - 項目");
+    expect(excerpt("| a | b |\n| :--- | ---: |\n| 1 | 2 |")).toBe("a b 1 2");
   });
-
-  it("does not reuse a result across wikis, origins or the sponsored flag", () => {
-    const base = renderArticleOnce(md, { publicPaths, origin: "http://wiki.test" });
-    const sponsored = renderArticleOnce(md, { publicPaths, origin: "http://wiki.test", sponsored: true });
-    expect(sponsored.html).toContain('rel="sponsored noopener"');
-    expect(base.html).not.toContain("sponsored");
-    // 別の wiki（公開ページの一覧が別）では、同じ本文でもリンクの出し方が変わる
-    const other = renderArticleOnce(md, { publicPaths: new Map(), origin: "http://wiki.test" });
-    expect(other.html).not.toContain('href="/p/abcdefghij"');
-    expect(base.html).toContain('href="/p/abcdefghij"');
-    expect(renderArticleOnce(md, { publicPaths, origin: "http://notes.test" })).not.toBe(base);
+  it("語の中の _ と - は残す", () => {
+    expect(excerpt("静的アセット run_worker_first と .well-known、snake_case、a-b")).toBe("静的アセット run_worker_first と .well-known、snake_case、a-b");
+  });
+  it("語を囲む記号と行頭の記号は落とす", () => {
+    expect(excerpt("# 見出し\n\n- **太字** と _斜体_ と ~~消す~~ と `code`\n* 項目\n\n---\n\n> 引用")).toBe("見出し 太字 と 斜体 と 消す と code 項目 引用");
   });
 });
 

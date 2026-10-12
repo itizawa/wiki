@@ -149,7 +149,7 @@ describe("auth", () => {
     expect(ok.headers.get("location")).toBe("http://admin.test/");
     const session = ok.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
     const me = await ctx.app.request("/admin/me", { headers: { cookie: session } });
-    expect(await me.json()).toEqual({ id: ctx.owner.id, email: "admin@example.com", name: "Admin", isOwner: true });
+    expect(await me.json()).toEqual({ id: ctx.owner.id, email: "admin@example.com", name: "Admin", pictureUrl: null, isOwner: true });
     const [linked] = await db.select().from(users).where(eq(users.id, ctx.owner.id));
     expect(linked!.googleSub).toBe("g-1");
     expect(linked!.lastLoginAt).not.toBeNull();

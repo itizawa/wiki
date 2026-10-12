@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "./api";
+import { markJustCreated } from "./newPage";
 import { pageLink } from "./wiki";
 
 /**
@@ -15,6 +16,7 @@ export function useCreateFromTemplate() {
     onSuccess: async (page) => {
       void qc.invalidateQueries({ queryKey: ["structure"] });
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      markJustCreated(page.id);
       await navigate(pageLink(page.id));
     },
   });

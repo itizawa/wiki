@@ -9,7 +9,7 @@ import { HOME_INTRO_MAX, type WikiHome } from "@wiki/shared";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
-import { Muted, Row, Section } from "../components/ui";
+import { Muted, Row, SaveNotice, Section } from "../components/ui";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { api, errorMessage } from "../lib/api";
 import { useWiki } from "../lib/wiki";
@@ -116,6 +116,12 @@ function HomeEditor({ saved }: { saved: WikiHome }) {
       </Section>
 
       <Section>
+        {save.error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {errorMessage(save.error)}
+          </Alert>
+        )}
+        {justSaved && !dirty && <SaveNotice>保存しました。数分後に公開サイトに反映されます。</SaveNotice>}
         <Row>
           <Button variant="contained" size="medium" disabled={!canSave} onClick={() => save.mutate()}>
             {save.isPending ? "保存中…" : dirty ? "保存する (⌘S)" : "保存済み"}
@@ -126,16 +132,6 @@ function HomeEditor({ saved }: { saved: WikiHome }) {
             </Button>
           )}
         </Row>
-        {save.error && (
-          <Alert severity="error" sx={{ mt: 1 }}>
-            {errorMessage(save.error)}
-          </Alert>
-        )}
-        {justSaved && !dirty && (
-          <Alert severity="success" sx={{ mt: 1 }} role="status">
-            保存しました。数分後に公開サイトに反映されます。
-          </Alert>
-        )}
       </Section>
     </Stack>
   );

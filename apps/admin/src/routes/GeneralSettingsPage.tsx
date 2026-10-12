@@ -4,12 +4,15 @@ import Button from "@mui/material/Button";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
-import { Mono, Muted, Row, Section } from "../components/ui";
+import { Mono, Muted, Row, SaveNotice, Section, StatusChip } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { useWikiIdentityForm } from "../components/WikiIdentityForm";
-import { useWiki } from "../lib/wiki";
+import { api, errorMessage } from "../lib/api";
+import { useRefreshWikis, useWiki } from "../lib/wiki";
 
 /**
  * 「設定」の「一般」タブ：wiki の表示名と画像（変えるのはオーナーだけ）と、変えられない key・公開サイトの URL。
@@ -44,6 +47,7 @@ export function GeneralSettingsPage() {
           </>
         )}
       </Section>
+      <SitePublicSection />
       <Section>
         <HelpHeading variant="subtitle1" component="h2" help="key は作成後に変えられません（公開サイトの URL がすべて変わるため）。" sx={{ mb: 0.5 }}>
           key と公開サイト
@@ -57,6 +61,7 @@ export function GeneralSettingsPage() {
           <MuiLink href={wiki.origin} target="_blank" rel="noreferrer">
             <Mono component="span">{wiki.origin}</Mono>
           </MuiLink>
+          {!wiki.sitePublic && <Muted component="span"> （いまは非公開で、だれも見られません）</Muted>}
         </Box>
       </Section>
     </Stack>
@@ -81,6 +86,11 @@ function IdentityForm() {
       }}
     >
       {form.fields}
+      {done && !form.changed && (
+        <SaveNotice onClose={() => setDone(null)} sx={{ mt: 2, mb: 0 }}>
+          {done}
+        </SaveNotice>
+      )}
       <Row sx={{ mt: 2 }}>
         <Button type="submit" variant="contained" size="medium" disabled={!form.canSave}>
           保存する
@@ -91,11 +101,78 @@ function IdentityForm() {
           </Button>
         )}
       </Row>
-      {done && !form.changed && (
-        <Alert severity="success" role="status" sx={{ mt: 1.5 }} onClose={() => setDone(null)}>
-          {done}
+    </Box>
+  );
+}
+
+/**
+ * 公開サイトの公開・非公開（変えるのはオーナーだけ）。非公開の間は、ページの公開範囲を変えないまま、サイトをだれも見られない。
+ * 非公開にするときだけ確認を出す（公開に戻すのは、すぐ戻せるので確認しない）。
+ */
+function SitePublicSection() {
+  const { wiki, isOwner } = useWiki();
+  const refreshWikis = useRefreshWikis();
+  const [done, setDone] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (sitePublic: boolean) => api.updateSettings({ sitePublic }),
+    onSuccess: async (_, sitePublic) => {
+      await refreshWikis();
+      setDone(
+        sitePublic
+          ? "公開サイトを公開にしました。サイトへの反映は数分後（ビルド後）です。"
+          : "公開サイトを非公開にしました。サイトからの取り下げは数分後（ビルド後）です。",
+      );
+    },
+  });
+
+  const change = async (sitePublic: boolean) => {
+    setDone(null);
+    if (!sitePublic) {
+      const ok = await confirmDialog({
+        title: `「${wiki.name}」の公開サイトを非公開にしますか？`,
+        body: "公開サイトは、だれも見られなくなります。各ページの公開範囲は変わらず、公開に戻せば元のとおりに出ます。サイトに反映されるまで、数分かかります。",
+        confirmLabel: "公開サイトを非公開にする",
+        cancelLabel: "公開のままにする",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    save.mutate(sitePublic);
+  };
+
+  return (
+    <Section>
+      <HelpHeading
+        variant="subtitle1"
+        component="h2"
+        help="非公開の間は、だれも公開サイトを見られません（トップ、各ページ、限定公開の URL、RSS、サイトマップ、検索）。各ページの公開範囲は変わらないので、公開に戻せば元のとおりに出ます。管理画面での編集・公開・予約と、予約の実行は、今までどおり使えます。アーカイブと違い、管理画面の一覧からは外れません。サイトへの反映は数分後（ビルド後）です。"
+        sx={{ mb: 0.5 }}
+      >
+        公開サイトの公開・非公開
+      </HelpHeading>
+      <Row sx={{ mb: 1 }}>
+        <Muted>いまの状態</Muted>
+        {wiki.sitePublic ? <StatusChip status="public" label="公開中" /> : <StatusChip label="非公開" />}
+      </Row>
+      {save.error && (
+        <Alert severity="error" sx={{ mb: 1.5 }}>
+          {errorMessage(save.error)}
         </Alert>
       )}
-    </Box>
+      {done && <SaveNotice onClose={() => setDone(null)}>{done}</SaveNotice>}
+      {isOwner ? (
+        <Button
+          variant={wiki.sitePublic ? "outlined" : "contained"}
+          color={wiki.sitePublic ? "error" : "primary"}
+          size="medium"
+          disabled={save.isPending}
+          onClick={() => void change(!wiki.sitePublic)}
+        >
+          {wiki.sitePublic ? "公開サイトを非公開にする" : "公開サイトを公開する"}
+        </Button>
+      ) : (
+        <Alert severity="info">公開サイトの公開・非公開の切り替えは、オーナーだけが行えます。</Alert>
+      )}
+    </Section>
   );
 }
