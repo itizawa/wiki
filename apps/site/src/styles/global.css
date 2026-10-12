@@ -66,7 +66,7 @@
 @media (max-width: 800px) { .theme-ornament { display: none; } }
 @media print { .theme-backdrop, .theme-ornament { display: none; } }
 /* 背景色は html（:root）が持つ。body にも塗ると、後ろに置いた背景画像（.theme-backdrop）を隠してしまう */
-body { margin: 0; line-height: 1.8; }
+body { margin: 0; line-height: 1.8; overflow-wrap: anywhere; }
 a { color: var(--accent); }
 
 /* ページ遷移のフェード（View Transitions API）。
