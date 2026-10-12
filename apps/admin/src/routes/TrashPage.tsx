@@ -11,6 +11,7 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
 import { Muted, RouterLink, Row, Section, SkeletonSection } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
+import { focusAfterRemoval, focusWhenReady } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
 
@@ -41,6 +42,8 @@ export function TrashPage() {
       setRestored((list) => [...list, { ...p, parentMissing: result.parentMissing }]);
       // ツリー・一覧・検索・スターに、戻したページがまた出る
       void qc.invalidateQueries();
+      // 押した「元に戻す」は、戻したことを知らせる行に置き換わる。その行の「開く」リンクにフォーカスを移す
+      focusWhenReady(`[data-trash-row="${p.id}"] a[href]`);
     },
     onError: (err, p) => fail(p.id, err),
   });
@@ -52,7 +55,13 @@ export function TrashPage() {
   });
   const busy = restore.isPending || purge.isPending;
 
-  const confirmPurge = async (p: TrashedPage) => {
+  const confirmPurge = async (p: TrashedPage, button: HTMLElement) => {
+    const row = button.closest("[data-trash-row]");
+    const restoreFocus = focusAfterRemoval(row, {
+      scope: row?.parentElement,
+      focusSelector: "[data-trash-row] button:not(:disabled), [data-trash-row] a[href]",
+      fallback: () => document.getElementById("trash-heading"),
+    });
     const ok = await confirmDialog({
       title: `「${p.title}」を完全に削除しますか？`,
       body: `${p.descendantCount > 0 ? `配下の ${p.descendantCount} ページも、いっしょに完全に削除します。` : ""}本文と版履歴が消え、元に戻せません。`,
@@ -60,7 +69,8 @@ export function TrashPage() {
       cancelLabel: "削除しない",
       danger: true,
     });
-    if (ok) purge.mutate(p);
+    // 消える行の、次の行（無ければ前の行。空になったら見出し）にフォーカスを移す。確認ダイアログを開く前の位置で決める
+    if (ok) purge.mutate(p, { onSuccess: restoreFocus });
   };
 
   // 戻した行も、ゴミ箱に入れた日時の順のまま、元の場所に出す
@@ -79,6 +89,9 @@ export function TrashPage() {
         <HelpHeading
           variant="h6"
           component="h2"
+          id="trash-heading"
+          tabIndex={-1}
+          textSx={{ outline: "none" }}
           help="削除したページが、配下のページといっしょに入ります。「元に戻す」で、配下ごとツリーに戻せます（非公開のページとして戻り、公開と予約は戻りません）。自動では消えず、「完全に削除」するまで残ります。"
         >
           ゴミ箱
@@ -98,13 +111,13 @@ export function TrashPage() {
       )}
       {rows.map(({ page: p, restored: done }) =>
         done ? (
-          <Alert key={p.id} severity="success" variant="outlined">
+          <Alert key={p.id} data-trash-row={p.id} severity="success" variant="outlined">
             「{p.title}」{withDescendants(p)}を元に戻しました。
             {done.parentMissing ? "元の親ページが無いため、最上位の末尾に置きました。" : ""}非公開のページとして戻っています。{" "}
             <RouterLink {...pageLink(p.id)}>「{p.title}」を開く</RouterLink>
           </Alert>
         ) : (
-          <Section key={p.id}>
+          <Section key={p.id} data-trash-row={p.id}>
             <Row sx={{ justifyContent: "space-between" }}>
               <Box sx={{ minWidth: 0 }}>
                 <Typography component="h3" sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>
@@ -121,7 +134,7 @@ export function TrashPage() {
                 <Button variant="outlined" startIcon={<Undo2 size={18} />} disabled={busy} onClick={() => restore.mutate(p)}>
                   元に戻す
                 </Button>
-                <Button color="error" startIcon={<Trash2 size={18} />} disabled={busy} onClick={() => void confirmPurge(p)}>
+                <Button color="error" startIcon={<Trash2 size={18} />} disabled={busy} onClick={(e) => void confirmPurge(p, e.currentTarget)}>
                   完全に削除…
                 </Button>
               </Row>

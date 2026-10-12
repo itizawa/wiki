@@ -13,6 +13,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type CSSProper
 import { createPortal } from "react-dom";
 import { CommandMenu } from "../components/CommandMenu";
 import { ConfirmHost } from "../components/ConfirmDialog";
+import { ToastHost } from "../components/Toast";
 import { ShortcutGuide } from "../components/ShortcutGuide";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth, SidebarResizer } from "../components/SidebarResizer";
@@ -221,6 +222,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
       </Drawer>
       <ShortcutGuide />
       <ConfirmHost />
+      <ToastHost />
       <StarsHost />
       <Box component="main" sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
         <NarrowBarSlot.Provider value={barSlot}>

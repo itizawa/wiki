@@ -14,6 +14,7 @@ import { Copy, Ellipsis, ExternalLink, Globe, Link, Star, Trash2 } from "lucide-
 import { useState } from "react";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { useDeletePage } from "../lib/deletePage";
+import { focusAfterRemoval } from "../lib/focus";
 import { formatDateTime } from "../lib/format";
 import { publicPageUrl } from "../lib/publicUrl";
 import { useStars } from "../lib/stars";
@@ -175,8 +176,11 @@ export function PageRowMenu(props: {
           <MenuItem
             key="delete"
             onClick={() => {
+              // 行ごと消えるので、次の行（無ければ前の行）のリンクにフォーカスを移す準備をしてから閉じる
+              const row = target.anchor.closest("[role=treeitem]");
+              const restore = focusAfterRemoval(row, { scope: row?.closest("[role=tree]"), focusSelector: "[role=treeitem] a[href]" });
               onClose();
-              void confirmAndDelete(page);
+              void confirmAndDelete(page, restore);
             }}
           >
             {/* ゴミ箱から元に戻せるので、赤にはしない（編集画面の「…」と同じ） */}
