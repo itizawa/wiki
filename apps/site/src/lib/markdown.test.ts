@@ -200,3 +200,38 @@ describe("Google マップの埋め込み", () => {
     expect(excerpt("ここ https://www.google.com/maps/embed?pb=1 です")).toContain("https://www.google.com");
   });
 });
+
+describe("@children（配下のページの一覧）", () => {
+  const opts = { publicPaths: new Map() };
+  const items = [
+    { title: "子A", path: "/p/aaaaaaaaaa", children: [{ title: "孫<A>", path: "/p/cccccccccc", children: [] }] },
+    { title: "子B", path: "/p/bbbbbbbbbb", children: [] },
+  ];
+
+  it("渡された項目を入れ子の <ul> にし、検索の索引には入れない", () => {
+    const calls: unknown[] = [];
+    const html = renderMarkdown("前\n\n@children depth=2 sort=title\n\n後", {
+      ...opts,
+      childrenOf: (o) => (calls.push(o), items),
+    });
+    expect(calls).toEqual([{ depth: 2, sort: "title" }]);
+    expect(html).toContain(
+      '<ul class="children-list" data-pagefind-ignore><li><a href="/p/aaaaaaaaaa">子A</a><ul><li><a href="/p/cccccccccc">孫&lt;A&gt;</a></li></ul></li><li><a href="/p/bbbbbbbbbb">子B</a></li></ul>',
+    );
+    expect(html).toContain("<p>前</p>");
+    expect(html).toContain("<p>後</p>");
+  });
+  it("配下に公開ページが無いとき、ツリーを渡されていないときは何も出さない", () => {
+    expect(renderMarkdown("@children", { ...opts, childrenOf: () => [] })).toBe("");
+    expect(renderMarkdown("@children", opts)).toBe("");
+  });
+  it("コードブロックの中・分からない引数・文中の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@children\n```\n\n@children filter=x\n\n文 @children", { ...opts, childrenOf: () => items });
+    expect(html).not.toContain("children-list");
+    expect(html).toContain("@children\n</code>");
+    expect(html).toContain("<p>@children filter=x</p>");
+  });
+  it("抜粋では、記法の行を落とす", () => {
+    expect(excerpt("前の文\n\n@children depth=2\n\n後の文")).toBe("前の文 後の文");
+  });
+});
