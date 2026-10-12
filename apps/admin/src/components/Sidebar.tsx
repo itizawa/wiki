@@ -39,7 +39,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useNavigate, useParams } from "@tanstack/react-router";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { childrenByParent, type StructureOpInput, type TreeNode, type Visibility } from "@wiki/shared";
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
@@ -694,9 +694,7 @@ function StarredRow({ page, menuOpen, onOpenMenu, onNavigate }: { page: RowMenuP
           sx={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", gap: 0.75, color: "inherit" }}
         >
           <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />
-          <Box component="span" sx={ellipsis}>
-            {page.title}
-          </Box>
+          <EllipsisText>{page.title}</EllipsisText>
         </RouterLink>
         {/* 「…」を押しても、行のドラッグ（並べ替え）が始まらないようにする */}
         <Box className="row-actions" data-open={menuOpen} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
@@ -732,6 +730,8 @@ type TreeContext = {
   onCreatePage: (parentNodeId: string) => void;
   onOpenMenu: OpenRowMenu;
   onNavigate: () => void;
+  /** 行を間引いて描いているか（`VIRTUALIZE_OVER` を超えている） */
+  virtual: boolean;
 };
 
 /** ツリーの折りたたみの動きの長さ（ms）。 */
@@ -798,6 +798,7 @@ function DocumentTree(props: {
   // 行に渡す操作は作り直さず、呼ばれたときの最新の値で動かす
   const latest = useRef({ collapsedIds, setCollapsedIds, props });
   latest.current = { collapsedIds, setCollapsedIds, props };
+  const virtual = tree.nodes.length > VIRTUALIZE_OVER;
   const ctx = useMemo<TreeContext>(() => {
     const setCollapsed = (nodeId: string, next: boolean) => {
       const { collapsedIds: ids, setCollapsedIds: set } = latest.current;
@@ -812,8 +813,9 @@ function DocumentTree(props: {
       },
       onOpenMenu: (target) => latest.current.props.onOpenMenu(target),
       onNavigate: () => latest.current.props.onNavigate?.(),
+      virtual,
     };
-  }, [store]);
+  }, [store, virtual]);
 
   /** 落とす先の目印（行の上の線・行の色）を、ポインタの下の行に出す */
   const showDrop = (e: DragMoveEvent | DragOverEvent) => {
@@ -850,7 +852,7 @@ function DocumentTree(props: {
       onDragCancel={endDrag}
       onDragEnd={onDragEnd}
     >
-      {tree.nodes.length > VIRTUALIZE_OVER ? (
+      {virtual ? (
         <VirtualTree childrenOf={childrenOf} collapsed={collapsed} dragging={dragging} scrollEl={props.scrollEl} ctx={ctx} sx={treeSx} />
       ) : (
         <Box role="tree" aria-label="ドキュメント" sx={treeSx}>
@@ -895,6 +897,30 @@ const TreeRow = memo(function TreeRow({ node, depth, ctx }: { node: TreeNode; de
 });
 
 /**
+ * 行のタイトル。幅に収まらず省略されているときだけ、マウスを乗せて少し待つと全文を出す（収まっているときは何も出さない）。
+ * 読み上げでは、リンクの名前で今も全文が読めるので、`aria-label` は足さない。
+ */
+function EllipsisText({ children }: { children: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip
+      title={children}
+      open={open}
+      enterDelay={500}
+      enterNextDelay={500}
+      onOpen={() => setOpen(!!ref.current && ref.current.scrollWidth > ref.current.clientWidth)}
+      onClose={() => setOpen(false)}
+      placement="bottom-start"
+    >
+      <Box ref={ref} component="span" sx={ellipsis}>
+        {children}
+      </Box>
+    </Tooltip>
+  );
+}
+
+/**
  * ページが多いとき（`VIRTUALIZE_OVER` を超える）のツリー。見えている行とその前後だけを、平らに並べて描く。
  * 入れ子にしないので、階層は字下げと `aria-level` で伝える。子ページの行は、高さを動かさずにすぐ出し入れする。
  */
@@ -935,6 +961,21 @@ function VirtualTree(props: {
     scrollMargin,
     rangeExtractor,
   });
+  // 開いたページ（今のページ）の行が見える範囲に無ければ、そこまで送る。ページが変わったとき・サイドバーを開いたときの1回だけで、
+  // ユーザーが自分でツリーを送っている間（今のページが変わらない間）は、勝手に送らない
+  const activePageId = useSelect(ctx.store, (s) => s.activePageId);
+  const scrolledFor = useRef<string | undefined>(undefined);
+  const indexOfActive = useMemo(() => (activePageId ? rows.findIndex((r) => r.node.pageId === activePageId) : -1), [rows, activePageId]);
+  useEffect(() => {
+    // まだ読めていない・親が畳まれているときは、行が増えたらもう一度見る
+    if (!activePageId || indexOfActive < 0 || scrolledFor.current === activePageId || !scrollEl) return;
+    // 描き終えて枠の位置が落ち着いてから送る（その前に送ると、仮想化の側が持っている古い位置に戻される）
+    const frame = requestAnimationFrame(() => {
+      scrolledFor.current = activePageId;
+      virtualizer.scrollToIndex(indexOfActive, { align: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activePageId, indexOfActive, scrollEl, virtualizer]);
   return (
     <Box ref={top} role="tree" aria-label="ドキュメント" sx={props.sx} style={{ position: "relative", height: virtualizer.getTotalSize() }}>
       {virtualizer.getVirtualItems().map((item) => (
@@ -983,13 +1024,20 @@ const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNo
   const drop = useDroppable({ id: rowDropId(node.nodeId) });
   const setDragRef = drag.setNodeRef;
   const setDropRef = drop.setNodeRef;
+  const barEl = useRef<HTMLElement | null>(null);
   const setRef = useCallback(
     (el: HTMLElement | null) => {
+      barEl.current = el;
       setDragRef(el);
       setDropRef(el);
     },
     [setDragRef, setDropRef],
   );
+  // 行を間引かずに描くとき（`VIRTUALIZE_OVER` 以下）の、今のページの行を見える所へ送る処理。今のページになったとき・開いたときだけで、
+  // 見えているなら動かさない。間引いて描くときは `VirtualTree` が `scrollToIndex` で送る
+  useEffect(() => {
+    if (isActive && !ctx.virtual) barEl.current?.scrollIntoView({ block: "nearest" });
+  }, [isActive, ctx.virtual]);
   const title = page?.title ?? node.pageId;
   const visibility = (page?.visibility ?? "private") as Visibility;
 
@@ -1028,9 +1076,7 @@ const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNo
         <Box component={ChevronRight} size={18} sx={{ transition: moves ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
       </IconButton>
       <RouterLink {...pageLink(node.pageId)} draggable={false} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
-        <Box component="span" sx={ellipsis}>
-          {title}
-        </Box>
+        <EllipsisText>{title}</EllipsisText>
         <VisibilityMark visibility={visibility} />
       </RouterLink>
       <Box className="row-actions" data-open={menuOpen}>
