@@ -12,10 +12,10 @@ export async function getStaticPaths() {
   return (await allWikis()).map((w) => ({ params: { wiki: w.key } }));
 }
 
-const { wiki: manifest, publicPaths, origin, primaryTree, pagesById, linkPreviews } = await siteData(Astro.params.wiki);
+const { wiki: manifest, publicPaths, origin, primaryTree, pagesById, linkPreviews, previewOf } = await siteData(Astro.params.wiki);
 // 管理画面の「トップページ」で書いた自由記述。内部リンクの解決は記事の本文と同じ
 const { introMd } = resolveHome(manifest.home);
-const introHtml = introMd ? renderMarkdown(introMd, { publicPaths, origin, titleOf: (id) => pagesById.get(id)?.title, linkPreviews }) : null;
+const introHtml = introMd ? renderMarkdown(introMd, { publicPaths, origin, titleOf: (id) => pagesById.get(id)?.title, linkPreviews, previewOf }) : null;
 const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
 // 公開ページが1つも無いツリーは出さない（新着だけにする）
 const items = primaryTree ? await fullNav(manifest.key, primaryTree) : [];

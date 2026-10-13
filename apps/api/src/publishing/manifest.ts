@@ -1,6 +1,6 @@
 import {
   childrenByParent,
-  linkCardUrls,
+  linkPreviewUrls,
   type LinkCardData,
   pagePath,
   resolveHome,
@@ -139,7 +139,7 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
   // リンクカードにする URL の OGP（保存してある値だけ。ビルドから外へは取りにいかない）。contentHash には入れない
   const linkPreviews: Record<string, LinkCardData> = {};
   if (withBodies) {
-    const urls = [...new Set([...publicPages, ...unlisted].flatMap((p) => linkCardUrls(p.bodyMd)))];
+    const urls = [...new Set([...publicPages, ...unlisted].flatMap((p) => linkPreviewUrls(p.bodyMd)))];
     for (const [url, p] of await savedLinkPreviews(db, urls)) linkPreviews[url] = { title: p.title, description: p.description, siteName: p.siteName };
   }
   return { ...content, linkPreviews, contentHash: await wikiContentHash(content, versionIds) };
@@ -151,7 +151,7 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
  * 返すのは、取りにいった URL の数。
  */
 export async function refreshLinkPreviews(db: Db, manifest: PublicManifest, fetchImpl?: LinkFetch, now = new Date()): Promise<number> {
-  const urls = [...new Set(manifest.wikis.flatMap((w) => [...w.pages, ...w.unlisted].flatMap((p) => linkCardUrls(p.bodyMd))))];
+  const urls = [...new Set(manifest.wikis.flatMap((w) => [...w.pages, ...w.unlisted].flatMap((p) => linkPreviewUrls(p.bodyMd))))];
   const stale = await staleLinkPreviewUrls(db, urls, now);
   const batch = stale.slice(0, REFRESH_LIMIT);
   await Promise.all(batch.map((url) => getLinkPreview(db, url, { fetch: fetchImpl, now }).catch(() => null)));

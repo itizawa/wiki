@@ -17,7 +17,7 @@ export async function getStaticPaths() {
 
 const { page } = Astro.props as { page: ManifestPage };
 const { wiki } = Astro.params;
-const { pagesById, publicPaths, primaryTree, origin, linkPreviews } = await siteData(wiki);
+const { pagesById, publicPaths, primaryTree, origin, linkPreviews, previewOf } = await siteData(wiki);
 const titleOf = (id: string) => pagesById.get(id)?.title;
 const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
@@ -53,6 +53,7 @@ const navSrc = (await navFile(wiki)).path;
         origin={origin}
         titleOf={titleOf}
         linkPreviews={linkPreviews}
+        previewOf={previewOf}
         childrenOf={primaryTree && ((options) => childrenItems(primaryTree, page.id, options, pagesById))}
       />
       <Backlinks pages={backlinks} />

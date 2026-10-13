@@ -19,12 +19,14 @@ interface Props {
   titleOf?: RenderOptions["titleOf"];
   /** 外部の URL だけの段落をカードにする OGP（マニフェストの `linkPreviews`） */
   linkPreviews?: RenderOptions["linkPreviews"];
+  /** 内部リンクのホバーのプレビュー（タイトル・アイコン・抜粋） */
+  previewOf?: RenderOptions["previewOf"];
 }
 
-const { title, icon, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin, childrenOf, titleOf, linkPreviews } = Astro.props;
+const { title, icon, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin, childrenOf, titleOf, linkPreviews, previewOf } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
-const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin, childrenOf, titleOf, linkPreviews });
+const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin, childrenOf, titleOf, linkPreviews, previewOf });
 // 見出しが2つ以上あるときだけ目次を出す。いちばん浅い見出しを左端に揃える
 const showToc = headings.length >= 2;
 const minDepth = Math.min(...headings.map((h) => h.depth));

@@ -296,3 +296,26 @@ describe("内部リンクの「@タイトル」", () => {
     expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths, titleOf })).not.toMatch(/@|<strong/);
   });
 });
+
+describe("リンクのホバープレビューの data 属性", () => {
+  const previewOf = (id: string) => (id === "abcdefghij" ? { title: "手順 <書>", icon: "📘", text: "冒頭の抜粋" } : undefined);
+  const linkPreviews = { "https://example.com/post": { title: "記事", description: "説明", siteName: null } };
+  it("公開ページへの内部リンクに、タイトル・アイコン・抜粋を付ける（エスケープする）", () => {
+    const html = renderMarkdown("[ここ](/p/abcdefghij)", { publicPaths, previewOf });
+    expect(html).toContain('data-preview-title="手順 &lt;書&gt;" data-preview-icon="📘" data-preview-text="冒頭の抜粋"');
+  });
+  it("非公開のページは、プレビューを付けず文字だけのまま", () => {
+    const html = renderMarkdown("[ここ](/p/zzzzzzzzzz)", { publicPaths, previewOf });
+    expect(html).not.toContain("<a");
+    expect(html).not.toContain("data-preview");
+  });
+  it("保存した OGP がある外部リンクに付ける。サイト名が無ければホスト名", () => {
+    const html = renderMarkdown("見て [記事](https://example.com/post) と [別](https://other.example/)", { publicPaths, linkPreviews });
+    expect(html).toContain('rel="noopener" data-preview-title="記事" data-preview-text="説明" data-preview-site="example.com"');
+    expect(html.match(/data-preview-title/g)).toHaveLength(1);
+  });
+  it("OGP が取れていない外部リンク・previewOf が無いときは、これまでどおり", () => {
+    expect(renderMarkdown("[ここ](/p/abcdefghij)", { publicPaths })).not.toContain("data-preview");
+    expect(renderMarkdown("[x](https://nope.example/)", { publicPaths, linkPreviews })).toBe('<p><a href="https://nope.example/" rel="noopener">x</a></p>\n');
+  });
+});

@@ -76,6 +76,27 @@ export function linkCardUrls(md: string): string[] {
   return urls;
 }
 
+/**
+ * 本文の `[文字](URL)` の外部リンク（http・https。出てきた順、重複なし）。コードブロックとインラインコードの中、画像は読まない。
+ * ホバーのプレビューに使う。
+ */
+export function inlineLinkUrls(md: string): string[] {
+  const text = md
+    .replace(/^[ \t]*(```+|~~~+)[^\n]*\n[\s\S]*?(?:^[ \t]*\1[^\n]*$|(?![\s\S]))/gm, "")
+    .replace(/`[^`\n]*`/g, "");
+  const urls: string[] = [];
+  for (const m of text.matchAll(/(?<!!)\[[^\]\n]*\]\(\s*<?(https?:\/\/[^\s)>]+)/g)) {
+    const url = parseHttpUrl(m[1]!);
+    if (url && !parseGoogleMapUrl(url) && !urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
+/** 公開のとき OGP を取って保存する URL。カードにする段落の URL と、文中のリンクの URL。 */
+export function linkPreviewUrls(md: string): string[] {
+  return [...new Set([...linkCardUrls(md), ...inlineLinkUrls(md)])];
+}
+
 /** ページへのリンク `/p/{id}`（相対、または `isOwnOrigin` が認めるオリジンの絶対 URL）なら、そのページの id。 */
 export function pageIdOfHref(href: string, isOwnOrigin: (origin: string) => boolean = () => false): string | null {
   const m = /^(https?:\/\/[^/?#]+)?\/p\/([0-9a-z]{10})(?:[-/?#]|$)/.exec(href.trim());

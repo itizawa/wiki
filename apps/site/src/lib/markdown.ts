@@ -38,7 +38,22 @@ export type RenderOptions = {
    * ここにある URL はカードで出し、無い URL（取れなかったもの）は、ふつうのリンクで出す。外へは取りにいかない
    */
   linkPreviews?: Readonly<Record<string, LinkCardData>>;
+  /**
+   * 公開ページの id → ホバーのプレビューに出すタイトル・アイコン・抜粋。渡すと、内部リンクの `<a>` に `data-preview-*` を付ける。
+   * 外部リンクは `linkPreviews`（保存した OGP）から付ける。どちらも無いリンクには付けない（プレビューを出さない）
+   */
+  previewOf?: (pageId: string) => LinkHoverPreview | undefined;
 };
+
+/** ホバーのプレビューの中身。 */
+export type LinkHoverPreview = { title: string; icon?: string | null; text?: string | null; site?: string | null };
+
+/** `<a>` に付ける `data-preview-*`（スクリプト Base.astro が読む。スクリプトが動かなくても、ただのリンクのまま）。 */
+function previewAttrs(p: LinkHoverPreview | undefined): string {
+  if (!p || !p.title) return "";
+  const attr = (name: string, v: string | null | undefined) => (v ? ` data-preview-${name}="${escapeHtml(v)}"` : "");
+  return ` data-preview-title="${escapeHtml(p.title)}"${attr("icon", p.icon)}${attr("text", p.text)}${attr("site", p.site)}`;
+}
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -211,13 +226,15 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
           if (!path) return text;
           // 文字がページのタイトルそのままのリンクは、太字の「@タイトル」で出す（Slack のメンション。「@」は CSS）
           const mention = opts.titleOf?.(pageId) === plainText(token.tokens).trim() && token.text.trim() !== "";
-          return `<a${mention ? ' class="page-mention"' : ""} href="${escapeHtml(path)}">${text}</a>`;
+          return `<a${mention ? ' class="page-mention"' : ""} href="${escapeHtml(path)}"${previewAttrs(opts.previewOf?.(pageId))}>${text}</a>`;
         }
         if (!/^(https?:|mailto:|#|\/)/i.test(token.href)) return text;
         const external = /^https?:/i.test(token.href);
         const rel = external ? (opts.sponsored ? "sponsored noopener" : "noopener") : undefined;
         const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
-        return `<a href="${escapeHtml(token.href)}"${title}${rel ? ` rel="${rel}"` : ""}>${text}</a>`;
+        const saved = external ? opts.linkPreviews?.[token.href] : undefined;
+        const preview = saved ? previewAttrs({ title: saved.title, text: saved.description, site: saved.siteName ?? hostOf(token.href) }) : "";
+        return `<a href="${escapeHtml(token.href)}"${title}${rel ? ` rel="${rel}"` : ""}${preview}>${text}</a>`;
       },
       // 画像も、リンクと同じく http(s) と同じサイトのパスだけを通す（`javascript:` や `data:` は代わりの文字だけにする）
       image(token: Tokens.Image) {
@@ -241,27 +258,4 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
   return { html: marked.parse(md, { async: false }), headings };
 }
 
-/** 一覧やRSS用の短い抜粋（Markdown記法を落とした先頭部分）。 */
-export function excerpt(md: string, length = 120): string {
-  const text = md
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
-    // 地図の URL だけの行（本文では地図になる）
-    .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))
-    .replace(/^@children(?:[ \t].*)?$/gm, (line) => (matchChildren(line) ? "" : line))
-    .replace(/^\+\+\+[ \t]*/gm, "")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    // 表: 区切りの行（`|---|---|`）は丸ごと落とし、ほかの行は `|` だけ落としてセルの文字を空白でつなぐ
-    .replace(/^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/gm, (line) => (line.includes("|") ? "" : line))
-    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.replace(/\|/g, " "))
-    // 行頭の記号（見出し・引用・リストの印・区切り線）
-    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+)/gm, "")
-    .replace(/^[ \t]*([-*_])([ \t]*\1){2,}[ \t]*$/gm, "")
-    // 語を囲む記号。`run_worker_first` や `well-known` のように語の中にある `_` `-` は残す
-    .replace(/`|\*+|~~/g, "")
-    .replace(/(^|[^\p{L}\p{N}_])_+(?=[\p{L}\p{N}])|(?<=[\p{L}\p{N}])_+(?![\p{L}\p{N}_])/gu, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text.length > length ? `${text.slice(0, length)}…` : text;
-}
+export { excerpt } from "@wiki/shared";
