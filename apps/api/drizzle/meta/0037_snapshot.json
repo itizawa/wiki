@@ -1,6 +1,6 @@
 {
   "id": "ea05bc77-2708-4a20-80ed-06564d5bb227",
-  "prevId": "0b349650-3f2d-4a5b-bdf5-fae61f110c1b",
+  "prevId": "931d2e38-4bc7-490a-9294-d31d583c0c6a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -320,6 +320,63 @@
           "value": "\"audit_logs\".\"actor_type\" in ('user', 'system')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.cost_snapshots": {
+      "name": "cost_snapshots",
+      "schema": "",
+      "columns": {
+        "service": {
+          "name": "service",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period": {
+          "name": "period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "usage": {
+          "name": "usage",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempted_at": {
+          "name": "attempted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "cost_snapshots_service_period_pk": {
+          "name": "cost_snapshots_service_period_pk",
+          "columns": [
+            "service",
+            "period"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.edit_request_comments": {
@@ -1947,12 +2004,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "cover": {
-          "name": "cover",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "head_version_id": {
           "name": "head_version_id",
           "type": "uuid",
@@ -2045,6 +2096,12 @@
         "purged_at": {
           "name": "purged_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cover": {
+          "name": "cover",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }

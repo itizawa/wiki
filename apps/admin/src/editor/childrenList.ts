@@ -1,4 +1,5 @@
-import { mergeAttributes, Node, type Editor } from "@tiptap/react";
+import { mergeAttributes, Node, ReactNodeViewRenderer, type Editor } from "@tiptap/react";
+import { ChildrenListView } from "./ChildrenListView";
 import { CHILDREN_DEFAULTS, CHILDREN_MAX_DEPTH, CHILDREN_SORTS, childrenMarkdown, childrenStart, matchChildren, type ChildrenSort } from "@wiki/shared";
 
 /** カーソルの位置に、配下のページの一覧を入れる。 */
@@ -11,7 +12,7 @@ const SORT_LABELS: Record<ChildrenSort, string> = { tree: "ツリーの並び", 
 
 /**
  * 配下のページの一覧（GROWI の lsx 相当）。Markdown では `@children depth=2 sort=title` の1行として保存する
- * （packages/shared/src/children.ts）。編集中は一覧そのものは引かず、見本のカードで見せる（公開サイトで、公開されている配下のページが並ぶ）。
+ * （packages/shared/src/children.ts）。編集中も公開サイトと同じように、配下の公開ページを箇条書きで見せる（ChildrenListView）。
  */
 export const ChildrenList = Node.create({
   name: "childrenList",
@@ -59,6 +60,10 @@ export const ChildrenList = Node.create({
       ["span", { style: "font-size:0.85em;opacity:0.75" }, `公開サイトでは、このページの配下の公開ページがここに並びます（${depth} 階層まで・${SORT_LABELS[sort]}）`],
       ["code", { style: "font-size:0.8em;opacity:0.75" }, childrenMarkdown({ depth, sort })],
     ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ChildrenListView);
   },
 
   markdownTokenizer: {

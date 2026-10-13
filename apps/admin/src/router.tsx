@@ -15,6 +15,7 @@ import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
 import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
 import { NotFoundPage } from "./routes/NotFoundPage";
+import { CostsPage } from "./routes/CostsPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { FIRST_WIKI } from "./lib/wiki";
@@ -73,6 +74,8 @@ const wikisRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "
 const ownersRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/owners", component: OwnersPage });
 // すべての wiki と全体にかかわる監査ログ（オーナーだけ）
 const auditAllRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/audit", component: () => <AuditLogPage scope="all" /> });
+// 運用コスト（サービスごとの使用量。オーナーだけ）
+const costsRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/costs", component: CostsPage });
 // 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
 // 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
@@ -239,7 +242,7 @@ const legacyScreen = (path: "/calendar", to: `/w/$wikiKey${typeof path}`) =>
 const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
-  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute]),
+  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute, costsRoute]),
   inviteRoute,
   consentRoute,
   connectionsRoute,

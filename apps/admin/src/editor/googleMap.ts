@@ -18,7 +18,7 @@ export function insertGoogleMap(editor: Editor, url: string) {
 
 /**
  * 本文に埋め込む Google マップ。Markdown では「地図の URL だけの段落」として保存する（packages/shared/src/googleMap.ts）。
- * 編集中は iframe を読み込まず、URL つきのカードで見せる（公開サイトで地図になる）。
+ * 編集中も、公開サイトと同じく地図を展開して見せる（埋め込めない URL は、URL つきのカードだけ）。
  */
 export const GoogleMap = Node.create({
   name: "googleMap",
@@ -55,9 +55,25 @@ export const GoogleMap = Node.create({
         style:
           "display:flex;flex-direction:column;gap:2px;margin:12px 0;padding:12px 16px;border:1px solid rgba(128,128,128,0.45);border-radius:8px;background:rgba(128,128,128,0.08);overflow-wrap:anywhere",
       }),
-      ["strong", {}, "Google マップ"],
-      ["span", { style: "font-size:0.85em;opacity:0.75" }, url],
-      ["span", { style: "font-size:0.8em;opacity:0.75" }, map?.embedSrc ? "公開サイトでは地図で表示されます" : "この URL は地図に埋め込めないので、公開サイトではリンクで表示されます"],
+      ...(map?.embedSrc
+        ? [
+            [
+              "iframe",
+              {
+                src: map.embedSrc,
+                title: "Google マップ",
+                loading: "lazy",
+                referrerpolicy: "no-referrer-when-downgrade",
+                sandbox: "allow-scripts allow-same-origin",
+                style: "width:100%;aspect-ratio:16 / 9;border:0;border-radius:4px",
+              },
+            ] as const,
+          ]
+        : [
+            ["strong", {}, "Google マップ"] as const,
+            ["span", { style: "font-size:0.85em;opacity:0.75" }, url] as const,
+            ["span", { style: "font-size:0.8em;opacity:0.75" }, "この URL は地図に埋め込めないので、公開サイトではリンクで表示されます"] as const,
+          ]),
       ["a", { href: url, target: "_blank", rel: "noopener noreferrer", style: "font-size:0.85em" }, "Google マップで開く"],
     ];
   },

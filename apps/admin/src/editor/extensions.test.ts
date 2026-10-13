@@ -95,6 +95,16 @@ describe("本文のMarkdown往復", () => {
     expect(first("文 @children")?.type).toBe("paragraph");
   });
 
+  it("編集中の地図は、埋め込める URL なら iframe で展開し、短縮 URL はカードのまま", () => {
+    const render = (url: string) => {
+      const schema = getSchema(editorExtensions);
+      const node = schema.nodes.googleMap!.create({ url });
+      return schema.nodes.googleMap!.spec.toDOM!(node) as unknown;
+    };
+    expect(JSON.stringify(render("https://www.google.com/maps/embed?pb=1"))).toContain('"iframe"');
+    expect(JSON.stringify(render("https://maps.app.goo.gl/abc"))).not.toContain('"iframe"');
+  });
+
   it("トグルは、見出しと中身を持つ部品として読む", () => {
     const doc = manager.parse("+++ 質問\n\n**答え**です\n\n+++");
     const toggle = doc.content?.[0];

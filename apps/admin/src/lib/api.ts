@@ -1,6 +1,7 @@
 import type {
   AcceptEditRequestResult,
   AnalyticsDays,
+  CostsReport,
   AppliedEditRequests,
   CreatedEditRequest,
   CreateEditRequestInput,
@@ -130,6 +131,8 @@ export type StructureResponse = {
     {
       id: string;
       title: string;
+      /** 設定した絵文字。無ければ null */
+      icon: string | null;
       visibility: string;
       publishedVersionId: string | null;
       /** 限定公開の URL に入るキー。限定公開にしたことが無ければ null */
@@ -159,6 +162,9 @@ export const api = {
   // リンクの値は、アクセスログに残らないように本文で送る
   inviteInfo: (token: string) => request<InviteInfo>("POST", "/invites/inspect", { token }),
   acceptInvite: (token: string) => request<{ wikiKey: string; alreadyMember: boolean }>("POST", "/invites/accept", { token }),
+
+  /** 「コスト」：サービスごとの今月・前月の使用量（オーナーだけ） */
+  costs: () => request<CostsReport>("GET", "/admin/costs"),
 
   listUsers: () => request<{ users: UserSummary[] }>("GET", "/admin/users"),
   setOwner: (userId: string, isOwner: boolean) => request<{ users: UserSummary[] }>("PUT", `/admin/users/${userId}/owner`, { isOwner }),

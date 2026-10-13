@@ -6,6 +6,7 @@ import type { XClient } from "./sns/x-client";
 import type { GoogleReporting } from "./analytics/google";
 import type { ImageStore } from "./images/store";
 import type { RateLimiters } from "./rate-limit";
+import type { CostSource } from "./costs/neon";
 import type { LinkFetch } from "./linkPreview/fetch";
 import type { wikis } from "./db/schema";
 import type { WikiRole } from "@wiki/shared";
@@ -30,6 +31,8 @@ export type Deps = {
   rateLimits?: RateLimiters | null;
   /** 外部の URL の OGP を取りにいく関数（`GET /link-preview`）。無ければ `fetch`。テストで差し替える */
   linkFetch?: LinkFetch | null;
+  /** 運用コストの使用量を取るもの。無ければ設定（`config.neon`）から作る。テストで差し替える */
+  costSources?: CostSource[] | null;
 };
 
 export type AppEnv = {

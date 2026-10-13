@@ -30,6 +30,22 @@ export async function loadStructure(db: Db, wikiId: string): Promise<StructureSt
   return state;
 }
 
+/**
+ * primary ツリーのメタと、そのノード。画面を開くたびに呼ばれるので、2つの問い合わせを並べて待つ
+ * （`loadStructure` の後に `getPrimaryTree` を呼ぶと `trees` を2回引き、4回直列になる）。
+ */
+export async function loadPrimaryStructure(db: Db, wikiId: string): Promise<{ tree: TreeMeta; nodes: TreeNode[] }> {
+  const [tree, rows] = await Promise.all([
+    getPrimaryTree(db, wikiId),
+    db
+      .select({ node: treeNodes })
+      .from(treeNodes)
+      .innerJoin(trees, eq(trees.id, treeNodes.treeId))
+      .where(and(eq(trees.wikiId, wikiId), eq(trees.isPrimary, true))),
+  ]);
+  return { tree, nodes: rows.map((r) => toTreeNode(r.node)) };
+}
+
 function toTreeNode(n: typeof treeNodes.$inferSelect): TreeNode {
   return {
     nodeId: n.nodeId,

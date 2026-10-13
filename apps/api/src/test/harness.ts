@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
 import { memoryImageStore, type ImageStore } from "../images/store";
 import type { RateLimiter, RateLimiters } from "../rate-limit";
+import type { CostSource } from "../costs/neon";
 import type { LinkFetch } from "../linkPreview/fetch";
 
 /** setup が作るオーナー（すべての wiki に管理者として入れる）。call はこの人として呼ぶ */
@@ -34,6 +35,7 @@ export const testConfig: AppConfig = {
   exportToken: "export-token",
   cronToken: "cron-token",
   googleServiceAccount: null,
+  neon: null,
   x: null,
 };
 
@@ -79,6 +81,7 @@ export async function setup(
     rateLimits?: RateLimiters;
     linkFetch?: LinkFetch;
     cronMarks?: CronMarkStore | null;
+    costSources?: CostSource[];
   } = {},
 ) {
   const client = new PGlite({ loadDataDir: await migratedDataDir(), extensions: pgliteExtensions });
@@ -96,6 +99,7 @@ export async function setup(
     rateLimits: opts.rateLimits ?? null,
     linkFetch: opts.linkFetch ?? null,
     cronMarks: opts.cronMarks ?? null,
+    costSources: opts.costSources ?? null,
   });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 

@@ -187,6 +187,87 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
       ornament: { svg: OWL_SVG, position: "bottom-right", size: 88, ink: "#d8b277", alpha: 0.3 },
     },
   },
+  // ---- 色だけのテーマ（背景画像・飾りは付けない）。Slack のテーマのような、色の雰囲気だけを写したもの。どれもライト版・ダーク版の両方を持つ ----
+  {
+    key: "aubergine",
+    name: "紫",
+    light: {
+      colors: { bg: "#f6f1f7", paper: "#ffffff", text: "#2a1d2e", muted: "#6d5a72", border: "#e5d9e8", accent: "#6b2a74", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#c93636" },
+    },
+    dark: {
+      colors: { bg: "#1a111d", paper: "#241a28", text: "#ece4ef", muted: "#a99bb0", border: "#3a2c40", accent: "#d9a0e3", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
+  },
+  {
+    key: "forest",
+    name: "緑",
+    light: {
+      colors: { bg: "#f1f6f2", paper: "#ffffff", text: "#1b2a20", muted: "#566b5d", border: "#d9e5dc", accent: "#1d6b3a", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#c93636" },
+    },
+    dark: {
+      colors: { bg: "#101a14", paper: "#18241c", text: "#e2eee6", muted: "#97ab9d", border: "#2a3b30", accent: "#7ad49a", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
+  },
+  {
+    key: "ocean",
+    name: "青",
+    light: {
+      colors: { bg: "#eff5fb", paper: "#ffffff", text: "#16273a", muted: "#556a82", border: "#d6e3f0", accent: "#0b5cad", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#c93636" },
+    },
+    dark: {
+      colors: { bg: "#0e1823", paper: "#162331", text: "#e1ebf5", muted: "#93a7bd", border: "#263a4e", accent: "#6cb4ff", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
+  },
+  {
+    key: "crimson",
+    name: "赤",
+    light: {
+      colors: { bg: "#fbf2f2", paper: "#ffffff", text: "#2e1b1b", muted: "#7a5a5a", border: "#efd9d9", accent: "#b3202f", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#a82020" },
+    },
+    dark: {
+      colors: { bg: "#1c1112", paper: "#271a1b", text: "#f2e4e4", muted: "#b09a9a", border: "#412c2d", accent: "#ff8f98", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
+  },
+  {
+    key: "sunset",
+    name: "橙",
+    light: {
+      colors: { bg: "#fcf4ec", paper: "#ffffff", text: "#2f2118", muted: "#7a6252", border: "#f0e0d1", accent: "#a64a00", mark: "#ffe08a", ok: "#1f8a4c", warn: "#8f5a00", danger: "#c93636" },
+    },
+    dark: {
+      colors: { bg: "#1b130d", paper: "#261c14", text: "#f3e8dc", muted: "#b0a090", border: "#40301f", accent: "#ffae5c", mark: "#5b4a14", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
+  },
+  {
+    key: "teal",
+    name: "ティール",
+    light: {
+      colors: { bg: "#eff7f7", paper: "#ffffff", text: "#162a2b", muted: "#527072", border: "#d4e6e6", accent: "#0b6e73", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#c93636" },
+    },
+    dark: {
+      colors: { bg: "#0d1a1b", paper: "#152526", text: "#dff0f0", muted: "#90adae", border: "#243e40", accent: "#5fd3d8", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+    },
+  },
+  {
+    key: "mono",
+    name: "モノクロ",
+    light: {
+      colors: { bg: "#f4f4f4", paper: "#ffffff", text: "#1a1a1a", muted: "#666666", border: "#e0e0e0", accent: "#333333", mark: "#e6e6e6", ok: "#2f6f46", warn: "#7a5a1a", danger: "#a83232" },
+    },
+    dark: {
+      colors: { bg: "#141414", paper: "#1e1e1e", text: "#ebebeb", muted: "#9e9e9e", border: "#303030", accent: "#d0d0d0", mark: "#444444", ok: "#6fc28b", warn: "#d9b45a", danger: "#ff8080" },
+    },
+  },
+  {
+    key: "contrast",
+    name: "ハイコントラスト",
+    light: {
+      colors: { bg: "#ffffff", paper: "#ffffff", text: "#000000", muted: "#404040", border: "#000000", accent: "#0000cc", mark: "#ffff00", ok: "#006400", warn: "#7a4a00", danger: "#b00000" },
+    },
+    dark: {
+      colors: { bg: "#000000", paper: "#000000", text: "#ffffff", muted: "#d0d0d0", border: "#ffffff", accent: "#ffff66", mark: "#665500", ok: "#66ff99", warn: "#ffcc33", danger: "#ff8080" },
+    },
+  },
 ];
 
 export const DEFAULT_THEME: WikiTheme = { preset: "simple", logo: null, favicon: null, backgroundLight: null, backgroundDark: null };

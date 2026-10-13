@@ -266,6 +266,17 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
   );
 }
 
+/** 背景画像か飾りを持つテーマか */
+function hasDecoration(preset: ThemePreset): boolean {
+  return themeModes(preset).some((m) => preset[m]!.background || preset[m]!.ornament);
+}
+
+/** テーマの見本を分けて並べる単位。テーマが増えても、色だけで選びたい人と、飾りつきから選びたい人が探しやすいように */
+const THEME_GROUPS = [
+  { label: "色だけ", decorated: false },
+  { label: "背景・飾りつき", decorated: true },
+] as const;
+
 /** テーマの選択：テーマを、見本のカード（ライト版・ダーク版それぞれの背景・文字・リンクの色）で並べる。選んでいるものは、枠・印・文字で示す。 */
 function ThemeField({ value, onChange }: { value: string; onChange: (key: string) => void }) {
   const name = useId();
@@ -275,11 +286,23 @@ function ThemeField({ value, onChange }: { value: string; onChange: (key: string
       <Typography component="legend" sx={visuallyHidden}>
         テーマ
       </Typography>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 1 }}>
-        {THEME_PRESETS.map((p) => (
-          <ThemeCard key={p.key} preset={p} groupName={name} selected={p.key === selectedKey} onSelect={() => onChange(p.key)} />
-        ))}
-      </Box>
+      <Stack spacing={2}>
+        {THEME_GROUPS.map((g) => {
+          const presets = THEME_PRESETS.filter((p) => hasDecoration(p) === g.decorated);
+          return (
+            <Box key={g.label}>
+              <Typography variant="subtitle2" component="h4" sx={{ mb: 0.75 }}>
+                {g.label}
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 1 }}>
+                {presets.map((p) => (
+                  <ThemeCard key={p.key} preset={p} groupName={name} selected={p.key === selectedKey} onSelect={() => onChange(p.key)} />
+                ))}
+              </Box>
+            </Box>
+          );
+        })}
+      </Stack>
     </Box>
   );
 }

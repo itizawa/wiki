@@ -10,6 +10,7 @@ import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
 import { analyticsRoutes } from "./routes/analytics";
+import { costRoutes } from "./routes/costs";
 import { editRequestRoutes, wikiEditRequestRoutes } from "./routes/editRequests";
 import { exportRoutes, internalRoutes } from "./routes/internal";
 import { linkPreviewRoutes } from "./routes/linkPreview";
@@ -102,6 +103,7 @@ export function createApp(deps: Deps) {
   admin.route("/wikis", wikiRoutes);
   admin.route("/users", userRoutes);
   admin.route("/audit-logs", globalAuditRoutes);
+  admin.route("/costs", costRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
   const wiki = new Hono<AppEnv>();

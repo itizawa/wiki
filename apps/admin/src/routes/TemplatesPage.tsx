@@ -72,13 +72,11 @@ export function TemplatesPage() {
     },
     {
       key: "updatedAt",
-      header: "最終更新",
+      header: "更新日時",
       width: "160px",
       sx: { whiteSpace: "nowrap" },
       render: (t) => (
-        <Muted component="span">
-          <time dateTime={t.updatedAt}>{formatDateTime(t.updatedAt)}</time>
-        </Muted>
+        <Muted component="span">{formatDateTime(t.updatedAt)}</Muted>
       ),
     },
     {
@@ -107,24 +105,39 @@ export function TemplatesPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Row sx={{ justifyContent: "space-between", mb: 1 }}>
+        {/* ページ一覧と同じ見出しの行。主な操作は右に置く（狭い幅でも、見出しと同じ行に収める） */}
+        <Row sx={{ mb: 1, flexWrap: "nowrap" }}>
           <HelpHeading
             variant="h6"
             component="h2"
-            help="議事録のように同じ形のページを繰り返し作るときの、ひな形です。新しいページの編集画面で選ぶか、ここから作れます。テンプレートは公開サイトに出ません。エディタの「…」メニューの「テンプレートとして保存」で、いまのページから作ることもできます。"
+            sx={{ flex: "1 1 auto", minWidth: 0 }}
+            help={
+              <>
+                議事録のように同じ形のページを繰り返し作るときの、ひな形です。新しいページの編集画面で選ぶか、ここから作れます。テンプレートは公開サイトに出ません。エディタの「…」メニューの「テンプレートとして保存」で、いまのページから作ることもできます。
+                <Box component="p" sx={{ mt: 1, mb: 0.5 }}>
+                  ページを作るとき、タイトルと本文の次の変数を置き換えます。
+                </Box>
+                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  {TEMPLATE_VARIABLES.map((v) => (
+                    <li key={v.name}>
+                      <Mono>{v.name}</Mono>：{v.label}
+                    </li>
+                  ))}
+                </Box>
+              </>
+            }
           >
             テンプレート
           </HelpHeading>
-          <Button variant="contained" startIcon={<Plus size={18} />} disabled={create.isPending} onClick={() => create.mutate()}>
+          <Button variant="contained" startIcon={<Plus size={18} />} disabled={create.isPending} onClick={() => create.mutate()} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
             新しいテンプレート
           </Button>
         </Row>
-        <Muted>ページを作るとき、タイトルと本文の次の変数を置き換えます。</Muted>
-        <TemplateVariables />
-      </Section>
-
-      {error && <Alert severity="error">{errorMessage(error)}</Alert>}
-      <Section>
+        {error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {errorMessage(error)}
+          </Alert>
+        )}
         <DataList
           label="テンプレートの一覧"
           columns={columns}
@@ -132,7 +145,7 @@ export function TemplatesPage() {
           rowKey={(t) => t.id}
           rowLink={(t) => templateLink(t.id)}
           error={templates.error}
-          empty="テンプレートはまだありません。"
+          empty="テンプレートはまだありません。右上の「新しいテンプレート」から作れます。"
           skeletonRows={2}
         />
       </Section>

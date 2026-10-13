@@ -1,3 +1,4 @@
+import { collectCosts } from "./costs";
 import { prune, PRUNE_CRON } from "./prune";
 import { tick, type Env } from "./tick";
 
@@ -15,6 +16,7 @@ export async function handleScheduled(
   if (cron === PRUNE_CRON) {
     // 画像の掃除をする曜日は、起きた時刻ではなく予定の時刻で決める
     await prune(env, fetchImpl, scheduledAt);
+    await collectCosts(env, fetchImpl);
     return;
   }
   const r = await tick(env, fetchImpl, scheduledAt);

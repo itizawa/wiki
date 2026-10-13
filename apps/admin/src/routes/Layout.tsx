@@ -9,7 +9,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
 import type { Me } from "@wiki/shared";
-import { createContext, useContext, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type MouseEvent, type ReactNode } from "react";
 import { SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth } from "../components/SidebarResizer";
 import { LoadingRegion, Muted, PageBody, Section } from "../components/ui";
@@ -42,6 +42,12 @@ export function Root() {
 function LoginGate() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const qc = useQueryClient();
+
+  // wiki の一覧は me の結果に依存しない。me を待たずに同時に取り始め、画面を開くときの順番待ち（me → wikis）をなくす。
+  // 未ログイン（401）なら失敗するが、prefetch は失敗を捨てるだけで、ログイン画面の出し分けは me だけで決める
+  useEffect(() => {
+    void qc.prefetchQuery({ queryKey: ["wikis"], queryFn: api.listWikis });
+  }, [qc]);
 
   if (me.isPending) return <Loading />;
   if (me.error instanceof ApiError && me.error.status === 401) return <Login />;
@@ -202,7 +208,7 @@ export function Loading() {
                 </Box>
                 {/* ナビの行 */}
                 <Box sx={{ px: 1 }}>
-                  {["52%", "74%", "66%", "70%", "40%", "62%", "58%"].map((width, i) => (
+                  {["52%", "74%", "66%", "70%", "40%"].map((width, i) => (
                     <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.75, minHeight: 30, px: 1 }}>
                       <Skeleton variant="rounded" width={18} height={18} sx={{ flexShrink: 0 }} />
                       <Skeleton variant="text" width={width} sx={{ fontSize: "0.9rem" }} />
