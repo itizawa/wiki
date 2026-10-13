@@ -1,4 +1,14 @@
-import { CALLOUT_LABELS, googleMapOfParagraph, matchToggle, parseCalloutMarker, toggleStart } from "@wiki/shared";
+import {
+  CALLOUT_LABELS,
+  childrenStart,
+  googleMapOfParagraph,
+  matchChildren,
+  matchToggle,
+  parseCalloutMarker,
+  toggleStart,
+  type ChildrenItem,
+  type ChildrenOptions,
+} from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
 import { createHighlighter } from "shiki";
 
@@ -12,6 +22,10 @@ export type RenderOptions = {
    * （別の wiki のページへのリンクは、外部リンクと同じ扱いにする）。
    */
   origin?: string;
+  /**
+   * 本文の `@children` に出す、このページの配下のページ（公開されているものだけ）。渡さなければ `@children` は何も出さない。
+   */
+  childrenOf?: (options: ChildrenOptions) => ChildrenItem[];
 };
 
 const escapeHtml = (s: string) =>
@@ -28,6 +42,12 @@ export function internalPageId(href: string, origin?: string): string | null {
   if (!m) return null;
   if (m[1] && origin && m[1].toLowerCase() !== origin.toLowerCase()) return null;
   return m[2]!;
+}
+
+function childrenListItems(items: readonly ChildrenItem[]): string {
+  return items
+    .map((i) => `<li><a href="${escapeHtml(i.path)}">${escapeHtml(i.title)}</a>${i.children.length > 0 ? `<ul>${childrenListItems(i.children)}</ul>` : ""}</li>`)
+    .join("");
 }
 
 /** 色分けする言語。管理画面のコードブロックで選べるもの（apps/admin の CodeBlockMenu）に合わせる。 */
@@ -100,6 +120,23 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
           return `<details class="toggle"><summary>${escapeHtml(String(token.summary))}</summary>\n${this.parser.parse(token.tokens ?? [])}</details>\n`;
         },
       },
+      // `@children` の行は、このページの配下の公開ページの一覧にする（packages/shared/src/children.ts）。一覧のタイトルは、このページの検索の語に入れない
+      {
+        name: "children",
+        level: "block",
+        start: (src: string) => {
+          const i = childrenStart(src);
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = matchChildren(src);
+          return m ? { type: "children", raw: m.raw, options: m.options } : undefined;
+        },
+        renderer(token) {
+          const items = opts.childrenOf?.(token.options as ChildrenOptions) ?? [];
+          return items.length > 0 ? `<ul class="children-list" data-pagefind-ignore>${childrenListItems(items)}</ul>\n` : "";
+        },
+      },
     ],
     renderer: {
       heading(token: Tokens.Heading) {
@@ -168,6 +205,7 @@ export function excerpt(md: string, length = 120): string {
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
     // 地図の URL だけの行（本文では地図になる）
     .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))
+    .replace(/^@children(?:[ \t].*)?$/gm, (line) => (matchChildren(line) ? "" : line))
     .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")

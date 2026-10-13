@@ -7,7 +7,7 @@ import TreeNav from "../../../components/TreeNav";
 import Base from "../../../layouts/Base.astro";
 import { allWikis, navFile, pageNav, siteData } from "../../../lib/manifest";
 import { excerpt } from "../../../lib/markdown";
-import { ancestors } from "../../../lib/tree";
+import { ancestors, childrenItems } from "../../../lib/tree";
 import Backlinks from "../../../components/Backlinks.astro";
 import { siteBacklinks } from "../../../lib/backlinks";
 
@@ -51,6 +51,7 @@ const navSrc = (await navFile(wiki)).path;
         monetization={page.monetization}
         publicPaths={publicPaths}
         origin={origin}
+        childrenOf={primaryTree && ((options) => childrenItems(primaryTree, page.id, options, pagesById))}
       />
       <Backlinks pages={backlinks} />
     </main>

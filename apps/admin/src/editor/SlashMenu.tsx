@@ -1,8 +1,9 @@
-import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, Minus, Quote, Table, MapPin } from "lucide-react";
+import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Table, MapPin } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
 import { useState, type ReactNode } from "react";
+import { insertChildrenList } from "./childrenList";
 import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
 import { insertToggle } from "./toggle";
@@ -52,6 +53,13 @@ const blocks: Block[] = [
   { id: "table", label: "表", keywords: ["table", "hyou"], icon: <Table size={18} />, run: (e) => chain(e).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   { id: "image", label: "画像…", keywords: ["image", "img", "picture", "gazou"], icon: <Image size={18} />, run: (_e, ui) => ui.openImageDialog() },
   { id: "map", label: "Google マップ…", keywords: ["map", "google", "maps", "chizu", "地図"], icon: <MapPin size={18} />, run: (_e, ui) => ui.openMapDialog() },
+  {
+    id: "children",
+    label: "配下のページの一覧",
+    keywords: ["children", "lsx", "child", "haika", "@children"],
+    icon: <ListTree size={18} />,
+    run: (e) => insertChildrenList(e),
+  },
   {
     id: "callout",
     label: "コールアウト（目立たせる注意書き）",

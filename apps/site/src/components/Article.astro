@@ -1,6 +1,6 @@
 ---
 import s from "./Article.module.css";
-import { renderArticle } from "../lib/markdown";
+import { renderArticle, type RenderOptions } from "../lib/markdown";
 
 interface Props {
   title: string;
@@ -13,12 +13,14 @@ interface Props {
   publicPaths: ReadonlyMap<string, string>;
   /** この wiki のオリジン。絶対URLで書かれた内部リンクを見分ける */
   origin: string;
+  /** 本文の `@children` に出す、このページの配下の公開ページ */
+  childrenOf?: RenderOptions["childrenOf"];
 }
 
-const { title, icon, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin } = Astro.props;
+const { title, icon, bodyMd, firstPublishedAt, revisedAt, monetization, publicPaths, origin, childrenOf } = Astro.props;
 // 収益化フラグがある記事は広告である旨を表示し、外部リンクに rel="sponsored" を付ける（12.3）
 const sponsored = Boolean(monetization && (monetization.affiliate || monetization.sponsored));
-const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin });
+const { html, headings } = renderArticle(bodyMd, { publicPaths, sponsored, origin, childrenOf });
 // 見出しが2つ以上あるときだけ目次を出す。いちばん浅い見出しを左端に揃える
 const showToc = headings.length >= 2;
 const minDepth = Math.min(...headings.map((h) => h.depth));

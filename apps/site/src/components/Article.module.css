@@ -52,6 +52,8 @@
 .body :global(.callout[data-callout="warning"]) { --callout: var(--warn); }
 .body :global(.callout[data-callout="caution"]) { --callout: var(--danger); }
 /* トグル（+++）。見出しの行を押すと開閉する */
+.body :global(ul.children-list), .body :global(ul.children-list ul) { padding-left: 1.4em; }
+.body :global(ul.children-list) { margin: 12px 0; }
 .body :global(figure.map-embed) { margin: 16px 0; }
 .body :global(figure.map-embed > iframe) { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: rgba(128, 128, 128, 0.12); }
 .body :global(figure.map-embed > figcaption) { margin-top: 6px; font-size: 0.85em; }

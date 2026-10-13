@@ -34,6 +34,10 @@ describe("本文のMarkdown往復", () => {
     ["入れ子のトグル", "+++ 外\n\n+++ 内\n\n中身\n\n+++\n\n+++"],
     ["Google マップ（URL だけの段落）", "前の文\n\nhttps://www.google.com/maps/embed?pb=!1m18!1m12\n\n後の文"],
     ["Google マップ（短縮 URL）", "https://maps.app.goo.gl/abc123"],
+    ["配下のページの一覧", "前の文\n\n@children\n\n後の文"],
+    ["配下のページの一覧（depth と sort）", "@children depth=2 sort=title"],
+    ["コードブロックの中の @children", "```\n@children\n```"],
+    ["分からない引数の @children は、ふつうの文字", "@children filter=a"],
     ["閉じていない +++ は、ふつうの文字", "+++ 見出しだけ"],
   ])("%s はそのまま残る", (_name, md) => {
     expect(roundTrip(md).trim()).toBe(md);
@@ -62,6 +66,13 @@ describe("本文のMarkdown往復", () => {
     expect(types("https://www.google.com/maps/embed?pb=1\n続きの文")).toEqual(["paragraph"]);
     expect(types("https://example.com/maps/embed?pb=1")).toEqual(["paragraph"]);
     expect(types("<https://www.google.com/maps/embed?pb=1>")).toEqual(["googleMap"]);
+  });
+
+  it("@children は一覧の部品になり、コードブロックの中・文中は部品にならない", () => {
+    const first = (md: string) => manager.parse(md).content?.[0];
+    expect(first("@children depth=3 sort=title")).toMatchObject({ type: "childrenList", attrs: { depth: 3, sort: "title" } });
+    expect(first("```\n@children\n```")?.type).toBe("codeBlock");
+    expect(first("文 @children")?.type).toBe("paragraph");
   });
 
   it("編集中の地図は、埋め込める URL なら iframe で展開し、短縮 URL はカードのまま", () => {
