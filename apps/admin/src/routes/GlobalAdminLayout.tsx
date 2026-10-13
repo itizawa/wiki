@@ -6,6 +6,7 @@ import Typography from "@mui/material/Typography";
 import { createLink, Outlet, useRouterState } from "@tanstack/react-router";
 import { RouterLink } from "../components/ui";
 import { useSession, useWikis } from "./Layout";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /** 本物のリンク（Tab と Enter で移れ、新しいタブでも開ける）として描くタブ */
 const TabLink = createLink(Tab);
@@ -28,6 +29,7 @@ export function GlobalAdminLayout() {
   const wikis = useWikis();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const current = TABS.find((t) => pathname === t.to || pathname.startsWith(`${t.to}/`))?.to ?? false;
+  useScreenTitle(current ? `${TABS.find((t) => t.to === current)?.label} - 全体の管理` : "全体の管理");
   const hasActiveWiki = wikis.data?.wikis.some((w) => w.archivedAt === null) ?? true;
 
   return (

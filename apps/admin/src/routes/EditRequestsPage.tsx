@@ -20,6 +20,7 @@ import { formatDateTime } from "../lib/format";
 import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { pageLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
+import { useScreenTitle } from "../lib/documentTitle";
 
 type Decision = { kind: "accept" | "reject" | "resolve" | "reopen"; itemId: string } | { kind: "acceptAll"; requestId: string } | { kind: "withdraw"; requestId: string };
 type Range = { startLine: number; endLine: number };
@@ -45,6 +46,7 @@ type AllResult = { applied: number; skipped: number } | { withdrawn: number };
 export function EditRequestsPage({ pageId }: { pageId: string }) {
   const qc = useQueryClient();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+  useScreenTitle(page.data ? `編集リクエスト - ${page.data.title}` : null);
   const list = useQuery({ queryKey: editRequestKeys.list(pageId), queryFn: () => api.listEditRequests(pageId) });
   // 自分が出したリクエストにだけ、「取り下げる」を出す
   const me = useQuery({ queryKey: ["me"], queryFn: api.me }).data;

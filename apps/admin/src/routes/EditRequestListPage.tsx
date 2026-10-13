@@ -12,6 +12,7 @@ import { Muted, RouterLink, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { editRequestKeys, editRequestListLink, editRequestsLink, requesterLabel } from "../lib/editRequests";
 import { formatDateTime } from "../lib/format";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /** 行の高さの目安（ひとことの無い行）。ひとことのある行は、これより高くなる。 */
 const ROW_HEIGHT = 37;
@@ -31,6 +32,7 @@ const FILTERS: { status: EditRequestListStatus; label: string; showing: string }
  * 並びは、出した日時の新しい順（続きを読み込むあいだに、採否や返信で順番が動かない）。
  */
 export function EditRequestListPage({ status, onStatusChange }: { status: EditRequestListStatus; onStatusChange: (next: EditRequestListStatus) => void }) {
+  useScreenTitle("編集リクエスト");
   const list = useInfiniteQuery({
     queryKey: editRequestKeys.wikiList(status),
     queryFn: ({ pageParam }) => api.listWikiEditRequests({ status, cursor: pageParam, limit: PAGE_SIZE }),

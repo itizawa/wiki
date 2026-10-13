@@ -49,6 +49,7 @@ import { api, errorMessage } from "../lib/api";
 import { formatDateTime, formatDay } from "../lib/format";
 import { pageLink, screenLink, useWiki } from "../lib/wiki";
 import { ExternalSite } from "./SettingsPage";
+import { useScreenTitle } from "../lib/documentTitle";
 
 const textSx = { maxWidth: 680 } as const;
 const numberSx = { fontVariantNumeric: "tabular-nums" } as const;
@@ -56,6 +57,7 @@ const count = (n: number) => n.toLocaleString("ja-JP");
 
 /** `/w/{key}/analytics`：Google Analytics とサーチコンソールの数字と、連携の状態。細かい分析は Google の画面で行う。 */
 export function AnalyticsPage({ days, onDaysChange }: { days: AnalyticsDays; onDaysChange: (days: AnalyticsDays) => void }) {
+  useScreenTitle("アクセス解析");
   const { wiki } = useWiki();
   const qc = useQueryClient();
   const analytics = useQuery({ queryKey: ["analytics", days], queryFn: () => api.analytics(days), staleTime: 60_000 });

@@ -16,12 +16,14 @@ import { formatDateTime } from "../lib/format";
 import { useComposition, useSearchTerm } from "../lib/searchTerm";
 import { pageLink } from "../lib/wiki";
 import { visibilityLabel } from "./PagesPage";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /**
  * 検索の画面。タイトルと本文を探し、本文に一致したときは前後の文も出す。
  * 検索の語は URL（?q=）に持つので、結果の画面を再読み込み・共有できる。
  */
 export function SearchPage(props: { q: string; onChange: (q: string) => void }) {
+  useScreenTitle("検索");
   const [input, setInput] = useState(props.q);
   // 戻る・進むで URL が変わったら、入力欄も合わせる
   useEffect(() => setInput(props.q), [props.q]);
