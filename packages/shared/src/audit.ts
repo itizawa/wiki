@@ -52,12 +52,17 @@ export const AUDIT_ACTIONS = {
   page_delete: "page",
   page_restore: "page",
   page_purge: "page",
+  page_tag_add: "page",
+  page_tag_remove: "page",
 
   wiki_update: "settings",
   wiki_home_update: "settings",
   sns_connect: "settings",
   sns_disconnect: "settings",
   sns_test_post: "settings",
+  tag_create: "settings",
+  tag_rename: "settings",
+  tag_delete: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -74,7 +79,7 @@ export function actionsIn(category: AuditCategory): AuditAction[] {
 export const AUDIT_ACTOR_TYPES = ["user", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki"] as const;
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** 予約を入れたのは誰か（予約の実行に残す）。 */
@@ -127,6 +132,10 @@ export type AuditDetailMap = {
   /** ゴミ箱から完全に削除した（元に戻せない） */
   page_purge: { descendants?: number };
 
+  /** ページにタグを付けた・外した（タグの名前は、その時点のもの） */
+  page_tag_add: { tagId: string; tagName: string };
+  page_tag_remove: { tagId: string; tagName: string };
+
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
   wiki_home_update: Record<string, never>;
@@ -137,6 +146,11 @@ export type AuditDetailMap = {
   sns_disconnect: { provider: SnsProvider; username: string };
   /** 管理画面からテスト投稿をした（文面は残さない） */
   sns_test_post: { provider: SnsProvider; username: string; postId: string };
+
+  /** 管理用タグを作った・名前を変えた・消した。消したときの pages は、外れたページの数 */
+  tag_create: Record<string, never>;
+  tag_rename: { from: string; to: string };
+  tag_delete: { pages: number };
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -299,6 +313,11 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
     case "page_purge":
       return [...quoted(t), { text: `をゴミ箱から完全に削除しました${withDescendants(entry.detail.descendants)}` }];
 
+    case "page_tag_add":
+      return [...quoted(t), { text: `にタグ「${entry.detail.tagName}」を付けました` }];
+    case "page_tag_remove":
+      return [...quoted(t), { text: `からタグ「${entry.detail.tagName}」を外しました` }];
+
     case "wiki_update": {
       const parts: string[] = [];
       if (entry.detail.name) parts.push(`名前を変更しました（${entry.detail.name.from} → ${entry.detail.name.to}）`);
@@ -315,6 +334,13 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）の連携を解除しました`);
     case "sns_test_post":
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）にテスト投稿をしました`);
+
+    case "tag_create":
+      return [{ text: "タグ " }, ...quoted(t), { text: " を作成しました" }];
+    case "tag_rename":
+      return [{ text: "タグの名前を変更しました（" }, ...named(entry.detail.from), { text: ` → ${entry.detail.to}）` }];
+    case "tag_delete":
+      return [{ text: "タグ " }, ...quoted(t), { text: ` を削除しました${entry.detail.pages ? `（${entry.detail.pages} ページから外れました）` : ""}` }];
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];

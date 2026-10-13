@@ -31,6 +31,7 @@ import { cancelSchedule, createSchedule, listActions, publishAudited, unpublishA
 import { agentActor } from "../audit/service";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
+import { tagsForPages } from "../tags/service";
 import { roleIn, rolesByWiki } from "../users/service";
 import { findOpenWiki, listWikis } from "../wikis/service";
 
@@ -267,6 +268,7 @@ export const TOOLS = [
         visibility: page.visibility,
         published: page.publishedVersionId !== null,
         updatedAt: page.updatedAt.toISOString(),
+        tags: ((await tagsForPages(db, [page.id])).get(page.id) ?? []).map((t) => t.name),
       };
     },
   }),

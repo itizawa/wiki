@@ -6,6 +6,7 @@ import {
   setPageIconInput,
   setPageCoverInput,
   type PageDetail,
+  type PageTag,
   type PageDraft,
   type PageSummary,
   type SavePageDraftResult,
@@ -18,7 +19,7 @@ import {
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageVersions, scheduledActions, users } from "../db/schema";
+import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageTags, pageVersions, scheduledActions, users } from "../db/schema";
 import { createVersion, DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
 import { markCronWork } from "../cron/marks";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
@@ -28,13 +29,14 @@ import { HttpError, notFound } from "../errors";
 import { changeStructure, getPrimaryTree, loadStructure, lockStructure, opsToRemovePages } from "../structure/repo";
 import { parseJson } from "../validation";
 import { findTemplate, renderTemplate } from "./templates";
+import { tagsForPages } from "../tags/service";
 import { auditActor, writeAudit, type AuditActor } from "../audit/service";
 
 type PageRow = typeof pages.$inferSelect;
 type VersionRow = typeof pageVersions.$inferSelect;
 type DraftRow = typeof pageDrafts.$inferSelect;
 
-const toSummary = (p: PageRow): PageSummary => ({
+const toSummary = (p: PageRow, tags: PageTag[]): PageSummary => ({
   id: p.id,
   title: p.title,
   icon: p.icon,
@@ -46,6 +48,7 @@ const toSummary = (p: PageRow): PageSummary => ({
   unlistedKey: p.unlistedKey,
   firstPublishedAt: p.firstPublishedAt?.toISOString() ?? null,
   updatedAt: p.updatedAt.toISOString(),
+  tags,
 });
 
 const toVersion = (v: VersionRow, author: { name: string | null; email: string } | null, acceptedItems: number): PageVersion => ({
@@ -144,7 +147,7 @@ export async function getDetail(db: Db, wikiId: string, id: string): Promise<Pag
     .where(and(eq(pages.wikiId, wikiId), eq(pages.id, id), isNull(pages.deletedAt)));
   if (!row) throw notFound(`page ${id}`);
   const author = row.email === null ? null : { name: row.name, email: row.email };
-  return { ...toSummary(row.page), head: toVersion(row.version, author, Number(row.acceptedItems)) };
+  return { ...toSummary(row.page, (await tagsForPages(db, [id])).get(id) ?? []), head: toVersion(row.version, author, Number(row.acceptedItems)) };
 }
 
 /** ページを作り、指定された親ページの下（無ければ最上位）の末尾に置く。トランザクション内で呼ぶ。 */
@@ -446,6 +449,7 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
   await tx.delete(pageDrafts).where(inArray(pageDrafts.pageId, ids));
   await tx.delete(pageLinks).where(or(inArray(pageLinks.fromPageId, ids), inArray(pageLinks.toPageId, ids)));
   await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
+  await tx.delete(pageTags).where(inArray(pageTags.pageId, ids));
   // 編集リクエストの項目は版を指しているので、版より先に消す
   const requestIds = tx.select({ id: editRequests.id }).from(editRequests).where(inArray(editRequests.pageId, ids));
   // 返信は項目を指しているので、項目より先に消す
@@ -487,7 +491,8 @@ export const pageRoutes = new Hono<AppEnv>()
     // どちらも無ければ、続きを取らない呼び出し（検索・コマンドメニュー・編集カレンダーなど）。最大500件を一度に返す
     if (limitParam === undefined && cursorParam === undefined) {
       const rows = await db.select().from(pages).where(where).orderBy(...order).limit(500);
-      return c.json({ pages: rows.map(toSummary) });
+      const tags = await tagsForPages(db, rows.map((p) => p.id));
+      return c.json({ pages: rows.map((p) => toSummary(p, tags.get(p.id) ?? [])) });
     }
     const limit = clampPageLimit(limitParam);
     const after = cursorParam === undefined ? null : decodeCursor(cursorParam);
@@ -503,8 +508,9 @@ export const pageRoutes = new Hono<AppEnv>()
       .limit(limit + 1);
     const shown = rows.slice(0, limit);
     const last = shown[shown.length - 1];
+    const tags = await tagsForPages(db, shown.map((r) => r.page.id));
     return c.json({
-      pages: shown.map((r) => toSummary(r.page)),
+      pages: shown.map((r) => toSummary(r.page, tags.get(r.page.id) ?? [])),
       nextCursor: rows.length > limit && last ? encodeCursor({ at: last.updatedAtText, id: last.page.id }) : null,
     });
   })

@@ -19,6 +19,7 @@ import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { snsRoutes, xCallbackRoutes } from "./routes/sns";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
+import { pageTagRoutes, tagRoutes } from "./routes/tags";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
@@ -116,6 +117,8 @@ export function createApp(deps: Deps) {
   wiki.route("/search", searchRoutes);
   wiki.route("/link-preview", linkPreviewRoutes);
   wiki.route("/stars", starRoutes);
+  wiki.route("/tags", tagRoutes);
+  wiki.route("/pages", pageTagRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
   wiki.route("/images", imageUploadRoutes);

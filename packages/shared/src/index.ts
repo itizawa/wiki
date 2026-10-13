@@ -33,3 +33,4 @@ export * from "./linkCard";
 export * from "./excerpt";
 export * from "./stats";
 export * from "./pageFavicon";
+export * from "./tag";

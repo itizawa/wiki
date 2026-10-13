@@ -369,6 +369,33 @@ export const pageStars = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.pageId] })],
 );
 
+/** 管理用タグ。wiki ごとに管理者が作り、ページに付ける。公開サイトには出さない（ワークフローの起点やページの整理に使う） */
+export const wikiTags = pgTable(
+  "wiki_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    name: text("name").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("wiki_tags_wiki_name_unique").on(t.wikiId, t.name)],
+);
+
+/** ページに付いているタグ。ゴミ箱のページのぶんは残し、完全に削除したときに消す */
+export const pageTags = pgTable(
+  "page_tags",
+  {
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => wikiTags.id),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.tagId] }), index("page_tags_tag_idx").on(t.tagId)],
+);
+
 // ---------------------------------------------------------------------------
 // 4.2 ツリー
 // 運用するのは、wiki ごとに primary ツリー1本だけ。複数ツリー前提のテーブル形は変えずに残している。

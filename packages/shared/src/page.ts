@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pageCoverSchema } from "./cover";
 import { pageIconSchema } from "./emoji";
+import type { PageTag } from "./tag";
 
 /** ページのタイトルの長さの上限（文字数）。API の検証と、管理画面の入力欄の表示で同じ値を使う */
 export const PAGE_TITLE_MAX = 200;
@@ -85,6 +86,8 @@ export type PageSummary = {
   unlistedKey: string | null;
   firstPublishedAt: string | null;
   updatedAt: string;
+  /** 付いている管理用タグ（名前順）。公開サイトには出さない */
+  tags: PageTag[];
 };
 
 export type PageVersion = {
