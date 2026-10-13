@@ -6,6 +6,7 @@ import NavDrawer from "../../../components/NavDrawer.astro";
 import TreeNav from "../../../components/TreeNav";
 import Base from "../../../layouts/Base.astro";
 import { allWikis, navFile, pageNav, siteData } from "../../../lib/manifest";
+import { articleJsonLd, breadcrumbJsonLd } from "../../../lib/jsonLd";
 import { excerpt, ogImagePath } from "../../../lib/markdown";
 import { ancestors, childrenItems } from "../../../lib/tree";
 import Backlinks from "../../../components/Backlinks.astro";
@@ -17,17 +18,26 @@ export async function getStaticPaths() {
 
 const { page } = Astro.props as { page: ManifestPage };
 const { wiki } = Astro.params;
-const { pagesById, publicPaths, primaryTree, origin, linkPreviews, previewOf } = await siteData(wiki);
+const { wiki: manifest, pagesById, publicPaths, primaryTree, origin, linkPreviews, previewOf } = await siteData(wiki);
 const titleOf = (id: string) => pagesById.get(id)?.title;
 const backlinks = (await siteBacklinks(wiki)).get(page.id) ?? [];
 const inPrimary = primaryTree?.nodes.some((n) => n.nodeId === page.id);
 const crumbs = primaryTree && inPrimary ? ancestors(primaryTree, page.id).slice(0, -1) : [];
+// 構造化データ。ツリーに入っているページには、パンくず（crumbs と自分）も出す
+const trail = [...crumbs.map((c) => c.pageId), page.id].flatMap((id) => {
+  const p = id === page.id ? page : pagesById.get(id);
+  return p ? [{ title: p.title, path: p.path }] : [];
+});
+const jsonLd = [
+  articleJsonLd({ title: page.title, path: page.path, origin, wikiName: manifest.name, publishedAt: page.firstPublishedAt, modifiedAt: page.revisedAt }),
+  ...(inPrimary ? [breadcrumbJsonLd({ origin, wikiName: manifest.name, trail })] : []),
+];
 // ツリーは、最初の表示に出る分だけを HTML に入れる。残りは、ツリーナビが wiki ごとの JSON から読む
 const nav = primaryTree && (await pageNav(wiki, primaryTree, inPrimary ? page.id : undefined));
 const navSrc = (await navFile(wiki)).path;
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"} icon={page.icon} article ogImage={ogImagePath(page.cover, page.bodyMd)} publishedAt={page.firstPublishedAt} modifiedAt={page.revisedAt}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"} icon={page.icon} article ogImage={ogImagePath(page.cover, page.bodyMd)} publishedAt={page.firstPublishedAt} modifiedAt={page.revisedAt} jsonLd={jsonLd}>
   <div class={layout.withNav}>
     <main data-pagefind-body>
       {

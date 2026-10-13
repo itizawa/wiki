@@ -285,6 +285,20 @@ check(ogMeta(await read("wiki/index.html"), "og:type") === "website", "the top p
 check(ogMeta(notesIndex, "og:image") === "http://notes.localhost:4321/images/notes0logo0sample0000000.png", "a wiki's logo is the og:image when the page has no image");
 check(!(await read("wiki/404.html")).includes("og:") && !(await read(`wiki/u/${key}/index.html`)).includes("og:"), "the 404 page and unlisted pages have no OGP");
 
+// 構造化データ（JSON-LD）：公開ページに Article、ツリーのページに BreadcrumbList、トップに WebSite。限定公開と 404 には出さない
+const jsonLdOf = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => [JSON.parse(m[1])].flat());
+const typesOf = (html) => jsonLdOf(html).map((j) => j["@type"]).join();
+const articleLd = jsonLdOf(iconPage).find((j) => j["@type"] === "Article");
+check(typesOf(iconPage) === "Article,BreadcrumbList" && articleLd?.headline === "はじめに" && articleLd.mainEntityOfPage["@id"] === "http://wiki.localhost:4321/p/aaaaaaaaa1" && articleLd.datePublished === "2026-10-01T00:00:00.000Z" && articleLd.dateModified === "2026-10-05T00:00:00.000Z" && articleLd.publisher.name === "サンプル wiki", "a page in the tree has Article and BreadcrumbList");
+const crumbsLd = jsonLdOf(noIconPage).find((j) => j["@type"] === "BreadcrumbList");
+check(crumbsLd?.itemListElement.map((i) => `${i.position}:${i.name}:${i.item}`).join() === "1:サンプル wiki:http://wiki.localhost:4321/,2:はじめに:http://wiki.localhost:4321/p/aaaaaaaaa1,3:設計メモ:http://wiki.localhost:4321/p/aaaaaaaaa2", "the BreadcrumbList follows the tree: the top, the ancestors, then the page");
+const siteLd = jsonLdOf(await read("wiki/index.html"));
+check(siteLd.length === 1 && siteLd[0]["@type"] === "WebSite" && siteLd[0].name === "サンプル wiki" && siteLd[0].url === "http://wiki.localhost:4321/", "the top has WebSite with the name and url");
+check(!(await read("wiki/404.html")).includes("ld+json") && !unlisted.includes("ld+json"), "the 404 page and unlisted pages have no JSON-LD");
+// トップの description：自由記述（introMd）の抜粋。自由記述の無い wiki には出さない
+check(/<meta name="description" content="[^"]*この wiki の紹介文です/.test(await read("wiki/index.html")), "the top has a description from the intro text");
+check(!/<meta name="description"/.test(notesIndex), "a top without an intro text has no description");
+
 if (failures > 0) {
   console.error(`${failures} check(s) failed`);
   process.exit(1);
