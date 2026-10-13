@@ -12,17 +12,17 @@ describe("invalidatePageLists", () => {
 });
 
 describe("invalidateAfterTagChange", () => {
-  it("ページを渡すと、タグの一覧・そのページの詳細・ページの一覧を無効にする", () => {
+  it("ページを渡すと、タグの一覧・ワークフロー（タグの名前が出る）・そのページの詳細・ページの一覧を無効にする", () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, "invalidateQueries");
     invalidateAfterTagChange(qc, "p1");
-    expect(spy.mock.calls).toEqual([[{ queryKey: ["tags"] }], [{ queryKey: ["page", "p1"] }], [{ queryKey: ["pages"] }]]);
+    expect(spy.mock.calls).toEqual([[{ queryKey: ["tags"] }], [{ queryKey: ["workflow"] }], [{ queryKey: ["page", "p1"] }], [{ queryKey: ["pages"] }]]);
   });
 
   it("ページを渡さないと、すべてのページの詳細を無効にする", () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, "invalidateQueries");
     invalidateAfterTagChange(qc);
-    expect(spy.mock.calls[1]).toEqual([{ queryKey: ["page"] }]);
+    expect(spy.mock.calls[2]).toEqual([{ queryKey: ["page"] }]);
   });
 });

@@ -409,6 +409,53 @@ export const workflowRoutines = pgTable("workflow_routines", {
   createdBy: uuid("created_by").references(() => users.id),
 });
 
+/**
+ * ワークフローのブロック：wiki ごとの「1つのトリガー ＋ アクションの並び」。ブロック同士は独立していて、順番は持たない（作った順）。
+ * トリガーの種類ごとの列は、いまは `trigger_tag_id`（タグが付いたとき）だけ。種類を足すときは、列を足して check を直す
+ */
+export const workflowBlocks = pgTable(
+  "workflow_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    triggerType: text("trigger_type").notNull(),
+    triggerTagId: uuid("trigger_tag_id")
+      .notNull()
+      .references(() => wikiTags.id),
+    createdAt: createdAt(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (t) => [
+    index("workflow_blocks_wiki_idx").on(t.wikiId, t.createdAt),
+    index("workflow_blocks_trigger_tag_idx").on(t.triggerTagId),
+    check("workflow_blocks_trigger_type_check", sql`${t.triggerType} in ('tag_attached')`),
+  ],
+);
+
+/** ブロックのアクション（`position` の昇順に実行）。種類ごとに必要な列だけが入る（check で縛る） */
+export const workflowActions = pgTable(
+  "workflow_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockId: uuid("block_id")
+      .notNull()
+      .references(() => workflowBlocks.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    type: text("type").notNull(),
+    routineId: uuid("routine_id").references(() => workflowRoutines.id),
+    tagId: uuid("tag_id").references(() => wikiTags.id),
+  },
+  (t) => [
+    unique("workflow_actions_block_position_unique").on(t.blockId, t.position),
+    index("workflow_actions_routine_idx").on(t.routineId),
+    index("workflow_actions_tag_idx").on(t.tagId),
+    check(
+      "workflow_actions_type_check",
+      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.tagId} is null) or (${t.type} = 'remove_tag' and ${t.tagId} is not null and ${t.routineId} is null)`,
+    ),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // 4.2 ツリー
 // 運用するのは、wiki ごとに primary ツリー1本だけ。複数ツリー前提のテーブル形は変えずに残している。

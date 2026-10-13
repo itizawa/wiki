@@ -6,6 +6,7 @@ import type { Db } from "../db/client";
 import { workflowRoutines } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { isUniqueViolation } from "../tags/service";
+import { routineUsage } from "./blocks";
 import { fireRoutine } from "./routine";
 
 /** Routine の登録。トークンは `ROUTINE_TOKEN_KEY`（key）で暗号化して持ち、どこにも返さない。変えるものは、呼ぶ側のトランザクション（tx）の中で呼ぶ */
@@ -79,9 +80,13 @@ export async function updateRoutine(tx: Db, key: string, id: string, input: Upda
   return summary(row!);
 }
 
-/** 消す。どこかのワークフローが使っていたら 409 にする確認は、ワークフローの定義のテーブルができたあとに足す */
+/** 消す。どこかのワークフローのブロックが使っていたら 409 にして、使っている wiki とブロックの数を返す（先にブロックから外す） */
 export async function deleteRoutine(tx: Db, id: string, actor: AuditActor): Promise<void> {
   const row = await find(tx, id);
+  const usage = await routineUsage(tx, id);
+  if (usage.blocks > 0) {
+    throw new HttpError(409, "routine_in_use", `routine ${row.name} is used by ${usage.blocks} workflow block(s)`, usage);
+  }
   await tx.delete(workflowRoutines).where(eq(workflowRoutines.id, id));
   await writeAudit(tx, { wikiId: null, actor, action: "routine_delete", target: target(row), detail: {} });
 }

@@ -12,6 +12,8 @@ export function invalidatePageLists(qc: QueryClient): void {
  */
 export function invalidateAfterTagChange(qc: QueryClient, pageId?: string): void {
   void qc.invalidateQueries({ queryKey: ["tags"] });
+  // タグを消すと、ワークフローのブロックも消える・変わる
+  void qc.invalidateQueries({ queryKey: ["workflow"] });
   void qc.invalidateQueries({ queryKey: pageId ? ["page", pageId] : ["page"] });
   void qc.invalidateQueries({ queryKey: ["pages"] });
 }

@@ -68,6 +68,9 @@ export const AUDIT_ACTIONS = {
   routine_update: "settings",
   routine_delete: "settings",
   routine_test: "settings",
+  workflow_block_create: "settings",
+  workflow_block_update: "settings",
+  workflow_block_delete: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -84,7 +87,7 @@ export function actionsIn(category: AuditCategory): AuditAction[] {
 export const AUDIT_ACTOR_TYPES = ["user", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine"] as const;
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine", "workflow_block"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** 予約を入れたのは誰か（予約の実行に残す）。 */
@@ -155,7 +158,11 @@ export type AuditDetailMap = {
   /** 管理用タグを作った・名前を変えた・消した。消したときの pages は、外れたページの数 */
   tag_create: Record<string, never>;
   tag_rename: { from: string; to: string };
-  tag_delete: { pages: number };
+  tag_delete: { pages: number; blocks?: number };
+  /** ワークフローのブロックの作成・変更・削除。対象名はトリガーの文、detail は入れたアクションの数。タグの削除に伴う削除は reason を付ける */
+  workflow_block_create: { actions: number };
+  workflow_block_update: { actions: number };
+  workflow_block_delete: { reason?: "tag_deleted" };
 
   /** Routine（全体）を登録した・変えた・消した・テスト実行した。トークンの値は入れない（変えたかどうかだけ）。テスト実行の失敗は、理由だけ残す */
   routine_create: Record<string, never>;
@@ -351,7 +358,20 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
     case "tag_rename":
       return [{ text: "タグの名前を変更しました（" }, ...named(entry.detail.from), { text: ` → ${entry.detail.to}）` }];
     case "tag_delete":
-      return [{ text: "タグ " }, ...quoted(t), { text: ` を削除しました${entry.detail.pages ? `（${entry.detail.pages} ページから外れました）` : ""}` }];
+      return [
+        { text: "タグ " },
+        ...quoted(t),
+        {
+          text: ` を削除しました${entry.detail.pages ? `（${entry.detail.pages} ページから外れました）` : ""}${entry.detail.blocks ? `（ワークフローのブロック ${entry.detail.blocks} 件も削除しました）` : ""}`,
+        },
+      ];
+
+    case "workflow_block_create":
+      return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を作成しました（アクション ${entry.detail.actions} 件）` }];
+    case "workflow_block_update":
+      return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を変更しました（アクション ${entry.detail.actions} 件）` }];
+    case "workflow_block_delete":
+      return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を削除しました${entry.detail.reason === "tag_deleted" ? "（トリガーのタグを削除したため）" : ""}` }];
 
     case "routine_create":
       return [{ text: "Routine " }, ...quoted(t), { text: " を登録しました" }];
