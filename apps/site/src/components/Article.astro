@@ -1,5 +1,6 @@
 ---
 import s from "./Article.module.css";
+import { textStats } from "@wiki/shared";
 import { renderArticle, type RenderOptions } from "../lib/markdown";
 
 interface Props {
@@ -36,6 +37,8 @@ const TITLE_ID = "page-title";
 const minDepth = Math.min(...headings.map((h) => h.depth));
 const fmt = (iso: string) =>
   new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "long" }).format(new Date(iso));
+// 読む時間の目安。計算は管理画面のエディタと同じ（本文が空なら出さない）
+const { minutes } = textStats(bodyMd);
 const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 ---
 
@@ -51,6 +54,7 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
   <div class={s.meta} data-pagefind-ignore>
     {firstPublishedAt && <time datetime={firstPublishedAt}>{fmt(firstPublishedAt)}</time>}
     {revised && <span>（{fmt(revisedAt)} 更新）</span>}
+    {minutes > 0 && <span>読むのに約{minutes}分</span>}
     {sponsored && <span class={s.adNotice}>広告を含みます</span>}
   </div>
   {
