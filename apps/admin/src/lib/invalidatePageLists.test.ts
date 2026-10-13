@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { invalidatePageLists } from "./invalidatePageLists";
+import { invalidateAfterTagChange, invalidatePageLists } from "./invalidatePageLists";
 
 describe("invalidatePageLists", () => {
   it("structure・pages・search の順に、それぞれ別の呼び出しで無効にする（Sidebar / CommandMenu / PageRowMenu の現状と同じ）", () => {
@@ -8,5 +8,21 @@ describe("invalidatePageLists", () => {
     const spy = vi.spyOn(qc, "invalidateQueries");
     invalidatePageLists(qc);
     expect(spy.mock.calls).toEqual([[{ queryKey: ["structure"] }], [{ queryKey: ["pages"] }], [{ queryKey: ["search"] }]]);
+  });
+});
+
+describe("invalidateAfterTagChange", () => {
+  it("ページを渡すと、タグの一覧・そのページの詳細・ページの一覧を無効にする", () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    invalidateAfterTagChange(qc, "p1");
+    expect(spy.mock.calls).toEqual([[{ queryKey: ["tags"] }], [{ queryKey: ["page", "p1"] }], [{ queryKey: ["pages"] }]]);
+  });
+
+  it("ページを渡さないと、すべてのページの詳細を無効にする", () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    invalidateAfterTagChange(qc);
+    expect(spy.mock.calls[1]).toEqual([{ queryKey: ["page"] }]);
   });
 });

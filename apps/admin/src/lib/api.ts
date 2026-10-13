@@ -50,7 +50,10 @@ import type {
   SnsPostResult,
   UpdateRoutineInput,
   SnsStatus,
+  PageTagList,
+  TagList,
   WikiSettings,
+  WikiTag,
   WikiSummary,
 } from "@wiki/shared";
 import { IMAGE_LIMIT_LABEL, PAGE_TITLE_MAX } from "@wiki/shared";
@@ -347,6 +350,15 @@ export const api = {
   /** 背景画像をアップロードし、パス（`/images/{name}`）を返す。PNG・JPEG・WebP の 2MB まで */
   uploadBackgroundImage: (file: Blob) => upload(w("/appearance/background-images"), file),
 
+  /** 管理用タグ。一覧は wiki のメンバーなら読める。作る・名前を変える・消すのは管理者だけ */
+  listTags: () => request<TagList>("GET", w("/tags")),
+  createTag: (name: string) => request<WikiTag>("POST", w("/tags"), { name }),
+  renameTag: (id: string, name: string) => request<WikiTag>("PATCH", w(`/tags/${id}`), { name }),
+  deleteTag: (id: string) => request<null>("DELETE", w(`/tags/${id}`)),
+  /** ページへのタグの付け外し（編集者以上）。すでにそうなっていても成功し、そのページのいまのタグを返す */
+  attachTag: (pageId: string, tagId: string) => request<PageTagList>("PUT", w(`/pages/${pageId}/tags/${tagId}`)),
+  detachTag: (pageId: string, tagId: string) => request<PageTagList>("DELETE", w(`/pages/${pageId}/tags/${tagId}`)),
+
   structure: () => request<StructureResponse>("GET", w("/structure")),
   changeStructure: (input: { ops: StructureOpInput[] }) => request<void>("POST", w("/structure/ops"), input),
 };
@@ -405,6 +417,7 @@ const MESSAGES: Record<string, string> = {
   x_reauth_required: "X との連携が切れています（X の側で連携を外したか、許可の期限が切れました）。「X と連携し直す」から、もう一度許可してください。",
   x_rate_limited: "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。",
   x_payment_required: "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。",
+  tag_exists: "この名前のタグは、すでにあります。別の名前にしてください（大文字と小文字は区別されます）。",
   routine_not_configured: "この管理画面には、Routine のトークンを暗号化する鍵（ROUTINE_TOKEN_KEY）がまだ登録されていないため、Routine を登録・実行できません。",
   routine_exists: "この名前の Routine は、すでに登録されています。別の名前にしてください。",
   routine_token_unreadable: "登録してあるトークンを読み出せません（暗号化の鍵が変わった可能性があります）。「編集」からトークンを入れ直してください。",
