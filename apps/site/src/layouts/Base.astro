@@ -1,6 +1,7 @@
 ---
 import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
+import { serializeJsonLd, type JsonLd } from "../lib/jsonLd";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
 import { Menu } from "lucide-react";
@@ -35,9 +36,11 @@ interface Props {
   publishedAt?: string;
   /** 最後に改訂した日時（ISO 8601）。`article:modified_time` */
   modifiedAt?: string;
+  /** 構造化データ（JSON-LD）。`<script type="application/ld+json">` にする。限定公開と 404 には出さない */
+  jsonLd?: JsonLd | JsonLd[];
 }
 
-const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false, ogImage = null, publishedAt, modifiedAt } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false, ogImage = null, publishedAt, modifiedAt, jsonLd } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
@@ -115,6 +118,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
         </>
       )
     }
+    {ogp && jsonLd && <script is:inline type="application/ld+json" set:html={serializeJsonLd(jsonLd)} />}
     {
       noindex ? (
         <>
