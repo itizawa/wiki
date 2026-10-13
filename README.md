@@ -490,12 +490,22 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 - **未設定なら**、一覧は読めるが、登録・変更・削除・テスト実行は 503 `routine_not_configured`。ほかの画面は今までどおり動く
 - **失敗の分け方**：`fireRoutine` は、再試行できる失敗（ネットワーク・タイムアウト・上限 429・相手の不調 5xx）と、できない失敗（トークン違い・権限なし・URL 違い・受け付けられない・応答が読めない）を型で分けて返す。呼び出しに冪等キーは無く、タイムアウトのあとでも相手でセッションが始まっていることがある
 - データ：`workflow_routines`（`id` / `name`（一意）/ `url` / `token_enc` / `created_at` / `created_by`）
+- **消せない Routine**：どこかのワークフローのブロックのアクションが使っている Routine は、削除が 409 `routine_in_use`（`details` に、使っている wiki ごとのブロックの数）。先に、各 wiki のブロックから外す
 
 ### 使えるようにする
 
 1. GitHub の Settings → Secrets and variables → Actions に、`ROUTINE_TOKEN_KEY`（`openssl rand -base64 48`。32文字以上。`SNS_TOKEN_KEY` とは別の値）を登録し、Actions の「Deploy」を実行する。手元で試すときは、`apps/api/.env` に入れる
 2. Claude Code（claude.ai/code/routines）で Routine を作り、API のトリガーを足して、URL とトークン（作ったときに一度だけ表示される）を控える
 3. 「全体の管理」の「Routine」タブから登録する
+
+## ワークフローのブロック（wiki ごと）
+
+設定の「ワークフロー」タブの「ブロック」の節。1つのブロックは「1つのトリガー ＋ 上から順に行うアクションの並び（1〜10件）」で、ブロック同士は独立している（順番は無く、作った順に出す。同じ内容が重なってもよい）。**いまは設定を保存するだけで、動かす処理は無い**。
+
+- 種類：トリガーは「タグが付いたとき」、アクションは「Routine を呼ぶ」「タグを外す」。型は `packages/shared/src/workflow.ts` の判別付きユニオン（`type` で見分ける）。種類を足すときは、そこと、API の `apps/api/src/workflows/blocks.ts` の種類ごとの表（`TRIGGER_COLUMNS` `ACTION_COLUMNS`。足し忘れると型エラー）、実行側の表に足す
+- API：`GET /admin/w/{key}/workflow`（メンバーなら誰でも）、`POST /workflow/blocks`・`PUT /workflow/blocks/{id}`（アクションの並びごと置き換える）・`DELETE`（管理者だけ）、`GET /admin/w/{key}/routines`（選ぶための ID と名前だけ。管理者だけ）。別の wiki のタグ・登録されていない Routine は 400
+- タグを消すと、そのタグがトリガーのブロックは消え、「タグを外す」で指しているアクションは取り除かれ、アクションが無くなったブロックも消える（監査ログに残る）
+- データ：`workflow_blocks`（`wiki_id` / `trigger_type` / `trigger_tag_id`）、`workflow_actions`（`block_id`（ブロックを消すと消える）/ `position` / `type` / `routine_id` / `tag_id`。`type` ごとに必要な列を check で縛る）
 
 ## スマホから使う（PWA）
 
