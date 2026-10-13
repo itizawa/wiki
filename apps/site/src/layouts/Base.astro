@@ -3,7 +3,8 @@ import { NO_DECORATION_CSS_VARS, resolveTheme, themeCssVars, themeDecorationCssV
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
-import { Ellipsis, Menu, Presentation } from "lucide-react";
+import { Menu } from "lucide-react";
+import SiteMenu from "../components/SiteMenu";
 import "../styles/global.css";
 import s from "./Base.module.css";
 
@@ -128,18 +129,9 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <a class={s.brand} href="/">
         {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
       </a>
-      {/* プレゼンモード。popover なので、スクリプトが動かなくても開閉できる（外を押す・Esc で閉じる）。出す項目が無いページでは、CSS が出さない。検索と RSS はサイドバー（NavDrawer.astro） */}
-      <div class={s.menuWrap}>
-        <button type="button" class={s.menuButton} popovertarget="site-menu" aria-label="メニュー" title="メニュー">
-          <Ellipsis size={20} aria-hidden="true" />
-        </button>
-        <div id="site-menu" class={s.menu} popover data-pagefind-ignore>
-          {/* スクリプト（Article.astro）が、スライドが2枚以上になる記事でだけ見えるようにする。動かなければ出ない */}
-          <button type="button" hidden data-presentation-open popovertarget="site-menu" popovertargetaction="hide">
-            <Presentation size={16} aria-hidden="true" />
-            プレゼンモードで表示
-          </button>
-        </div>
+      {/* 右端の「…」メニュー（プレゼンモード）。出す項目が無いページでは、スクリプトが動いてもボタンを出さない。検索と RSS はサイドバー（NavDrawer.astro） */}
+      <div class={s.menuWrap} data-pagefind-ignore>
+        <SiteMenu client:load />
       </div>
     </header>
     <div class={s.body}>
@@ -165,6 +157,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
 {/* </html> のあとに書くと、Astro 7 はそのまま </html> のあとに出力する（5 では </body> の前へ動かしていた）ので、<body> の中に置く */}
 <script>
   import { nextHeaderVisibility } from "../lib/headerVisibility";
+  import { MENU_BUTTON_ATTR } from "../lib/presentable";
   import { HOVER_DELAY_MS, previewPosition } from "../lib/linkPreviewPosition";
 
   // プレゼンモードを閉じたら、開いたメニューのボタンへフォーカスを戻す（メニューは閉じていて、押したボタンには戻せない）
@@ -172,7 +165,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
     "close",
     (e) => {
       if (e.target instanceof HTMLElement && e.target.hasAttribute("data-presentation")) {
-        document.querySelector<HTMLElement>("[popovertarget=site-menu]")?.focus({ preventScroll: true });
+        document.querySelector<HTMLElement>(`[${MENU_BUTTON_ATTR}]`)?.focus({ preventScroll: true });
       }
     },
     true,

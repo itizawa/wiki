@@ -73,6 +73,7 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 </article>
 
 <script>
+  import { MENU_BUTTON_ATTR, PRESENT_EVENT, PRESENTABLE_ATTR, PRESENTABLE_EVENT } from "../lib/presentable";
   import { slideBlockOf, splitIntoSlides } from "../lib/slides";
 
   // 目次の中で、いま読んでいる節を示す（画面の上端を過ぎた、いちばん下の見出し）
@@ -199,10 +200,9 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 
   // プレゼンモード。本文を見出しと区切り線でスライドに分け（lib/slides.ts）、記事のページの上に重ねて1枚ずつ出す。
   // スライドの中身は本文の要素の複製で、元の要素は動かさない（目次の現在地表示と、コードブロックのボタンを壊さないため）
-  const presentOpen = document.querySelector<HTMLButtonElement>("button[data-presentation-open]");
-  const presentation = document.querySelector<HTMLDialogElement>("dialog[data-presentation]");
+    const presentation = document.querySelector<HTMLDialogElement>("dialog[data-presentation]");
   const articleBody = document.querySelector<HTMLElement>("[data-article-body]");
-  if (article && presentOpen && presentation && articleBody && typeof presentation.showModal === "function") {
+  if (article && presentation && articleBody && typeof presentation.showModal === "function") {
     /** 1枚に収まらないスライドを縮める下限。ここまで縮めても収まらなければ、スライドの中で縦にスクロールする */
     const MIN_SCALE = 0.5;
     /** 本文のいちばん上の階層の要素を、スライドごとに分ける（タイトルのスライドは含まない） */
@@ -374,7 +374,7 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
           session.abort();
           if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
           presentation.replaceChildren();
-          presentOpen.focus({ preventScroll: true });
+          document.querySelector<HTMLElement>(`[${MENU_BUTTON_ATTR}]`)?.focus({ preventScroll: true });
         },
         { once: true },
       );
@@ -388,8 +388,9 @@ const revised = firstPublishedAt && fmt(revisedAt) !== fmt(firstPublishedAt);
 
     // スライドが2枚以上（タイトル＋本文1枚以上）になる記事でだけ、ボタンを出す
     if (bodySlides().length > 0) {
-      presentOpen.addEventListener("click", startPresentation);
-      presentOpen.hidden = false;
+      document.addEventListener(PRESENT_EVENT, startPresentation);
+      document.documentElement.setAttribute(PRESENTABLE_ATTR, "");
+      document.dispatchEvent(new Event(PRESENTABLE_EVENT));
     }
   }
 </script>
