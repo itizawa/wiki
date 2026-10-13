@@ -2,8 +2,10 @@ import { createTagInput, renameTagInput } from "@wiki/shared";
 import { Hono } from "hono";
 import { auditActor } from "../audit/service";
 import type { AppEnv } from "../env";
-import { attachTag, createTag, deleteTag, detachTag, listTags, pageTagList, renameTag } from "../tags/service";
+import { createTag, deleteTag, detachTag, listTags, pageTagList, renameTag } from "../tags/service";
 import { parseJson } from "../validation";
+import { attachTagAndEnqueue } from "../workflows/enqueue";
+import { executeRun } from "../workflows/run";
 import { requireWikiAdmin } from "./wikis";
 
 /** /admin/w/{key}/tags：管理用タグの一覧は wiki のメンバーなら誰でも読める。作る・名前を変える・消すのは管理者だけ */
@@ -35,9 +37,17 @@ export const tagRoutes = new Hono<AppEnv>()
 /** /admin/w/{key}/pages/{pageId}/tags/{tagId}：ページへの付け外し（編集者以上）。すでにそうなっていれば何も起きず、成功を返す */
 export const pageTagRoutes = new Hono<AppEnv>()
   .put("/:pageId/tags/:tagId", async (c) => {
-    const { db } = c.get("deps");
+    const deps = c.get("deps");
+    const { db } = deps;
     const pageId = c.req.param("pageId");
-    await db.transaction((tx) => attachTag(tx, c.get("wiki").id, pageId, c.req.param("tagId"), auditActor(c)));
+    const runIds = await db.transaction((tx) => attachTagAndEnqueue(tx, c.get("wiki").id, pageId, c.req.param("tagId"), auditActor(c)));
+    // 積んだ実行は、応答を待たせずに裏で動かす（落ちても実行は pending / running のまま残り、あとで拾う）
+    if (runIds.length > 0) {
+      const work = (async () => {
+        for (const id of runIds) await executeRun(db, deps, id);
+      })().catch(() => undefined);
+      (deps.defer ?? ((p) => void p))(work);
+    }
     return c.json(await pageTagList(db, pageId));
   })
   .delete("/:pageId/tags/:tagId", async (c) => {

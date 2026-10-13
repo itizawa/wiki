@@ -142,7 +142,8 @@ export type AuditDetailMap = {
 
   /** ページにタグを付けた・外した（タグの名前は、その時点のもの） */
   page_tag_add: { tagId: string; tagName: string };
-  page_tag_remove: { tagId: string; tagName: string };
+  /** runId：ワークフローの実行が外したとき、その実行の ID */
+  page_tag_remove: { tagId: string; tagName: string; runId?: string };
 
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */

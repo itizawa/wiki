@@ -91,8 +91,11 @@ export async function setup(
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
+  // 応答のあとに続ける処理（ワークフローの実行）を集める。テストは `settle()` で終わるのを待つ
+  const deferred: Promise<unknown>[] = [];
   const app = createApp({
     db,
+    defer: (promise) => void deferred.push(promise),
     config,
     google: opts.google ?? null,
     x: opts.x ?? null,
@@ -144,7 +147,12 @@ export async function setup(
     return { user: user!, call: await callAs(user!.id) };
   }
 
-  return { app, db, client, config, images, call, callAs, addUser, owner: owner!, close: () => client.close() };
+  /** 応答のあとに続けた処理が、すべて終わるのを待つ */
+  async function settle() {
+    while (deferred.length > 0) await Promise.allSettled(deferred.splice(0));
+  }
+
+  return { app, db, client, config, images, call, callAs, addUser, settle, owner: owner!, close: () => client.close() };
 }
 
 /** Workers の Rate Limiting のバインディングの代わり。鍵ごとに limit 回まで通す（窓は進まない）。calls は数えた鍵 */

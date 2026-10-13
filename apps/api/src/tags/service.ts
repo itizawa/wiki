@@ -138,8 +138,11 @@ export async function attachTag(tx: Db, wikiId: string, pageId: string, tagId: s
   return true;
 }
 
-/** ページからタグを外す。付いていなければ何もしない。実際に外したときだけ true を返し、監査ログを書く */
-export async function detachTag(tx: Db, wikiId: string, pageId: string, tagId: string, actor: AuditActor): Promise<boolean> {
+/**
+ * ページからタグを外す。付いていなければ何もしない。実際に外したときだけ true を返し、監査ログを書く。
+ * ワークフローの実行から外すときは、`runId` を渡す（どの実行の外しかを監査ログの detail に残す）。
+ */
+export async function detachTag(tx: Db, wikiId: string, pageId: string, tagId: string, actor: AuditActor, runId?: string): Promise<boolean> {
   const { page, tag } = await findPair(tx, wikiId, pageId, tagId);
   const removed = await tx
     .delete(pageTags)
@@ -151,7 +154,7 @@ export async function detachTag(tx: Db, wikiId: string, pageId: string, tagId: s
     actor,
     action: "page_tag_remove",
     target: { type: "page", id: page.id, label: page.title },
-    detail: { tagId, tagName: tag.name },
+    detail: { tagId, tagName: tag.name, ...(runId && { runId }) },
   });
   return true;
 }

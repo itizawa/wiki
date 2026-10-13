@@ -456,6 +456,58 @@ export const workflowActions = pgTable(
   ],
 );
 
+/**
+ * ワークフローの実行：タグが付いたときに、ブロックごとに1件積む。Routine へ渡す文にも `id` を入れ、二重実行の目印にする。
+ * ブロック・タグ・版は、消えても記録を残すので外部キーにしない（`block_id` だけ、消えたら null）。
+ * 状態：pending（待ち。再試行で戻すのもここ）／running（実行中。落ちるとここに残る）／succeeded／failed／skipped
+ */
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    blockId: uuid("block_id").references(() => workflowBlocks.id, { onDelete: "set null" }),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** トリガーのタグ（積んだ時点） */
+    tagId: uuid("tag_id").notNull(),
+    /** 積んだ時点の、ページの最新の保存済みの版。版が無かったときは null */
+    versionId: uuid("version_id"),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("workflow_runs_status_idx").on(t.status, t.createdAt),
+    index("workflow_runs_wiki_idx").on(t.wikiId, t.createdAt),
+    check("workflow_runs_status_check", sql`${t.status} in ('pending', 'running', 'succeeded', 'failed', 'skipped')`),
+  ],
+);
+
+/** 実行の中身：積んだ時点のアクションの写し（あとでブロックを直しても変わらない）。`result` にトークンは入れない */
+export const workflowRunActions = pgTable(
+  "workflow_run_actions",
+  {
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    type: text("type").notNull(),
+    routineId: uuid("routine_id"),
+    tagId: uuid("tag_id"),
+    status: text("status").notNull().default("pending"),
+    result: jsonb("result"),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.runId, t.position] }),
+    check("workflow_run_actions_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // 4.2 ツリー
 // 運用するのは、wiki ごとに primary ツリー1本だけ。複数ツリー前提のテーブル形は変えずに残している。
