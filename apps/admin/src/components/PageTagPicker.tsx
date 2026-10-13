@@ -72,11 +72,11 @@ export function PageTagMenu(props: {
             タグがありません
           </Muted>,
           role === "admin" ? (
-            <MenuItemLink key="create" {...screenLink("/w/$wikiKey/settings/workflows")} onClick={props.onClose}>
+            <MenuItemLink key="create" {...screenLink("/w/$wikiKey/settings/tags")} onClick={props.onClose}>
               <ListItemIcon>
                 <Settings size={18} />
               </ListItemIcon>
-              <ListItemText>設定の「ワークフロー」でタグを作る</ListItemText>
+              <ListItemText>設定の「タグ管理」でタグを作る</ListItemText>
             </MenuItemLink>
           ) : (
             <Muted key="ask" component="li" role="none" sx={{ px: 2, pb: 1, maxWidth: 280, fontSize: "0.8125rem" }}>

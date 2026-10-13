@@ -31,23 +31,17 @@ export function deleteTagBody(pageCount: number): string {
 }
 
 /**
- * 「設定」の「ワークフロー」タブ（`/w/{key}/settings/workflows`）：管理用タグ・（これから）ブロック・実行の履歴。管理者だけ。
- * 節ごとにコンポーネントを分けてあり、節は `<WorkflowSections>` の中に並べる。
+ * 「設定」の「タグ管理」タブ（`/w/{key}/settings/tags`）：管理用タグの一覧と、作る・名前を変える・削除。管理者だけ。
  */
-export function WorkflowSettingsPage() {
+export function TagSettingsPage() {
   const { role } = useWiki();
 
   return (
     <Stack spacing={1.5}>
       <ConfirmHost />
-      {role !== "admin" ? <Alert severity="info">ワークフローの設定は、この wiki の管理者だけが行えます。</Alert> : <WorkflowSections />}
+      {role !== "admin" ? <Alert severity="info">タグの管理は、この wiki の管理者だけが行えます。</Alert> : <TagsSection />}
     </Stack>
   );
-}
-
-/** 管理者に出す節の並び。ブロック・履歴の節は、ここに足す。 */
-function WorkflowSections() {
-  return <TagsSection />;
 }
 
 const TAGS_KEY = ["tags"];

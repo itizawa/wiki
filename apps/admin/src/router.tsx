@@ -24,7 +24,7 @@ import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { SnsSettingsPage } from "./routes/SnsSettingsPage";
-import { WorkflowSettingsPage } from "./routes/WorkflowSettingsPage";
+import { TagSettingsPage } from "./routes/TagSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
 import { WikisPage } from "./routes/WikisPage";
@@ -211,8 +211,8 @@ const snsRoute = createRoute({
     return <SnsSettingsPage result={x} onResultRead={clear} />;
   },
 });
-// ワークフロー（管理用タグ・あとからブロックと履歴）。管理者だけ
-const workflowsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "workflows", component: WorkflowSettingsPage });
+// タグ管理（管理用タグ）。管理者だけ
+const tagsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "tags", component: TagSettingsPage });
 // メンバー。一覧はだれでも、変えるのは管理者だけ
 const membersRoute = createRoute({ getParentRoute: () => settingsRoute, path: "members", component: MembersPage });
 // この wiki の監査ログ（管理者だけ）
@@ -263,7 +263,7 @@ const routeTree = rootRoute.addChildren([
     templatesRoute,
     templateEditorRoute,
     trashRoute,
-    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, workflowsRoute, membersRoute, auditRoute]),
+    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, tagsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),
     legacySettingsScreen("appearance"),
