@@ -43,7 +43,12 @@ import type {
   WikiAppearance,
   WikiHome,
   WikiRole,
+  CreateRoutineInput,
+  RoutineList,
+  RoutineSummary,
+  RoutineTestResult,
   SnsPostResult,
+  UpdateRoutineInput,
   SnsStatus,
   WikiSettings,
   WikiSummary,
@@ -273,6 +278,15 @@ export const api = {
   disconnectX: () => request<SnsStatus>("POST", w("/sns/x/disconnect")),
   testPostX: (text: string) => request<SnsPostResult>("POST", w("/sns/x/test-post"), { text }),
 
+  /** 「全体の管理」の「Routine」：ワークフローが呼ぶ Claude Routine の登録（オーナーだけ）。トークンは返ってこない */
+  listRoutines: () => request<RoutineList>("GET", "/admin/routines"),
+  createRoutine: (input: CreateRoutineInput) => request<RoutineSummary>("POST", "/admin/routines", input),
+  /** token は入れたときだけ置き換わる */
+  updateRoutine: (id: string, input: UpdateRoutineInput) => request<RoutineSummary>("PATCH", `/admin/routines/${id}`, input),
+  deleteRoutine: (id: string) => request<null>("DELETE", `/admin/routines/${id}`),
+  /** 決まりの文で1回呼ぶ（Routine の回数を1回使う）。呼べなかったときも、理由が結果に入って返る */
+  testRoutine: (id: string) => request<RoutineTestResult>("POST", `/admin/routines/${id}/test`),
+
   /** 「アクセス解析」：Google Analytics とサーチコンソールの数字と、連携の状態。同じ期間は、API が1時間のあいだ使い回す */
   analytics: (days: AnalyticsDays) => request<WikiAnalytics>("GET", w(`/analytics?days=${days}`)),
   /** Google から取り直す（1分おきまで） */
@@ -391,6 +405,9 @@ const MESSAGES: Record<string, string> = {
   x_reauth_required: "X との連携が切れています（X の側で連携を外したか、許可の期限が切れました）。「X と連携し直す」から、もう一度許可してください。",
   x_rate_limited: "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。",
   x_payment_required: "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。",
+  routine_not_configured: "この管理画面には、Routine のトークンを暗号化する鍵（ROUTINE_TOKEN_KEY）がまだ登録されていないため、Routine を登録・実行できません。",
+  routine_exists: "この名前の Routine は、すでに登録されています。別の名前にしてください。",
+  routine_token_unreadable: "登録してあるトークンを読み出せません（暗号化の鍵が変わった可能性があります）。「編集」からトークンを入れ直してください。",
   x_unavailable: "X に届きませんでした。時間をおいて、もう一度お試しください。",
 };
 
