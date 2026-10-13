@@ -30,33 +30,8 @@
 .brand { display: flex; align-items: center; font-weight: 700; color: var(--text); text-decoration: none; }
 /* ロゴは高さ 32px にそろえ、横長の画像は幅を成り行きにする */
 .logo { display: block; height: 32px; width: auto; max-width: min(240px, 50vw); }
-/* 右端の「…」メニュー（管理画面のページのメニューと同じ）。ボタンは右に寄せ、中身は top layer に出る popover。
-   中に見える項目が無いページ（スライドにならない記事など）では、ボタンごと出さない */
+/* 右端の「…」メニュー（SiteMenu.tsx。MUI の Menu）。ボタンを右に寄せる。出す項目が無いページでは、中身が空になる */
 .menuWrap { margin-left: auto; }
-.menuWrap:not(:has([data-presentation-open]:not([hidden]))) { display: none; }
-.menuButton {
-  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
-  border: 0; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer;
-  anchor-name: --site-menu-button;
-}
-.menuButton:hover, .menuButton[aria-expanded="true"] { background: var(--bg); color: var(--text); }
-.menu {
-  /* ボタンの下に、右端をそろえて開く。anchor positioning が使えないブラウザでは、ヘッダーの右下 */
-  position: fixed; inset: auto; top: calc(var(--header-height) - 4px); right: 8px; margin: 0; min-width: 200px; padding: 4px;
-  border: 1px solid var(--border); border-radius: var(--radius); background: var(--paper); color: var(--text);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
-}
-@supports (top: anchor(bottom)) {
-  .menu { position-anchor: --site-menu-button; top: calc(anchor(bottom) + 4px); right: anchor(right); }
-}
-.menu:popover-open { display: flex; flex-direction: column; }
-.menu :is(a, button) {
-  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--radius);
-  background: none; color: var(--text); font: inherit; font-size: 0.9rem; text-align: left; text-decoration: none; cursor: pointer;
-}
-.menu :is(a, button):hover { background: var(--bg); }
-.menu button[hidden] { display: none; }
-.menu svg { color: var(--muted); flex: none; }
 /* リンクのプレビュー（本文のリンクにカーソルを載せる・フォーカスしたとき）。位置はスクリプトが left / top に入れる。押せない（下の文字を選べる）。画像は出さない */
 .linkPreview {
   position: fixed; inset: auto; margin: 0; width: min(360px, calc(100vw - 16px)); padding: 10px 12px; pointer-events: none;
