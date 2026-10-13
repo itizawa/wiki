@@ -79,7 +79,7 @@ describe("scheduled", () => {
 
   it("asks for the image cleanup only on Sundays (UTC), once a week", async () => {
     const asked: Record<string, unknown> = {};
-    const result = { deleted: 0, oauth: { tokens: 4, codes: 1 }, builds: { events: 2, builds: 1 }, images: null };
+    const result = { deleted: 0, oauth: { tokens: 4, codes: 1 }, builds: { events: 2, builds: 1 }, workflowRuns: 3, images: null };
     for (let day = 4; day <= 11; day++) {
       const at = new Date(Date.UTC(2026, 9, day, 18, 0));
       const impl = (async (_input: RequestInfo | URL, init?: RequestInit) => {

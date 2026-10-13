@@ -9,6 +9,7 @@ import { cleanupOAuth } from "../oauth/cleanup";
 import { pruneVersions } from "../pages/prune";
 import { markBuildTriggered } from "../publishing/builds";
 import { cleanupBuilds } from "../publishing/cleanup";
+import { cleanupWorkflowRuns } from "../workflows/cleanup";
 import { buildManifest, refreshLinkPreviews } from "../publishing/manifest";
 
 /**
@@ -68,6 +69,7 @@ export const internalRoutes = new Hono<AppEnv>()
   // - `deleted`：自動でできた版を、古いほど粗く間引いた数
   // - `oauth`：役目を終えたトークンと認可コードを消した数
   // - `builds`：反映済みの古い公開イベントと、古いビルドの行を消した数
+  // - `workflowRuns`：終わって90日を過ぎたワークフローの実行（アクションの記録ごと）を消した数
   // - `images`：参照されていない古い画像を消した数。本文で `images: true` を渡したときだけ行い、それ以外は null
   .post("/versions/prune", async (c) => {
     const { db, images: store } = c.get("deps");
@@ -75,6 +77,7 @@ export const internalRoutes = new Hono<AppEnv>()
     const versions = await pruneVersions(db);
     const oauth = await cleanupOAuth(db);
     const builds = await cleanupBuilds(db);
+    const workflowRuns = await cleanupWorkflowRuns(db);
     let images: CleanupImagesResult | null = null;
     if (input.images && store) {
       // 置き場所の障害で、ここまでに消した数の応答まで失わないようにする。次の回にもう一度試す
@@ -84,7 +87,7 @@ export const internalRoutes = new Hono<AppEnv>()
         console.error("image cleanup failed", err);
       }
     }
-    return c.json({ ...versions, oauth, builds, images });
+    return c.json({ ...versions, oauth, builds, workflowRuns, images });
   })
   // 1日1回、運用コスト（使用量）を取って控える。サービスごとに独立していて、失敗は応答の ok: false と error に出す（応答自体は 200）
   .post("/costs/collect", async (c) => {

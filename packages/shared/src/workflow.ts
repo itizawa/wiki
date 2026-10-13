@@ -110,3 +110,66 @@ export function workflowDraftProblem(draft: WorkflowDraft): string | null {
   }
   return null;
 }
+
+// ---- 実行の履歴 ----
+
+export const WORKFLOW_RUN_STATUSES = ["pending", "running", "succeeded", "failed", "skipped"] as const;
+export type WorkflowRunStatus = (typeof WORKFLOW_RUN_STATUSES)[number];
+
+/** 画面に出す、実行の状態の名前 */
+export const WORKFLOW_RUN_STATUS_LABELS: Record<WorkflowRunStatus, string> = {
+  pending: "実行待ち",
+  running: "実行中",
+  succeeded: "成功",
+  failed: "失敗",
+  skipped: "見送り",
+};
+
+/** 実行待ち・実行中（まだ終わっていない。画面は、このあいだだけ取り直す） */
+export const isWorkflowRunActive = (status: WorkflowRunStatus): boolean => status === "pending" || status === "running";
+
+export const WORKFLOW_RUNS_LIMIT_DEFAULT = 50;
+export const WORKFLOW_RUNS_LIMIT_MAX = 100;
+
+/** `GET /admin/w/{key}/workflow/runs` の問い合わせ */
+export const workflowRunsQuery = z.object({
+  status: z.enum(WORKFLOW_RUN_STATUSES).optional(),
+  limit: z.coerce.number().int().min(1).max(WORKFLOW_RUNS_LIMIT_MAX).default(WORKFLOW_RUNS_LIMIT_DEFAULT),
+  cursor: z.string().max(100).optional(),
+});
+export type WorkflowRunsQuery = z.infer<typeof workflowRunsQuery>;
+
+/** 実行の中の、アクション1つの結果。トークンは持たない（Routine のセッション URL と、失敗の理由の文だけ） */
+export type WorkflowRunActionEntry = {
+  type: WorkflowActionType;
+  /** 「Routine「校正」を呼ぶ」など */
+  label: string;
+  status: "pending" | "succeeded" | "failed";
+  /** Routine のセッション（呼べたときだけ） */
+  sessionUrl: string | null;
+  /** 失敗の理由（再試行待ちのときの、直近の理由も含む） */
+  error: string | null;
+};
+
+export type WorkflowRunEntry = {
+  id: string;
+  status: WorkflowRunStatus;
+  /** 試した回数 */
+  attempts: number;
+  createdAt: string;
+  finishedAt: string | null;
+  /** 完全に削除されたページは、`available: false`、タイトルは「削除されたページ」 */
+  page: { id: string; title: string; available: boolean };
+  /** トリガーのタグ名（消えていれば「削除されたタグ」） */
+  tagName: string;
+  /** ブロックの要約。「Routine「校正」を呼ぶ → タグ「校正待ち」を外す」 */
+  summary: string;
+  /** 見送り・失敗の理由（成功したときは null） */
+  error: string | null;
+  actions: WorkflowRunActionEntry[];
+};
+
+/** `GET /admin/w/{key}/workflow/runs` */
+export type WorkflowRunPage = { runs: WorkflowRunEntry[]; nextCursor: string | null };
+
+export const DELETED_PAGE_TITLE = "削除されたページ";

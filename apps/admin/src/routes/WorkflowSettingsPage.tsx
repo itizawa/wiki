@@ -18,6 +18,7 @@ import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
 import { useWiki } from "../lib/wiki";
 import { WorkflowBlocksSection } from "./WorkflowBlocksSection";
+import { WorkflowRunsSection } from "./WorkflowRunsSection";
 
 /** 入力したタグ名の誤り（空・長すぎ）。誤りが無ければ null。API に送る前に、入力欄の下へその場で出す。 */
 export function tagNameProblem(name: string): string | null {
@@ -52,6 +53,7 @@ function WorkflowSections() {
     <>
       <WorkflowBlocksSection />
       <TagsSection />
+      <WorkflowRunsSection />
     </>
   );
 }
