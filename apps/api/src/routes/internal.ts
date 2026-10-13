@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AppEnv } from "../env";
 import { runTick } from "../cron/tick";
 import { HttpError } from "../errors";
+import { collectCosts, costSourcesFromConfig } from "../costs/service";
 import { cleanupImages, type CleanupImagesResult } from "../images/cleanup";
 import { cleanupOAuth } from "../oauth/cleanup";
 import { pruneVersions } from "../pages/prune";
@@ -83,6 +84,11 @@ export const internalRoutes = new Hono<AppEnv>()
       }
     }
     return c.json({ ...versions, oauth, builds, images });
+  })
+  // 1日1回、運用コスト（使用量）を取って控える。サービスごとに独立していて、失敗は応答の ok: false と error に出す（応答自体は 200）
+  .post("/costs/collect", async (c) => {
+    const { db, config, costSources } = c.get("deps");
+    return c.json({ results: await collectCosts(db, costSources ?? costSourcesFromConfig(config)) });
   })
   // ワーカーがデプロイフックを呼べたあとに呼ぶ。これが来ないビルドは、次の tick でもう一度頼む
   .post("/builds/:id/triggered", async (c) => {

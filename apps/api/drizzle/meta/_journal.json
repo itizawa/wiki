@@ -253,6 +253,13 @@
       "when": 1791840924963,
       "tag": "0035_link_previews",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791843407961,
+      "tag": "0036_cost_snapshots",
+      "breakpoints": true
     }
   ]
 }

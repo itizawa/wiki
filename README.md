@@ -33,7 +33,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 - **key**：公開サイトのサブドメインになる名前。半角の英小文字・数字・ハイフン、3〜32文字、先頭は英字、末尾はハイフン以外。`wiki-admin` `www` `api` など、使用中・紛らわしい名前は使えない（`packages/shared/src/wiki.ts` の `RESERVED_WIKI_KEYS`）。**作成後は変えられない**（公開 URL がすべて変わるため）。表示名（`name`）はあとから変えられ、公開サイトの名前になる
 - 最初の wiki は `key = wiki`（`wiki.hatchery-works.com`）。wiki が1つだった頃の内容は、すべてここにある
 - **作成・名前の変更・アーカイブ・戻す**は、管理画面の「全体の管理」の「wiki」タブ（`/wikis`）から、オーナーだけが行える（「ユーザーとロール」）
-  - 「全体の管理」は、wiki をまたぐオーナー向けの3画面（wiki `/wikis`・オーナー `/owners`・すべての wiki の監査ログ `/audit`）をタブでまとめた画面。サイドバーには出さず、入口はサイドバーの上の wiki の切り替えメニューの「全体の管理」（オーナーにだけ出す）
+  - 「全体の管理」は、wiki をまたぐオーナー向けの4画面（wiki `/wikis`・オーナー `/owners`・すべての wiki の監査ログ `/audit`・コスト `/costs`。下の「運用コスト」）をタブでまとめた画面。サイドバーには出さず、入口はサイドバーの上の wiki の切り替えメニューの「全体の管理」（オーナーにだけ出す）
   - 作った wiki には空のツリーを1本用意する。作ったオーナーは、その wiki の管理者としてメンバーに入る
   - 削除は**アーカイブ**（完全な削除は無い）。公開サイトは次のビルドで止まり（そのサブドメインは 404）、管理画面の一覧から外れ、予約は実行されなくなる。データは残り、オーナーが元に戻せる。アーカイブ中も、その key はほかの wiki で使えない
   - 元に戻しても、止まっていた間に時刻を過ぎた予約は実行せず、失敗として編集カレンダーに出す
@@ -444,6 +444,29 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 
 3つのうち1つでも無い（または `SNS_TOKEN_KEY` が32文字より短い）と、未設定として扱う。手元で試すときは、`apps/api/.env` に同じ3つを入れる。
 
+## 運用コスト
+
+サービスの使い方（使用量）を、管理画面の「全体の管理」の「コスト」タブ（`/costs`。オーナーだけ）で見る。いまは **DB（Neon）だけ**を取る。
+
+- **使用量だけを出し、金額は出さない**。Neon の消費量 API は使用量（コンピュート・ストレージ・転送）を返し、請求額は返さない（確かめたのは公式の API リファレンスだけで、実際の API は叩いていない）。使用量から料金は計算しない
+- **取り方**：1日1回（`wiki-worker` の `0 18 * * *`。JST の午前3時。間引きと同じ cron）に、ワーカーが API の `POST /internal/costs/collect`（`CRON_TOKEN`）を呼ぶ。API が Neon の `GET /consumption_history/v2/projects`（月ごと・組織のすべてのプロジェクトの合計）を読み、今月と前月（UTC の月）を `cost_snapshots` に控える。5分おきの cron では動かさない
+- **失敗**：サービスごとに独立していて、1つが失敗しても、ほかは控える。失敗した理由（種類だけ。鍵と応答の本文は残さない）を今月の行に書き、前に取れた数字はそのまま残して、画面は「◯時点の数字」として出す
+- **残す期間**：サービスと月ごとに1行で、消さない（1年で12行ほど）。画面に出すのは今月と前月だけ
+- **見られる人**：オーナーだけ。`GET /admin/costs` は、ほかのロールに 403。鍵は返さず、設定されているかどうかだけを返す
+- データ：`cost_snapshots`（`service` / `period`（`YYYY-MM`）/ `usage`（項目名 → 値の JSON）/ `fetched_at` / `attempted_at` / `error`）。`service` と `period` の組で1行
+- **サービスを足すとき**：`packages/shared/src/costs.ts` の `COST_SERVICES` と `COST_USAGE_METRICS` に足し、`apps/api/src/costs/` に `CostSource`（`neon.ts` と同じ形）を作って、`costSourcesFromConfig` に足す
+
+### 使えるようにする
+
+**未設定なら、この機能だけが無効**で、「コスト」タブに「まだつないでいません」と出す。ほかの画面は今までどおり動く。
+
+1. 使っている Neon のプランが、消費量の API を使えるものか確かめる（公式のドキュメントでは Launch・Scale・Agent・Business・Enterprise。Free は 403 になり、画面に理由が出る。使えるようになったあとの数字だけが取れる）
+2. Neon のコンソールで、組織の API キーを作る（組織を読める権限のもの）。組織 ID は、組織の設定に出ている
+3. GitHub の Settings → Secrets and variables → Actions に、`NEON_API_KEY` と `NEON_ORG_ID` を登録し、Actions の「Deploy」を実行する
+4. 次の取得（JST の午前3時）のあとで、「コスト」タブに出る。すぐ見たいときは、`wiki-admin` の Cron ワーカーのログで確かめるか、`POST /internal/costs/collect` を `CRON_TOKEN` で呼ぶ
+
+2つのうち1つでも無いと、未設定として扱う。手元で試すときは、`apps/api/.env` に同じ2つを入れる。
+
 ## スマホから使う（PWA）
 
 管理画面はホーム画面に置ける（Web App Manifest と Service Worker。`apps/admin/vite.config.ts` の `vite-plugin-pwa`）。置いたものから開くと、ブラウザの枠なしで出る。
@@ -516,7 +539,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 | 対象 | 置き場所 | 設定ファイル |
 |---|---|---|
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
-| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない。ほかに、1日1回の版の間引き） | `apps/worker/wrangler.toml` |
+| Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない。ほかに、1日1回の版の間引きと、運用コストの取得） | `apps/worker/wrangler.toml` |
 | 公開サイト | Cloudflare Workers `wiki-site`（静的アセット + `Host` で wiki を振り分ける Worker。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 | 画像 | Cloudflare R2 のバケット `wiki-images`（`wiki-admin` と `wiki-site` の両方がバインディング `IMAGES` で使う） | 両方の `wrangler.toml` |
@@ -580,6 +603,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
 
+   | `NEON_API_KEY` `NEON_ORG_ID` | 任意。「コスト」が Neon の使用量を読む API キーと組織 ID。作り方は上の「運用コスト → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
    | `X_CLIENT_ID` `X_CLIENT_SECRET` `SNS_TOKEN_KEY` | 任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 の Client ID / Client Secret と、トークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上）。作り方は上の「SNS 連携 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**`SNS_TOKEN_KEY` は、あとから変えない**（つないであるアカウントが使えなくなる） |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
