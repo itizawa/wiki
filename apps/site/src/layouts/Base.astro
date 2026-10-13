@@ -165,7 +165,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <a class={s.brand} href="/">
         {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
       </a>
-      {/* 右端の「…」メニュー（プレゼンモード）。出す項目が無いページでは、スクリプトが動いてもボタンを出さない。検索と RSS はサイドバー（NavDrawer.astro） */}
+      {/* 右端の「…」メニュー（共有・URLをコピー・プレゼンモード）。検索と RSS はサイドバー（NavDrawer.astro） */}
       <div class={s.menuWrap} data-pagefind-ignore>
         <SiteMenu client:load />
       </div>
