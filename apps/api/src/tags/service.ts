@@ -4,6 +4,7 @@ import type { Db } from "../db/client";
 import { pages, pageTags, wikiTags } from "../db/schema";
 import { writeAudit, type AuditActor } from "../audit/service";
 import { HttpError, notFound } from "../errors";
+import { removeTagFromWorkflows } from "../workflows/blocks";
 
 /**
  * 管理用タグの操作。変えるものは、呼ぶ側のトランザクション（tx）の中で呼ぶ。
@@ -97,8 +98,16 @@ export async function renameTag(tx: Db, wikiId: string, tagId: string, name: str
 export async function deleteTag(tx: Db, wikiId: string, tagId: string, actor: AuditActor): Promise<void> {
   const tag = await findTag(tx, wikiId, tagId);
   const removed = await tx.delete(pageTags).where(eq(pageTags.tagId, tagId)).returning({ pageId: pageTags.pageId });
+  // ワークフローのブロックが指していると、タグを消せない（外部キー）。先に、ブロックを消す・アクションを取り除く
+  const blocks = await removeTagFromWorkflows(tx, wikiId, tagId, actor);
   await tx.delete(wikiTags).where(eq(wikiTags.id, tagId));
-  await writeAudit(tx, { wikiId, actor, action: "tag_delete", target: { type: "tag", id: tagId, label: tag.name }, detail: { pages: removed.length } });
+  await writeAudit(tx, {
+    wikiId,
+    actor,
+    action: "tag_delete",
+    target: { type: "tag", id: tagId, label: tag.name },
+    detail: { pages: removed.length, ...(blocks > 0 && { blocks }) },
+  });
 }
 
 /** 付ける・外すの対象。この wiki の、ゴミ箱に入っていないページと、この wiki のタグ（どちらかが無ければ 404） */

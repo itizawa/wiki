@@ -51,7 +51,11 @@ import type {
   UpdateRoutineInput,
   SnsStatus,
   PageTagList,
+  RoutineChoiceList,
   TagList,
+  WorkflowBlock,
+  WorkflowBlockInput,
+  WorkflowList,
   WikiSettings,
   WikiTag,
   WikiSummary,
@@ -359,6 +363,14 @@ export const api = {
   attachTag: (pageId: string, tagId: string) => request<PageTagList>("PUT", w(`/pages/${pageId}/tags/${tagId}`)),
   detachTag: (pageId: string, tagId: string) => request<PageTagList>("DELETE", w(`/pages/${pageId}/tags/${tagId}`)),
 
+  /** ワークフローのブロック。読むのは wiki のメンバーなら誰でも、作る・置き換える・消すのは管理者だけ */
+  getWorkflow: () => request<WorkflowList>("GET", w("/workflow")),
+  createWorkflowBlock: (input: WorkflowBlockInput) => request<WorkflowBlock>("POST", w("/workflow/blocks"), input),
+  replaceWorkflowBlock: (id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/blocks/${id}`), input),
+  deleteWorkflowBlock: (id: string) => request<null>("DELETE", w(`/workflow/blocks/${id}`)),
+  /** ブロックで選ぶための、登録済み Routine の ID と名前（管理者だけ） */
+  listRoutineChoices: () => request<RoutineChoiceList>("GET", w("/routines")),
+
   structure: () => request<StructureResponse>("GET", w("/structure")),
   changeStructure: (input: { ops: StructureOpInput[] }) => request<void>("POST", w("/structure/ops"), input),
 };
@@ -421,6 +433,8 @@ const MESSAGES: Record<string, string> = {
   routine_not_configured: "この管理画面には、Routine のトークンを暗号化する鍵（ROUTINE_TOKEN_KEY）がまだ登録されていないため、Routine を登録・実行できません。",
   routine_exists: "この名前の Routine は、すでに登録されています。別の名前にしてください。",
   routine_token_unreadable: "登録してあるトークンを読み出せません（暗号化の鍵が変わった可能性があります）。「編集」からトークンを入れ直してください。",
+  unknown_tag: "選んだタグが、この wiki に見つかりません。タグを消されたかもしれません。開き直して、選び直してください。",
+  unknown_routine: "選んだ Routine が、登録されていません。消されたかもしれません。開き直して、選び直してください。",
   x_unavailable: "X に届きませんでした。時間をおいて、もう一度お試しください。",
 };
 
@@ -438,6 +452,11 @@ const DETAIL_MESSAGES: Record<string, (err: ApiError) => string> = {
     const detail = (err.details as { detail?: unknown } | undefined)?.detail;
     const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
     return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
+  },
+  routine_in_use: (err) => {
+    const d = err.details as { blocks?: number; wikis?: { key: string; name: string; blocks: number }[] } | undefined;
+    const where = (d?.wikis ?? []).map((x) => `${x.name}（${x.blocks} ブロック）`).join("、");
+    return `ワークフローのブロックが使っているため、削除できません。${where ? `使っている wiki：${where}。` : ""}先に、各 wiki の設定の「ワークフロー」で、ブロックのアクションから外してください。`;
   },
   exceeds_parent: (err) => {
     const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;
