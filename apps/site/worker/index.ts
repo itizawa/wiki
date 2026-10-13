@@ -61,7 +61,7 @@ export default {
  * スクリプトは Astro がページに埋め込むことがあるので、CSP では枠に入れさせないことと、base・object だけを絞る。
  */
 const SECURITY_HEADERS = {
-  "content-security-policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+  "content-security-policy": "frame-ancestors 'none'; frame-src https://www.google.com; base-uri 'self'; object-src 'none'",
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",

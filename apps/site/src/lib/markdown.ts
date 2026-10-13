@@ -1,4 +1,14 @@
-import { CALLOUT_LABELS, matchToggle, parseCalloutMarker, toggleStart } from "@wiki/shared";
+import {
+  CALLOUT_LABELS,
+  childrenStart,
+  googleMapOfParagraph,
+  matchChildren,
+  matchToggle,
+  parseCalloutMarker,
+  toggleStart,
+  type ChildrenItem,
+  type ChildrenOptions,
+} from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
 import { createHighlighter } from "shiki";
 
@@ -12,6 +22,10 @@ export type RenderOptions = {
    * （別の wiki のページへのリンクは、外部リンクと同じ扱いにする）。
    */
   origin?: string;
+  /**
+   * 本文の `@children` に出す、このページの配下のページ（公開されているものだけ）。渡さなければ `@children` は何も出さない。
+   */
+  childrenOf?: (options: ChildrenOptions) => ChildrenItem[];
 };
 
 const escapeHtml = (s: string) =>
@@ -28,6 +42,12 @@ export function internalPageId(href: string, origin?: string): string | null {
   if (!m) return null;
   if (m[1] && origin && m[1].toLowerCase() !== origin.toLowerCase()) return null;
   return m[2]!;
+}
+
+function childrenListItems(items: readonly ChildrenItem[]): string {
+  return items
+    .map((i) => `<li><a href="${escapeHtml(i.path)}">${escapeHtml(i.title)}</a>${i.children.length > 0 ? `<ul>${childrenListItems(i.children)}</ul>` : ""}</li>`)
+    .join("");
 }
 
 /** 色分けする言語。管理画面のコードブロックで選べるもの（apps/admin の CodeBlockMenu）に合わせる。 */
@@ -68,6 +88,7 @@ function plainText(tokens: Tokens.Generic[] | undefined): string {
  * - 内部リンク（/p/{id}...）は公開先の正規URLへ。非公開・限定公開・予約中のページへのリンクはテキストのみ
  * - 本文中の生HTMLはエスケープする。リンクと画像は http(s)・同じサイトのパスなど、決まった形のものだけを出す
  * - 見出しには id を振る
+ * - 地図の URL だけの段落は、Google マップの iframe にする（それ以外の URL はリンクのまま）
  * - `+++` のトグルは <details> にする（中身も検索の索引と目次に入る）
  * - 言語の付いたコードブロックは色分けする（ライト・ダーク両方の色を持たせ、CSS で切り替える）
  */
@@ -99,6 +120,23 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
           return `<details class="toggle"><summary>${escapeHtml(String(token.summary))}</summary>\n${this.parser.parse(token.tokens ?? [])}</details>\n`;
         },
       },
+      // `@children` の行は、このページの配下の公開ページの一覧にする（packages/shared/src/children.ts）。一覧のタイトルは、このページの検索の語に入れない
+      {
+        name: "children",
+        level: "block",
+        start: (src: string) => {
+          const i = childrenStart(src);
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = matchChildren(src);
+          return m ? { type: "children", raw: m.raw, options: m.options } : undefined;
+        },
+        renderer(token) {
+          const items = opts.childrenOf?.(token.options as ChildrenOptions) ?? [];
+          return items.length > 0 ? `<ul class="children-list" data-pagefind-ignore>${childrenListItems(items)}</ul>\n` : "";
+        },
+      },
     ],
     renderer: {
       heading(token: Tokens.Heading) {
@@ -111,6 +149,16 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         // 言語が無い・知らない言語のときは、色分けせずそのまま出す
         if (!highlightable.has(lang)) return false;
         return `${highlighter.codeToHtml(token.text, { lang, themes: CODE_THEMES, defaultColor: false })}\n`;
+      },
+      // 地図の URL だけの段落は、Google マップの埋め込みにする（packages/shared/src/googleMap.ts）。埋め込めない URL（短縮 URL など）は、これまでどおりリンク
+      paragraph(token: Tokens.Paragraph) {
+        const map = googleMapOfParagraph(token.text);
+        if (!map?.embedSrc) return false;
+        const href = escapeHtml(map.url);
+        return (
+          `<figure class="map-embed"><iframe src="${escapeHtml(map.embedSrc)}" title="Google マップ" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin"></iframe>` +
+          `<figcaption><a href="${href}" rel="noopener">Google マップで開く</a></figcaption></figure>\n`
+        );
       },
       html(token: Tokens.HTML | Tokens.Tag) {
         return escapeHtml(token.text);
@@ -155,6 +203,9 @@ export function excerpt(md: string, length = 120): string {
   const text = md
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
+    // 地図の URL だけの行（本文では地図になる）
+    .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))
+    .replace(/^@children(?:[ \t].*)?$/gm, (line) => (matchChildren(line) ? "" : line))
     .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")

@@ -1,4 +1,4 @@
-import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
+import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, MapPin, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -17,6 +17,8 @@ import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
 import { insertToggle } from "./toggle";
+import { GoogleMapDialog } from "./GoogleMapDialog";
+import { insertGoogleMap } from "./googleMap";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
@@ -383,6 +385,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
   };
   const insert = (run: () => void) => () => close(run);
   const [imageOpen, setImageOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   // 「挿入」の説明。FloatingMenu が隠れるとき、ボタンからは mouseleave が来ず、開いたまま画面の隅に残るので、
   // 文字を打つ・選択が動くたびに閉じる（開閉は自分で持つ）
   const [tipOpen, setTipOpen] = useState(false);
@@ -439,6 +442,12 @@ function InsertMenu({ editor }: { editor: Editor }) {
           </ListItemIcon>
           <ListItemText>画像…</ListItemText>
         </MenuItem>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => setMapOpen(true))}>
+          <ListItemIcon>
+            <MapPin size={18} />
+          </ListItemIcon>
+          <ListItemText>Google マップ…</ListItemText>
+        </MenuItem>
         <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
             <Braces size={18} />
@@ -472,6 +481,17 @@ function InsertMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setImageOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <GoogleMapDialog
+        open={mapOpen}
+        onSubmit={(url) => {
+          setMapOpen(false);
+          insertGoogleMap(editor, url);
+        }}
+        onClose={() => {
+          setMapOpen(false);
           editor.commands.focus();
         }}
       />

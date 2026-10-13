@@ -155,3 +155,83 @@ describe("excerpt with toggles", () => {
     expect(excerpt("+++ 見出し\n\n本文\n\n+++")).toBe("見出し 本文");
   });
 });
+
+describe("Google マップの埋め込み", () => {
+  const EMBED = "https://www.google.com/maps/embed?pb=!1m18!1m12&hl=ja";
+  const opts = { publicPaths };
+
+  it("地図の URL だけの段落は、iframe と「Google マップで開く」リンクにする", () => {
+    const html = renderMarkdown(EMBED, opts);
+    expect(html).toContain(`<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12&amp;hl=ja" title="Google マップ" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin"></iframe>`);
+    expect(html).toContain(">Google マップで開く</a>");
+  });
+
+  it("場所の URL は、埋め込み用の URL に直して出す", () => {
+    const html = renderMarkdown("https://www.google.com/maps/place/Tokyo+Tower/@35.6586,139.7454,17z", opts);
+    expect(html).toContain('<iframe src="https://www.google.com/maps?q=Tokyo+Tower&amp;z=17&amp;output=embed"');
+  });
+
+  it("<...> で囲んだ URL も地図にする", () => {
+    expect(renderMarkdown(`<${EMBED}>`, opts)).toContain("<iframe");
+  });
+
+  it("短縮 URL は埋め込めないので、これまでどおりのリンク", () => {
+    const html = renderMarkdown("https://maps.app.goo.gl/abc123", opts);
+    expect(html).not.toContain("<iframe");
+    expect(html).toContain('<a href="https://maps.app.goo.gl/abc123"');
+  });
+
+  it("文章の中の URL、別ドメイン、javascript:、生の iframe は、地図にならない", () => {
+    for (const md of [
+      `ここです ${EMBED}`,
+      "https://example.com/maps/embed?pb=1",
+      "[地図](javascript:alert(1))",
+      `<iframe src="${EMBED}"></iframe>`,
+      `${EMBED}\n続きの文`,
+    ]) {
+      const html = renderMarkdown(md, opts);
+      expect(html).not.toContain("<iframe");
+    }
+    expect(renderMarkdown(`<iframe src="${EMBED}"></iframe>`, opts)).toContain("&lt;iframe");
+  });
+
+  it("抜粋では、地図の URL だけの行を落とす", () => {
+    expect(excerpt(`前の文\n\n${EMBED}\n\n後の文`)).toBe("前の文 後の文");
+    expect(excerpt("ここ https://www.google.com/maps/embed?pb=1 です")).toContain("https://www.google.com");
+  });
+});
+
+describe("@children（配下のページの一覧）", () => {
+  const opts = { publicPaths: new Map() };
+  const items = [
+    { title: "子A", path: "/p/aaaaaaaaaa", children: [{ title: "孫<A>", path: "/p/cccccccccc", children: [] }] },
+    { title: "子B", path: "/p/bbbbbbbbbb", children: [] },
+  ];
+
+  it("渡された項目を入れ子の <ul> にし、検索の索引には入れない", () => {
+    const calls: unknown[] = [];
+    const html = renderMarkdown("前\n\n@children depth=2 sort=title\n\n後", {
+      ...opts,
+      childrenOf: (o) => (calls.push(o), items),
+    });
+    expect(calls).toEqual([{ depth: 2, sort: "title" }]);
+    expect(html).toContain(
+      '<ul class="children-list" data-pagefind-ignore><li><a href="/p/aaaaaaaaaa">子A</a><ul><li><a href="/p/cccccccccc">孫&lt;A&gt;</a></li></ul></li><li><a href="/p/bbbbbbbbbb">子B</a></li></ul>',
+    );
+    expect(html).toContain("<p>前</p>");
+    expect(html).toContain("<p>後</p>");
+  });
+  it("配下に公開ページが無いとき、ツリーを渡されていないときは何も出さない", () => {
+    expect(renderMarkdown("@children", { ...opts, childrenOf: () => [] })).toBe("");
+    expect(renderMarkdown("@children", opts)).toBe("");
+  });
+  it("コードブロックの中・分からない引数・文中の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@children\n```\n\n@children filter=x\n\n文 @children", { ...opts, childrenOf: () => items });
+    expect(html).not.toContain("children-list");
+    expect(html).toContain("@children\n</code>");
+    expect(html).toContain("<p>@children filter=x</p>");
+  });
+  it("抜粋では、記法の行を落とす", () => {
+    expect(excerpt("前の文\n\n@children depth=2\n\n後の文")).toBe("前の文 後の文");
+  });
+});

@@ -6,6 +6,8 @@ import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { BlockMove } from "./blockMove";
 import { CalloutBlockquote } from "./callout";
+import { ChildrenList } from "./childrenList";
+import { GoogleMap } from "./googleMap";
 import { lowlight } from "./highlight";
 import { MarkdownListItem, MarkdownTaskItem } from "./listItems";
 import { toggleExtensions } from "./toggle";
@@ -29,6 +31,8 @@ export const editorExtensions = [
   BlockMove,
   MarkdownListItem,
   ...toggleExtensions,
+  GoogleMap,
+  ChildrenList,
   // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）
   CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),
   Image,
