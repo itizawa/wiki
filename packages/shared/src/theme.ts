@@ -173,6 +173,65 @@ const OWL_SVG = svgDoc(
   ].join(""),
 );
 
+/** 火山：火の粉（240px の敷き詰め）。色は橙と黄で、不透明度は 0.2 まで（ライト・ダークとも、これ以上だと、リンクが 4.5:1 を切るおそれがある） */
+const embersSvg = (a: string, b: string) => {
+  const rand = seeded(368);
+  const dots: string[] = [];
+  for (let i = 0; i < 26; i++) {
+    const r = (1 + rand() * 1.8).toFixed(1);
+    const op = (0.13 + rand() * 0.07).toFixed(2);
+    dots.push(`<circle cx="${Math.round(rand() * 240)}" cy="${Math.round(rand() * 240)}" r="${r}" fill="${rand() < 0.6 ? a : b}" fill-opacity="${op}"/>`);
+  }
+  return svgDoc(240, 240, dots.join(""));
+};
+const VOLCANO_LIGHT_SVG = embersSvg("#e8581c", "#d99a14");
+const VOLCANO_DARK_SVG = embersSvg("#ff7a2e", "#ffc247");
+
+/** 火山の飾り：山・火口の溶岩・流れ落ちる溶岩・煙（64px）。不透明度は 0.3 まで */
+const volcanoOrnament = (rock: string, lava: string, smoke: string) =>
+  svgDoc(
+    64,
+    64,
+    [
+      `<path d="M3 60 24 22H40L61 60Z" fill="${rock}" fill-opacity="0.3"/>`,
+      `<path d="M24 22H40L38 27Q32 30 26 27Z" fill="${lava}" fill-opacity="0.3"/>`,
+      `<path d="M30 29Q31 40 27 48Q30 52 33 47Q36 40 35 29Z" fill="${lava}" fill-opacity="0.3"/>`,
+      `<circle cx="30" cy="14" r="5" fill="${smoke}" fill-opacity="0.2"/>`,
+      `<circle cx="38" cy="8" r="4" fill="${smoke}" fill-opacity="0.2"/>`,
+    ].join(""),
+  );
+const VOLCANO_LIGHT_ORNAMENT_SVG = volcanoOrnament("#8a6a5c", "#e8581c", "#7a6a64");
+const VOLCANO_DARK_ORNAMENT_SVG = volcanoOrnament("#8a5a48", "#ff7a2e", "#b8a8a0");
+
+/** 南極：雪の結晶と粒（240px の敷き詰め）。不透明度は 0.25 まで */
+const snowSvg = (color: string) => {
+  const rand = seeded(369);
+  const parts: string[] = [];
+  for (let i = 0; i < 22; i++) {
+    parts.push(`<circle cx="${Math.round(rand() * 240)}" cy="${Math.round(rand() * 240)}" r="${(1 + rand() * 1.6).toFixed(1)}" fill="${color}" fill-opacity="${(0.17 + rand() * 0.08).toFixed(2)}"/>`);
+  }
+  for (const [x, y] of [[40, 50], [170, 90], [90, 190], [205, 205]] as const) {
+    parts.push(`<path d="M${x - 7} ${y}H${x + 7}M${x} ${y - 7}V${y + 7}M${x - 5} ${y - 5}L${x + 5} ${y + 5}M${x - 5} ${y + 5}L${x + 5} ${y - 5}" fill="none" stroke="${color}" stroke-opacity="0.25" stroke-width="1.2" stroke-linecap="round"/>`);
+  }
+  return svgDoc(240, 240, parts.join(""));
+};
+const ANTARCTICA_LIGHT_SVG = snowSvg("#5a9bd0");
+const ANTARCTICA_DARK_SVG = snowSvg("#ffffff");
+
+/** 南極の飾り：氷山（64px）。水面の上の面と、水面の下の面。不透明度は 0.3 まで */
+const icebergOrnament = (top: string, under: string) =>
+  svgDoc(
+    64,
+    64,
+    [
+      `<path d="M4 34H60" stroke="${under}" stroke-opacity="0.3" stroke-width="1.5" stroke-linecap="round"/>`,
+      `<path d="M14 34 26 12 32 20 40 8 52 34Z" fill="${top}" fill-opacity="0.3"/>`,
+      `<path d="M14 36H52L44 50 32 58 22 50Z" fill="${under}" fill-opacity="0.2"/>`,
+    ].join(""),
+  );
+const ANTARCTICA_LIGHT_ORNAMENT_SVG = icebergOrnament("#7ab4de", "#3f86bd");
+const ANTARCTICA_DARK_ORNAMENT_SVG = icebergOrnament("#b4d9f2", "#7cc4f0");
+
 /**
  * 選べるテーマ。テーマを足すときは、この配列に1件足す（管理画面の見本・API の検証・公開サイトの CSS・テストは、これを見て動く）。
  * 色は、文字と背景・アクセント色と背景のコントラスト比が `MIN_CONTRAST` 以上になるものにする（theme.test.ts が確かめる）。
@@ -219,6 +278,34 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
     dark: {
       colors: { bg: "#1a1612", paper: "#231d17", text: "#efe6d8", muted: "#aa9f8c", border: "#3a3128", accent: "#f0b35c", mark: "#5b4a14", ok: "#6cc58b", warn: "#e3b341", danger: "#ff8a7a" },
       ornament: { svg: OWL_SVG, position: "bottom-right", size: 88, ink: "#d8b277", alpha: 0.3 },
+    },
+  },
+  {
+    key: "volcano",
+    name: "火山",
+    light: {
+      colors: { bg: "#fbf1ec", paper: "#fffaf7", text: "#2b1a14", muted: "#7a5a4c", border: "#efd9cd", accent: "#a32a08", mark: "#ffe08a", ok: "#1f8a4c", warn: "#8f5a00", danger: "#b82020" },
+      background: { svg: VOLCANO_LIGHT_SVG, repeat: "tile", tileSize: 240, ink: "#e8581c", alpha: 0.2 },
+      ornament: { svg: VOLCANO_LIGHT_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#8a6a5c", alpha: 0.3 },
+    },
+    dark: {
+      colors: { bg: "#170e0c", paper: "#231512", text: "#f3e6df", muted: "#b39a8e", border: "#432a22", accent: "#ff8a4c", mark: "#5b4a14", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+      background: { svg: VOLCANO_DARK_SVG, repeat: "tile", tileSize: 240, ink: "#ff7a2e", alpha: 0.2 },
+      ornament: { svg: VOLCANO_DARK_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#8a5a48", alpha: 0.3 },
+    },
+  },
+  {
+    key: "antarctica",
+    name: "南極",
+    light: {
+      colors: { bg: "#eef6fb", paper: "#ffffff", text: "#12293a", muted: "#51687c", border: "#d3e4f0", accent: "#0a5f9e", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#c93636" },
+      background: { svg: ANTARCTICA_LIGHT_SVG, repeat: "tile", tileSize: 240, ink: "#5a9bd0", alpha: 0.25 },
+      ornament: { svg: ANTARCTICA_LIGHT_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#7ab4de", alpha: 0.3 },
+    },
+    dark: {
+      colors: { bg: "#0a1622", paper: "#11212f", text: "#e3f0f9", muted: "#8fa8bb", border: "#223a4e", accent: "#8fd0ff", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+      background: { svg: ANTARCTICA_DARK_SVG, repeat: "tile", tileSize: 240, ink: "#ffffff", alpha: 0.25 },
+      ornament: { svg: ANTARCTICA_DARK_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#b4d9f2", alpha: 0.3 },
     },
   },
   // ---- 色だけのテーマ（背景画像・飾りは付けない）。Slack のテーマのような、色の雰囲気だけを写したもの。どれもライト版・ダーク版の両方を持つ ----
