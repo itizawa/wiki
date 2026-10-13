@@ -120,6 +120,19 @@ describe("ページの一覧を続きから取る", () => {
     expect(res.nextCursor).toEqual(expect.any(String));
   });
 
+  it("published=false は、まだ公開したことのないページだけを返す", async () => {
+    ctx = await setup();
+    const draft = await create("draft");
+    const live = await create("live");
+    const detail = (await ctx.call("GET", `${W}/pages/${live}`)).body;
+    expect((await ctx.call("POST", `${W}/pages/${live}/publish`, { versionId: detail.headVersionId, visibility: "public" })).status).toBe(200);
+
+    const all = (await ctx.call("GET", `${W}/pages?limit=10`)).body.pages.map((p: { id: string }) => p.id);
+    expect(all).toEqual(expect.arrayContaining([draft, live]));
+    const drafts = (await ctx.call("GET", `${W}/pages?limit=10&published=false`)).body.pages.map((p: { id: string }) => p.id);
+    expect(drafts).toEqual([draft]);
+  });
+
   it("壊れたカーソルは 400 で返す", async () => {
     ctx = await setup();
     await create("page");

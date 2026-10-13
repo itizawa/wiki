@@ -79,6 +79,7 @@ export function templateLink(templateId: string) {
 /** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・ゴミ箱・設定とそのタブ）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"
+  | "/w/$wikiKey/pages"
   | "/w/$wikiKey/requests"
   | "/w/$wikiKey/search"
   | "/w/$wikiKey/calendar"

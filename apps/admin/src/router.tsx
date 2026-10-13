@@ -7,6 +7,7 @@ import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
 import { Home, mainProps, mainSx, Root, SkipLink } from "./routes/Layout";
 import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
+import { DashboardPage } from "./routes/DashboardPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
 import { EditRequestListPage } from "./routes/EditRequestListPage";
@@ -103,7 +104,9 @@ const wikiRoute = createRoute({
     return <WikiLayout key={wikiKey} wikiKey={wikiKey} />;
   },
 });
-const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(PagesPage) });
+// wiki のトップ：最近更新したページ・下書き・予約公開・閲覧数の要約。全ページの一覧は /pages
+const dashboardRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(DashboardPage) });
+const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "pages", component: padded(PagesPage) });
 const editorRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "pages/$pageId",
@@ -250,6 +253,7 @@ const routeTree = rootRoute.addChildren([
   consentRoute,
   connectionsRoute,
   wikiRoute.addChildren([
+    dashboardRoute,
     pagesRoute,
     editorRoute,
     editRequestsRoute,

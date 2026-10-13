@@ -34,7 +34,7 @@ export function NotFoundPage() {
       </Typography>
       <Muted>URL が違うか、ページが消えた可能性があります。アドレスを確かめるか、下のリンクから戻ってください。</Muted>
       {wikiKey ? (
-        <RouterLink to="/w/$wikiKey" params={{ wikiKey }} sx={{ alignSelf: "flex-start" }}>
+        <RouterLink to="/w/$wikiKey/pages" params={{ wikiKey }} sx={{ alignSelf: "flex-start" }}>
           すべてのページへ戻る
         </RouterLink>
       ) : (

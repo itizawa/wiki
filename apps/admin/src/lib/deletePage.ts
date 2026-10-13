@@ -69,7 +69,7 @@ export function useDeletePage(options: { onLeave?: () => void; onError?: (err: E
       });
       if (leftOpenPage) {
         // 先に移ってから取り直す（消したページの取り直しが 404 にならないように）。消したページのキャッシュは捨てる
-        await navigate(screenLink("/w/$wikiKey"));
+        await navigate(screenLink("/w/$wikiKey/pages"));
         for (const id of pageIds) {
           for (const key of ["page", "draft", "versions", "version", "edit-requests"]) qc.removeQueries({ queryKey: [key, id] });
         }
