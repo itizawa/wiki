@@ -106,7 +106,8 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
         void navigate({ ...screenLink("/w/$wikiKey/search"), search: q ? { q } : {} });
       },
     },
-    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    { id: "dashboard", label: "「ダッシュボード」を開く", keywords: ["dashboard", "home", "top"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "list"], icon: <FileText size={18} />, run: go("/w/$wikiKey/pages") },
     {
       id: "requests",
       label: "「編集リクエスト」を開く",
