@@ -165,7 +165,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - 名前が同じなら中身も同じなので、ブラウザに1年キャッシュさせ（`immutable`）、Cloudflare のエッジのキャッシュ（`caches.default`）にも入れる。2回目からは、初めて来るブラウザにも R2 を読まずに返す（管理画面は `apps/api/src/worker.ts`、公開サイトは `apps/site/worker/index.ts`）。キーは URL（クエリを除く）で、入れるのは見つかった画像だけ。R2 から画像を手で消しても、キャッシュに残っている間は返り続ける
   - 手元の開発（`pnpm dev`）では `apps/api/.data/images`（`IMAGES_DIR` で変えられる）に置く
   - どこからも参照されていない画像は、週1回消す（`/internal/versions/prune` に `{"images": true}` を渡した回。ワーカーが日曜 18:00 UTC = JST の月曜午前3時に渡す。`apps/api/src/images/cleanup.ts`）。**消した画像は戻せない**
-    - 消すのは、次のどこにも `/images/{name}` が書かれておらず、アップロードから30日より古い画像：すべての版の本文（ゴミ箱のページ・アーカイブ中の wiki の版も含む）、下書き、テンプレート、トップページの自由記述、wiki の画像、テーマのロゴとファビコン
+    - 消すのは、次のどこにも `/images/{name}` が書かれておらず、アップロードから30日より古い画像：すべての版の本文（ゴミ箱のページ・アーカイブ中の wiki の版も含む）、下書き、テンプレート、トップページの自由記述、wiki の画像、テーマのロゴとファビコン、ページのカバー画像
     - ゴミ箱から完全に削除したページは版ごと消えるので、そのページだけが使っていた画像は、アップロードから30日たっていれば次の回で消える。ロゴや wiki の画像を差し替えたときの前の画像も同じ
     - アップロードから30日以内の画像は、参照が無くても消さない（貼ったばかりで、まだ保存されていない画像を消さないため）。名前がアップロードした画像の形でないものにも触らない
     - 1回に消すのは1000枚まで（残りは次の週）、一覧から読むのは20,000枚まで。消す前に、件数を API のログに出す（`imageCleanup`）。読む上限に当たると `truncated: true` になる。名前の順で後ろの画像を見られなくなるので、そのときは上限（`IMAGE_CLEANUP_MAX_LISTED`）を上げる
@@ -199,9 +199,9 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
     - 管理画面では、親の設定のために選べない公開範囲を選べない状態で見せ、理由を添える。サイドバーのツリーでは、限定公開（リンクの印）・非公開（鍵の印）のページに印を付ける
 - 予約公開：`scheduled_actions`（公開・非公開化）。予約時点の版を固定し、予約後に編集があれば警告。同じ `batch_id` は1トランザクションで実行、失敗は3回まで再試行
 - 公開パイプライン：操作ごとに `publish_events` を記録 → ワーカーがデバウンスしてビルド起動（`contentHash` が同じなら省略）→ サイトが `/export/public` を取得して静的出力 → Pagefind
-  - 記録する操作（`publish_events.kind`）：公開・予約の実行（`publish`）、非公開化（`unpublish`）、限定公開URLの再発行（`rotate_unlisted_key`）、公開中のページのアイコンの変更（`icon`）、公開したことのあるページをゴミ箱に入れる・元に戻す（`delete` `restore`）、並べ替え・移動（`structure`）、wiki の作成・設定の変更（`wiki_create` `wiki_rename` `wiki_theme` `wiki_home` `wiki_settings` `wiki_site_visibility` `wiki_archive` `wiki_unarchive`）
+  - 記録する操作（`publish_events.kind`）：公開・予約の実行（`publish`）、非公開化（`unpublish`）、限定公開URLの再発行（`rotate_unlisted_key`）、公開中のページのアイコンの変更（`icon`）、公開中のページのカバーの変更（`cover`）、公開したことのあるページをゴミ箱に入れる・元に戻す（`delete` `restore`）、並べ替え・移動（`structure`）、wiki の作成・設定の変更（`wiki_create` `wiki_rename` `wiki_theme` `wiki_home` `wiki_settings` `wiki_site_visibility` `wiki_archive` `wiki_unarchive`）
   - 並べ替え・移動（サイドバーのドラッグ、MCP の `move_page`）は、公開サイトのツリーに出るもの（公開中のページの親子と並び）が変わるときだけ記録する。非公開・限定公開のページだけを動かしたときは記録せず、ビルドも起動しない。非公開のページを動かしても、その下に公開中のページがあって公開サイトでの位置が変わるなら記録する。公開し直さなくても、次のビルドで公開サイトのツリーに出る
-  - `contentHash` は、公開サイトの出力に出るものだけから作る（`apps/api/src/publishing/manifest.ts` の `wikiContentHash`）。wiki ごとに、key・名前・テーマ・トップの自由記述・Google Analytics とサーチコンソールの値、公開ページの id・公開版の ID・アイコン・初回の公開日時・収益化の設定、限定公開のページの key・公開版の ID・アイコン、公開ツリーの親子と並び、公開後に削除した記事の id。全体の `contentHash` は、wiki の key と wiki ごとの `contentHash` から作る（wiki の作成・アーカイブ・復元でも変わる）
+  - `contentHash` は、公開サイトの出力に出るものだけから作る（`apps/api/src/publishing/manifest.ts` の `wikiContentHash`）。wiki ごとに、key・名前・テーマ・トップの自由記述・Google Analytics とサーチコンソールの値、公開ページの id・公開版の ID・アイコン・カバー・初回の公開日時・収益化の設定、限定公開のページの key・公開版の ID・アイコン・カバー、公開ツリーの親子と並び、公開後に削除した記事の id。全体の `contentHash` は、wiki の key と wiki ごとの `contentHash` から作る（wiki の作成・アーカイブ・復元でも変わる）
   - 版の題名・本文・作成日時は作ったあと変わらないので、本文の代わりに公開版の ID を入れる。ビルドするか決めるとき（`requestBuild`）は本文を読まない。`/export/public` も同じ計算なので、同じ時点の2つの `contentHash` は必ず同じになる
   - 非公開のページは入れない。非公開のページの作成・並べ替えや、「公開してすぐ非公開に戻した」のように公開サイトに出るものが元に戻った操作では、ビルドしない
   - **公開サイトが使う項目をマニフェストに足したら、`wikiContentHash` にも入るようにする**（wiki の設定は、マニフェストに足せばそのまま入る。ページの項目は、題名・本文・改訂日だけを除いて入る）。入らないと、変えてもビルドが省かれる
@@ -345,6 +345,18 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 - 受け付けるのは絵文字1つだけ（`packages/shared/src/emoji.ts`。Unicode の RGI_Emoji。肌の色・つないだ絵文字・旗も1つと数える）。公開サイトの HTML に出るので、API で検査する
 - 本文で「:」に続けて名前を打つ（`:memo`、`:メモ`）と、絵文字の候補が出る。候補は、アイコンの一覧と同じもの（`apps/admin/src/lib/emoji.ts`。絵文字のライブラリは入れていない）
 - 外のアプリ（MCP）は、`create_page` でアイコンを付けられ、`get_page` で読める。あとから変える道具は無い（公開中のページでは、公開の許可が無くても公開サイトが変わってしまうため）
+
+## ページのカバー画像
+
+ページのタイトルの上に、横長のカバー画像を付けられる（`pages.cover`。版には入らず、選ぶとすぐに保存される）。
+
+- 付ける場所：編集画面のタイトルの上の「カバーを追加」（付いていれば、画像と「カバーを変更」「カバーを削除」）。選ぶ画面は「ギャラリー」（用意した画像）と「アップロード」（自分の画像。`ImageUploader` を使い回す）の2つ（`apps/admin/src/components/PageCover.tsx`）。API は `PUT /pages/{id}/cover`（`{ "cover": "…" | null }`）。ページを作るとき（`POST /pages`）にも `cover` を渡せる
+- 値は画像のパス（`packages/shared/src/cover.ts`）：アップロードした PNG・JPEG・WebP（`/images/{24文字}.(png|jpg|webp)`。GIF は動くので使えない。大きさの上限は本文の画像と同じ 5MB）か、用意した画像（`/covers/{key}.svg`）
+- 用意した画像は、自作の SVG 8枚（`apps/admin/public/covers/` と `apps/site/public/covers/` に同じものを置く。どちらのオリジンでも同じパスで見える。`packages/shared/src/cover.test.ts` が、2つの中身が同じで `COVER_PRESETS` と合っていることを確かめる）。増やすときは、`COVER_PRESETS` と両方のディレクトリに足す。出典とライセンスは `NOTICE`
+- 高さは固定（管理画面は 120px〜200px、公開サイトは 200px〜240px）で、画像は中央を `object-fit: cover` で切り抜く。切り抜きや位置の調整は無い
+- 公開サイト：`ManifestPage.cover` / `ManifestUnlistedPage.cover` に入る（公開・限定公開のページだけ。非公開のページのカバーは出ない）。`Article.astro` が `<h1>` の上に `loading="eager"`・幅と高さつき・alt 空で出し、拡大の対象にはしない。公開中のページのカバーを変えると、公開し直さなくても次のビルドで反映される（`publish_events.kind` は `cover`）。OGP の画像に使うときは、`ManifestPage.cover` を絶対 URL にして使う
+- アップロードしたカバーは、画像の掃除（週1回）で「参照されている」ものとして残す（`pages.cover`、ゴミ箱のページも含む）
+- 管理画面の一覧・リンクのプレビューには、カバーは出さない
 
 ## プレゼンモード（編集画面）
 

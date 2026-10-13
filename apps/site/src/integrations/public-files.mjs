@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Vite と Astro が自分で使う経路。開発サーバーでは wiki の経路へ読み替えない */
-const DEV_INTERNAL = /^\/(@|_|src\/|node_modules\/|favicon\.svg)/;
+const DEV_INTERNAL = /^\/(@|_|src\/|node_modules\/|favicon\.svg|covers\/)/;
 
 /**
  * Cloudflare の静的アセットの `_headers`。パスは dist の中の場所（wiki のディレクトリ名つき）で書く。

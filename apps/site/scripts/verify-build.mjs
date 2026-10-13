@@ -35,11 +35,15 @@ check(!(await exists("wiki/t")), "pages are not re-displayed under /t/ (the tree
 check(await exists(`wiki/u/${key}/index.html`), "unlisted page is generated under /u/{key}/");
 check(await exists("wiki/404.html"), "each wiki has its own 404 page");
 const top = (await readdir(dist)).sort();
-check(top.join() === ["_astro", "_headers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
+check(top.join() === ["_astro", "_headers", "covers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
 
 // ページのアイコン（絵文字）：タイトルとツリーのナビには出し、<title> には入れない
 const iconPage = await read("wiki/p/aaaaaaaaa1.html");
 check(/<h1[^>]*>\s*<span[^>]*aria-hidden="true"[^>]*>👋<\/span>\s*はじめに\s*<\/h1>/.test(iconPage), "a page's icon is shown before its title");
+// ページのカバー画像：タイトルの上に、alt なし・幅と高さつきで出す。付けていないページには出さない。用意した画像のファイルも出力にある
+check(/<img[^>]*class="[^"]*cover[^"]*"[^>]*src="\/covers\/forest\.svg"[^>]*alt=""[^>]*width="1600"[^>]*height="400"[^>]*loading="eager"/.test(iconPage) && iconPage.indexOf('src="/covers/forest.svg"') < iconPage.indexOf("<h1"), "a page's cover is shown above its title (empty alt, fixed size, eager)");
+check(!(await read("wiki/p/aaaaaaaaa2.html")).includes("/covers/"), "a page without a cover shows none");
+check(await exists("covers/forest.svg"), "the provided cover images are shared assets at the root of the output");
 const noIconPage = await read("wiki/p/aaaaaaaaa2.html");
 check(/<a href="\/p\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
 check(!/<h1[^>]*>\s*<span/.test(noIconPage), "a page without an icon has nothing before its title");

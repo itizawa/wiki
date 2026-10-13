@@ -260,6 +260,13 @@
       "when": 1791843407961,
       "tag": "0036_cost_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791843500000,
+      "tag": "0037_page_cover",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import type { ManifestPage } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { backlinksByPage, linkedPageIds } from "./backlinks";
 
-const page = (id: string, bodyMd: string): ManifestPage => ({ id, path: `/p/${id}`, title: id, icon: null, bodyMd, firstPublishedAt: "2026-10-01T00:00:00Z", revisedAt: "2026-10-01T00:00:00Z", monetization: null });
+const page = (id: string, bodyMd: string): ManifestPage => ({ id, path: `/p/${id}`, title: id, icon: null, cover: null, bodyMd, firstPublishedAt: "2026-10-01T00:00:00Z", revisedAt: "2026-10-01T00:00:00Z", monetization: null });
 
 describe("backlinks", () => {
   it("finds internal links, including old slug URLs, but not ones inside code", () => {

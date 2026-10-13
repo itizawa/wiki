@@ -16,6 +16,6 @@ const { publicPaths, origin, pagesById, linkPreviews, previewOf } = await siteDa
 
 <Base wiki={wiki} title={page.title} noindex>
   <main data-pagefind-ignore="all">
-    <Article title={page.title} icon={page.icon} bodyMd={page.bodyMd} revisedAt={page.revisedAt} publicPaths={publicPaths} origin={origin} titleOf={(id) => pagesById.get(id)?.title} linkPreviews={linkPreviews} previewOf={previewOf} />
+    <Article title={page.title} icon={page.icon} cover={page.cover} bodyMd={page.bodyMd} revisedAt={page.revisedAt} publicPaths={publicPaths} origin={origin} titleOf={(id) => pagesById.get(id)?.title} linkPreviews={linkPreviews} previewOf={previewOf} />
   </main>
 </Base>

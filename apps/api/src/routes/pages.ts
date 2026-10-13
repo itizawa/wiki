@@ -4,6 +4,7 @@ import {
   savePageDraftInput,
   savePageInput,
   setPageIconInput,
+  setPageCoverInput,
   type PageDetail,
   type PageDraft,
   type PageSummary,
@@ -37,6 +38,7 @@ const toSummary = (p: PageRow): PageSummary => ({
   id: p.id,
   title: p.title,
   icon: p.icon,
+  cover: p.cover,
   headVersionId: p.headVersionId,
   publishedVersionId: p.publishedVersionId,
   visibility: p.visibility,
@@ -149,7 +151,7 @@ export async function getDetail(db: Db, wikiId: string, id: string): Promise<Pag
 export async function createPage(
   tx: Db,
   wikiId: string,
-  input: { title: string; bodyMd: string; parentPageId?: string | null; icon?: string | null },
+  input: { title: string; bodyMd: string; parentPageId?: string | null; icon?: string | null; cover?: string | null },
   opts: {
     /** 作った人（版に残す）。シードなど人の操作でなければ無し */
     createdBy?: string | null;
@@ -158,7 +160,7 @@ export async function createPage(
 ): Promise<string> {
   const id = newPageId();
   const versionId = crypto.randomUUID();
-  await tx.insert(pages).values({ id, wikiId, title: input.title, icon: input.icon ?? null, headVersionId: versionId });
+  await tx.insert(pages).values({ id, wikiId, title: input.title, icon: input.icon ?? null, cover: input.cover ?? null, headVersionId: versionId });
   await tx.insert(pageVersions).values({
     id: versionId,
     pageId: id,
@@ -225,6 +227,18 @@ export async function setPageIcon(tx: Db, wikiId: string, id: string, icon: stri
   if (page.icon === icon) return;
   await tx.update(pages).set({ icon }).where(eq(pages.id, id));
   if (page.publishedVersionId !== null && page.visibility !== "private") await recordPublishEvent(tx, wikiId, "icon", { pageId: id });
+}
+
+/**
+ * カバー画像を付ける・変える・外す（null）。アイコンと同じく、版は作らずにすぐ反映する。
+ * 公開中・限定公開中のページなら、公開サイトにも出るので、ビルドし直すきっかけを残す。
+ * 一覧の並び（updated_at）は変えない。トランザクション内で呼ぶ。
+ */
+export async function setPageCover(tx: Db, wikiId: string, id: string, cover: string | null): Promise<void> {
+  const page = await findLivePage(tx, wikiId, id, true);
+  if (page.cover === cover) return;
+  await tx.update(pages).set({ cover }).where(eq(pages.id, id));
+  if (page.publishedVersionId !== null && page.visibility !== "private") await recordPublishEvent(tx, wikiId, "cover", { pageId: id });
 }
 
 /**
@@ -506,7 +520,7 @@ export const pageRoutes = new Hono<AppEnv>()
       return createPage(
         tx,
         wikiId,
-        { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId, icon: input.icon },
+        { title: input.title ?? filled.title, bodyMd: filled.bodyMd, parentPageId: input.parentPageId, icon: input.icon, cover: input.cover },
         { createdBy: userId },
       );
     });
@@ -536,6 +550,15 @@ export const pageRoutes = new Hono<AppEnv>()
     const wikiId = c.get("wiki").id;
     const { icon } = await parseJson(c, setPageIconInput);
     await db.transaction((tx) => setPageIcon(tx, wikiId, id, icon));
+    return c.json(await getDetail(db, wikiId, id));
+  })
+  // カバー画像。アイコンと同じく、選んだらすぐに反映する
+  .put("/:id/cover", async (c) => {
+    const { db } = c.get("deps");
+    const id = c.req.param("id");
+    const wikiId = c.get("wiki").id;
+    const { cover } = await parseJson(c, setPageCoverInput);
+    await db.transaction((tx) => setPageCover(tx, wikiId, id, cover));
     return c.json(await getDetail(db, wikiId, id));
   })
   .get("/:id/draft", async (c) => {
