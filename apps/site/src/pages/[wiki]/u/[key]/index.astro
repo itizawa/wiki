@@ -14,7 +14,7 @@ const { wiki } = Astro.params;
 const { publicPaths, origin, pagesById, linkPreviews, previewOf } = await siteData(wiki);
 ---
 
-<Base wiki={wiki} title={page.title} noindex>
+<Base wiki={wiki} title={page.title} noindex icon={page.icon} article>
   <main data-pagefind-ignore="all">
     <Article title={page.title} icon={page.icon} cover={page.cover} bodyMd={page.bodyMd} revisedAt={page.revisedAt} publicPaths={publicPaths} origin={origin} titleOf={(id) => pagesById.get(id)?.title} linkPreviews={linkPreviews} previewOf={previewOf} />
   </main>

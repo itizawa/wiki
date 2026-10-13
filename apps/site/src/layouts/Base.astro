@@ -1,5 +1,5 @@
 ---
-import { NO_DECORATION_CSS_VARS, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
+import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
@@ -25,9 +25,13 @@ interface Props {
    * 狭い画面ではヘッダーに「ページ一覧を開く」を出す（スクリプトが動かなければ、このパスへのリンクのまま）
    */
   nav?: string;
+  /** 記事のページだけ渡す、ページの絵文字（無ければ null）。ファビコンを、その絵文字かタイトルの1文字目にする（wiki でファビコン画像を設定していれば画像が優先） */
+  icon?: string | null;
+  /** 記事のページかどうか（ファビコンをページごとにする） */
+  article?: boolean;
 }
 
-const { wiki, title, description, canonical, noindex = false, notFound = false, nav } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
@@ -46,6 +50,8 @@ const themeCss = `html:root{${withDecoration(themeCssVars(light.colors), lightDe
 // 背景画像と飾りの要素は、どちらかのモードに画像があるときだけ置く
 const hasBackdrop = Boolean(lightDecoration || darkDecoration);
 const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
+// ページごとのファビコン（SVG）。画像を設定している wiki と、タイトルも絵文字も無いときは使わない
+const pageFavicon = article && !theme.favicon ? pageFaviconHref(title, icon) : null;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
 const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = googleTags(site.wiki, { noindex, notFound });
@@ -57,7 +63,9 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {
-      theme.favicon ? (
+      pageFavicon ? (
+        <link rel="icon" type="image/svg+xml" href={pageFavicon} />
+      ) : theme.favicon ? (
         <link rel="icon" type={theme.favicon.endsWith(".webp") ? "image/webp" : "image/png"} href={theme.favicon} />
       ) : (
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

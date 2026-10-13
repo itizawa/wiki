@@ -27,7 +27,7 @@ const nav = primaryTree && (await pageNav(wiki, primaryTree, inPrimary ? page.id
 const navSrc = (await navFile(wiki)).path;
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"}>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"} icon={page.icon} article>
   <div class={layout.withNav}>
     <main data-pagefind-body>
       {
