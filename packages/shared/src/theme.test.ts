@@ -4,6 +4,7 @@ import {
   CUSTOM_BACKGROUND_VEIL,
   themeBackdrop,
   themeDecorationCssVars,
+  themeMotion,
   themeOrnament,
   DEFAULT_THEME,
   MIN_CONTRAST,
@@ -81,7 +82,7 @@ describe("THEME_PRESETS", () => {
       return `#${out.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
     };
     for (const { key, mode, v } of variants) {
-      for (const layer of [v.background, v.ornament]) {
+      for (const layer of [v.background, v.ornament, v.motion]) {
         if (!layer) continue;
         const under = mix(v.colors.bg, layer.ink, layer.alpha);
         for (const fg of ["text", "accent"] as const) {
@@ -93,7 +94,7 @@ describe("THEME_PRESETS", () => {
 
   it("draws images that are no more opaque than the theme says, and small enough to inline", () => {
     for (const { key, v } of variants) {
-      for (const layer of [v.background, v.ornament]) {
+      for (const layer of [v.background, v.ornament, v.motion]) {
         if (!layer) continue;
         expect(layer.svg.length, key).toBeLessThan(4000);
         expect(layer.svg).not.toMatch(/<script|on\w+=|href=/i);
@@ -123,8 +124,24 @@ describe("background image and ornament CSS", () => {
 
   it("tiles the theme's background, and puts the ornament in its own variables", () => {
     expect(themeBackdrop(preset("notebook", "light"), null)).toMatchObject({ size: "32px 32px", repeat: "repeat" });
-    expect(themeDecorationCssVars(preset("space", "dark"), null)).toMatch(/^--bg-image:url\("data:image\/svg\+xml,.+"\);--bg-size:360px 360px;--bg-repeat:repeat;--ornament-image:none;--ornament-size:0px$/);
+    expect(themeDecorationCssVars(preset("space", "dark"), null)).toMatch(/^--bg-image:url\("data:image\/svg\+xml,.+"\);--bg-size:360px 360px;--bg-repeat:repeat;--ornament-image:none;--ornament-size:0px;--motion-image:/);
     expect(themeDecorationCssVars(preset("owl", "dark"), null)).toMatch(/--bg-image:none;.*--ornament-image:url\("data:image\/svg\+xml,.+"\);--ornament-size:88px$/);
+  });
+
+  it("moves only the space theme: the rocket's variables are added for it and nothing else changes", () => {
+    const space = themeDecorationCssVars(preset("space", "dark"), null);
+    expect(space).toMatch(/--motion-image:url\("data:image\/svg\+xml,.+"\);--motion-width:96px;--motion-height:64px;--motion-duration:24s;--motion-top:75%$/);
+    expect(themeMotion(preset("space", "dark"))).toMatchObject({ width: 96, height: 64 });
+    for (const p of THEME_PRESETS.filter((p) => p.key !== "space")) {
+      for (const m of themeModes(p)) {
+        expect(themeMotion(p[m]!), p.key).toBeNull();
+        expect(themeDecorationCssVars(p[m]!, null), p.key).not.toContain("--motion");
+      }
+    }
+  });
+
+  it("keeps the rocket under the wiki's own background too", () => {
+    expect(themeDecorationCssVars(preset("space", "dark"), "/images/abcdefghijklmnopqrstuvwx.jpg")).toContain("--motion-image:url(");
   });
 
   it("uses the wiki's own image instead of the theme's, under a veil of the background color, and keeps the ornament", () => {

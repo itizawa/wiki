@@ -268,7 +268,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
 
 /** 背景画像か飾りを持つテーマか */
 function hasDecoration(preset: ThemePreset): boolean {
-  return themeModes(preset).some((m) => preset[m]!.background || preset[m]!.ornament);
+  return themeModes(preset).some((m) => preset[m]!.background || preset[m]!.ornament || preset[m]!.motion);
 }
 
 /** テーマの見本を分けて並べる単位。テーマが増えても、色だけで選びたい人と、飾りつきから選びたい人が探しやすいように */
