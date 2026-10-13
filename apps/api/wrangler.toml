@@ -86,4 +86,5 @@ enabled = true
 # NEON_ORG_ID
 # X_CLIENT_ID          任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 クライアント。3つそろわなければその機能だけが「未設定」になる
 # X_CLIENT_SECRET
+# ROUTINE_TOKEN_KEY    任意。「全体の管理」の Routine のトークンを暗号化して DB に持つための鍵（32文字以上。SNS_TOKEN_KEY とは別の値）。変えると、登録済みの Routine のトークンは使えなくなる（入れ直す）
 # SNS_TOKEN_KEY         任意。SNS のトークンを暗号化して DB に持つための鍵（32文字以上）。変えると、つないであるアカウントは使えなくなる

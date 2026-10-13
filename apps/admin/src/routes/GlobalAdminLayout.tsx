@@ -16,6 +16,7 @@ const TABS = [
   { to: "/wikis", label: "wiki" },
   { to: "/owners", label: "オーナー" },
   { to: "/audit", label: "監査ログ" },
+  { to: "/routines", label: "Routine" },
   { to: "/costs", label: "コスト" },
 ] as const;
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Visibility } from "./page";
 import type { PublishVisibility } from "./publish";
 import { WIKI_ROLE_LABELS, type WikiRole } from "./users";
+import { ROUTINE_FAILURE_MESSAGES, type RoutineFailureReason } from "./routine";
 import { SNS_PROVIDER_LABELS, type SnsProvider } from "./sns";
 
 /**
@@ -63,6 +64,10 @@ export const AUDIT_ACTIONS = {
   tag_create: "settings",
   tag_rename: "settings",
   tag_delete: "settings",
+  routine_create: "settings",
+  routine_update: "settings",
+  routine_delete: "settings",
+  routine_test: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -79,7 +84,7 @@ export function actionsIn(category: AuditCategory): AuditAction[] {
 export const AUDIT_ACTOR_TYPES = ["user", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag"] as const;
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** 予約を入れたのは誰か（予約の実行に残す）。 */
@@ -151,6 +156,12 @@ export type AuditDetailMap = {
   tag_create: Record<string, never>;
   tag_rename: { from: string; to: string };
   tag_delete: { pages: number };
+
+  /** Routine（全体）を登録した・変えた・消した・テスト実行した。トークンの値は入れない（変えたかどうかだけ）。テスト実行の失敗は、理由だけ残す */
+  routine_create: Record<string, never>;
+  routine_update: { name?: { from: string; to: string }; url?: boolean; token?: boolean };
+  routine_delete: Record<string, never>;
+  routine_test: { ok: true } | { ok: false; reason: RoutineFailureReason };
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -341,6 +352,25 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return [{ text: "タグの名前を変更しました（" }, ...named(entry.detail.from), { text: ` → ${entry.detail.to}）` }];
     case "tag_delete":
       return [{ text: "タグ " }, ...quoted(t), { text: ` を削除しました${entry.detail.pages ? `（${entry.detail.pages} ページから外れました）` : ""}` }];
+
+    case "routine_create":
+      return [{ text: "Routine " }, ...quoted(t), { text: " を登録しました" }];
+    case "routine_update": {
+      const d = entry.detail;
+      const parts: string[] = [];
+      if (d.name) parts.push(`名前を変更しました（${d.name.from} → ${d.name.to}）`);
+      if (d.url) parts.push("URL を変更しました");
+      if (d.token) parts.push("トークンを入れ替えました");
+      return [{ text: "Routine " }, ...quoted(t), { text: ` を変更しました${parts.length ? `（${parts.join("、")}）` : ""}` }];
+    }
+    case "routine_delete":
+      return [{ text: "Routine " }, ...quoted(t), { text: " を削除しました" }];
+    case "routine_test":
+      return [
+        { text: "Routine " },
+        ...quoted(t),
+        { text: entry.detail.ok ? " をテスト実行しました（成功）" : ` をテスト実行しました（失敗：${ROUTINE_FAILURE_MESSAGES[entry.detail.reason]}）` },
+      ];
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];

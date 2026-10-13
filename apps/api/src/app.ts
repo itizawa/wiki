@@ -19,6 +19,7 @@ import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
 import { snsRoutes, xCallbackRoutes } from "./routes/sns";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
+import { routineRoutes } from "./routes/routines";
 import { pageTagRoutes, tagRoutes } from "./routes/tags";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
@@ -105,6 +106,7 @@ export function createApp(deps: Deps) {
   admin.route("/users", userRoutes);
   admin.route("/audit-logs", globalAuditRoutes);
   admin.route("/costs", costRoutes);
+  admin.route("/routines", routineRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
   const wiki = new Hono<AppEnv>();
