@@ -41,6 +41,18 @@ describe("THEME_PRESETS", () => {
     expect(keys.slice(0, 5)).toEqual(["simple", "notebook", "pastel", "space", "owl"]);
   });
 
+  it("has the volcano and antarctica themes: light and dark, each with a background and an ornament, and no motion", () => {
+    for (const key of ["volcano", "antarctica"]) {
+      const p = THEME_PRESETS.find((t) => t.key === key)!;
+      expect(themeModes(p), key).toEqual(["light", "dark"]);
+      for (const m of themeModes(p)) {
+        expect(p[m]!.background, `${key} ${m}`).toBeDefined();
+        expect(p[m]!.ornament, `${key} ${m}`).toBeDefined();
+        expect(p[m]!.motion, `${key} ${m}`).toBeUndefined();
+      }
+    }
+  });
+
   it("has color-only themes (light and dark, no image, no ornament) alongside the themes with decorations", () => {
     const plain = THEME_PRESETS.filter((p) => themeModes(p).every((m) => !p[m]!.background && !p[m]!.ornament));
     const keys = plain.map((p) => p.key);
