@@ -12,13 +12,14 @@ const TabLink = createLink(Tab);
 
 type SettingsTab = {
   /** `/w/{key}/settings` のあとの部分（一般は空） */
-  path: "" | "/appearance" | "/home" | "/integrations" | "/sns" | "/members" | "/audit";
+  path: "" | "/appearance" | "/home" | "/integrations" | "/sns" | "/tags" | "/members" | "/audit";
   to:
     | "/w/$wikiKey/settings"
     | "/w/$wikiKey/settings/appearance"
     | "/w/$wikiKey/settings/home"
     | "/w/$wikiKey/settings/integrations"
     | "/w/$wikiKey/settings/sns"
+    | "/w/$wikiKey/settings/tags"
     | "/w/$wikiKey/settings/members"
     | "/w/$wikiKey/settings/audit";
   label: string;
@@ -32,12 +33,13 @@ const TABS: SettingsTab[] = [
   { path: "/home", to: "/w/$wikiKey/settings/home", label: "トップページ", adminOnly: true },
   { path: "/integrations", to: "/w/$wikiKey/settings/integrations", label: "連携" },
   { path: "/sns", to: "/w/$wikiKey/settings/sns", label: "SNS", adminOnly: true },
+  { path: "/tags", to: "/w/$wikiKey/settings/tags", label: "タグ管理", adminOnly: true },
   { path: "/members", to: "/w/$wikiKey/settings/members", label: "メンバー" },
   { path: "/audit", to: "/w/$wikiKey/settings/audit", label: "監査ログ", adminOnly: true },
 ];
 
 /**
- * `/w/{key}/settings/...`：wiki ごとの設定。見出し「設定」と、タブ（一般・外観・トップページ・連携・SNS・メンバー・監査ログ）を出し、
+ * `/w/{key}/settings/...`：wiki ごとの設定。見出し「設定」と、タブ（一般・外観・トップページ・連携・SNS・タグ管理・メンバー・監査ログ）を出し、
  * 下にいまのタブの画面を出す。タブごとに URL を分ける（再読み込み・URL の共有で同じタブが開く）。各画面の見出しは h2。
  */
 export function WikiSettingsLayout() {

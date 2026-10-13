@@ -91,6 +91,7 @@ export type WikiScreen =
   | "/w/$wikiKey/settings/home"
   | "/w/$wikiKey/settings/integrations"
   | "/w/$wikiKey/settings/sns"
+  | "/w/$wikiKey/settings/tags"
   | "/w/$wikiKey/settings/members"
   | "/w/$wikiKey/settings/audit";
 export function screenLink<T extends WikiScreen>(to: T) {

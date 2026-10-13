@@ -10,7 +10,7 @@ import Snackbar from "@mui/material/Snackbar";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import type { TreeNode } from "@wiki/shared";
-import { Copy, Ellipsis, ExternalLink, Globe, Link, Star, Trash2 } from "lucide-react";
+import { Copy, Ellipsis, ExternalLink, Globe, Link, Star, Tag, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api, errorMessage, type StructureResponse } from "../lib/api";
 import { COPY_FAILED_MESSAGE, copyText } from "../lib/clipboard";
@@ -21,6 +21,7 @@ import { invalidatePageLists } from "../lib/invalidatePageLists";
 import { publicPageUrl } from "../lib/publicUrl";
 import { useStars } from "../lib/stars";
 import { pageLink, useWiki } from "../lib/wiki";
+import { PageTagMenu } from "./PageTagPicker";
 import { Tooltip } from "./Tooltip";
 import { Muted } from "./ui";
 
@@ -86,6 +87,8 @@ export function PageRowMenu(props: {
   const { origin } = useWiki().wiki;
   const { ids: starredIds, toggle: toggleStar } = useStars();
   const [notice, setNotice] = useState<string | null>(null);
+  // 「タグ…」から開く、タグの付け外しのメニュー（この行メニューを閉じて、同じ「…」ボタンの下に開く）
+  const [tagsOpen, setTagsOpen] = useState(false);
 
   const { confirmAndDelete } = useDeletePage({
     onLeave: props.onNavigate,
@@ -155,6 +158,19 @@ export function PageRowMenu(props: {
             </MenuItem>
           ),
           <MenuItem
+            key="tags"
+            aria-haspopup="menu"
+            onClick={() => {
+              onClose();
+              setTagsOpen(true);
+            }}
+          >
+            <ListItemIcon>
+              <Tag size={18} />
+            </ListItemIcon>
+            <ListItemText>タグ…</ListItemText>
+          </MenuItem>,
+          <MenuItem
             key="duplicate"
             disabled={duplicate.isPending}
             onClick={() => {
@@ -198,6 +214,7 @@ export function PageRowMenu(props: {
           </Muted>,
         ]}
       </Menu>
+      {page && <PageTagMenu pageId={page.id} anchorEl={target?.anchor ?? null} open={tagsOpen} onClose={() => setTagsOpen(false)} />}
       {/* 結果は、押したサイドバーの近く（左下）に出す。サイドバーの枠（狭い画面では重ねて出す枠）に切られないよう、body の直下に置く */}
       <Portal>
         <Snackbar
