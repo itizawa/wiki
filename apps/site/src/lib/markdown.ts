@@ -1,5 +1,6 @@
 import {
   CALLOUT_LABELS,
+  IMAGE_NAME_PATTERN,
   childrenStart,
   googleMapOfParagraph,
   linkCardOfParagraph,
@@ -259,3 +260,19 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
 }
 
 export { excerpt } from "@wiki/shared";
+
+const BODY_IMAGE = new RegExp(`!\\[[^\\]]*\\]\\((/images/${IMAGE_NAME_PATTERN})(?:\\s+"[^"]*")?\\)`);
+
+/** 本文の最初の画像（`/images/{name}`）のパス。コードブロックの中は数えない。無ければ null */
+export function firstImagePath(md: string): string | null {
+  return BODY_IMAGE.exec(md.replace(/```[\s\S]*?```/g, ""))?.[1] ?? null;
+}
+
+/**
+ * OGP の画像（og:image）にするパス。カバー画像、無ければ本文の最初の画像。どちらも無ければ null。
+ * 用意したカバー（`/covers/*.svg`）は、SVG を表示しない SNS があるので使わず、本文の画像に回す
+ */
+export function ogImagePath(cover: string | null | undefined, bodyMd: string): string | null {
+  if (cover && !cover.endsWith(".svg")) return cover;
+  return firstImagePath(bodyMd);
+}

@@ -29,9 +29,15 @@ interface Props {
   icon?: string | null;
   /** 記事のページかどうか（ファビコンをページごとにする） */
   article?: boolean;
+  /** OGP の画像のパス（カバー画像か本文の最初の画像）。無ければ wiki のロゴ、それも無ければ画像を出さない */
+  ogImage?: string | null;
+  /** 初めて公開した日時（ISO 8601）。`article:published_time` */
+  publishedAt?: string;
+  /** 最後に改訂した日時（ISO 8601）。`article:modified_time` */
+  modifiedAt?: string;
 }
 
-const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false, ogImage = null, publishedAt, modifiedAt } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
@@ -53,6 +59,12 @@ const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefine
 // ページごとのファビコン（SVG）。画像を設定している wiki と、タイトルも絵文字も無いときは使わない
 const pageFavicon = article && !theme.favicon ? pageFaviconHref(title, icon) : null;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
+// OGP（SNS やチャットに貼ったときのカード）。限定公開と 404 には出さない（robots を noindex にする条件と同じ）
+// 画像は絶対 URL にする。ページの画像があれば大きいカード、ロゴだけなら小さいカード、画像が無ければ画像なし
+const ogp = !noindex && !notFound;
+const ogImageSrc = ogImage ?? theme.logo;
+const ogImageUrl = ogImageSrc ? new URL(ogImageSrc, site.origin).href : undefined;
+const twitterCard = ogImage ? "summary_large_image" : "summary";
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
 const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = googleTags(site.wiki, { noindex, notFound });
 ---
@@ -87,6 +99,22 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
     <title>{fullTitle}</title>
     {description && <meta name="description" content={description} />}
     {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    {
+      ogp && (
+        <>
+          <meta property="og:type" content={article ? "article" : "website"} />
+          <meta property="og:title" content={title} />
+          {description && <meta property="og:description" content={description} />}
+          {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+          <meta property="og:site_name" content={SITE_NAME} />
+          <meta property="og:locale" content="ja_JP" />
+          {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+          {article && publishedAt && <meta property="article:published_time" content={publishedAt} />}
+          {article && modifiedAt && <meta property="article:modified_time" content={modifiedAt} />}
+          <meta name="twitter:card" content={twitterCard} />
+        </>
+      )
+    }
     {
       noindex ? (
         <>

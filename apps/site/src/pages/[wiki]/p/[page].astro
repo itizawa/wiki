@@ -6,7 +6,7 @@ import NavDrawer from "../../../components/NavDrawer.astro";
 import TreeNav from "../../../components/TreeNav";
 import Base from "../../../layouts/Base.astro";
 import { allWikis, navFile, pageNav, siteData } from "../../../lib/manifest";
-import { excerpt } from "../../../lib/markdown";
+import { excerpt, ogImagePath } from "../../../lib/markdown";
 import { ancestors, childrenItems } from "../../../lib/tree";
 import Backlinks from "../../../components/Backlinks.astro";
 import { siteBacklinks } from "../../../lib/backlinks";
@@ -27,7 +27,7 @@ const nav = primaryTree && (await pageNav(wiki, primaryTree, inPrimary ? page.id
 const navSrc = (await navFile(wiki)).path;
 ---
 
-<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"} icon={page.icon} article>
+<Base wiki={wiki} title={page.title} description={excerpt(page.bodyMd)} canonical={page.path} nav={primaryTree && "/"} icon={page.icon} article ogImage={ogImagePath(page.cover, page.bodyMd)} publishedAt={page.firstPublishedAt} modifiedAt={page.revisedAt}>
   <div class={layout.withNav}>
     <main data-pagefind-body>
       {
