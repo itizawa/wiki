@@ -2,12 +2,14 @@ import {
   CALLOUT_LABELS,
   childrenStart,
   googleMapOfParagraph,
+  linkCardOfParagraph,
   matchChildren,
   matchToggle,
   parseCalloutMarker,
   toggleStart,
   type ChildrenItem,
   type ChildrenOptions,
+  type LinkCardData,
 } from "@wiki/shared";
 import { Marked, type Tokens } from "marked";
 import { createHighlighter } from "shiki";
@@ -26,6 +28,16 @@ export type RenderOptions = {
    * 本文の `@children` に出す、このページの配下のページ（公開されているものだけ）。渡さなければ `@children` は何も出さない。
    */
   childrenOf?: (options: ChildrenOptions) => ChildrenItem[];
+  /**
+   * 公開ページの id → いまのタイトル。内部リンクの文字がこのタイトルそのままなら、太字の「@タイトル」の見た目で出す
+   * （文字は変えない。「@」は CSS で付ける。本文の Markdown には書かない）。渡さなければ、ふつうのリンクで出す
+   */
+  titleOf?: (pageId: string) => string | undefined;
+  /**
+   * 「URL だけの段落」の外部 URL → OGP（API が公開のときに保存した値。マニフェストの `linkPreviews`）。
+   * ここにある URL はカードで出し、無い URL（取れなかったもの）は、ふつうのリンクで出す。外へは取りにいかない
+   */
+  linkPreviews?: Readonly<Record<string, LinkCardData>>;
 };
 
 const escapeHtml = (s: string) =>
@@ -42,6 +54,28 @@ export function internalPageId(href: string, origin?: string): string | null {
   if (!m) return null;
   if (m[1] && origin && m[1].toLowerCase() !== origin.toLowerCase()) return null;
   return m[2]!;
+}
+
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+};
+
+/**
+ * 外部リンクのカード。スクリプト無しで読めるただの `<a>` で、カード全体がリンク。
+ * 画像は出さない（外部の画像を読者のブラウザが直接読むと、読者の IP が外部のサイトに伝わるため）。
+ */
+function linkCardHtml(url: string, data: LinkCardData, sponsored: boolean | undefined): string {
+  const rel = sponsored ? "sponsored noopener" : "noopener";
+  const description = data.description ? `<span class="link-card-description">${escapeHtml(data.description)}</span>` : "";
+  return (
+    `<p class="link-card"><a href="${escapeHtml(url)}" target="_blank" rel="${rel}">` +
+    `<span class="link-card-site">${escapeHtml(data.siteName ?? hostOf(url))}</span>` +
+    `<span class="link-card-title">${escapeHtml(data.title)}</span>${description}</a></p>\n`
+  );
 }
 
 function childrenListItems(items: readonly ChildrenItem[]): string {
@@ -153,7 +187,13 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
       // 地図の URL だけの段落は、Google マップの埋め込みにする（packages/shared/src/googleMap.ts）。埋め込めない URL（短縮 URL など）は、これまでどおりリンク
       paragraph(token: Tokens.Paragraph) {
         const map = googleMapOfParagraph(token.text);
-        if (!map?.embedSrc) return false;
+        if (!map) {
+          // 外部の URL だけの段落は、OGP があればカードにする（内部リンクは、ふつうのリンクの見た目で出す）
+          const card = linkCardOfParagraph(token.text);
+          const data = card && !internalPageId(card.url, opts.origin) ? opts.linkPreviews?.[card.url] : undefined;
+          return card && data ? linkCardHtml(card.url, data, opts.sponsored) : false;
+        }
+        if (!map.embedSrc) return false;
         const href = escapeHtml(map.url);
         return (
           `<figure class="map-embed"><iframe src="${escapeHtml(map.embedSrc)}" title="Google マップ" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin"></iframe>` +
@@ -168,7 +208,10 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         const pageId = internalPageId(token.href, opts.origin);
         if (pageId) {
           const path = opts.publicPaths.get(pageId);
-          return path ? `<a href="${escapeHtml(path)}">${text}</a>` : text;
+          if (!path) return text;
+          // 文字がページのタイトルそのままのリンクは、太字の「@タイトル」で出す（Slack のメンション。「@」は CSS）
+          const mention = opts.titleOf?.(pageId) === plainText(token.tokens).trim() && token.text.trim() !== "";
+          return `<a${mention ? ' class="page-mention"' : ""} href="${escapeHtml(path)}">${text}</a>`;
         }
         if (!/^(https?:|mailto:|#|\/)/i.test(token.href)) return text;
         const external = /^https?:/i.test(token.href);

@@ -16,6 +16,7 @@ import type {
   AuditLogPage,
   Invite,
   InviteInfo,
+  LinkPreview,
   Me,
   Member,
   PageDetail,
@@ -186,6 +187,8 @@ export const api = {
       w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor })}`),
     );
   },
+  /** 外部の URL の OGP（API が代わりに取る）。取れなければ `preview: null`。取りにいけない URL（http・内部 IP など）は 400 */
+  linkPreview: (url: string) => request<{ preview: LinkPreview | null }>("GET", w(`/link-preview?url=${encodeURIComponent(url)}`)),
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
   search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
   /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */

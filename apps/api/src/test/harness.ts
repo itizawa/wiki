@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
 import { memoryImageStore, type ImageStore } from "../images/store";
 import type { RateLimiter, RateLimiters } from "../rate-limit";
+import type { LinkFetch } from "../linkPreview/fetch";
 
 /** setup が作るオーナー（すべての wiki に管理者として入れる）。call はこの人として呼ぶ */
 export const ADMIN = "admin@example.com";
@@ -76,6 +77,7 @@ export async function setup(
     images?: ImageStore | null;
     reporting?: GoogleReporting | null;
     rateLimits?: RateLimiters;
+    linkFetch?: LinkFetch;
     cronMarks?: CronMarkStore | null;
   } = {},
 ) {
@@ -92,6 +94,7 @@ export async function setup(
     images,
     reporting: opts.reporting ?? null,
     rateLimits: opts.rateLimits ?? null,
+    linkFetch: opts.linkFetch ?? null,
     cronMarks: opts.cronMarks ?? null,
   });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();

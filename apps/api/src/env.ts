@@ -6,6 +6,7 @@ import type { XClient } from "./sns/x-client";
 import type { GoogleReporting } from "./analytics/google";
 import type { ImageStore } from "./images/store";
 import type { RateLimiters } from "./rate-limit";
+import type { LinkFetch } from "./linkPreview/fetch";
 import type { wikis } from "./db/schema";
 import type { WikiRole } from "@wiki/shared";
 import type { UserRow } from "./users/service";
@@ -27,6 +28,8 @@ export type Deps = {
   cronMarks?: CronMarkStore | null;
   /** ログインせずに叩ける経路（/oauth/*・/mcp）の、接続元ごとの回数の制限。無ければ制限しない */
   rateLimits?: RateLimiters | null;
+  /** 外部の URL の OGP を取りにいく関数（`GET /link-preview`）。無ければ `fetch`。テストで差し替える */
+  linkFetch?: LinkFetch | null;
 };
 
 export type AppEnv = {

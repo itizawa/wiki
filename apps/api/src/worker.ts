@@ -20,6 +20,7 @@ export type WorkerEnv = {
   OAUTH_REGISTER_LIMITER?: RateLimiter;
   OAUTH_LIMITER?: RateLimiter;
   MCP_LIMITER?: RateLimiter;
+  LINK_PREVIEW_LIMITER?: RateLimiter;
   [key: string]: unknown;
 };
 
@@ -85,7 +86,7 @@ export function createWorker(connect: Connect) {
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const x = config.x ? createXClient(config.x) : null;
       const { db, close } = connect(env);
-      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER };
+      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER, linkPreview: env.LINK_PREVIEW_LIMITER };
       try {
         const res = await createApp({
           db,

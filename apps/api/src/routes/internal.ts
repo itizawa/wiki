@@ -8,7 +8,7 @@ import { cleanupOAuth } from "../oauth/cleanup";
 import { pruneVersions } from "../pages/prune";
 import { markBuildTriggered } from "../publishing/builds";
 import { cleanupBuilds } from "../publishing/cleanup";
-import { buildManifest } from "../publishing/manifest";
+import { buildManifest, refreshLinkPreviews } from "../publishing/manifest";
 
 /**
  * `Authorization: Bearer <トークン>` を確かめる。トークンは呼ぶ側ごとに分けてあり、片方が漏れても、もう片方の経路は通らない。
@@ -47,7 +47,10 @@ const pruneInput = z.object({
 
 /** /export/public：公開ビルド用マニフェスト（mainのみ）。限定公開の本文と key を含むので、`EXPORT_TOKEN` だけが通る */
 export const exportRoutes = new Hono<AppEnv>().use("*", requireToken("exportToken")).get("/public", async (c) => {
-  return c.json(await buildManifest(c.get("deps").db));
+  const { db, linkFetch } = c.get("deps");
+  const manifest = await buildManifest(db);
+  // リンクカードの OGP は、API がここで取って保存し、ビルドは保存した値だけを使う（外のサイトの不調で、ビルドを遅くも失敗もさせない）
+  return c.json((await refreshLinkPreviews(db, manifest, linkFetch ?? undefined)) > 0 ? await buildManifest(db) : manifest);
 });
 
 /** /internal/*：Cron Triggers のワーカーから呼ぶ。この下に足す経路は、どれも `CRON_TOKEN` だけが通る（経路ごとには指定しない） */

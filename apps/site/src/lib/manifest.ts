@@ -32,6 +32,8 @@ export type SiteData = {
   /** 公開ページの id → 正規パス（本文中の内部リンクの解決に使う） */
   publicPaths: Map<string, string>;
   primaryTree: ManifestTree | undefined;
+  /** 外部の URL → OGP（API が保存した値）。URL だけの段落をカードにする。古いマニフェストには無い */
+  linkPreviews: NonNullable<WikiManifest["linkPreviews"]>;
 };
 
 /** ツリー（ページの階層）の一覧ページの呼び名。ツリーは1本なので、名前は固定にしている。 */
@@ -58,6 +60,7 @@ async function loadSiteData(wikiKey: string): Promise<SiteData> {
     origin: wikiOrigin(wiki.key, SITE_BASE_DOMAIN),
     pagesById: new Map(wiki.pages.map((p) => [p.id, p])),
     publicPaths: new Map(wiki.pages.map((p) => [p.id, p.path])),
+    linkPreviews: wiki.linkPreviews ?? {},
     primaryTree: wiki.trees.find((t) => t.isPrimary) ?? wiki.trees[0],
   };
 }

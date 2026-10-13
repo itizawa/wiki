@@ -733,6 +733,21 @@ export const oauthTokens = pgTable(
  * Google へ問い合わせた結果の控え。wiki・種類・期間ごとに1行で、同じ期間は1時間のあいだ使い回す。
  * 問い合わせが失敗したときは `data` と `fetched_at` を残し、`error` と `attempted_at` だけを書き換える（前に取れたぶんを「◯時点の数字」として出す）。
  */
+/**
+ * 外部の URL の OGP（タイトル・説明・画像・サイト名）の取得結果。`GET /link-preview` と、公開時の保存が使う。
+ * 取れなかった URL も `ok = false` で残し、短い間は取り直さない（期限は linkPreview/service.ts）。
+ * 画像は URL だけを持ち、ファイルそのものは保存しない。
+ */
+export const linkPreviews = pgTable("link_previews", {
+  url: text("url").primaryKey(),
+  ok: boolean("ok").notNull(),
+  title: text("title"),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  siteName: text("site_name"),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+});
+
 export const analyticsSnapshots = pgTable(
   "analytics_snapshots",
   {
