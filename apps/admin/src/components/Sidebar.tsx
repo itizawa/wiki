@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star } from "lucide-react";
+import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -213,6 +213,9 @@ export function Sidebar(props: {
           検索
         </NavItem>
         <NavItem to="/w/$wikiKey" exact icon={<House size={18} />} onClick={props.onNavigate}>
+          ダッシュボード
+        </NavItem>
+        <NavItem to="/w/$wikiKey/pages" icon={<FileText size={18} />} onClick={props.onNavigate}>
           すべてのページ
         </NavItem>
         <EditRequestsNavItem onClick={props.onNavigate} />

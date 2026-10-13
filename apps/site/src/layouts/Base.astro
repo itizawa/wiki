@@ -1,6 +1,7 @@
 ---
 import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
 import { googleTags } from "../lib/googleTags";
+import { serializeJsonLd, type JsonLd } from "../lib/jsonLd";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
 import { Menu } from "lucide-react";
@@ -35,9 +36,11 @@ interface Props {
   publishedAt?: string;
   /** 最後に改訂した日時（ISO 8601）。`article:modified_time` */
   modifiedAt?: string;
+  /** 構造化データ（JSON-LD）。`<script type="application/ld+json">` にする。限定公開と 404 には出さない */
+  jsonLd?: JsonLd | JsonLd[];
 }
 
-const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false, ogImage = null, publishedAt, modifiedAt } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false, ogImage = null, publishedAt, modifiedAt, jsonLd } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
@@ -115,6 +118,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
         </>
       )
     }
+    {ogp && jsonLd && <script is:inline type="application/ld+json" set:html={serializeJsonLd(jsonLd)} />}
     {
       noindex ? (
         <>
@@ -165,7 +169,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <a class={s.brand} href="/">
         {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
       </a>
-      {/* 右端の「…」メニュー（プレゼンモード）。出す項目が無いページでは、スクリプトが動いてもボタンを出さない。検索と RSS はサイドバー（NavDrawer.astro） */}
+      {/* 右端の「…」メニュー（共有・URLをコピー・プレゼンモード）。検索と RSS はサイドバー（NavDrawer.astro） */}
       <div class={s.menuWrap} data-pagefind-ignore>
         <SiteMenu client:load />
       </div>
@@ -186,6 +190,7 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
           {/* 背景画像と飾り。本文のあとに置き、後ろに固定する。押せず、読み上げず、印刷には出さない（global.css） */}
           <div class="theme-backdrop" aria-hidden="true" />
           <div class="theme-ornament" aria-hidden="true" />
+          <div class="theme-motion" aria-hidden="true" />
         </>
       )
     }

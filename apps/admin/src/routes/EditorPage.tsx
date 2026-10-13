@@ -292,7 +292,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         <Alert severity="error" sx={{ m: 3 }}>
           このページは見つかりません。ゴミ箱に入れられたか、URL が違います。
           <Box sx={{ mt: 1 }}>
-            <RouterLink to="/w/$wikiKey" params={{ wikiKey: currentWikiKey() }}>
+            <RouterLink to="/w/$wikiKey/pages" params={{ wikiKey: currentWikiKey() }}>
               すべてのページへ
             </RouterLink>
           </Box>

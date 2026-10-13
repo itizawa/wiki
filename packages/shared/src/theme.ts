@@ -59,6 +59,22 @@ export type ThemeOrnament = Overlay & {
   size: number;
 };
 
+/**
+ * 背景の後ろを動くもの（ロケットなど）。画面を左下から右上へ、斜めに横切るのを繰り返す。
+ * 動かすのは公開サイトの `.theme-motion` と管理画面の `ThemeBackdrop` で、どちらも同じ変数（`--motion-*`）を読むので、同じ見た目になる。
+ * 絵は、飛ぶ向き（右上がり約 15 度）にあらかじめ傾けて描く。押せず、読み上げず、印刷と `prefers-reduced-motion: reduce` では出さない。
+ */
+export type ThemeMotion = Overlay & {
+  svg: string;
+  /** 絵の幅・高さ（px） */
+  width: number;
+  height: number;
+  /** 1回横切って、次に出るまでの秒数（横切るのは、その前半。残りは画面の外で待つ） */
+  duration: number;
+  /** 出てくる高さ（画面の上から、画面の高さに対する割合 %） */
+  top: number;
+};
+
 /** テーマのライト版またはダーク版1つ分 */
 export type ThemeVariant = {
   colors: ThemeColors;
@@ -66,6 +82,8 @@ export type ThemeVariant = {
   background?: ThemeBackground;
   /** 飾り。無くてよい */
   ornament?: ThemeOrnament;
+  /** 背景の後ろを動くもの。無くてよい */
+  motion?: ThemeMotion;
 };
 
 /** テーマ1つ。ライト版・ダーク版のどちらか、または両方を持つ（少なくとも1つ） */
@@ -124,6 +142,21 @@ const SPACE_SVG = (() => {
   return svgDoc(360, 360, stars.join(""));
 })();
 
+/** ロケット：機体・窓・炎（96×64px）。右上へ約 15 度傾けて描いてある（`ThemeMotion`）。不透明度は 0.22 まで（星と同じ。これ以上だと、リンクが 4.5:1 を切る） */
+const ROCKET_SVG = svgDoc(
+  96,
+  64,
+  [
+    `<g transform="rotate(-15 48 32)">`,
+    `<path d="M4 32Q18 24 30 32Q18 40 4 32Z" fill="#ffd84d" fill-opacity="0.22"/>`,
+    `<path d="M16 32Q24 29 32 32Q24 35 16 32Z" fill="#ffffff" fill-opacity="0.22"/>`,
+    `<path d="M34 24 46 12 52 12 48 24Z M34 40 46 52 52 52 48 40Z" fill="#bcd0ff" fill-opacity="0.22"/>`,
+    `<path d="M32 24H62Q78 24 90 32Q78 40 62 40H32Z" fill="#ffffff" fill-opacity="0.22"/>`,
+    `<circle cx="64" cy="32" r="5" fill="#bcd0ff" fill-opacity="0.22"/>`,
+    `</g>`,
+  ].join(""),
+);
+
 /** フクロウ：耳・体・目・くちばし・おなかの羽（64px）。不透明度は 0.22 まで（これ以上だと、リンクが 4.5:1 を切る） */
 const OWL_SVG = svgDoc(
   64,
@@ -139,6 +172,65 @@ const OWL_SVG = svgDoc(
     `<path d="M22 48q4 4 8 0M34 48q4 4 8 0M26 54q6 4 12 0" fill="none" stroke="#1a1612" stroke-opacity="0.3" stroke-width="1.5" stroke-linecap="round"/>`,
   ].join(""),
 );
+
+/** 火山：火の粉（240px の敷き詰め）。色は橙と黄で、不透明度は 0.2 まで（ライト・ダークとも、これ以上だと、リンクが 4.5:1 を切るおそれがある） */
+const embersSvg = (a: string, b: string) => {
+  const rand = seeded(368);
+  const dots: string[] = [];
+  for (let i = 0; i < 26; i++) {
+    const r = (1 + rand() * 1.8).toFixed(1);
+    const op = (0.13 + rand() * 0.07).toFixed(2);
+    dots.push(`<circle cx="${Math.round(rand() * 240)}" cy="${Math.round(rand() * 240)}" r="${r}" fill="${rand() < 0.6 ? a : b}" fill-opacity="${op}"/>`);
+  }
+  return svgDoc(240, 240, dots.join(""));
+};
+const VOLCANO_LIGHT_SVG = embersSvg("#e8581c", "#d99a14");
+const VOLCANO_DARK_SVG = embersSvg("#ff7a2e", "#ffc247");
+
+/** 火山の飾り：山・火口の溶岩・流れ落ちる溶岩・煙（64px）。不透明度は 0.3 まで */
+const volcanoOrnament = (rock: string, lava: string, smoke: string) =>
+  svgDoc(
+    64,
+    64,
+    [
+      `<path d="M3 60 24 22H40L61 60Z" fill="${rock}" fill-opacity="0.3"/>`,
+      `<path d="M24 22H40L38 27Q32 30 26 27Z" fill="${lava}" fill-opacity="0.3"/>`,
+      `<path d="M30 29Q31 40 27 48Q30 52 33 47Q36 40 35 29Z" fill="${lava}" fill-opacity="0.3"/>`,
+      `<circle cx="30" cy="14" r="5" fill="${smoke}" fill-opacity="0.2"/>`,
+      `<circle cx="38" cy="8" r="4" fill="${smoke}" fill-opacity="0.2"/>`,
+    ].join(""),
+  );
+const VOLCANO_LIGHT_ORNAMENT_SVG = volcanoOrnament("#8a6a5c", "#e8581c", "#7a6a64");
+const VOLCANO_DARK_ORNAMENT_SVG = volcanoOrnament("#8a5a48", "#ff7a2e", "#b8a8a0");
+
+/** 南極：雪の結晶と粒（240px の敷き詰め）。不透明度は 0.25 まで */
+const snowSvg = (color: string) => {
+  const rand = seeded(369);
+  const parts: string[] = [];
+  for (let i = 0; i < 22; i++) {
+    parts.push(`<circle cx="${Math.round(rand() * 240)}" cy="${Math.round(rand() * 240)}" r="${(1 + rand() * 1.6).toFixed(1)}" fill="${color}" fill-opacity="${(0.17 + rand() * 0.08).toFixed(2)}"/>`);
+  }
+  for (const [x, y] of [[40, 50], [170, 90], [90, 190], [205, 205]] as const) {
+    parts.push(`<path d="M${x - 7} ${y}H${x + 7}M${x} ${y - 7}V${y + 7}M${x - 5} ${y - 5}L${x + 5} ${y + 5}M${x - 5} ${y + 5}L${x + 5} ${y - 5}" fill="none" stroke="${color}" stroke-opacity="0.25" stroke-width="1.2" stroke-linecap="round"/>`);
+  }
+  return svgDoc(240, 240, parts.join(""));
+};
+const ANTARCTICA_LIGHT_SVG = snowSvg("#5a9bd0");
+const ANTARCTICA_DARK_SVG = snowSvg("#ffffff");
+
+/** 南極の飾り：氷山（64px）。水面の上の面と、水面の下の面。不透明度は 0.3 まで */
+const icebergOrnament = (top: string, under: string) =>
+  svgDoc(
+    64,
+    64,
+    [
+      `<path d="M4 34H60" stroke="${under}" stroke-opacity="0.3" stroke-width="1.5" stroke-linecap="round"/>`,
+      `<path d="M14 34 26 12 32 20 40 8 52 34Z" fill="${top}" fill-opacity="0.3"/>`,
+      `<path d="M14 36H52L44 50 32 58 22 50Z" fill="${under}" fill-opacity="0.2"/>`,
+    ].join(""),
+  );
+const ANTARCTICA_LIGHT_ORNAMENT_SVG = icebergOrnament("#7ab4de", "#3f86bd");
+const ANTARCTICA_DARK_ORNAMENT_SVG = icebergOrnament("#b4d9f2", "#7cc4f0");
 
 /**
  * 選べるテーマ。テーマを足すときは、この配列に1件足す（管理画面の見本・API の検証・公開サイトの CSS・テストは、これを見て動く）。
@@ -177,6 +269,7 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
     dark: {
       colors: { bg: "#0b1020", paper: "#131a2e", text: "#e6e9f5", muted: "#9aa3c0", border: "#27304d", accent: "#8fb4ff", mark: "#4d4510", ok: "#57c27a", warn: "#e3b341", danger: "#ff8080" },
       background: { svg: SPACE_SVG, repeat: "tile", tileSize: 360, ink: "#ffffff", alpha: 0.22 },
+      motion: { svg: ROCKET_SVG, width: 96, height: 64, duration: 24, top: 75, ink: "#ffffff", alpha: 0.22 },
     },
   },
   {
@@ -185,6 +278,34 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
     dark: {
       colors: { bg: "#1a1612", paper: "#231d17", text: "#efe6d8", muted: "#aa9f8c", border: "#3a3128", accent: "#f0b35c", mark: "#5b4a14", ok: "#6cc58b", warn: "#e3b341", danger: "#ff8a7a" },
       ornament: { svg: OWL_SVG, position: "bottom-right", size: 88, ink: "#d8b277", alpha: 0.3 },
+    },
+  },
+  {
+    key: "volcano",
+    name: "火山",
+    light: {
+      colors: { bg: "#fbf1ec", paper: "#fffaf7", text: "#2b1a14", muted: "#7a5a4c", border: "#efd9cd", accent: "#a32a08", mark: "#ffe08a", ok: "#1f8a4c", warn: "#8f5a00", danger: "#b82020" },
+      background: { svg: VOLCANO_LIGHT_SVG, repeat: "tile", tileSize: 240, ink: "#e8581c", alpha: 0.2 },
+      ornament: { svg: VOLCANO_LIGHT_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#8a6a5c", alpha: 0.3 },
+    },
+    dark: {
+      colors: { bg: "#170e0c", paper: "#231512", text: "#f3e6df", muted: "#b39a8e", border: "#432a22", accent: "#ff8a4c", mark: "#5b4a14", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+      background: { svg: VOLCANO_DARK_SVG, repeat: "tile", tileSize: 240, ink: "#ff7a2e", alpha: 0.2 },
+      ornament: { svg: VOLCANO_DARK_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#8a5a48", alpha: 0.3 },
+    },
+  },
+  {
+    key: "antarctica",
+    name: "南極",
+    light: {
+      colors: { bg: "#eef6fb", paper: "#ffffff", text: "#12293a", muted: "#51687c", border: "#d3e4f0", accent: "#0a5f9e", mark: "#fff3a8", ok: "#1f8a4c", warn: "#a86a12", danger: "#c93636" },
+      background: { svg: ANTARCTICA_LIGHT_SVG, repeat: "tile", tileSize: 240, ink: "#5a9bd0", alpha: 0.25 },
+      ornament: { svg: ANTARCTICA_LIGHT_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#7ab4de", alpha: 0.3 },
+    },
+    dark: {
+      colors: { bg: "#0a1622", paper: "#11212f", text: "#e3f0f9", muted: "#8fa8bb", border: "#223a4e", accent: "#8fd0ff", mark: "#5b4f10", ok: "#57c27a", warn: "#e3b341", danger: "#ff7a7a" },
+      background: { svg: ANTARCTICA_DARK_SVG, repeat: "tile", tileSize: 240, ink: "#ffffff", alpha: 0.25 },
+      ornament: { svg: ANTARCTICA_DARK_ORNAMENT_SVG, position: "bottom-right", size: 88, ink: "#b4d9f2", alpha: 0.3 },
     },
   },
   // ---- 色だけのテーマ（背景画像・飾りは付けない）。Slack のテーマのような、色の雰囲気だけを写したもの。どれもライト版・ダーク版の両方を持つ ----
@@ -336,25 +457,34 @@ export function themeOrnament(preset: ThemeVariant): { image: string; size: numb
   return preset.ornament ? { image: svgUrl(preset.ornament.svg), size: preset.ornament.size } : null;
 }
 
+/** 背景の後ろを動くものの CSS の値。無ければ null */
+export function themeMotion(preset: ThemeVariant): { image: string; width: number; height: number; duration: number; top: number } | null {
+  const m = preset.motion;
+  return m ? { image: svgUrl(m.svg), width: m.width, height: m.height, duration: m.duration, top: m.top } : null;
+}
+
 /**
- * 背景画像と飾りを、CSS の変数の宣言にする（`--bg-image` `--bg-size` `--bg-repeat` `--ornament-image` `--ornament-size`）。
- * どちらも無いテーマは空の文字列（変数を出さない）。片方だけ無いときは、その変数を none にする。
+ * 背景画像と飾りと、動くものを、CSS の変数の宣言にする（`--bg-image` `--bg-size` `--bg-repeat` `--ornament-image` `--ornament-size`、動くものがあれば `--motion-*`）。
+ * どれも無いテーマは空の文字列（変数を出さない）。背景画像か飾りの片方だけ無いときは、その変数を none にする。
+ * 動くものは、あるテーマだけ変数を足す（無いテーマの CSS は、これまでと変わらない）。
  */
 export function themeDecorationCssVars(preset: ThemeVariant, custom: string | null): string {
   const backdrop = themeBackdrop(preset, custom);
   const ornament = themeOrnament(preset);
-  if (!backdrop && !ornament) return "";
+  const motion = themeMotion(preset);
+  if (!backdrop && !ornament && !motion) return "";
   return [
     `--bg-image:${backdrop?.image ?? "none"}`,
     `--bg-size:${backdrop?.size ?? "auto"}`,
     `--bg-repeat:${backdrop?.repeat ?? "repeat"}`,
     `--ornament-image:${ornament?.image ?? "none"}`,
     `--ornament-size:${ornament?.size ?? 0}px`,
+    ...(motion ? [`--motion-image:${motion.image}`, `--motion-width:${motion.width}px`, `--motion-height:${motion.height}px`, `--motion-duration:${motion.duration}s`, `--motion-top:${motion.top}%`] : []),
   ].join(";");
 }
 
 /** 背景画像と飾りを打ち消す宣言（別のモードの版が付けた画像を、このモードでは出さない） */
-export const NO_DECORATION_CSS_VARS = "--bg-image:none;--ornament-image:none";
+export const NO_DECORATION_CSS_VARS = "--bg-image:none;--ornament-image:none;--motion-image:none";
 
 /** 文字・リンクと背景のコントラスト比の下限（WCAG 2.x の AA、通常の文字） */
 export const MIN_CONTRAST = 4.5;

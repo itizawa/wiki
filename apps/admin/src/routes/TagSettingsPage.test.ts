@@ -1,7 +1,7 @@
 import { TAG_NAME_MAX } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { ApiError, errorMessage } from "../lib/api";
-import { deleteTagBody, tagNameProblem } from "./WorkflowSettingsPage";
+import { deleteTagBody, tagNameProblem } from "./TagSettingsPage";
 
 describe("tagNameProblem", () => {
   it("空と空白だけは、入力を促す", () => {

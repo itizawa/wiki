@@ -30,7 +30,7 @@
 .brand { display: flex; align-items: center; font-weight: 700; color: var(--text); text-decoration: none; }
 /* ロゴは高さ 32px にそろえ、横長の画像は幅を成り行きにする */
 .logo { display: block; height: 32px; width: auto; max-width: min(240px, 50vw); }
-/* 右端の「…」メニュー（SiteMenu.tsx。MUI の Menu）。ボタンを右に寄せる。出す項目が無いページでは、中身が空になる */
+/* 右端の「…」メニュー（SiteMenu.tsx。MUI の Menu）。ボタンを右に寄せる */
 .menuWrap { margin-left: auto; }
 /* リンクのプレビュー（本文のリンクにカーソルを載せる・フォーカスしたとき）。位置はスクリプトが left / top に入れる。押せない（下の文字を選べる）。画像は出さない */
 .linkPreview {
