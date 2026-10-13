@@ -478,7 +478,11 @@ export const workflowRuns = pgTable(
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     createdAt: createdAt(),
+    /** `running` にした（実行を始めた）時刻。`running` のまま一定時間たった実行は、落ちたものとして Cron が拾う */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /** 失敗の確定を、ワーカーに返して通知を頼んだ時刻（1回だけ返すための印） */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
   },
   (t) => [
     index("workflow_runs_status_idx").on(t.status, t.createdAt),
