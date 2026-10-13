@@ -37,6 +37,7 @@ export const testConfig: AppConfig = {
   googleServiceAccount: null,
   neon: null,
   x: null,
+  routineTokenKey: null,
 };
 
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
@@ -82,6 +83,7 @@ export async function setup(
     linkFetch?: LinkFetch;
     cronMarks?: CronMarkStore | null;
     costSources?: CostSource[];
+    routineFetch?: typeof fetch;
   } = {},
 ) {
   const client = new PGlite({ loadDataDir: await migratedDataDir(), extensions: pgliteExtensions });
@@ -100,6 +102,7 @@ export async function setup(
     linkFetch: opts.linkFetch ?? null,
     cronMarks: opts.cronMarks ?? null,
     costSources: opts.costSources ?? null,
+    routineFetch: opts.routineFetch ?? null,
   });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 

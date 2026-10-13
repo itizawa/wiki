@@ -33,6 +33,11 @@ export type AppConfig = {
    * 3つ（`X_CLIENT_ID`・`X_CLIENT_SECRET`・`SNS_TOKEN_KEY`）がそろっていなければ null（X 連携は無効）
    */
   x: { clientId: string; clientSecret: string; redirectUri: string; tokenKey: string } | null;
+  /**
+   * 「全体の管理」の Routine のトークンを暗号化して DB に持つための鍵（`ROUTINE_TOKEN_KEY`。32文字以上）。
+   * `SNS_TOKEN_KEY` とは別にする。無い（短い）なら null で、Routine の登録・呼び出しは使えない
+   */
+  routineTokenKey: string | null;
 };
 
 /**
@@ -53,6 +58,8 @@ export function parseServiceAccount(json: string | undefined): AppConfig["google
 
 /** `SNS_TOKEN_KEY` の長さの下限。短いものは鍵として使わない（X 連携は無効になる） */
 export const SNS_TOKEN_KEY_MIN = 32;
+/** `ROUTINE_TOKEN_KEY` の長さの下限 */
+export const ROUTINE_TOKEN_KEY_MIN = 32;
 
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const required = (key: string) => {
@@ -88,5 +95,6 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
             tokenKey: env.SNS_TOKEN_KEY,
           }
         : null,
+    routineTokenKey: env.ROUTINE_TOKEN_KEY && env.ROUTINE_TOKEN_KEY.length >= ROUTINE_TOKEN_KEY_MIN ? env.ROUTINE_TOKEN_KEY : null,
   };
 }

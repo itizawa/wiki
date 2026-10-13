@@ -396,6 +396,19 @@ export const pageTags = pgTable(
   (t) => [primaryKey({ columns: [t.pageId, t.tagId] }), index("page_tags_tag_idx").on(t.tagId)],
 );
 
+/**
+ * ワークフローが呼ぶ Claude Routine の登録（全体で1か所。オーナーだけが扱う）。
+ * トークンは `ROUTINE_TOKEN_KEY` で暗号化して持つ（`crypto/token.ts`。context は `routine:{id}`）。API の応答には返さない
+ */
+export const workflowRoutines = pgTable("workflow_routines", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  url: text("url").notNull(),
+  tokenEnc: text("token_enc").notNull(),
+  createdAt: createdAt(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
 // ---------------------------------------------------------------------------
 // 4.2 ツリー
 // 運用するのは、wiki ごとに primary ツリー1本だけ。複数ツリー前提のテーブル形は変えずに残している。
@@ -610,7 +623,7 @@ export const invites = pgTable(
 
 /**
  * wiki につないだ SNS のアカウント（いまは X だけ）。wiki と SNS の組に1つ。
- * トークンは `SNS_TOKEN_KEY` で暗号化して持つ（`sns/crypto.ts`）。同じアカウントを複数の wiki につないでもよい。
+ * トークンは `SNS_TOKEN_KEY` で暗号化して持つ（`crypto/token.ts`）。同じアカウントを複数の wiki につないでもよい。
  */
 export const wikiSnsAccounts = pgTable(
   "wiki_sns_accounts",

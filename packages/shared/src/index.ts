@@ -34,3 +34,4 @@ export * from "./excerpt";
 export * from "./stats";
 export * from "./pageFavicon";
 export * from "./tag";
+export * from "./routine";

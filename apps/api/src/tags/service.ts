@@ -13,7 +13,7 @@ import { HttpError, notFound } from "../errors";
 const duplicate = (name: string) => new HttpError(409, "tag_exists", `tag ${name} already exists`);
 
 /** 一意制約の違反か（同時に同じ名前を作ったとき、事前の確認をすり抜けるぶん） */
-function isUniqueViolation(err: unknown): boolean {
+export function isUniqueViolation(err: unknown): boolean {
   for (let e: unknown = err; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
     if ((e as { code?: unknown }).code === "23505") return true;
   }

@@ -1,7 +1,8 @@
 /**
- * SNS のトークンを DB に持つための暗号化（AES-256-GCM）。鍵は `SNS_TOKEN_KEY` の SHA-256。
+ * 外部サービスのトークンを DB に持つための暗号化（AES-256-GCM）。鍵は呼ぶ側が渡す文字列（SNS は `SNS_TOKEN_KEY`、
+ * Routine は `ROUTINE_TOKEN_KEY`。用途ごとに別の鍵にし、片方が漏れても、もう片方の暗号文を守る）の SHA-256。
  * 形は `v1.{iv}.{暗号文}`（どちらも base64url）。iv は暗号化のたびに作る。
- * context（どの wiki の、どの SNS のトークンか）を追加の認証データに入れ、ほかの行へ写した値は復号できないようにする。
+ * context（どの wiki の、どの SNS のトークンか、など）を追加の認証データに入れ、ほかの行へ写した値は復号できないようにする。
  */
 const VERSION = "v1";
 const encoder = new TextEncoder();

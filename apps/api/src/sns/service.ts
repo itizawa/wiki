@@ -4,7 +4,7 @@ import { type AuditActor, actorUserId, writeAudit } from "../audit/service";
 import type { Db } from "../db/client";
 import { wikiSnsAccounts } from "../db/schema";
 import { HttpError } from "../errors";
-import { decryptToken, encryptToken } from "./crypto";
+import { decryptToken, encryptToken } from "../crypto/token";
 import { XApiError, type XClient } from "./x-client";
 
 type AccountRow = typeof wikiSnsAccounts.$inferSelect;
