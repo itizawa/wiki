@@ -64,7 +64,23 @@
 }
 /* 飾りは、狭い幅では本文に重なるので出さない。印刷では、背景画像も飾りも出さない */
 @media (max-width: 800px) { .theme-ornament { display: none; } }
-@media print { .theme-backdrop, .theme-ornament { display: none; } }
+@media print { .theme-backdrop, .theme-ornament, .theme-motion { display: none; } }
+/* 背景の後ろを動くもの（宇宙のロケット）：画面の左の外から、右上がりに右の外へ横切り、残りの時間は外で待つ。
+   絵は飛ぶ向きに傾けて描いてあり、右上がり 15 度（tan ≒ 0.27）の道を vw で進むので、画面の縦横比によらず絵の向きと道が合う。
+   管理画面の ThemeBackdrop.tsx も同じ変数・同じ動きにする。動かさない設定（reduce）では出さない。 */
+.theme-motion {
+  position: fixed; z-index: -1; pointer-events: none;
+  left: calc(-1 * var(--motion-width, 0px)); top: var(--motion-top, 75%);
+  width: var(--motion-width, 0px); height: var(--motion-height, 0px);
+  background: var(--motion-image, none) no-repeat center / contain;
+  animation: theme-motion-fly var(--motion-duration, 24s) linear 1s infinite;
+  will-change: transform;
+}
+@keyframes theme-motion-fly {
+  0% { transform: translate3d(0, 0, 0); }
+  50%, 100% { transform: translate3d(calc(100vw + 2 * var(--motion-width, 0px)), calc(-0.27 * (100vw + 2 * var(--motion-width, 0px))), 0); }
+}
+@media (prefers-reduced-motion: reduce) { .theme-motion { display: none; } }
 /* 背景色は html（:root）が持つ。body にも塗ると、後ろに置いた背景画像（.theme-backdrop）を隠してしまう */
 body { margin: 0; line-height: 1.8; overflow-wrap: anywhere; }
 a { color: var(--accent); }

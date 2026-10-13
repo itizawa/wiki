@@ -59,6 +59,22 @@ export type ThemeOrnament = Overlay & {
   size: number;
 };
 
+/**
+ * 背景の後ろを動くもの（ロケットなど）。画面を左下から右上へ、斜めに横切るのを繰り返す。
+ * 動かすのは公開サイトの `.theme-motion` と管理画面の `ThemeBackdrop` で、どちらも同じ変数（`--motion-*`）を読むので、同じ見た目になる。
+ * 絵は、飛ぶ向き（右上がり約 15 度）にあらかじめ傾けて描く。押せず、読み上げず、印刷と `prefers-reduced-motion: reduce` では出さない。
+ */
+export type ThemeMotion = Overlay & {
+  svg: string;
+  /** 絵の幅・高さ（px） */
+  width: number;
+  height: number;
+  /** 1回横切って、次に出るまでの秒数（横切るのは、その前半。残りは画面の外で待つ） */
+  duration: number;
+  /** 出てくる高さ（画面の上から、画面の高さに対する割合 %） */
+  top: number;
+};
+
 /** テーマのライト版またはダーク版1つ分 */
 export type ThemeVariant = {
   colors: ThemeColors;
@@ -66,6 +82,8 @@ export type ThemeVariant = {
   background?: ThemeBackground;
   /** 飾り。無くてよい */
   ornament?: ThemeOrnament;
+  /** 背景の後ろを動くもの。無くてよい */
+  motion?: ThemeMotion;
 };
 
 /** テーマ1つ。ライト版・ダーク版のどちらか、または両方を持つ（少なくとも1つ） */
@@ -124,6 +142,21 @@ const SPACE_SVG = (() => {
   return svgDoc(360, 360, stars.join(""));
 })();
 
+/** ロケット：機体・窓・炎（96×64px）。右上へ約 15 度傾けて描いてある（`ThemeMotion`）。不透明度は 0.22 まで（星と同じ。これ以上だと、リンクが 4.5:1 を切る） */
+const ROCKET_SVG = svgDoc(
+  96,
+  64,
+  [
+    `<g transform="rotate(-15 48 32)">`,
+    `<path d="M4 32Q18 24 30 32Q18 40 4 32Z" fill="#ffd84d" fill-opacity="0.22"/>`,
+    `<path d="M16 32Q24 29 32 32Q24 35 16 32Z" fill="#ffffff" fill-opacity="0.22"/>`,
+    `<path d="M34 24 46 12 52 12 48 24Z M34 40 46 52 52 52 48 40Z" fill="#bcd0ff" fill-opacity="0.22"/>`,
+    `<path d="M32 24H62Q78 24 90 32Q78 40 62 40H32Z" fill="#ffffff" fill-opacity="0.22"/>`,
+    `<circle cx="64" cy="32" r="5" fill="#bcd0ff" fill-opacity="0.22"/>`,
+    `</g>`,
+  ].join(""),
+);
+
 /** フクロウ：耳・体・目・くちばし・おなかの羽（64px）。不透明度は 0.22 まで（これ以上だと、リンクが 4.5:1 を切る） */
 const OWL_SVG = svgDoc(
   64,
@@ -177,6 +210,7 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
     dark: {
       colors: { bg: "#0b1020", paper: "#131a2e", text: "#e6e9f5", muted: "#9aa3c0", border: "#27304d", accent: "#8fb4ff", mark: "#4d4510", ok: "#57c27a", warn: "#e3b341", danger: "#ff8080" },
       background: { svg: SPACE_SVG, repeat: "tile", tileSize: 360, ink: "#ffffff", alpha: 0.22 },
+      motion: { svg: ROCKET_SVG, width: 96, height: 64, duration: 24, top: 75, ink: "#ffffff", alpha: 0.22 },
     },
   },
   {
@@ -336,25 +370,34 @@ export function themeOrnament(preset: ThemeVariant): { image: string; size: numb
   return preset.ornament ? { image: svgUrl(preset.ornament.svg), size: preset.ornament.size } : null;
 }
 
+/** 背景の後ろを動くものの CSS の値。無ければ null */
+export function themeMotion(preset: ThemeVariant): { image: string; width: number; height: number; duration: number; top: number } | null {
+  const m = preset.motion;
+  return m ? { image: svgUrl(m.svg), width: m.width, height: m.height, duration: m.duration, top: m.top } : null;
+}
+
 /**
- * 背景画像と飾りを、CSS の変数の宣言にする（`--bg-image` `--bg-size` `--bg-repeat` `--ornament-image` `--ornament-size`）。
- * どちらも無いテーマは空の文字列（変数を出さない）。片方だけ無いときは、その変数を none にする。
+ * 背景画像と飾りと、動くものを、CSS の変数の宣言にする（`--bg-image` `--bg-size` `--bg-repeat` `--ornament-image` `--ornament-size`、動くものがあれば `--motion-*`）。
+ * どれも無いテーマは空の文字列（変数を出さない）。背景画像か飾りの片方だけ無いときは、その変数を none にする。
+ * 動くものは、あるテーマだけ変数を足す（無いテーマの CSS は、これまでと変わらない）。
  */
 export function themeDecorationCssVars(preset: ThemeVariant, custom: string | null): string {
   const backdrop = themeBackdrop(preset, custom);
   const ornament = themeOrnament(preset);
-  if (!backdrop && !ornament) return "";
+  const motion = themeMotion(preset);
+  if (!backdrop && !ornament && !motion) return "";
   return [
     `--bg-image:${backdrop?.image ?? "none"}`,
     `--bg-size:${backdrop?.size ?? "auto"}`,
     `--bg-repeat:${backdrop?.repeat ?? "repeat"}`,
     `--ornament-image:${ornament?.image ?? "none"}`,
     `--ornament-size:${ornament?.size ?? 0}px`,
+    ...(motion ? [`--motion-image:${motion.image}`, `--motion-width:${motion.width}px`, `--motion-height:${motion.height}px`, `--motion-duration:${motion.duration}s`, `--motion-top:${motion.top}%`] : []),
   ].join(";");
 }
 
 /** 背景画像と飾りを打ち消す宣言（別のモードの版が付けた画像を、このモードでは出さない） */
-export const NO_DECORATION_CSS_VARS = "--bg-image:none;--ornament-image:none";
+export const NO_DECORATION_CSS_VARS = "--bg-image:none;--ornament-image:none;--motion-image:none";
 
 /** 文字・リンクと背景のコントラスト比の下限（WCAG 2.x の AA、通常の文字） */
 export const MIN_CONTRAST = 4.5;
