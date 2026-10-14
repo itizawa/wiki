@@ -772,6 +772,20 @@ pnpm test
 
 スキーマを変えたら `pnpm db:generate` でマイグレーションを生成する。
 
+### E2E テスト（`apps/e2e`）
+
+管理画面をブラウザで操作して確かめる（Playwright）。管理画面はビルドした成果物を、本番と同じく API の Worker（`wrangler dev` の `[assets]`）から配る。DB は PostgreSQL（`wrangler dev` の Hyperdrive は TCP の PostgreSQL にしかつなげないので、PGlite は使えない）。手元の開発用とは別の DB を作っておく。
+
+```sh
+createdb wiki_e2e                                   # 既定の接続先は postgres://postgres:postgres@localhost:5432/wiki_e2e（E2E_DATABASE_URL で変える）
+pnpm --filter @wiki/admin build                     # 配る管理画面（E2E_ADMIN_DIST で別のディレクトリを指定できる）
+pnpm --filter @wiki/e2e exec playwright install chromium
+pnpm --filter @wiki/e2e e2e                         # マイグレーションしてから :8789 で立て、開発用ログインで入って確かめる
+```
+
+- DB は実行をまたいで残る（テストはページのタイトルに時刻を入れて見分ける）
+- CI では、PR が管理画面か API に影響するときだけ走る（`ci.yml` の `e2e`）。管理画面を変えていない PR では、`main` でビルド済みの管理画面（Actions のキャッシュ `admin-dist-<sha>`。`main` への push の `check` が残す）を使い、ビルドを省く。マージ先との分かれ目のコミットから、管理画面に影響する変更の無い範囲をさかのぼって探し（`scripts/ci-admin-dist-keys.sh`）、見つからなければビルドする。どれを使ったかは実行の Summary に出る
+
 ## 既定として選んだこと（設計書の未決事項）
 
 - **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNode（`src/node.ts`）、本番は Workers（`src/worker.ts`）で動かす
