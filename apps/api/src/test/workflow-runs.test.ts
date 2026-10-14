@@ -97,6 +97,31 @@ describe("workflow runs: enqueue", () => {
     expect(await runs()).toHaveLength(4);
   });
 
+  it("queues runs for blocks in every workflow of the wiki, and keeps each run under its own workflow's history", async () => {
+    await boot();
+    const tag = await newTag("校正待ち");
+    const routine = await newRoutine();
+    const mkWorkflow = async (name: string) => (await ctx.call("POST", `${W}/workflow`, { name })).body.id as string;
+    const a = await mkWorkflow("校正");
+    const b = await mkWorkflow("公開前");
+    const inA = (await ctx.call("POST", `${W}/workflow/${a}/blocks`, { trigger: { type: "tag_attached", tagId: tag }, actions: [callRoutine(routine)] })).body.id;
+    const inB = (await ctx.call("POST", `${W}/workflow/${b}/blocks`, { trigger: { type: "tag_attached", tagId: tag }, actions: [removeTag(tag)] })).body.id;
+    const page = await newPage("はじめに");
+
+    expect((await attach(page, tag)).status).toBe(200);
+    await ctx.settle();
+    expect((await runs()).map((r) => [r.workflowId, r.blockId]).sort()).toEqual([[a, inA], [b, inB]].sort());
+    const historyOf = async (id: string) => (await ctx.call("GET", `${W}/workflow/${id}/runs`)).body.runs as { summary: string }[];
+    expect((await historyOf(a)).map((r) => r.summary)).toEqual(["Routine「校正」を呼ぶ"]);
+    expect((await historyOf(b)).map((r) => r.summary)).toEqual(["タグ「校正待ち」を外す"]);
+
+    // ワークフローを消すと、そのブロックの履歴も消える。もう一方は残る
+    expect((await ctx.call("DELETE", `${W}/workflow/${a}`)).status).toBe(204);
+    expect((await runs()).map((r) => r.workflowId)).toEqual([b]);
+    expect((await ctx.call("GET", `${W}/workflow/${a}/runs`)).status).toBe(404);
+    expect(await historyOf(b)).toHaveLength(1);
+  });
+
   it("copies the actions at enqueue time, so editing the block later does not change the run", async () => {
     await boot();
     const tag = await newTag("校正待ち");
