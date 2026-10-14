@@ -461,7 +461,7 @@ const DETAIL_MESSAGES: Record<string, (err: ApiError) => string> = {
   routine_in_use: (err) => {
     const d = err.details as { blocks?: number; wikis?: { key: string; name: string; blocks: number }[] } | undefined;
     const where = (d?.wikis ?? []).map((x) => `${x.name}（${x.blocks} ブロック）`).join("、");
-    return `ワークフローのブロックが使っているため、削除できません。${where ? `使っている wiki：${where}。` : ""}先に、各 wiki の設定の「ワークフロー」で、ブロックのアクションから外してください。`;
+    return `ワークフローのブロックが使っているため、削除できません。${where ? `使っている wiki：${where}。` : ""}先に、各 wiki の「ワークフロー」で、ブロックのアクションから外してください。`;
   },
   exceeds_parent: (err) => {
     const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;

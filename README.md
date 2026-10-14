@@ -501,7 +501,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 
 ## ワークフローのブロック（wiki ごと）
 
-設定の「ワークフロー」タブの「ブロック」の節。1つのブロックは「1つのトリガー ＋ 上から順に行うアクションの並び（1〜10件）」で、ブロック同士は独立している（順番は無く、作った順に出す。同じ内容が重なってもよい）。**いまは設定を保存するだけで、動かす処理は無い**（実行の取りこぼしを Cron が拾う仕組みは、下の「Cron」の節の `cron:workflow`：`pending` と、`running` のまま10分たった実行を1回に20件まで続きから動かし、3回で失敗を確定して監査ログ `workflow_run_fail` と通知を出す）。
+サイドバーの「ワークフロー」（`/w/{key}/workflows`。管理者だけ。設定のタブだった頃の `/settings/workflows` は、ここへ移す）の「ブロック」の節。1つのブロックは「1つのトリガー ＋ 上から順に行うアクションの並び（1〜10件）」で、ブロック同士は独立している（順番は無く、作った順に出す。同じ内容が重なってもよい）。**いまは設定を保存するだけで、動かす処理は無い**（実行の取りこぼしを Cron が拾う仕組みは、下の「Cron」の節の `cron:workflow`：`pending` と、`running` のまま10分たった実行を1回に20件まで続きから動かし、3回で失敗を確定して監査ログ `workflow_run_fail` と通知を出す）。
 
 - 種類：トリガーは「タグが付いたとき」、アクションは「Routine を呼ぶ」「タグを外す」。型は `packages/shared/src/workflow.ts` の判別付きユニオン（`type` で見分ける）。種類を足すときは、そこと、API の `apps/api/src/workflows/blocks.ts` の種類ごとの表（`TRIGGER_COLUMNS` `ACTION_COLUMNS`。足し忘れると型エラー）、実行側の表に足す
 - API：`GET /admin/w/{key}/workflow`（メンバーなら誰でも）、`POST /workflow/blocks`・`PUT /workflow/blocks/{id}`（アクションの並びごと置き換える）・`DELETE`（管理者だけ）、`GET /admin/w/{key}/routines`（選ぶための ID と名前だけ。管理者だけ）。別の wiki のタグ・登録されていない Routine は 400

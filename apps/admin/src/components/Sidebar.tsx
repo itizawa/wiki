@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star } from "lucide-react";
+import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Workflow } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -145,6 +145,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -226,6 +227,12 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/analytics" icon={<ChartColumn size={18} />} onClick={props.onNavigate}>
           アクセス解析
         </NavItem>
+        {/* ブロックと実行の履歴。設定とは独立した機能なので、設定とは別の項目にする。管理者だけ */}
+        {role === "admin" && (
+          <NavItem to="/w/$wikiKey/workflows" icon={<Workflow size={18} />} onClick={props.onNavigate}>
+            ワークフロー
+          </NavItem>
+        )}
         {/* この wiki の設定（一般・外観・トップページ・連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
