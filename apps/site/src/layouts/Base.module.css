@@ -65,3 +65,9 @@
   @media (prefers-reduced-motion: reduce) { :global(html[data-sidebar-animating]) .hasNav { transition: none; } }
   :global(html[data-sidebar-closed]) .navToggle { display: inline-flex; }
 }
+
+/* スマホなど（指で押す画面）では、ヘッダーの部品の押せる範囲を 44px にする。ヘッダーの高さは変えないよう、広げた分は負の余白で相殺する */
+@media (pointer: coarse), (max-width: 800px) {
+  .navToggle { width: 44px; height: 44px; margin: -8px -6px -8px -10px; }
+  .brand { min-height: 44px; margin-block: -8px; padding-inline: 4px; }
+}

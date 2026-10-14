@@ -1,4 +1,5 @@
 ---
+import page from "../../styles/page.module.css";
 import Base from "../../layouts/Base.astro";
 import { allWikis } from "../../lib/manifest";
 
@@ -11,5 +12,5 @@ const { wiki } = Astro.params;
 
 <Base wiki={wiki} title="ページが見つかりません" noindex notFound>
   <h1>ページが見つかりません</h1>
-  <p><a href="/">トップへ</a> ・ <a href="/search">検索</a></p>
+  <p class={page.notFoundLinks}><a href="/">トップへ</a> ・ <a href="/search">検索</a></p>
 </Base>

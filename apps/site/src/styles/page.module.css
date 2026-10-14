@@ -44,6 +44,10 @@
 }
 /* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「ページ一覧を開く」で開く。NavDrawer.astro）。
    閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
+@media (pointer: coarse), (max-width: 800px) {
+  .sideLinks a { min-height: 44px; }
+  .drawerClose, .sidebarClose { width: 44px; height: 44px; }
+}
 @media (max-width: 800px) {
   .withNav > aside {
     position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
@@ -66,12 +70,27 @@
 
 .breadcrumbs { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
 .breadcrumbs a { color: var(--muted); }
+@media (pointer: coarse), (max-width: 800px) {
+  /* 押せる範囲を 44px にし、隣のリンクとは余白で離す */
+  .breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; }
+  .breadcrumbs a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding-inline: 8px; }
+}
 
 .postList { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; }
 .postList h2 { font-size: 1.15rem; margin: 0; }
+@media (pointer: coarse), (max-width: 800px) {
+  .postList h2 a { display: block; padding-block: 6px; }
+  .postList { gap: 12px; }
+}
 .postList p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
 
 /* トップの自由記述（管理画面の「トップページ」）。新着記事との間を空け、線で区切る */
 .homeIntro { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
 .homeIntro > :first-child { margin-top: 0; }
 .homeIntro > :last-child { margin-bottom: 0; }
+
+/* 404 の「トップへ」「検索」 */
+@media (pointer: coarse), (max-width: 800px) {
+  .notFoundLinks { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; }
+  .notFoundLinks a { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 8px; }
+}
