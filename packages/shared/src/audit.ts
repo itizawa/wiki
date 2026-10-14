@@ -55,6 +55,7 @@ export const AUDIT_ACTIONS = {
   page_purge: "page",
   page_tag_add: "page",
   page_tag_remove: "page",
+  workflow_run_fail: "page",
 
   wiki_update: "settings",
   wiki_home_update: "settings",
@@ -157,6 +158,9 @@ export type AuditDetailMap = {
   sns_test_post: { provider: SnsProvider; username: string; postId: string };
 
   /** 管理用タグを作った・名前を変えた・消した。消したときの pages は、外れたページの数 */
+  /** ワークフローの実行が、失敗で確定した（再試行の上限・再試行できない失敗）。対象はページ。理由は500文字まで。トークンと相手の応答の本文は入れない */
+  workflow_run_fail: { runId: string; blockId: string | null; actionType: string; error: string };
+
   tag_create: Record<string, never>;
   tag_rename: { from: string; to: string };
   tag_delete: { pages: number; blocks?: number };
@@ -353,6 +357,11 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）の連携を解除しました`);
     case "sns_test_post":
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）にテスト投稿をしました`);
+
+    case "workflow_run_fail": {
+      const kind = entry.detail.actionType === "call_routine" ? "Routine を呼ぶ" : entry.detail.actionType === "remove_tag" ? "タグを外す" : entry.detail.actionType;
+      return [...quoted(t), { text: `のワークフローの実行に失敗しました（${kind}：${entry.detail.error}）` }];
+    }
 
     case "tag_create":
       return [{ text: "タグ " }, ...quoted(t), { text: " を作成しました" }];

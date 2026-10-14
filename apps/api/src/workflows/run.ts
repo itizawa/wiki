@@ -1,6 +1,6 @@
 import { ROUTINE_FAILURE_MESSAGES } from "@wiki/shared";
 import { and, asc, eq } from "drizzle-orm";
-import type { AuditActor } from "../audit/service";
+import { writeAudit, type AuditActor } from "../audit/service";
 import type { AppConfig } from "../config";
 import { decryptToken } from "../crypto/token";
 import type { Db } from "../db/client";
@@ -13,6 +13,12 @@ import { fireRoutine } from "./routine";
 /** ワークフローの実行が外すときの、監査ログの実行者（どの実行かは detail の `runId`） */
 export const WORKFLOW_ACTOR: AuditActor = { type: "system", label: "ワークフロー" };
 
+/** 1つの実行を試す回数の上限（最初の1回を含む）。再試行できる失敗でも、この回数に達したら失敗で確定する */
+export const WORKFLOW_MAX_ATTEMPTS = 3;
+
+/** `last_error` と監査ログに残す理由の長さの上限 */
+const ERROR_MAX = 500;
+
 /** `executeRun` が使うもの（Deps のうちの一部） */
 export type RunDeps = { config: Pick<AppConfig, "routineTokenKey" | "adminOrigin">; routineFetch?: typeof fetch | null };
 
@@ -22,7 +28,7 @@ type RunStatus = "succeeded" | "failed" | "pending";
 type Failure = { retryable: boolean; reason: string; message: string; status?: number };
 type ActionResult = { ok: true; result: Record<string, unknown> } | ({ ok: false } & Failure);
 
-type RunRow = typeof workflowRuns.$inferSelect;
+export type RunRow = typeof workflowRuns.$inferSelect;
 type RunActionRow = typeof workflowRunActions.$inferSelect;
 
 /** 失敗の理由は、トークンも相手の応答の本文も含まない文にする（Routine の失敗は `fireRoutine` の message をそのまま使う） */
@@ -33,12 +39,19 @@ const failure = (reason: string, message: string, retryable = false): ActionResu
  * `pending` のアクションを上から順に実行する。失敗したらそこで止める（残りは `pending` のまま）。
  * - すべて成功したら実行を `succeeded`
  * - 再試行できない失敗（認証エラー・URL 違い・Routine が無いなど）は、アクションと実行を `failed`
- * - 再試行できる失敗（ネットワーク・タイムアウト・429・5xx）は、実行を `pending` に戻す（失敗したアクションも `pending` のまま、理由は result に残す）。再試行は別の仕組みが行う
+ * - 再試行できる失敗（ネットワーク・タイムアウト・429・5xx）は、実行を `pending` に戻す（失敗したアクションも `pending` のまま、理由は result に残す）。
+ *   戻した実行は、Cron（`retry.ts` の `runDueWorkflowRuns`）が拾ってもう一度呼ぶ。`attempts` が `WORKFLOW_MAX_ATTEMPTS` に達した失敗は、再試行できるものでも `failed` で確定する
+ * - `failed` で確定したときは、監査ログ（`workflow_run_fail`）を書く（通知は、Cron の `runDueWorkflowRuns` が `notified_at` の無い失敗を返して頼む）
  * - 実行の直前に、ページがゴミ箱・完全に削除済み、wiki がアーカイブ中なら、何も呼ばずに `skipped`
- * Routine の呼び出しは、トランザクションの外で行う（相手が遅くても、接続を握らない）。投げない設計だが、DB の失敗などで落ちたら実行は `running` のまま残る。
+ * Routine の呼び出しは、トランザクションの外で行う（相手が遅くても、接続を握らない）。投げない設計だが、DB の失敗などで落ちたら実行は `running` のまま残る
+ * （`claimed_at` から一定時間たったものを、Cron が拾い直す）。
+ *
+ * やり直しは、済んだアクション（`succeeded`）を飛ばして、残りの `pending` を上から行う。
+ * 注意：「Routine を呼ぶ」が相手に届いたあと、その成功を記録する前に落ちたときは、記録が残らないので、やり直しでもう一度呼ぶ。
+ * Routine は「少なくとも1回」呼ぶ決まりで、「ちょうど1回」ではない（Routine 側は、渡す `runId` で重複を見分けられる）。
  */
 export async function executeRun(db: Db, deps: RunDeps, runId: string, now: () => Date = () => new Date()): Promise<RunOutcome> {
-  const run = await claim(db, runId);
+  const run = await claim(db, runId, now());
   if (!run) return "not_pending";
 
   const [page] = await db.select({ title: pages.title, deletedAt: pages.deletedAt, purgedAt: pages.purgedAt }).from(pages).where(eq(pages.id, run.pageId));
@@ -71,21 +84,25 @@ export async function executeRun(db: Db, deps: RunDeps, runId: string, now: () =
         .where(and(eq(workflowRunActions.runId, run.id), eq(workflowRunActions.position, action.position)));
       continue;
     }
+    const final = !outcome.retryable || run.attempts >= WORKFLOW_MAX_ATTEMPTS;
     const result = { error: outcome.message, reason: outcome.reason, retryable: outcome.retryable, ...(outcome.status !== undefined && { status: outcome.status }) };
     await db
       .update(workflowRunActions)
-      .set(outcome.retryable ? { result } : { status: "failed", result, finishedAt: now() })
+      .set(final ? { status: "failed", result, finishedAt: now() } : { result })
       .where(and(eq(workflowRunActions.runId, run.id), eq(workflowRunActions.position, action.position)));
-    const status: RunStatus = outcome.retryable ? "pending" : "failed";
-    await finish(db, run.id, status, outcome.message, now());
-    return status;
+    if (!final) {
+      await finish(db, run.id, "pending", outcome.message, now());
+      return "pending";
+    }
+    await failRun(db, run, { title: page.title }, action.type, outcome.message, now());
+    return "failed";
   }
   await finish(db, run.id, "succeeded", null, now());
   return "succeeded";
 }
 
 /** `pending` の実行を1件、ほかが触れないように `running` にする（取れなければ null） */
-async function claim(db: Db, runId: string): Promise<RunRow | null> {
+async function claim(db: Db, runId: string, at: Date): Promise<RunRow | null> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select()
@@ -94,8 +111,8 @@ async function claim(db: Db, runId: string): Promise<RunRow | null> {
       .limit(1)
       .for("update", { skipLocked: true });
     if (!row) return null;
-    await tx.update(workflowRuns).set({ status: "running", attempts: row.attempts + 1 }).where(eq(workflowRuns.id, runId));
-    return { ...row, status: "running", attempts: row.attempts + 1 };
+    await tx.update(workflowRuns).set({ status: "running", attempts: row.attempts + 1, claimedAt: at }).where(eq(workflowRuns.id, runId));
+    return { ...row, status: "running", attempts: row.attempts + 1, claimedAt: at };
   });
 }
 
@@ -105,6 +122,21 @@ async function finish(db: Db, runId: string, status: RunStatus | "skipped", erro
     .update(workflowRuns)
     .set({ status, lastError: error, finishedAt: status === "pending" ? null : at })
     .where(eq(workflowRuns.id, runId));
+}
+
+/** 失敗で確定させる：実行を `failed` にして、監査ログを書く（同じトランザクション）。通知は、ここでは頼まない（`notified_at` が空のまま、Cron が拾う） */
+export async function failRun(db: Db, run: RunRow, page: { title: string }, actionType: string, message: string, at: Date): Promise<void> {
+  const error = message.slice(0, ERROR_MAX);
+  await db.transaction(async (tx) => {
+    await tx.update(workflowRuns).set({ status: "failed", lastError: error, finishedAt: at }).where(eq(workflowRuns.id, run.id));
+    await writeAudit(tx, {
+      wikiId: run.wikiId,
+      actor: WORKFLOW_ACTOR,
+      action: "workflow_run_fail",
+      target: { type: "page", id: run.pageId, label: page.title },
+      detail: { runId: run.id, blockId: run.blockId, actionType, error },
+    });
+  });
 }
 
 type Context = { run: RunRow; wikiKey: string; title: string; tagName: string };

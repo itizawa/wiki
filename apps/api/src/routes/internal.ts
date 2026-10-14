@@ -61,7 +61,8 @@ export const internalRoutes = new Hono<AppEnv>()
   // 応答の next（種類ごとの、次に DB を見に行く時刻）を、ワーカーが印（Workers KV）に書き直す
   .post("/tick", async (c) => {
     const body = tickInput.parse(await c.req.json().catch(() => ({})));
-    return c.json(await runTick(c.get("deps").db, body));
+    const { db, config, routineFetch } = c.get("deps");
+    return c.json(await runTick(db, { ...body, workflow: { config, routineFetch } }));
   })
   // 1日1回の間引きと掃除。どれも消したものは戻せない。1回に消す数には上限があり、残りは次の回に回る
   // - `deleted`：自動でできた版を、古いほど粗く間引いた数

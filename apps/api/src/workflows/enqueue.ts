@@ -3,6 +3,7 @@ import type { AuditActor } from "../audit/service";
 import type { Db } from "../db/client";
 import { pages, pageVersions, wikis, workflowActions, workflowBlocks, workflowRunActions, workflowRuns } from "../db/schema";
 import { attachTag } from "../tags/service";
+import { markCronWork } from "../cron/marks";
 
 /**
  * タグを付けて、付いたときに動くワークフローの実行を積む（同じトランザクションの中で呼ぶ）。
@@ -16,10 +17,12 @@ export async function attachTagAndEnqueue(tx: Db, wikiId: string, pageId: string
 
 /**
  * 積んだことを、5分おきの Cron に知らせる印（`markCronWork("workflow", at)`）。
- * 種類 `workflow` は、ワーカー側（`apps/worker/src/tick.ts`・`cron/tick.ts`）の表と揃えて「Cron での再試行」の issue で足す。
- * それまでは何もしない（足すときは、ここの1か所だけ直す）。
+ * 応答のあとの実行が取りこぼされても（落ちた・再試行できない失敗の通知待ち）、Cron が拾う。
+ * 印を書く呼び出しは、ここの1か所だけ。
  */
-function markWorkflowQueued(_at: Date): void {}
+function markWorkflowQueued(at: Date): void {
+  markCronWork("workflow", at);
+}
 
 /**
  * 「このタグが付いた」ブロックごとに、実行（pending）と、積む時点のアクションの写しを作る。

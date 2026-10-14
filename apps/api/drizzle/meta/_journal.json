@@ -295,6 +295,13 @@
       "when": 1791912874593,
       "tag": "0041_workflow_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791913485325,
+      "tag": "0042_workflow_retry",
+      "breakpoints": true
     }
   ]
 }
