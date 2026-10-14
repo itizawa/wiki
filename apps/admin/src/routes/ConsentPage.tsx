@@ -9,12 +9,14 @@ import Typography from "@mui/material/Typography";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { OAUTH_SCOPES, type OAuthScope } from "@wiki/shared";
 import { useState } from "react";
-import { Mono, Muted, Section, SkeletonSection } from "../components/ui";
+import { Mono, Muted, RouterLink, Section, SkeletonSection } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { Center, useSession } from "./Layout";
 
 /** 既定で許すスコープ。非公開のページを外へ送るかどうかは、毎回その人に選んでもらう */
 const DEFAULT_ON: OAuthScope[] = ["wiki.read", "wiki.write", "wiki.suggest"];
+
+export const CONSENT_MISSING_HEADING = "接続の依頼が見つかりません";
 
 /**
  * `/consent`：外部のアプリ（MCP クライアント）からの接続の依頼に、許可するかを決める画面。
@@ -37,9 +39,18 @@ export function ConsentPage() {
   if (request === "") {
     return (
       <Center>
-        <Alert severity="error" sx={{ maxWidth: 480 }}>
-          接続の依頼が見つかりません。接続するアプリから、もう一度始めてください。
-        </Alert>
+        <Section sx={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+          <Stack spacing={1.5} sx={{ alignItems: "center" }}>
+            <Typography variant="h5" component="h1">
+              {CONSENT_MISSING_HEADING}
+            </Typography>
+            <Muted>接続するアプリから、もう一度つなぐ操作を始めてください。すでにつないだアプリは、下のリンクから確かめられます。</Muted>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1, sm: 3 }} sx={{ alignItems: "center" }}>
+              <RouterLink to="/connections">外部アプリ連携を開く</RouterLink>
+              <RouterLink to="/">管理画面のトップへ</RouterLink>
+            </Stack>
+          </Stack>
+        </Section>
       </Center>
     );
   }
