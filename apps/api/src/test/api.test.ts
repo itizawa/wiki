@@ -422,6 +422,27 @@ describe("pages", () => {
     expect((await ctx.call("GET", url)).body).toEqual({ draft: null });
   });
 
+  it("shows my draft title on the structure rows before it becomes a version, and others still see the head title", async () => {
+    const other = "other@example.com";
+    ctx = await setup();
+    const otherUser = (await ctx.addUser(other, { wiki: "editor" })).user;
+    const otherCookie = { cookie: `${SESSION_COOKIE}=${await issueSession(ctx.db, ctx.config.sessionSecret, otherUser.id)}` };
+    const created = (await ctx.call("POST", `${W}/pages`, { title: "無題", bodyMd: "x" })).body;
+    const url = `${W}/pages/${created.id}/draft`;
+    const titleOf = async (cookie?: { cookie: string }) =>
+      (await ctx.call("GET", `${W}/structure`, undefined, cookie)).body.pages[created.id].title;
+
+    expect(await titleOf()).toBe("無題");
+    await ctx.call("PUT", url, { baseVersionId: created.headVersionId, title: "監査用ページ", bodyMd: "x" });
+    expect(await titleOf()).toBe("監査用ページ");
+    expect(await titleOf(otherCookie)).toBe("無題");
+    // 版は増えていない
+    expect((await ctx.call("GET", `${W}/pages/${created.id}/versions`)).body.versions).toHaveLength(1);
+    // head と同じタイトルに戻して下書きが消えたら、head のタイトルに戻る
+    await ctx.call("PUT", url, { baseVersionId: created.headVersionId, title: "無題", bodyMd: "x" });
+    expect(await titleOf()).toBe("無題");
+  });
+
   it("turns settled drafts into versions: 5 minutes after the last autosave, or 30 minutes after the draft was started", async () => {
     ctx = await setup();
     const a = (await ctx.call("POST", `${W}/pages`, { title: "A", bodyMd: "x" })).body;

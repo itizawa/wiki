@@ -131,6 +131,9 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     setBase(headVersionId);
     void qc.invalidateQueries({ queryKey: ["page", pageId] });
     refreshAfterNewVersion();
+  }, () => {
+    // 下書きを保存したら、サイドバーの行のタイトルも自分の下書きのものに取り直す
+    void qc.invalidateQueries({ queryKey: ["structure"] });
   });
 
   // 初回読み込み時だけサーバーの内容で編集を始める（以降はローカルの編集を優先）。
