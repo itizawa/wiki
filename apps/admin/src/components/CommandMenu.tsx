@@ -156,7 +156,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // 連携（GA・サーチコンソール）は、設定の中のタブを直接開ける
     {
       id: "integrations",
-      label: "「連携」を開く",
+      label: "「Google 連携」を開く",
       keywords: ["integrations", "analytics", "ga", "google", "search console", "renkei"],
       icon: <Plug size={18} />,
       run: go("/w/$wikiKey/settings/integrations"),

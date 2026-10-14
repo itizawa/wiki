@@ -240,7 +240,7 @@ export function Sidebar(props: {
             ワークフロー
           </NavItem>
         )}
-        {/* この wiki の設定（一般・外観・トップページ・連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
+        {/* この wiki の設定（一般・外観・トップページ・Google 連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
         </NavItem>

@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X_POST_MAX_WEIGHT, xPostWeight, xProfileUrl, type SnsAccount, type SnsStatus, type XConnectResult } from "@wiki/shared";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { HelpTip } from "../components/HelpTip";
 import { Mono, Muted, Row, Section, SkeletonSection } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -17,8 +18,21 @@ import { ExternalSite } from "./SettingsPage";
 
 const textSx = { maxWidth: 680 } as const;
 
-/** X の開発者アプリの設定に使うシークレットの名前（未設定の案内に出す） */
-const X_SECRETS = "X_CLIENT_ID・X_CLIENT_SECRET・SNS_TOKEN_KEY";
+/** サーバーの設定の案内（オーナーが読む「i」の中身）。環境変数の名前は、画面の本文ではなくここにだけ置く。 */
+const X_SERVER_SETUP =
+  "サーバーを運用するオーナー向け：X の開発者アプリの Client ID・Client Secret と、トークンを保管するための鍵を、API のシークレットに登録します（X_CLIENT_ID・X_CLIENT_SECRET・SNS_TOKEN_KEY）。手順は、リポジトリの README の「SNS 連携」にあります。";
+
+/** 連携できない（サーバーの設定が足りない）ときの案内。本文は読む人の言葉にして、くわしい手順は「i」に置く。 */
+function ServerSetupAlert({ children }: { children: string }) {
+  return (
+    <Alert severity="info" sx={textSx}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, flexWrap: "wrap" }}>
+        {children}
+        <HelpTip about="サーバーの設定">{X_SERVER_SETUP}</HelpTip>
+      </Box>
+    </Alert>
+  );
+}
 
 /** X の認可の画面から戻ってきたときに出す文。 */
 export function xConnectResultMessage(result: XConnectResult, account: SnsAccount | null): { severity: AlertProps["severity"]; text: string } {
@@ -125,9 +139,7 @@ function XSection({ x, result, onResultClose }: { x: SnsStatus["x"]; result: XCo
       {x.account ? (
         <Connected account={x.account} available={x.available} connecting={connecting} onReconnect={startConnect} />
       ) : !x.available ? (
-        <Alert severity="info" sx={textSx}>
-          この管理画面には、X の開発者アプリの設定（{X_SECRETS}）がまだ登録されていないため、連携できません。登録の手順は、README の「SNS 連携」にあります。
-        </Alert>
+        <ServerSetupAlert>まだ X とつないでいません。つなぐにはサーバーの設定が要るので、この wiki のオーナーに頼んでください。</ServerSetupAlert>
       ) : (
         <Stack spacing={1.5} sx={{ alignItems: "flex-start" }}>
           <Muted sx={textSx}>
@@ -183,9 +195,9 @@ function Connected({ account, available, connecting, onReconnect }: { account: S
       {available ? (
         <TestPost account={account} connecting={connecting} onReconnect={onReconnect} />
       ) : (
-        <Alert severity="info" sx={{ ...textSx, mt: 2 }}>
-          この管理画面から X の開発者アプリの設定（{X_SECRETS}）が外れているため、いまはポストできません。連携の解除はできます。
-        </Alert>
+        <Box sx={{ mt: 2 }}>
+          <ServerSetupAlert>サーバーの設定が足りないため、いまはポストできません。連携の解除はできます。直すには、この wiki のオーナーに頼んでください。</ServerSetupAlert>
+        </Box>
       )}
 
       {/* 連携の解除は、ほかの操作から離して置く */}

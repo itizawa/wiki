@@ -9,8 +9,14 @@ const API_NAME: Record<AnalyticsTarget, string> = { ga: "Google Analytics Data A
 
 export const targetName = (target: AnalyticsTarget) => TARGET_NAME[target];
 
-/** サービスアカウントの鍵を入れる所の名前（GitHub のシークレット） */
+/** サービスアカウントの鍵を入れる所の名前（GitHub のシークレット）。画面の本文には出さず、オーナー向けの「i」（`SERVICE_ACCOUNT_HELP`）にだけ置く。 */
 export const SERVICE_ACCOUNT_SECRET = "GOOGLE_SERVICE_ACCOUNT_JSON";
+
+/** サーバーの設定が要るときの頼み先。本文は、環境変数の名前を出さずにこの言い方にそろえる。 */
+export const ASK_OWNER = "サーバーの設定が要るので、この wiki のオーナーに頼んでください。";
+
+/** サービスアカウントの鍵の登録の手順（サーバーを運用するオーナーが読む「i」の中身） */
+export const SERVICE_ACCOUNT_HELP = `サーバーを運用するオーナー向け：Google Cloud で作ったサービスアカウントの鍵（JSON）を、そのまま GitHub のリポジトリのシークレット ${SERVICE_ACCOUNT_SECRET} に登録し、Actions の「Deploy」を実行します。手順は、リポジトリの README の「アクセス解析」にあります。`;
 
 /**
  * Google への問い合わせが失敗した理由を、何が起きたか（what）と、次にすること（fix）に分けて返す。
@@ -42,7 +48,7 @@ export function failureText(reason: GoogleFailure, target: AnalyticsTarget): { w
     case "auth":
       return {
         what: "サービスアカウントの鍵が使えません（消されたか、無効になっています）。",
-        fix: `Google Cloud でサービスアカウントの鍵を作り直し、GitHub のシークレット ${SERVICE_ACCOUNT_SECRET} を入れ替えて、Actions の「Deploy」を実行してください。`,
+        fix: `Google Cloud でサービスアカウントの鍵を作り直し、サーバーに登録した鍵を入れ替えてください。${ASK_OWNER}`,
       };
     case "timeout":
       return { what: "Google から、時間内に応答がありませんでした。", fix: "少し待ってから、もう一度試してください。" };
@@ -58,9 +64,9 @@ export function checkResultText(result: ConnectionCheck, target: AnalyticsTarget
   if (result.ok) return `${TARGET_NAME[target]} につながりました。「アクセス解析」に数字が出ます。`;
   switch (result.reason) {
     case "service_account_unset":
-      return `サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）が登録されていないため、確かめられません。`;
+      return `サービスアカウントの鍵がまだ登録されていないため、確かめられません。${ASK_OWNER}`;
     case "service_account_invalid":
-      return `サービスアカウントの鍵（${SERVICE_ACCOUNT_SECRET}）を読めないため、確かめられません。Google Cloud でダウンロードした JSON を、そのまま登録し直してください。`;
+      return `サービスアカウントの鍵を読めないため、確かめられません。Google Cloud でダウンロードした JSON を、そのまま登録し直してもらってください。${ASK_OWNER}`;
     case "property_unset":
       return "プロパティ ID が保存されていません。プロパティ ID を入れて保存してから、確かめてください。";
     default: {
