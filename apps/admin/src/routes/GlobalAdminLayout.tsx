@@ -44,7 +44,14 @@ export function GlobalAdminLayout() {
           全体の管理
         </Typography>
         {session.isOwner && (
-          <Tabs value={current} aria-label="全体の管理" sx={{ mt: 1, borderBottom: 1, borderColor: "divider" }}>
+          <Tabs
+            value={current}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            aria-label="全体の管理"
+            sx={{ mt: 1, borderBottom: 1, borderColor: "divider" }}
+          >
             {TABS.map((t) => (
               <TabLink key={t.to} to={t.to} value={t.to} label={t.label} />
             ))}
