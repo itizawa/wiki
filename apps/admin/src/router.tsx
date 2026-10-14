@@ -25,7 +25,7 @@ import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { SnsSettingsPage } from "./routes/SnsSettingsPage";
-import { WorkflowSettingsPage } from "./routes/WorkflowSettingsPage";
+import { WorkflowsPage } from "./routes/WorkflowsPage";
 import { TagSettingsPage } from "./routes/TagSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
@@ -188,6 +188,8 @@ const templateEditorRoute = createRoute({
     return <TemplateEditorPage key={templateId} templateId={templateId} />;
   },
 });
+// ワークフロー（ブロックと実行の履歴）。設定とは独立した画面で、サイドバーから開く。管理者だけ
+const workflowsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "workflows", component: padded(WorkflowsPage) });
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 
 // wiki ごとの設定。見出しとタブ（WikiSettingsLayout）の下に、タブごとの画面を出す。タブごとに URL を分ける
@@ -216,7 +218,6 @@ const snsRoute = createRoute({
   },
 });
 // タグ管理（管理用タグ）。管理者だけ
-const workflowsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "workflows", component: WorkflowSettingsPage });
 const tagsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "tags", component: TagSettingsPage });
 // メンバー。一覧はだれでも、変えるのは管理者だけ
 const membersRoute = createRoute({ getParentRoute: () => settingsRoute, path: "members", component: MembersPage });
@@ -232,6 +233,15 @@ const legacySettingsScreen = (path: "members" | "audit" | "appearance" | "home")
       throw redirect({ to: `/w/$wikiKey/settings/${path}`, params: { wikiKey: params.wikiKey }, replace: true });
     },
   });
+
+// ワークフローが設定のタブだった頃の URL。ブックマークや共有したリンクを切らさないよう、独立した画面へ移す
+const legacyWorkflowsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "settings/workflows",
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/w/$wikiKey/workflows", params: { wikiKey: params.wikiKey }, replace: true });
+  },
+});
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -269,11 +279,13 @@ const routeTree = rootRoute.addChildren([
     templatesRoute,
     templateEditorRoute,
     trashRoute,
-    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, workflowsRoute, tagsRoute, membersRoute, auditRoute]),
+    workflowsRoute,
+    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, tagsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),
     legacySettingsScreen("appearance"),
     legacySettingsScreen("home"),
+    legacyWorkflowsRoute,
   ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),

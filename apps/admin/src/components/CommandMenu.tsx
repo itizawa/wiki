@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users, Workflow } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
@@ -140,6 +140,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // SNS の連携も管理者だけ
     ...(role === "admin"
       ? [{ id: "sns", label: "「SNS」を開く", keywords: ["sns", "x", "twitter", "post", "renkei"], icon: <Share2 size={18} />, run: go("/w/$wikiKey/settings/sns") }]
+      : []),
+    // ワークフローも管理者だけ
+    ...(role === "admin"
+      ? [{ id: "workflows", label: "「ワークフロー」を開く", keywords: ["workflow", "workflows", "block", "automation", "waakufuroo"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/workflows") }]
       : []),
     { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },
     {
