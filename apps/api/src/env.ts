@@ -25,6 +25,11 @@ export type Deps = {
   /** Routine を呼ぶ `fetch`。無ければ `fetch`。テストで差し替える */
   routineFetch?: typeof fetch | null;
   /**
+   * 応答を返したあとも続けたい処理を預ける（Workers の `ctx.waitUntil`）。無ければ、待たずに走らせる（手元の開発）。
+   * 預けた処理は、DB の接続を閉じる前に終わらせてもらう（`worker.ts`）
+   */
+  defer?: ((promise: Promise<unknown>) => void) | null;
+  /**
    * Cron のワーカーへの印を書く先（Workers KV）。無ければ印を書かない
    * （手元の開発とテスト。ワーカーの側も、バインディングが無ければ毎回 DB を見に行く）
    */

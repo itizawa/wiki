@@ -86,6 +86,8 @@ export function createWorker(connect: Connect) {
       const google = config.google ? createGoogleOidc({ ...config.google, redirectUri: config.googleRedirectUri }) : null;
       const x = config.x ? createXClient(config.x) : null;
       const { db, close } = connect(env);
+      // 応答のあとも続ける処理（ワークフローの実行）。DB の接続は、それが終わってから閉じる
+      const deferred: Promise<unknown>[] = [];
       const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER, linkPreview: env.LINK_PREVIEW_LIMITER };
       try {
         const res = await createApp({
@@ -97,6 +99,10 @@ export function createWorker(connect: Connect) {
           reporting: reportingFromConfig(config),
           cronMarks: env.CRON_MARKS ?? null,
           rateLimits,
+          defer: (promise) => {
+            deferred.push(promise);
+            ctx.waitUntil(promise);
+          },
         }).fetch(appRequest);
         // 入れるのは見つかった画像だけ（404 は入れない）。Cookie を書く応答は、ほかの人に返さないよう入れない。
         // 入れ終わるのは応答を返したあと。失敗しても応答は返す
@@ -105,7 +111,7 @@ export function createWorker(connect: Connect) {
         }
         return res;
       } finally {
-        ctx.waitUntil(close());
+        ctx.waitUntil(Promise.allSettled(deferred).then(close));
       }
     },
   };
