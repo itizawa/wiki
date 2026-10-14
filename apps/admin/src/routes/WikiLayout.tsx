@@ -348,7 +348,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
           <Typography variant="body2" noWrap sx={{ minWidth: 0, fontWeight: 600 }}>
             {wiki.name}
           </Typography>
-          <Box ref={setBarSlot} sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }} />
+          <Box ref={setBarSlot} sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5, flexShrink: 1, minWidth: 0 }} />
         </Box>
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す。「視差効果を減らす」が有効なら、滑らせずにすぐ出し入れする */}
