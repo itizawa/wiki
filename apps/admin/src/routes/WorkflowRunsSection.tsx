@@ -68,11 +68,11 @@ function StatusBadge({ status }: { status: WorkflowRunStatus }) {
 }
 
 /** 「実行の履歴」の節：ワークフローの実行を新しい順に出す。失敗の理由と、Routine のセッションへたどれる。 */
-export function WorkflowRunsSection() {
+export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
   const [opened, setOpened] = useState<string | null>(null);
   const runs = useInfiniteQuery({
-    queryKey: ["workflow-runs"],
-    queryFn: ({ pageParam }) => api.listWorkflowRuns({ limit: PAGE_SIZE, cursor: pageParam }),
+    queryKey: ["workflow-runs", workflowId],
+    queryFn: ({ pageParam }) => api.listWorkflowRuns(workflowId, { limit: PAGE_SIZE, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchInterval: (q) => refetchIntervalFor(q.state.data?.pages),

@@ -25,6 +25,7 @@ import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { SnsSettingsPage } from "./routes/SnsSettingsPage";
+import { WorkflowDetailPage } from "./routes/WorkflowDetailPage";
 import { WorkflowsPage } from "./routes/WorkflowsPage";
 import { TagSettingsPage } from "./routes/TagSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
@@ -188,8 +189,16 @@ const templateEditorRoute = createRoute({
     return <TemplateEditorPage key={templateId} templateId={templateId} />;
   },
 });
-// ワークフロー（ブロックと実行の履歴）。設定とは独立した画面で、サイドバーから開く。管理者だけ
+// ワークフロー。設定とは独立した画面で、サイドバーから開く。管理者だけ。一覧と、1つのワークフロー（ブロックと実行の履歴）の詳細
 const workflowsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "workflows", component: padded(WorkflowsPage) });
+const workflowDetailRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "workflows/$workflowId",
+  component: padded(function WorkflowDetail() {
+    const { workflowId } = workflowDetailRoute.useParams();
+    return <WorkflowDetailPage key={workflowId} workflowId={workflowId} />;
+  }),
+});
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 
 // wiki ごとの設定。見出しとタブ（WikiSettingsLayout）の下に、タブごとの画面を出す。タブごとに URL を分ける
@@ -280,6 +289,7 @@ const routeTree = rootRoute.addChildren([
     templateEditorRoute,
     trashRoute,
     workflowsRoute,
+    workflowDetailRoute,
     settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, tagsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * ワークフロー：wiki ごとの「ブロック」の集まり。1つのブロックは、1つのトリガーと、上から順に実行するアクションの並び。
+ * ワークフロー：wiki ごとに名前を付けて複数持つ、「ブロック」の集まり。1つのブロックは、1つのトリガーと、上から順に実行するアクションの並び。
  * ブロック同士は独立していて、順番に意味は無い。
  *
  * 種類を足すとき：
@@ -12,8 +12,25 @@ import { z } from "zod";
  */
 
 export const WORKFLOW_ACTIONS_MAX = 10;
+/** 1つの wiki に作れるワークフローの数 */
+export const WORKFLOWS_MAX = 20;
+/** ワークフローの名前の長さ（文字数）の上限 */
+export const WORKFLOW_NAME_MAX = 50;
 
 const id = z.string().uuid();
+
+// ---- ワークフロー ----
+
+/** ワークフローの入力（作る・名前を変える）。前後の空白は取る */
+export const workflowInput = z.object({
+  name: z.string().trim().min(1, "名前を入れてください").max(WORKFLOW_NAME_MAX, `名前は${WORKFLOW_NAME_MAX}文字までです`),
+});
+export type WorkflowInput = z.infer<typeof workflowInput>;
+
+export type Workflow = { id: string; name: string; blockCount: number; createdAt: string };
+
+/** `GET /admin/w/{key}/workflow`：作った順 */
+export type WorkflowIndex = { workflows: Workflow[] };
 
 // ---- トリガー ----
 
@@ -61,8 +78,8 @@ export type WorkflowAction =
 
 export type WorkflowBlock = { id: string; trigger: WorkflowTrigger; actions: WorkflowAction[]; createdAt: string };
 
-/** `GET /admin/w/{key}/workflow` */
-export type WorkflowList = { blocks: WorkflowBlock[] };
+/** `GET /admin/w/{key}/workflow/{workflowId}/blocks` */
+export type WorkflowBlockList = { blocks: WorkflowBlock[] };
 
 /** `GET /admin/w/{key}/routines`：選ぶためだけの、Routine の ID と名前（URL もトークンも返さない） */
 export type RoutineChoice = { id: string; name: string };
@@ -131,7 +148,7 @@ export const isWorkflowRunActive = (status: WorkflowRunStatus): boolean => statu
 export const WORKFLOW_RUNS_LIMIT_DEFAULT = 50;
 export const WORKFLOW_RUNS_LIMIT_MAX = 100;
 
-/** `GET /admin/w/{key}/workflow/runs` の問い合わせ */
+/** `GET /admin/w/{key}/workflow/{workflowId}/runs` の問い合わせ */
 export const workflowRunsQuery = z.object({
   status: z.enum(WORKFLOW_RUN_STATUSES).optional(),
   limit: z.coerce.number().int().min(1).max(WORKFLOW_RUNS_LIMIT_MAX).default(WORKFLOW_RUNS_LIMIT_DEFAULT),
@@ -169,7 +186,7 @@ export type WorkflowRunEntry = {
   actions: WorkflowRunActionEntry[];
 };
 
-/** `GET /admin/w/{key}/workflow/runs` */
+/** `GET /admin/w/{key}/workflow/{workflowId}/runs` */
 export type WorkflowRunPage = { runs: WorkflowRunEntry[]; nextCursor: string | null };
 
 export const DELETED_PAGE_TITLE = "削除されたページ";

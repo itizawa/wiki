@@ -409,8 +409,21 @@ export const workflowRoutines = pgTable("workflow_routines", {
   createdBy: uuid("created_by").references(() => users.id),
 });
 
+/** ワークフロー：wiki ごとに名前を付けて複数持つ、ブロックの入れ物。消すと、そのブロックと実行の履歴も消える（cascade）。名前は wiki の中で一意 */
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    name: text("name").notNull(),
+    createdAt: createdAt(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (t) => [unique("workflows_wiki_name_unique").on(t.wikiId, t.name)],
+);
+
 /**
- * ワークフローのブロック：wiki ごとの「1つのトリガー ＋ アクションの並び」。ブロック同士は独立していて、順番は持たない（作った順）。
+ * ワークフローのブロック：ワークフローごとの「1つのトリガー ＋ アクションの並び」。ブロック同士は独立していて、順番は持たない（作った順）。
  * トリガーの種類ごとの列は、いまは `trigger_tag_id`（タグが付いたとき）だけ。種類を足すときは、列を足して check を直す
  */
 export const workflowBlocks = pgTable(
@@ -418,6 +431,9 @@ export const workflowBlocks = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     wikiId: wikiId(),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
     triggerType: text("trigger_type").notNull(),
     triggerTagId: uuid("trigger_tag_id")
       .notNull()
@@ -427,6 +443,7 @@ export const workflowBlocks = pgTable(
   },
   (t) => [
     index("workflow_blocks_wiki_idx").on(t.wikiId, t.createdAt),
+    index("workflow_blocks_workflow_idx").on(t.workflowId, t.createdAt),
     index("workflow_blocks_trigger_tag_idx").on(t.triggerTagId),
     check("workflow_blocks_trigger_type_check", sql`${t.triggerType} in ('tag_attached')`),
   ],
@@ -466,6 +483,10 @@ export const workflowRuns = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     wikiId: wikiId(),
+    /** 所属のワークフロー。ワークフローを消すと、履歴もいっしょに消える */
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
     blockId: uuid("block_id").references(() => workflowBlocks.id, { onDelete: "set null" }),
     pageId: text("page_id")
       .notNull()
@@ -487,6 +508,7 @@ export const workflowRuns = pgTable(
   (t) => [
     index("workflow_runs_status_idx").on(t.status, t.createdAt),
     index("workflow_runs_wiki_idx").on(t.wikiId, t.createdAt),
+    index("workflow_runs_workflow_idx").on(t.workflowId, t.createdAt),
     check("workflow_runs_status_check", sql`${t.status} in ('pending', 'running', 'succeeded', 'failed', 'skipped')`),
   ],
 );

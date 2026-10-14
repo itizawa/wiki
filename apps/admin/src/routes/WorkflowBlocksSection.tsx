@@ -32,7 +32,8 @@ import { useSession } from "./Layout";
 
 /** ブロックの節の id（履歴が空のときの案内から、ここへ移る） */
 export const BLOCKS_SECTION_ID = "workflow-blocks";
-const BLOCKS_KEY = ["workflow"];
+/** ワークフローの、ブロックの問い合わせの鍵。`["workflow"]` の下に置き、タグを変えたあとの取り直し（`invalidateAfterTagChange`）にも、ワークフロー一覧のブロック数にも効く */
+const blocksKey = (workflowId: string) => ["workflow", workflowId, "blocks"];
 const ROUTINES_KEY = ["routine-choices"];
 
 /** 編集の入力 → API に送る形（選び終えていることは、呼ぶ前に `workflowDraftProblem` で確かめてある） */
@@ -68,17 +69,17 @@ export function deleteBlockBody(block: WorkflowBlock): string {
   return `「${describeTrigger(block.trigger)}」のブロック（アクション ${block.actions.length} 件）だけが消えます。タグと Routine は消えません。元に戻せません。`;
 }
 
-/** 「ブロック」の節：ブロックの一覧と、作る・編集・削除。実行はまだしない（設定を保存するところまで）。 */
-export function WorkflowBlocksSection() {
+/** 「ブロック」の節：そのワークフローのブロックの一覧と、作る・編集・削除。実行はまだしない（設定を保存するところまで）。 */
+export function WorkflowBlocksSection({ workflowId }: { workflowId: string }) {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: BLOCKS_KEY, queryFn: api.getWorkflow });
+  const list = useQuery({ queryKey: blocksKey(workflowId), queryFn: () => api.getWorkflowBlocks(workflowId) });
   // null：開いていない／"new"：作る／ブロック：その編集
   const [editing, setEditing] = useState<WorkflowBlock | "new" | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const remove = useMutation({
-    mutationFn: (b: WorkflowBlock) => api.deleteWorkflowBlock(b.id),
+    mutationFn: (b: WorkflowBlock) => api.deleteWorkflowBlock(workflowId, b.id),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: BLOCKS_KEY });
+      await qc.invalidateQueries({ queryKey: ["workflow"] });
       setDone("ブロックを削除しました。");
     },
   });
@@ -137,6 +138,7 @@ export function WorkflowBlocksSection() {
       )}
       {editing && (
         <BlockDialog
+          workflowId={workflowId}
           block={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
           onDone={(message) => {
@@ -185,7 +187,7 @@ function BlockCard({ block, busy, onEdit, onDelete }: { block: WorkflowBlock; bu
 type DraftAction = WorkflowDraft["actions"][number] & { key: number };
 
 /** 作る・編集のダイアログ。選び終えていない欄があれば、保存ボタンの横に理由を出す */
-function BlockDialog({ block, onClose, onDone }: { block: WorkflowBlock | null; onClose: () => void; onDone: (message: string) => void }) {
+function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: string; block: WorkflowBlock | null; onClose: () => void; onDone: (message: string) => void }) {
   const qc = useQueryClient();
   const { isOwner } = useSession();
   const tags = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
@@ -202,9 +204,9 @@ function BlockDialog({ block, onClose, onDone }: { block: WorkflowBlock | null; 
   const noRoutines = routines.data !== undefined && routineList.length === 0;
 
   const save = useMutation({
-    mutationFn: (input: WorkflowBlockInput) => (block ? api.replaceWorkflowBlock(block.id, input) : api.createWorkflowBlock(input)),
+    mutationFn: (input: WorkflowBlockInput) => (block ? api.replaceWorkflowBlock(workflowId, block.id, input) : api.createWorkflowBlock(workflowId, input)),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: BLOCKS_KEY });
+      await qc.invalidateQueries({ queryKey: ["workflow"] });
       onDone(block ? "ブロックを保存しました。" : "ブロックを作りました。");
     },
   });

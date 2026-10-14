@@ -69,6 +69,9 @@ export const AUDIT_ACTIONS = {
   routine_update: "settings",
   routine_delete: "settings",
   routine_test: "settings",
+  workflow_create: "settings",
+  workflow_rename: "settings",
+  workflow_delete: "settings",
   workflow_block_create: "settings",
   workflow_block_update: "settings",
   workflow_block_delete: "settings",
@@ -88,7 +91,7 @@ export function actionsIn(category: AuditCategory): AuditAction[] {
 export const AUDIT_ACTOR_TYPES = ["user", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine", "workflow_block"] as const;
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine", "workflow", "workflow_block"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** 予約を入れたのは誰か（予約の実行に残す）。 */
@@ -164,6 +167,10 @@ export type AuditDetailMap = {
   tag_create: Record<string, never>;
   tag_rename: { from: string; to: string };
   tag_delete: { pages: number; blocks?: number };
+  /** ワークフローの作成・名前の変更・削除。対象名はワークフローの名前。消したときは、いっしょに消えたブロックと実行の履歴の数を残す */
+  workflow_create: Record<string, never>;
+  workflow_rename: { from: string; to: string };
+  workflow_delete: { blocks: number; runs: number };
   /** ワークフローのブロックの作成・変更・削除。対象名はトリガーの文、detail は入れたアクションの数。タグの削除に伴う削除は reason を付ける */
   workflow_block_create: { actions: number };
   workflow_block_update: { actions: number };
@@ -376,6 +383,12 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
         },
       ];
 
+    case "workflow_create":
+      return [{ text: "ワークフロー " }, ...quoted(t), { text: " を作成しました" }];
+    case "workflow_rename":
+      return [{ text: "ワークフローの名前を変更しました（" }, ...named(entry.detail.from), { text: ` → ${entry.detail.to}）` }];
+    case "workflow_delete":
+      return [{ text: "ワークフロー " }, ...quoted(t), { text: ` を削除しました（ブロック ${entry.detail.blocks} 件と、実行の履歴 ${entry.detail.runs} 件も削除）` }];
     case "workflow_block_create":
       return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を作成しました（アクション ${entry.detail.actions} 件）` }];
     case "workflow_block_update":

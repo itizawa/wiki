@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { pages, workflowRunActions, workflowRuns } from "../db/schema";
 import { buildRoutineText } from "../workflows/payload";
 import { executeRun } from "../workflows/run";
-import { setup, W } from "./harness";
+import { defaultWorkflowId, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -52,7 +52,7 @@ async function newRoutine(name = "校正"): Promise<string> {
   return res.body.id;
 }
 async function newBlock(tagId: string, actions: unknown[], base = W) {
-  const res = await ctx.call("POST", `${base}/workflow/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
+  const res = await ctx.call("POST", `${base}/workflow/${await defaultWorkflowId(ctx.call, base)}/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
   expect(res.status).toBe(201);
   return res.body.id as string;
 }
@@ -97,6 +97,31 @@ describe("workflow runs: enqueue", () => {
     expect(await runs()).toHaveLength(4);
   });
 
+  it("queues runs for blocks in every workflow of the wiki, and keeps each run under its own workflow's history", async () => {
+    await boot();
+    const tag = await newTag("校正待ち");
+    const routine = await newRoutine();
+    const mkWorkflow = async (name: string) => (await ctx.call("POST", `${W}/workflow`, { name })).body.id as string;
+    const a = await mkWorkflow("校正");
+    const b = await mkWorkflow("公開前");
+    const inA = (await ctx.call("POST", `${W}/workflow/${a}/blocks`, { trigger: { type: "tag_attached", tagId: tag }, actions: [callRoutine(routine)] })).body.id;
+    const inB = (await ctx.call("POST", `${W}/workflow/${b}/blocks`, { trigger: { type: "tag_attached", tagId: tag }, actions: [removeTag(tag)] })).body.id;
+    const page = await newPage("はじめに");
+
+    expect((await attach(page, tag)).status).toBe(200);
+    await ctx.settle();
+    expect((await runs()).map((r) => [r.workflowId, r.blockId]).sort()).toEqual([[a, inA], [b, inB]].sort());
+    const historyOf = async (id: string) => (await ctx.call("GET", `${W}/workflow/${id}/runs`)).body.runs as { summary: string }[];
+    expect((await historyOf(a)).map((r) => r.summary)).toEqual(["Routine「校正」を呼ぶ"]);
+    expect((await historyOf(b)).map((r) => r.summary)).toEqual(["タグ「校正待ち」を外す"]);
+
+    // ワークフローを消すと、そのブロックの履歴も消える。もう一方は残る
+    expect((await ctx.call("DELETE", `${W}/workflow/${a}`)).status).toBe(204);
+    expect((await runs()).map((r) => r.workflowId)).toEqual([b]);
+    expect((await ctx.call("GET", `${W}/workflow/${a}/runs`)).status).toBe(404);
+    expect(await historyOf(b)).toHaveLength(1);
+  });
+
   it("copies the actions at enqueue time, so editing the block later does not change the run", async () => {
     await boot();
     const tag = await newTag("校正待ち");
@@ -108,7 +133,7 @@ describe("workflow runs: enqueue", () => {
     const [pageRow] = await ctx.db.select().from(pages).where(eq(pages.id, page));
     const ids = await ctx.db.transaction((tx) => enqueueTagAttached(tx, pageRow!.wikiId, page, tag));
     expect(ids).toHaveLength(1);
-    await ctx.call("PUT", `${W}/workflow/blocks/${block}`, { trigger: { type: "tag_attached", tagId: tag }, actions: [removeTag(tag)] });
+    await ctx.call("PUT", `${W}/workflow/${await defaultWorkflowId(ctx.call)}/blocks/${block}`, { trigger: { type: "tag_attached", tagId: tag }, actions: [removeTag(tag)] });
     expect((await runActions(ids[0]!)).map((a) => [a.position, a.type, a.status])).toEqual([
       [0, "call_routine", "pending"],
       [1, "remove_tag", "pending"],
@@ -272,7 +297,7 @@ describe("workflow runs: execute", () => {
     const [pageRow] = await ctx.db.select().from(pages).where(eq(pages.id, page));
     const [id] = await ctx.db.transaction((tx) => enqueueTagAttached(tx, pageRow!.wikiId, page, tag));
     // ブロックを消してから Routine を消す（登録から消えた状態にする）
-    expect((await ctx.call("DELETE", `${W}/workflow/blocks/${block}`)).status).toBe(204);
+    expect((await ctx.call("DELETE", `${W}/workflow/${await defaultWorkflowId(ctx.call)}/blocks/${block}`)).status).toBe(204);
     expect((await ctx.call("DELETE", `/admin/routines/${routine}`)).status).toBe(204);
 
     expect(await executeRun(ctx.db, ctx, id!)).toBe("failed");

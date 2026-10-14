@@ -17,7 +17,7 @@ import { wikis, wikiTags, workflowActions, workflowBlocks, workflowRoutines } fr
 import { HttpError, notFound } from "../errors";
 
 /**
- * ワークフローのブロック（wiki ごと）。変えるものは、呼ぶ側のトランザクション（tx）の中で呼ぶ。
+ * ワークフローのブロック（ワークフローごと）。変えるものは、呼ぶ側のトランザクション（tx）の中で呼ぶ。
  * トリガーとアクションは「種類ごとの表」（下の TRIGGER_COLUMNS / ACTION_COLUMNS）で DB の列とつなぐ。
  * 種類を足すときは、shared の `workflow.ts` と、ここの表に足す（`Record<種類, …>` なので、足し忘れると型エラー）。
  */
@@ -90,12 +90,13 @@ function toBlock(row: typeof workflowBlocks.$inferSelect, actions: ActionRow[], 
   };
 }
 
-/** その wiki のブロック（作った順）。1件だけ読むときは blockId を渡す */
-async function loadBlocks(db: Db, wikiId: string, blockId?: string): Promise<WorkflowBlock[]> {
+/** そのワークフローのブロック（作った順）。1件だけ読むときは blockId を渡す */
+async function loadBlocks(db: Db, wikiId: string, workflowId: string, blockId?: string): Promise<WorkflowBlock[]> {
+  const scope = and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.workflowId, workflowId));
   const rows = await db
     .select()
     .from(workflowBlocks)
-    .where(blockId ? and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.id, blockId)) : eq(workflowBlocks.wikiId, wikiId))
+    .where(blockId ? and(scope, eq(workflowBlocks.id, blockId)) : scope)
     .orderBy(asc(workflowBlocks.createdAt), asc(workflowBlocks.id));
   if (rows.length === 0) return [];
   const actions = await db
@@ -113,8 +114,8 @@ async function loadBlocks(db: Db, wikiId: string, blockId?: string): Promise<Wor
   );
 }
 
-export async function listBlocks(db: Db, wikiId: string): Promise<WorkflowBlock[]> {
-  return loadBlocks(db, wikiId);
+export async function listBlocks(db: Db, wikiId: string, workflowId: string): Promise<WorkflowBlock[]> {
+  return loadBlocks(db, wikiId, workflowId);
 }
 
 /** 選ぶための Routine（ID と名前だけ。URL もトークンも返さない） */
@@ -124,12 +125,12 @@ export async function listRoutineChoices(db: Db): Promise<RoutineChoice[]> {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function findBlock(tx: Db, wikiId: string, id: string) {
+async function findBlock(tx: Db, wikiId: string, workflowId: string, id: string) {
   if (!UUID.test(id)) throw notFound(`workflow block ${id}`);
   const [row] = await tx
     .select()
     .from(workflowBlocks)
-    .where(and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.id, id)));
+    .where(and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.workflowId, workflowId), eq(workflowBlocks.id, id)));
   if (!row) throw notFound(`workflow block ${id}`);
   return row;
 }
@@ -155,12 +156,13 @@ const triggerLabel = (input: WorkflowBlockInput, names: Names) =>
 
 const blockTarget = (id: string, label: string) => ({ type: "workflow_block" as const, id, label });
 
-export async function createBlock(tx: Db, wikiId: string, input: WorkflowBlockInput, actor: AuditActor): Promise<WorkflowBlock> {
+export async function createBlock(tx: Db, wikiId: string, workflowId: string, input: WorkflowBlockInput, actor: AuditActor): Promise<WorkflowBlock> {
   const names = await checkInput(tx, wikiId, input);
   const [row] = await tx
     .insert(workflowBlocks)
     .values({
       wikiId,
+      workflowId,
       triggerType: input.trigger.type,
       ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => { triggerTagId: string })(input.trigger),
       createdBy: actorUserId(actor),
@@ -174,12 +176,12 @@ export async function createBlock(tx: Db, wikiId: string, input: WorkflowBlockIn
     target: blockTarget(row!.id, triggerLabel(input, names)),
     detail: { actions: input.actions.length },
   });
-  return (await loadBlocks(tx, wikiId, row!.id))[0]!;
+  return (await loadBlocks(tx, wikiId, workflowId, row!.id))[0]!;
 }
 
 /** トリガーとアクションの並びを、まるごと置き換える */
-export async function replaceBlock(tx: Db, wikiId: string, id: string, input: WorkflowBlockInput, actor: AuditActor): Promise<WorkflowBlock> {
-  await findBlock(tx, wikiId, id);
+export async function replaceBlock(tx: Db, wikiId: string, workflowId: string, id: string, input: WorkflowBlockInput, actor: AuditActor): Promise<WorkflowBlock> {
+  await findBlock(tx, wikiId, workflowId, id);
   const names = await checkInput(tx, wikiId, input);
   await tx
     .update(workflowBlocks)
@@ -197,11 +199,11 @@ export async function replaceBlock(tx: Db, wikiId: string, id: string, input: Wo
     target: blockTarget(id, triggerLabel(input, names)),
     detail: { actions: input.actions.length },
   });
-  return (await loadBlocks(tx, wikiId, id))[0]!;
+  return (await loadBlocks(tx, wikiId, workflowId, id))[0]!;
 }
 
-export async function deleteBlock(tx: Db, wikiId: string, id: string, actor: AuditActor): Promise<void> {
-  const row = await findBlock(tx, wikiId, id);
+export async function deleteBlock(tx: Db, wikiId: string, workflowId: string, id: string, actor: AuditActor): Promise<void> {
+  const row = await findBlock(tx, wikiId, workflowId, id);
   const names = await loadNames(tx, wikiId);
   const label = describeTrigger(TRIGGER_COLUMNS[row.triggerType as WorkflowTriggerType].toTrigger(row, names));
   await tx.delete(workflowBlocks).where(eq(workflowBlocks.id, id));

@@ -76,6 +76,11 @@ export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
+/** 開いている wiki のワークフローの詳細（ブロックと実行の履歴）へのリンク。 */
+export function workflowLink(workflowId: string) {
+  return { to: "/w/$wikiKey/workflows/$workflowId", params: { wikiKey: currentWikiKey(), workflowId } } as const;
+}
+
 /** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・ワークフロー・ゴミ箱・設定とそのタブ）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"

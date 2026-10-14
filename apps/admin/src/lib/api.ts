@@ -53,9 +53,11 @@ import type {
   PageTagList,
   RoutineChoiceList,
   TagList,
+  Workflow,
   WorkflowBlock,
   WorkflowBlockInput,
-  WorkflowList,
+  WorkflowBlockList,
+  WorkflowIndex,
   WorkflowRunPage,
   WorkflowRunStatus,
   WikiSettings,
@@ -365,14 +367,20 @@ export const api = {
   attachTag: (pageId: string, tagId: string) => request<PageTagList>("PUT", w(`/pages/${pageId}/tags/${tagId}`)),
   detachTag: (pageId: string, tagId: string) => request<PageTagList>("DELETE", w(`/pages/${pageId}/tags/${tagId}`)),
 
-  /** ワークフローのブロック。読むのは wiki のメンバーなら誰でも、作る・置き換える・消すのは管理者だけ */
-  getWorkflow: () => request<WorkflowList>("GET", w("/workflow")),
-  createWorkflowBlock: (input: WorkflowBlockInput) => request<WorkflowBlock>("POST", w("/workflow/blocks"), input),
-  replaceWorkflowBlock: (id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/blocks/${id}`), input),
-  deleteWorkflowBlock: (id: string) => request<null>("DELETE", w(`/workflow/blocks/${id}`)),
-  /** 実行の履歴（新しい順。管理者だけ）。`cursor` で続きを取る */
-  listWorkflowRuns: (input: { status?: WorkflowRunStatus; limit: number; cursor?: string }) =>
-    request<WorkflowRunPage>("GET", w(`/workflow/runs${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`)),
+  /** ワークフロー（wiki ごとに名前つきで複数）。読むのは wiki のメンバーなら誰でも、作る・名前を変える・消すのは管理者だけ。消すと、ブロックと実行の履歴もいっしょに消える */
+  listWorkflows: () => request<WorkflowIndex>("GET", w("/workflow")),
+  getWorkflow: (id: string) => request<Workflow>("GET", w(`/workflow/${id}`)),
+  createWorkflow: (name: string) => request<Workflow>("POST", w("/workflow"), { name }),
+  renameWorkflow: (id: string, name: string) => request<Workflow>("PATCH", w(`/workflow/${id}`), { name }),
+  deleteWorkflow: (id: string) => request<null>("DELETE", w(`/workflow/${id}`)),
+  /** ワークフローの下のブロック */
+  getWorkflowBlocks: (workflowId: string) => request<WorkflowBlockList>("GET", w(`/workflow/${workflowId}/blocks`)),
+  createWorkflowBlock: (workflowId: string, input: WorkflowBlockInput) => request<WorkflowBlock>("POST", w(`/workflow/${workflowId}/blocks`), input),
+  replaceWorkflowBlock: (workflowId: string, id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/${workflowId}/blocks/${id}`), input),
+  deleteWorkflowBlock: (workflowId: string, id: string) => request<null>("DELETE", w(`/workflow/${workflowId}/blocks/${id}`)),
+  /** そのワークフローの実行の履歴（新しい順。管理者だけ）。`cursor` で続きを取る */
+  listWorkflowRuns: (workflowId: string, input: { status?: WorkflowRunStatus; limit: number; cursor?: string }) =>
+    request<WorkflowRunPage>("GET", w(`/workflow/${workflowId}/runs${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`)),
   /** ブロックで選ぶための、登録済み Routine の ID と名前（管理者だけ） */
   listRoutineChoices: () => request<RoutineChoiceList>("GET", w("/routines")),
 

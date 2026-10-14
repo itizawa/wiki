@@ -34,7 +34,7 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
   if (!wiki || wiki.archivedAt) return [];
 
   const blocks = await tx
-    .select({ id: workflowBlocks.id })
+    .select({ id: workflowBlocks.id, workflowId: workflowBlocks.workflowId })
     .from(workflowBlocks)
     .where(and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.triggerType, "tag_attached"), eq(workflowBlocks.triggerTagId, tagId)))
     .orderBy(asc(workflowBlocks.createdAt), asc(workflowBlocks.id));
@@ -50,6 +50,7 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
       .insert(workflowRuns)
       .values({
         wikiId,
+        workflowId: block.workflowId,
         blockId: block.id,
         pageId,
         tagId,
