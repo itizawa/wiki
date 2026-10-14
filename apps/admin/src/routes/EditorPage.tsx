@@ -32,7 +32,7 @@ import { PageCover, PageCoverPicker, useSetCover } from "../components/PageCover
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
 import { PageTagChips } from "../components/PageTagPicker";
-import { PublishMenu } from "../components/PublishMenu";
+import { PublishBadge, PublishMenu } from "../components/PublishMenu";
 import { SaveStatus, saveState } from "../components/SaveStatus";
 import { StarButton } from "../components/StarButton";
 import { VersionHistory } from "../components/VersionHistory";
@@ -375,7 +375,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
           // 狭い画面（md 未満）では、この画面の帯を置かず、上の帯（サイドバーを開くボタンと wiki 名）の右端に出す。パンくずは出さない（タイトルは本文の上で見える）
           <NarrowBarActions>
             {saveStatus}
-            {!narrow && actions}
+            {narrow ? <PublishBadge page={p} dirty={dirty} ensureVersion={ensureVersion} /> : actions}
             {pageMenu}
           </NarrowBarActions>
         ) : (

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Drawer from "@mui/material/Drawer";
 import Popover from "@mui/material/Popover";
@@ -52,6 +53,39 @@ export function PublishSheet({ open, onClose, ...props }: PanelProps & { open: b
     >
       <PublishPanel {...props} />
     </Drawer>
+  );
+}
+
+/**
+ * スマホ幅の上の帯の右端に置く、公開の状態のバッジ（「公開中」「限定公開中」「非公開」＋予約の日時）。「…」を開かなくても状態が見える。
+ * 押すと `PublishSheet` を開く。長いときは、帯の中で省略して他を押し出さない（全文は読み上げ用の名前と、押して開く枠に出る）。
+ */
+export function PublishBadge(props: PanelProps) {
+  const [open, setOpen] = useState(false);
+  const state = usePublishState(props.page);
+  return (
+    <>
+      <Button
+        size="small"
+        variant="outlined"
+        color={state.color}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`公開の状態：${state.label}`}
+        onClick={() => setOpen(true)}
+        sx={{ flexShrink: 1, minWidth: 0, minHeight: 32, px: 1, fontSize: "0.8125rem", whiteSpace: "nowrap" }}
+      >
+        {/* 「公開中・予約中 10/20 10:00」は、日時が切れないよう「・」で2行に分ける */}
+        <Box component="span" sx={{ display: "flex", flexDirection: "column", lineHeight: 1.2, overflow: "hidden" }}>
+          {state.label.split("・").map((part) => (
+            <Box key={part} component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {part}
+            </Box>
+          ))}
+        </Box>
+      </Button>
+      <PublishSheet {...props} open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 
