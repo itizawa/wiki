@@ -75,6 +75,7 @@ export function TemplatesPage() {
     {
       key: "updatedAt",
       header: "更新日時",
+      narrow: "hide",
       width: "160px",
       sx: { whiteSpace: "nowrap" },
       render: (t) => (
@@ -84,6 +85,7 @@ export function TemplatesPage() {
     {
       key: "actions",
       header: "操作",
+      narrow: "stack",
       width: "max-content",
       render: (t) => (
         <Row sx={{ flexWrap: "nowrap" }}>
