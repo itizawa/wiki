@@ -31,7 +31,7 @@ const TABS: SettingsTab[] = [
   { path: "", to: "/w/$wikiKey/settings", label: "一般" },
   { path: "/appearance", to: "/w/$wikiKey/settings/appearance", label: "外観", adminOnly: true },
   { path: "/home", to: "/w/$wikiKey/settings/home", label: "トップページ", adminOnly: true },
-  { path: "/integrations", to: "/w/$wikiKey/settings/integrations", label: "連携" },
+  { path: "/integrations", to: "/w/$wikiKey/settings/integrations", label: "Google 連携" },
   { path: "/sns", to: "/w/$wikiKey/settings/sns", label: "SNS", adminOnly: true },
   { path: "/tags", to: "/w/$wikiKey/settings/tags", label: "タグ管理", adminOnly: true },
   { path: "/members", to: "/w/$wikiKey/settings/members", label: "メンバー" },
@@ -39,7 +39,7 @@ const TABS: SettingsTab[] = [
 ];
 
 /**
- * `/w/{key}/settings/...`：wiki ごとの設定。見出し「設定」と、タブ（一般・外観・トップページ・連携・SNS・タグ管理・メンバー・監査ログ）を出し、
+ * `/w/{key}/settings/...`：wiki ごとの設定。見出し「設定」と、タブ（一般・外観・トップページ・Google 連携・SNS・タグ管理・メンバー・監査ログ）を出し、
  * 下にいまのタブの画面を出す。タブごとに URL を分ける（再読み込み・URL の共有で同じタブが開く）。各画面の見出しは h2。
  */
 export function WikiSettingsLayout() {

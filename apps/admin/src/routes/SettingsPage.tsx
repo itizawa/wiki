@@ -63,7 +63,7 @@ export function savedMessage(before: WikiSettings, after: WikiSettings): string 
 const textSx = { maxWidth: 680 } as const;
 const stepsSx = { m: 0, pl: 2.75, fontSize: "0.9rem", "& > li": { mb: 0.75 }, ...textSx } as const;
 
-/** 「設定」の「連携」タブ（`/w/{key}/settings/integrations`）：公開サイトの外部サービスとの連携（Google Analytics・サーチコンソール）。 */
+/** 「設定」の「Google 連携」タブ（`/w/{key}/settings/integrations`）：公開サイトの外部サービスとの連携（Google Analytics・サーチコンソール）。 */
 export function SettingsPage() {
   const { wiki, isOwner } = useWiki();
   const settings = useQuery({ queryKey: ["wiki-settings"], queryFn: api.getSettings });
@@ -82,7 +82,7 @@ export function SettingsPage() {
             </>
           }
         >
-          連携
+          Google 連携
         </HelpHeading>
         {/* リンクは「i」の中では押せないので、外に出しておく */}
         <Muted sx={textSx}>
