@@ -12,7 +12,7 @@ import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVer
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, SaveNotice, Section, SkeletonSection } from "../components/ui";
-import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_SECRET, type AnalyticsTarget } from "../lib/analytics";
+import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_HELP, type AnalyticsTarget } from "../lib/analytics";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { screenLink, useWiki } from "../lib/wiki";
 
@@ -486,14 +486,14 @@ function ReadNumbers({ target, connection, blocked, children }: { target: Analyt
 }
 
 function ServiceAccountMissing({ state }: { state: GoogleConnection["serviceAccount"] }) {
-  const secret = <Mono sx={{ wordBreak: "break-all" }}>{SERVICE_ACCOUNT_SECRET}</Mono>;
   return (
     <Alert severity="info" sx={textSx}>
-      {state === "invalid" ? (
-        <>サービスアカウントの鍵（{secret}）が登録されていますが、鍵として読めません。</>
-      ) : (
-        <>この管理画面には、サービスアカウントの鍵（{secret}）がまだ登録されていないため、足すメールアドレスを出せません。</>
-      )}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, flexWrap: "wrap" }}>
+        {state === "invalid"
+          ? "サービスアカウントの鍵が登録されていますが、鍵として読めません。登録し直すには、サーバーの設定が要るので、この wiki のオーナーに頼んでください。"
+          : "サービスアカウントの鍵がまだ登録されていないため、足すメールアドレスを出せません。登録するには、サーバーの設定が要るので、この wiki のオーナーに頼んでください。"}
+        <HelpTip about="鍵の登録">{SERVICE_ACCOUNT_HELP}</HelpTip>
+      </Box>
       登録の手順は、
       <RouterLink {...screenLink("/w/$wikiKey/analytics")} underline="always">
         「アクセス解析」
