@@ -7,6 +7,7 @@ import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
 import { Home, mainProps, mainSx, Root, SkipLink } from "./routes/Layout";
 import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
+import { DashboardPage } from "./routes/DashboardPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
 import { EditRequestListPage } from "./routes/EditRequestListPage";
@@ -25,6 +26,7 @@ import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { SnsSettingsPage } from "./routes/SnsSettingsPage";
 import { WorkflowSettingsPage } from "./routes/WorkflowSettingsPage";
+import { TagSettingsPage } from "./routes/TagSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
 import { WikisPage } from "./routes/WikisPage";
@@ -104,7 +106,9 @@ const wikiRoute = createRoute({
     return <WikiLayout key={wikiKey} wikiKey={wikiKey} />;
   },
 });
-const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(PagesPage) });
+// wiki のトップ：最近更新したページ・下書き・予約公開・閲覧数の要約。全ページの一覧は /pages
+const dashboardRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(DashboardPage) });
+const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "pages", component: padded(PagesPage) });
 const editorRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "pages/$pageId",
@@ -211,8 +215,9 @@ const snsRoute = createRoute({
     return <SnsSettingsPage result={x} onResultRead={clear} />;
   },
 });
-// ワークフロー（管理用タグ・あとからブロックと履歴）。管理者だけ
+// タグ管理（管理用タグ）。管理者だけ
 const workflowsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "workflows", component: WorkflowSettingsPage });
+const tagsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "tags", component: TagSettingsPage });
 // メンバー。一覧はだれでも、変えるのは管理者だけ
 const membersRoute = createRoute({ getParentRoute: () => settingsRoute, path: "members", component: MembersPage });
 // この wiki の監査ログ（管理者だけ）
@@ -253,6 +258,7 @@ const routeTree = rootRoute.addChildren([
   consentRoute,
   connectionsRoute,
   wikiRoute.addChildren([
+    dashboardRoute,
     pagesRoute,
     editorRoute,
     editRequestsRoute,
@@ -263,7 +269,7 @@ const routeTree = rootRoute.addChildren([
     templatesRoute,
     templateEditorRoute,
     trashRoute,
-    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, workflowsRoute, membersRoute, auditRoute]),
+    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, workflowsRoute, tagsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),
     legacySettingsScreen("appearance"),

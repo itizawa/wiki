@@ -484,7 +484,10 @@ export const pageRoutes = new Hono<AppEnv>()
     const { db } = c.get("deps");
     const q = c.req.query("q")?.trim();
     const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
-    const where = q ? and(live, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : live;
+    // ?published=false：まだ公開したことのないページだけ（ダッシュボードの「下書き」）
+    const unpublished = c.req.query("published") === "false" ? isNull(pages.publishedVersionId) : undefined;
+    const base = and(live, unpublished);
+    const where = q ? and(base, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : base;
     const order = [desc(pages.updatedAt), desc(pages.id)];
     const limitParam = c.req.query("limit");
     const cursorParam = c.req.query("cursor");

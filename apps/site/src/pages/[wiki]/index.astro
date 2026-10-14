@@ -6,6 +6,7 @@ import TreeNav from "../../components/TreeNav";
 import page from "../../styles/page.module.css";
 import Base from "../../layouts/Base.astro";
 import { allWikis, fullNav, siteData } from "../../lib/manifest";
+import { webSiteJsonLd } from "../../lib/jsonLd";
 import { excerpt, renderMarkdown } from "../../lib/markdown";
 
 export async function getStaticPaths() {
@@ -16,13 +17,15 @@ const { wiki: manifest, publicPaths, origin, primaryTree, pagesById, linkPreview
 // 管理画面の「トップページ」で書いた自由記述。内部リンクの解決は記事の本文と同じ
 const { introMd } = resolveHome(manifest.home);
 const introHtml = introMd ? renderMarkdown(introMd, { publicPaths, origin, titleOf: (id) => pagesById.get(id)?.title, linkPreviews, previewOf }) : null;
+// 検索結果の説明。自由記述が空なら出さない（空の説明を出さない）
+const description = (introMd && excerpt(introMd)) || undefined;
 const fmt = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" });
 // 公開ページが1つも無いツリーは出さない（新着だけにする）
 const items = primaryTree ? await fullNav(manifest.key, primaryTree) : [];
 const tree = items.length > 0 ? primaryTree : undefined;
 ---
 
-<Base wiki={manifest.key} title={manifest.name} canonical="/" nav="/">
+<Base wiki={manifest.key} title={manifest.name} canonical="/" nav="/" description={description} jsonLd={webSiteJsonLd({ name: manifest.name, origin })}>
   <div class={page.withNav}>
     <main>
       {introHtml && <div class:list={[article.body, page.homeIntro]} data-home-intro set:html={introHtml} />}

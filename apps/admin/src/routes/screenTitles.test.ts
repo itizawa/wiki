@@ -7,6 +7,7 @@ const read = (file: string) => readFileSync(fileURLToPath(new URL(file, import.m
 /** 画面ファイル → タブの題に出す画面の名前（サイドバー・コマンドメニューでの呼び名と同じ）。 */
 const SCREENS: [string, string][] = [
   ["PagesPage.tsx", "すべてのページ"],
+  ["DashboardPage.tsx", "ダッシュボード"],
   ["SearchPage.tsx", "検索"],
   ["EditRequestListPage.tsx", "編集リクエスト"],
   ["CalendarPage.tsx", "編集カレンダー"],
