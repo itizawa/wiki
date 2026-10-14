@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Workflow } from "lucide-react";
+import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Workflow } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -226,6 +226,13 @@ export function Sidebar(props: {
         {/* Google Analytics とサーチコンソールの数字。その wiki を開ける人ならだれでも見られる */}
         <NavItem to="/w/$wikiKey/analytics" icon={<ChartColumn size={18} />} onClick={props.onNavigate}>
           アクセス解析
+        </NavItem>
+        {/* テンプレートの一覧と、ゴミ箱に入れたページの一覧。どちらも wiki のオブジェクトの一覧なので、入口を常に出す。下の階層（テンプレートの編集）でも選ばれた見た目になる */}
+        <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
+          テンプレート
+        </NavItem>
+        <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
+          ゴミ箱
         </NavItem>
         {/* ブロックと実行の履歴。設定とは独立した機能なので、設定とは別の項目にする。管理者だけ */}
         {role === "admin" && (
