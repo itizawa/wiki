@@ -56,6 +56,8 @@ import type {
   WorkflowBlock,
   WorkflowBlockInput,
   WorkflowList,
+  WorkflowRunPage,
+  WorkflowRunStatus,
   WikiSettings,
   WikiTag,
   WikiSummary,
@@ -368,6 +370,9 @@ export const api = {
   createWorkflowBlock: (input: WorkflowBlockInput) => request<WorkflowBlock>("POST", w("/workflow/blocks"), input),
   replaceWorkflowBlock: (id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/blocks/${id}`), input),
   deleteWorkflowBlock: (id: string) => request<null>("DELETE", w(`/workflow/blocks/${id}`)),
+  /** 実行の履歴（新しい順。管理者だけ）。`cursor` で続きを取る */
+  listWorkflowRuns: (input: { status?: WorkflowRunStatus; limit: number; cursor?: string }) =>
+    request<WorkflowRunPage>("GET", w(`/workflow/runs${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`)),
   /** ブロックで選ぶための、登録済み Routine の ID と名前（管理者だけ） */
   listRoutineChoices: () => request<RoutineChoiceList>("GET", w("/routines")),
 

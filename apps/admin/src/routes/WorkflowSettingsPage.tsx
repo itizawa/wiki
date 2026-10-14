@@ -3,9 +3,10 @@ import Stack from "@mui/material/Stack";
 import { ConfirmHost } from "../components/ConfirmDialog";
 import { useWiki } from "../lib/wiki";
 import { WorkflowBlocksSection } from "./WorkflowBlocksSection";
+import { WorkflowRunsSection } from "./WorkflowRunsSection";
 
 /**
- * 「設定」の「ワークフロー」タブ（`/w/{key}/settings/workflows`）：ブロック（これから実行の履歴）。管理者だけ。
+ * 「設定」の「ワークフロー」タブ（`/w/{key}/settings/workflows`）：ブロックと実行の履歴。管理者だけ。
  * タグは「タグ管理」タブ（`TagSettingsPage`）にある。
  */
 export function WorkflowSettingsPage() {
@@ -14,7 +15,17 @@ export function WorkflowSettingsPage() {
   return (
     <Stack spacing={1.5}>
       <ConfirmHost />
-      {role !== "admin" ? <Alert severity="info">ワークフローの設定は、この wiki の管理者だけが行えます。</Alert> : <WorkflowBlocksSection />}
+      {role !== "admin" ? <Alert severity="info">ワークフローの設定は、この wiki の管理者だけが行えます。</Alert> : <WorkflowSections />}
     </Stack>
+  );
+}
+
+/** 管理者に出す節の並び。ブロック・履歴の節は、ここに足す。 */
+function WorkflowSections() {
+  return (
+    <>
+      <WorkflowBlocksSection />
+      <WorkflowRunsSection />
+    </>
   );
 }

@@ -1,16 +1,24 @@
-import { workflowBlockInput } from "@wiki/shared";
+import { workflowBlockInput, workflowRunsQuery } from "@wiki/shared";
 import { Hono } from "hono";
 import { auditActor } from "../audit/service";
 import type { AppEnv } from "../env";
+import { HttpError } from "../errors";
 import { parseJson } from "../validation";
 import { createBlock, deleteBlock, listBlocks, listRoutineChoices, replaceBlock } from "../workflows/blocks";
+import { listWorkflowRuns } from "../workflows/history";
 import { requireWikiAdmin } from "./wikis";
 
-/** /admin/w/{key}/workflow：その wiki のワークフローのブロック。読むのは wiki のメンバーなら誰でも、作る・置き換える・消すのは管理者だけ */
+/** /admin/w/{key}/workflow：その wiki のワークフローのブロックと、実行の履歴（`/runs`、管理者だけ）。読むのは wiki のメンバーなら誰でも、作る・置き換える・消すのは管理者だけ */
 export const workflowRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
     return c.json({ blocks: await listBlocks(db, c.get("wiki").id) });
+  })
+  // 実行の履歴（新しい順。`limit` と `cursor` で続きを取る）。管理者だけ
+  .get("/runs", requireWikiAdmin, async (c) => {
+    const parsed = workflowRunsQuery.safeParse(c.req.query());
+    if (!parsed.success) throw new HttpError(400, "invalid_input", "invalid input", parsed.error.issues);
+    return c.json(await listWorkflowRuns(c.get("deps").db, c.get("wiki").id, parsed.data));
   })
   .post("/blocks", requireWikiAdmin, async (c) => {
     const { db } = c.get("deps");

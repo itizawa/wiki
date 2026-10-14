@@ -516,6 +516,7 @@ describe("POST /internal/versions/prune", () => {
       deleted: 0,
       oauth: { tokens: 1, codes: 0 },
       builds: { events: 0, builds: 0 },
+      workflowRuns: 0,
       images: null,
     });
     expect(has(orphan)).toBe(true);

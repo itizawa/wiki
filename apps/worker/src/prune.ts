@@ -8,13 +8,14 @@ export const IMAGE_CLEANUP_UTC_DAY = 0;
 
 /**
  * `/internal/versions/prune` の応答。どれも消した数。
- * `deleted` は版、`oauth` はトークンと認可コード、`builds` は公開イベントとビルドの行、
+ * `deleted` は版、`oauth` はトークンと認可コード、`builds` は公開イベントとビルドの行、`workflowRuns` は終わって古いワークフローの実行、
  * `images` は参照されていない画像（掃除をしなかった回と、失敗した回は null）
  */
 export type PruneResult = {
   deleted: number;
   oauth?: { tokens: number; codes: number };
   builds?: { events: number; builds: number };
+  workflowRuns?: number;
   images?: { listed: number; truncated: boolean; unreferenced: number; deleted: number } | null;
 };
 
@@ -32,8 +33,8 @@ export async function prune(env: Env, fetchImpl: typeof fetch = fetch, now: Date
     });
     if (!res.ok) throw new Error(`/internal/versions/prune failed: ${res.status}`);
     const result = (await res.json()) as PruneResult;
-    const { deleted, oauth, builds, images } = result;
-    console.log(JSON.stringify({ prune: { deleted, oauth, builds, images } }));
+    const { deleted, oauth, builds, workflowRuns, images } = result;
+    console.log(JSON.stringify({ prune: { deleted, oauth, builds, workflowRuns, images } }));
     return result;
   } catch (err) {
     console.error("versions prune failed", err);

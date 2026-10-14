@@ -30,6 +30,8 @@ import { Muted, Row, RouterLink, Section, SkeletonRows } from "../components/ui"
 import { api, errorMessage } from "../lib/api";
 import { useSession } from "./Layout";
 
+/** ブロックの節の id（履歴が空のときの案内から、ここへ移る） */
+export const BLOCKS_SECTION_ID = "workflow-blocks";
 const BLOCKS_KEY = ["workflow"];
 const ROUTINES_KEY = ["routine-choices"];
 
@@ -99,7 +101,7 @@ export function WorkflowBlocksSection() {
   const blocks = list.data?.blocks;
 
   return (
-    <Section>
+    <Section id={BLOCKS_SECTION_ID}>
       <HelpHeading
         variant="subtitle1"
         component="h2"
