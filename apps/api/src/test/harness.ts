@@ -43,6 +43,19 @@ export const testConfig: AppConfig = {
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
 export const W = `/admin/w/${DEFAULT_WIKI_KEY}`;
 
+/** その wiki の最初のワークフローの ID（無ければ「テスト」という名前で作る）。ブロックを作る・履歴を見るテストが使う */
+export async function defaultWorkflowId(
+  call: (method: string, path: string, body?: unknown) => Promise<{ status: number; body: any }>,
+  base = W,
+): Promise<string> {
+  const list = await call("GET", `${base}/workflow`);
+  const first = list.body.workflows?.[0];
+  if (first) return first.id as string;
+  const made = await call("POST", `${base}/workflow`, { name: "テスト" });
+  if (made.status !== 201) throw new Error(`could not create a workflow: ${made.status}`);
+  return made.body.id as string;
+}
+
 /** 1つの wiki の公開内容（既定は最初の wiki）。 */
 export async function wikiManifest(db: Db, key = DEFAULT_WIKI_KEY) {
   const wiki = (await buildManifest(db)).wikis.find((w) => w.key === key);

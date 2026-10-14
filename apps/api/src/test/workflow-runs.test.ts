@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { pages, workflowRunActions, workflowRuns } from "../db/schema";
 import { buildRoutineText } from "../workflows/payload";
 import { executeRun } from "../workflows/run";
-import { setup, W } from "./harness";
+import { defaultWorkflowId, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -52,7 +52,7 @@ async function newRoutine(name = "校正"): Promise<string> {
   return res.body.id;
 }
 async function newBlock(tagId: string, actions: unknown[], base = W) {
-  const res = await ctx.call("POST", `${base}/workflow/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
+  const res = await ctx.call("POST", `${base}/workflow/${await defaultWorkflowId(ctx.call, base)}/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
   expect(res.status).toBe(201);
   return res.body.id as string;
 }
@@ -108,7 +108,7 @@ describe("workflow runs: enqueue", () => {
     const [pageRow] = await ctx.db.select().from(pages).where(eq(pages.id, page));
     const ids = await ctx.db.transaction((tx) => enqueueTagAttached(tx, pageRow!.wikiId, page, tag));
     expect(ids).toHaveLength(1);
-    await ctx.call("PUT", `${W}/workflow/blocks/${block}`, { trigger: { type: "tag_attached", tagId: tag }, actions: [removeTag(tag)] });
+    await ctx.call("PUT", `${W}/workflow/${await defaultWorkflowId(ctx.call)}/blocks/${block}`, { trigger: { type: "tag_attached", tagId: tag }, actions: [removeTag(tag)] });
     expect((await runActions(ids[0]!)).map((a) => [a.position, a.type, a.status])).toEqual([
       [0, "call_routine", "pending"],
       [1, "remove_tag", "pending"],
@@ -272,7 +272,7 @@ describe("workflow runs: execute", () => {
     const [pageRow] = await ctx.db.select().from(pages).where(eq(pages.id, page));
     const [id] = await ctx.db.transaction((tx) => enqueueTagAttached(tx, pageRow!.wikiId, page, tag));
     // ブロックを消してから Routine を消す（登録から消えた状態にする）
-    expect((await ctx.call("DELETE", `${W}/workflow/blocks/${block}`)).status).toBe(204);
+    expect((await ctx.call("DELETE", `${W}/workflow/${await defaultWorkflowId(ctx.call)}/blocks/${block}`)).status).toBe(204);
     expect((await ctx.call("DELETE", `/admin/routines/${routine}`)).status).toBe(204);
 
     expect(await executeRun(ctx.db, ctx, id!)).toBe("failed");

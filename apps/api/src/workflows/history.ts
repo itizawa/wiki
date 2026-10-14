@@ -36,12 +36,12 @@ function readResult(result: unknown): { sessionUrl: string | null; error: string
 }
 
 /**
- * その wiki の、ワークフローの実行を新しい順に返す（`limit` 件と、続きの `nextCursor`）。`status` で絞れる。
+ * そのワークフローの実行を新しい順に返す（`limit` 件と、続きの `nextCursor`）。`status` で絞れる。
  * アクションは、実行を積んだ時点の写し（`workflow_run_actions`）から作る。ブロックが消えていても、記録だけで要約を言える。
  * 応答に入れるのは、状態・理由の文・Routine のセッション URL だけ（トークンは、記録にも入っていない）。
  */
-export async function listWorkflowRuns(db: Db, wikiId: string, query: WorkflowRunsQuery): Promise<WorkflowRunPage> {
-  const conds = [eq(workflowRuns.wikiId, wikiId)];
+export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: string, query: WorkflowRunsQuery): Promise<WorkflowRunPage> {
+  const conds = [eq(workflowRuns.wikiId, wikiId), eq(workflowRuns.workflowId, workflowId)];
   if (query.status) conds.push(eq(workflowRuns.status, query.status));
   if (query.cursor) {
     const c = decodeCursor(query.cursor);

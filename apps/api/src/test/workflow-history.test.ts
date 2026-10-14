@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { pages, workflowRunActions, workflowRuns } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { cleanupWorkflowRuns, WORKFLOW_RUN_KEEP_MS } from "../workflows/cleanup";
-import { setup, W } from "./harness";
+import { defaultWorkflowId, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -45,10 +45,12 @@ async function addRun(input: {
   actions?: { type: string; routineId?: string; tagId?: string; status?: string; result?: unknown }[];
 }): Promise<string> {
   const wiki = (await ctx.client.query<{ id: string }>(`select id from wikis where key = 'wiki'`)).rows[0]!;
+  const workflowId = await defaultWorkflowId(ctx.call);
   const [run] = await ctx.db
     .insert(workflowRuns)
     .values({
       wikiId: wiki.id,
+      workflowId,
       pageId: input.pageId,
       tagId: input.tagId,
       status: input.status ?? "succeeded",
@@ -72,9 +74,10 @@ async function addRun(input: {
   return run!.id;
 }
 
+const runsUrl = async (base = W) => `${base}/workflow/${await defaultWorkflowId(ctx.call, base)}/runs`;
 const count = async (table: string) => Number((await ctx.client.query<{ n: number }>(`select count(*)::int as n from ${table}`)).rows[0]!.n);
 
-describe("GET /workflow/runs", () => {
+describe("GET /workflow/{id}/runs", () => {
   it("is for admins only: editors get 403, and other wikis' runs never show", async () => {
     ctx = await setup({ config: { routineTokenKey: KEY } });
     const admin = await ctx.addUser("wiki-admin@example.com", { wiki: "admin" });
@@ -84,15 +87,15 @@ describe("GET /workflow/runs", () => {
     const tag = await newTag("校正待ち");
     await addRun({ pageId: page, tagId: tag });
 
-    expect((await editor.call("GET", `${W}/workflow/runs`)).status).toBe(403);
-    expect((await outsider.call("GET", `${W}/workflow/runs`)).status).toBe(403);
-    const read = await admin.call("GET", `${W}/workflow/runs`);
+    expect((await editor.call("GET", `${await runsUrl()}`)).status).toBe(403);
+    expect((await outsider.call("GET", `${await runsUrl()}`)).status).toBe(403);
+    const read = await admin.call("GET", `${await runsUrl()}`);
     expect(read.status).toBe(200);
     expect(read.body.runs).toHaveLength(1);
 
     expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" })).status).toBe(201);
-    expect((await ctx.call("GET", `${N}/workflow/runs`)).body).toEqual({ runs: [], nextCursor: null });
-    expect((await ctx.call("GET", "/admin/w/nowhere/workflow/runs")).status).toBe(404);
+    expect((await ctx.call("GET", await runsUrl(N))).body).toEqual({ runs: [], nextCursor: null });
+    expect((await ctx.call("GET", "/admin/w/nowhere/workflow/00000000-0000-4000-8000-000000000000/runs")).status).toBe(404);
   });
 
   it("shows the run with the page, the tag, the block summary and each action's result", async () => {
@@ -112,7 +115,7 @@ describe("GET /workflow/runs", () => {
         { type: "remove_tag", tagId: tag, status: "pending" },
       ],
     });
-    const res = await ctx.call("GET", `${W}/workflow/runs`);
+    const res = await ctx.call("GET", `${await runsUrl()}`);
     expect(res.body.runs[0]).toMatchObject({
       status: "failed",
       attempts: 3,
@@ -138,7 +141,7 @@ describe("GET /workflow/runs", () => {
       tagId: tag,
       actions: [{ type: "call_routine", routineId: routine, result: { sessionUrl: "javascript:alert(1)", authorization: `Bearer ${TOKEN}`, body: TOKEN } }],
     });
-    const res = await ctx.call("GET", `${W}/workflow/runs`);
+    const res = await ctx.call("GET", `${await runsUrl()}`);
     const text = JSON.stringify(res.body);
     expect(text).not.toContain(TOKEN);
     expect(text).not.toContain("authorization");
@@ -158,7 +161,7 @@ describe("GET /workflow/runs", () => {
     expect((await ctx.call("DELETE", `${W}/tags/${tag}`)).status).toBe(204);
     await ctx.client.query(`delete from workflow_routines`);
 
-    const res = await ctx.call("GET", `${W}/workflow/runs`);
+    const res = await ctx.call("GET", `${await runsUrl()}`);
     expect(res.status).toBe(200);
     const [newer, older] = res.body.runs;
     expect(newer).toMatchObject({ page: { title: "残る記事", available: true }, tagName: "削除されたタグ" });
@@ -173,21 +176,21 @@ describe("GET /workflow/runs", () => {
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) ids.push(await addRun({ pageId: page, tagId: tag, status: i % 2 === 0 ? "succeeded" : "failed", createdAt: new Date(base + i * 60_000) }));
 
-    const first = await ctx.call("GET", `${W}/workflow/runs?limit=2`);
+    const first = await ctx.call("GET", `${await runsUrl()}?limit=2`);
     expect(first.body.runs.map((r: { id: string }) => r.id)).toEqual([ids[4], ids[3]]);
     expect(first.body.nextCursor).toEqual(expect.any(String));
-    const second = await ctx.call("GET", `${W}/workflow/runs?limit=2&cursor=${encodeURIComponent(first.body.nextCursor)}`);
+    const second = await ctx.call("GET", `${await runsUrl()}?limit=2&cursor=${encodeURIComponent(first.body.nextCursor)}`);
     expect(second.body.runs.map((r: { id: string }) => r.id)).toEqual([ids[2], ids[1]]);
-    const third = await ctx.call("GET", `${W}/workflow/runs?limit=2&cursor=${encodeURIComponent(second.body.nextCursor)}`);
+    const third = await ctx.call("GET", `${await runsUrl()}?limit=2&cursor=${encodeURIComponent(second.body.nextCursor)}`);
     expect(third.body.runs.map((r: { id: string }) => r.id)).toEqual([ids[0]]);
     expect(third.body.nextCursor).toBeNull();
 
-    const failed = await ctx.call("GET", `${W}/workflow/runs?status=failed`);
+    const failed = await ctx.call("GET", `${await runsUrl()}?status=failed`);
     expect(failed.body.runs.map((r: { id: string }) => r.id)).toEqual([ids[3], ids[1]]);
 
-    expect((await ctx.call("GET", `${W}/workflow/runs?status=bogus`)).status).toBe(400);
-    expect((await ctx.call("GET", `${W}/workflow/runs?cursor=oops`)).status).toBe(400);
-    expect((await ctx.call("GET", `${W}/workflow/runs?limit=0`)).status).toBe(400);
+    expect((await ctx.call("GET", `${await runsUrl()}?status=bogus`)).status).toBe(400);
+    expect((await ctx.call("GET", `${await runsUrl()}?cursor=oops`)).status).toBe(400);
+    expect((await ctx.call("GET", `${await runsUrl()}?limit=0`)).status).toBe(400);
   });
 });
 

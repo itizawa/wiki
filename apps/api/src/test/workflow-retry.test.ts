@@ -6,7 +6,7 @@ import { runTick } from "../cron/tick";
 import { auditLogs, pages, workflowRunActions, workflowRuns } from "../db/schema";
 import { enqueueTagAttached } from "../workflows/enqueue";
 import { runDueWorkflowRuns, WORKFLOW_STALE_MS } from "../workflows/retry";
-import { setup, W } from "./harness";
+import { defaultWorkflowId, setup, W } from "./harness";
 
 let ctx: Awaited<ReturnType<typeof setup>>;
 afterEach(async () => {
@@ -49,7 +49,8 @@ const N = "/admin/w/notes";
 const newTag = (name: string, base = W) => mk<{ id: string }>(`${base}/tags`, { name }).then((t) => t.id);
 const newPage = (title: string, base = W) => mk<{ id: string }>(`${base}/pages`, { title }).then((p) => p.id);
 const newRoutine = (name: string, url: string) => mk<{ id: string }>("/admin/routines", { name, url, token: TOKEN }).then((r) => r.id);
-const newBlock = (tagId: string, actions: unknown[], base = W) => mk<{ id: string }>(`${base}/workflow/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
+const newBlock = async (tagId: string, actions: unknown[], base = W) =>
+  mk<{ id: string }>(`${base}/workflow/${await defaultWorkflowId(ctx.call, base)}/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
 const callRoutine = (routineId: string) => ({ type: "call_routine", routineId });
 
 const runs = () => ctx.db.select().from(workflowRuns).orderBy(asc(workflowRuns.createdAt), asc(workflowRuns.id));
