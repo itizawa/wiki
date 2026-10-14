@@ -3,10 +3,10 @@ import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
-import Typography from "@mui/material/Typography";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { EditRequestListItem, EditRequestListStatus } from "@wiki/shared";
 import { useMemo } from "react";
+import { HelpHeading } from "../components/HelpTip";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { Muted, RouterLink, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
@@ -105,9 +105,15 @@ export function EditRequestListPage({ status, onStatusChange }: { status: EditRe
     <Stack spacing={1.5}>
       <Section>
         <Row sx={{ mb: 1 }}>
-          <Typography variant="h6" component="h2" noWrap sx={{ flex: 1 }}>
+          <HelpHeading
+            variant="h6"
+            component="h2"
+            noWrap
+            sx={{ flex: 1, minWidth: 0 }}
+            help="ページの本文に、箇所ごとの直し方や指摘を出してもらうものです。wiki のメンバーがページのレビュー画面（編集画面の「…」メニューの「編集リクエスト」）から、AI エージェントが外部アプリ連携（MCP）から出すと、ここに並びます。"
+          >
             編集リクエスト
-          </Typography>
+          </HelpHeading>
           {/* 0件のときにも、もう片方へ切り替えられるよう、一覧の外に置く */}
           <ToggleButtonGroup
             exclusive
@@ -158,12 +164,11 @@ export function EditRequestListPage({ status, onStatusChange }: { status: EditRe
 function EmptyList({ status }: { status: EditRequestListStatus }) {
   return status === "open" ? (
     <>
-      未対応の編集リクエストはありません。編集リクエストは、ページの本文に、箇所ごとの直し方や指摘を出してもらうものです。wiki のメンバーがページのレビュー画面（編集画面の「…」メニューの「編集リクエスト」）から、AI
-      エージェントが外部アプリ連携（MCP）から出すと、ここに並びます。片付いたものは、<RouterLink {...editRequestListLink("done")}>完了した編集リクエスト</RouterLink>で見られます。
+      未対応の編集リクエストはありません。片付いたものは、<RouterLink {...editRequestListLink("done")}>完了した編集リクエスト</RouterLink>で見られます。
     </>
   ) : (
     <>
-      完了した編集リクエストはまだありません。項目がすべて採用・却下・解決済み・取り下げになったリクエストが、ここに並びます。対応を待っているものは、
+      完了した編集リクエストはまだありません。対応を待っているものは、
       <RouterLink {...editRequestListLink("open")}>未対応の編集リクエスト</RouterLink>で見られます。
     </>
   );
