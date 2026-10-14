@@ -29,6 +29,12 @@ export type DataListColumn<T> = {
    */
   width?: string;
   align?: "right";
+  /**
+   * 狭い幅（md 未満）での扱い。決めなければ、広い幅と同じ位置に出す（収まらなければ表を横に送る）。
+   * - `"hide"`: 隠す。日付や補助の列に使う（隠しても、行を開けば同じ情報がある列だけ）
+   * - `"stack"`: 隠さずに、行の下（2段目）へ積む。操作や、その画面の目的になる列に使う。積んだ列の見出しは出さない
+   */
+  narrow?: "hide" | "stack";
   /** 横に送っても残す列（どの行かを見失わないため）。左端からの位置（px）を渡す */
   stickyLeft?: number;
   /** 並べ替えできる列の、いまの並び（見出しのセルの `aria-sort`） */
@@ -121,6 +127,16 @@ export function gridTemplate(columns: { width?: string }[]): string {
   return columns.map((c) => c.width ?? "minmax(max-content, auto)").join(" ");
 }
 
+/** 狭い幅で、行の1段目に残る列（隠さず、積まない列）。 */
+export function narrowColumns<T extends { narrow?: "hide" | "stack" }>(columns: T[]): T[] {
+  return columns.filter((c) => c.narrow === undefined);
+}
+
+/** 狭い幅で、2段目に積む列。 */
+export function stackedColumns<T extends { narrow?: "hide" | "stack" }>(columns: T[]): T[] {
+  return columns.filter((c) => c.narrow === "stack");
+}
+
 /**
  * 横に送れる箱の、続きがあることを示す影。送れる側の端にだけ出る（`background-attachment` の `local` の覆いが、端まで送ると影を隠す）。
  * 覆いは箱の地の色（`background.paper`）で塗る。
@@ -139,8 +155,22 @@ const scrollShadowSx = (t: Theme) => {
   } as const;
 };
 
+/**
+ * 狭い幅（md 未満）でのセルのスタイル。隠す列は出さない。積む列は行の下に全幅で出し（見出しは出さない）、
+ * 積む列は `order` で後ろに回す（DOM の順は変えず、1段目の列を先に置く）。区切り線は2段目の最後のセルにだけ引く（1行を1まとまりに見せる）。
+ */
+const narrowSx = (column: { narrow?: "hide" | "stack" }, hasStack: boolean, isLastStacked: boolean, header: boolean) => (t: Theme) => ({
+  [t.breakpoints.down("md")]: {
+    ...(column.narrow === "hide" || (column.narrow === "stack" && header) ? { display: "none" } : null),
+    ...(column.narrow === "stack" ? { gridColumn: "1 / -1", order: 1, justifyContent: "flex-start", textAlign: "left", flexWrap: "wrap", gap: 1, pt: 0, "&:empty": { py: 0 } } : null),
+    ...(hasStack && !isLastStacked && !header ? { borderBottom: "none" } : null),
+  },
+});
+
 /** セルのスタイル。`extra` は、見出しのセルなどで足すもの（sx の配列は入れ子にできないので、ここで並べる）。 */
-function cellSx<T>(column: DataListColumn<T>, extra?: SxProps<Theme>): SxProps<Theme> {
+function cellSx<T>(column: DataListColumn<T>, columns: DataListColumn<T>[], extra?: SxProps<Theme>, header = false): SxProps<Theme> {
+  const stacked = stackedColumns(columns);
+  const stackedLast = stacked[stacked.length - 1];
   return [
     {
       display: "flex",
@@ -155,6 +185,7 @@ function cellSx<T>(column: DataListColumn<T>, extra?: SxProps<Theme>): SxProps<T
       lineHeight: 1.43,
       borderBottom: border,
     },
+    narrowSx(column, stacked.length > 0, stackedLast === column, header),
     column.stickyLeft !== undefined && { position: "sticky", left: column.stickyLeft, zIndex: 1, bgcolor: "background.paper" },
     ...(Array.isArray(column.sx) ? column.sx : [column.sx]),
     extra,
@@ -199,7 +230,7 @@ export function DataList<T>(props: DataListProps<T>) {
       {columns.map((c, j) => {
         const bar = <Skeleton variant="text" width={skeletonWidth(i + j)} />;
         return (
-          <Box key={c.key} role="cell" sx={cellSx({ ...c, align: undefined })}>
+          <Box key={c.key} role="cell" sx={cellSx({ ...c, align: undefined }, columns)}>
             {/* 表の中には枠を挟めないので、「読み込み中」の名前は最初のセルの中に付ける */}
             {label && j === 0 ? <LoadingRegion label={label} sx={{ width: "100%" }}>{bar}</LoadingRegion> : <Box sx={{ width: "100%" }}>{bar}</Box>}
           </Box>
@@ -218,12 +249,12 @@ export function DataList<T>(props: DataListProps<T>) {
           // 描いていない行があるので、行の数を伝える。続きがあるうちは、全部でいくつかは分からない（-1）
           aria-rowcount={props.virtualized && rows ? (hasNextPage ? -1 : rows.length + (hasHeader ? 1 : 0)) : undefined}
           aria-busy={rows === undefined || isFetchingNextPage}
-          sx={{ display: "grid", gridTemplateColumns: gridTemplate(columns), minWidth: "100%" }}
+          sx={(t) => ({ display: "grid", gridTemplateColumns: gridTemplate(columns), [t.breakpoints.down("md")]: { gridTemplateColumns: gridTemplate(narrowColumns(columns)) }, minWidth: "100%" })}
         >
           {hasHeader && (
             <Box role="row" aria-rowindex={props.virtualized ? 1 : undefined} sx={rowSx}>
               {columns.map((c) => (
-                <Box key={c.key} role="columnheader" aria-sort={c.sort} data-sticky={c.stickyLeft !== undefined ? "" : undefined} sx={cellSx(c, { fontWeight: 500 })}>
+                <Box key={c.key} role="columnheader" aria-sort={c.sort} data-sticky={c.stickyLeft !== undefined ? "" : undefined} sx={cellSx(c, columns, { fontWeight: 500 }, true)}>
                   {c.header}
                 </Box>
               ))}
@@ -289,7 +320,7 @@ function DataRow<T>({
   return (
     <Box ref={measure} role="row" aria-rowindex={rowIndex} data-index={dataIndex} onClick={onClick} sx={[rowSx, link ? clickableRowSx : null] as SxProps<Theme>}>
       {columns.map((c) => (
-        <Box key={c.key} role="cell" data-sticky={c.stickyLeft !== undefined ? "" : undefined} sx={cellSx(c)}>
+        <Box key={c.key} role="cell" data-sticky={c.stickyLeft !== undefined ? "" : undefined} sx={cellSx(c, columns)}>
           {c.render(row)}
         </Box>
       ))}

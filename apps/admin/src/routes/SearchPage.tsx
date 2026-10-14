@@ -65,6 +65,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
     {
       key: "visibility",
       header: "状態",
+      narrow: "stack",
       width: "120px",
       sx: { alignItems: "flex-start" },
       render: (r) => <StatusChip status={r.visibility} label={visibilityLabel[r.visibility]} />,
@@ -72,6 +73,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
     {
       key: "updatedAt",
       header: "更新日時",
+      narrow: "hide",
       width: "160px",
       sx: { alignItems: "flex-start", whiteSpace: "nowrap" },
       render: (r) => <Muted component="span">{formatDateTime(r.updatedAt)}</Muted>,

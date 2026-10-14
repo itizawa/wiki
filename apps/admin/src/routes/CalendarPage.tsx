@@ -120,6 +120,7 @@ export function CalendarPage() {
     },
     {
       key: "status",
+      narrow: "stack",
       width: "136px",
       render: (e) =>
         e.kind === "action" ? (
@@ -158,6 +159,7 @@ export function CalendarPage() {
     },
     {
       key: "actions",
+      narrow: "stack",
       // 予約中の行だけにある操作。日をまたいで列がそろうよう、幅を決める
       width: "250px",
       align: "right",

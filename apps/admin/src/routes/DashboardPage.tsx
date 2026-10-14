@@ -77,6 +77,7 @@ const titleColumn: DataListColumn<PageSummary> = {
 const updatedColumn: DataListColumn<PageSummary> = {
   key: "updatedAt",
   header: "更新日時",
+  narrow: "stack",
   width: "160px",
   sx: nowrap,
   render: (p) => <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>,
@@ -133,6 +134,7 @@ function Drafts() {
 const runAtColumn: DataListColumn<ScheduledAction> = {
   key: "runAt",
   header: "実行予定",
+  narrow: "stack",
   width: "160px",
   sx: nowrap,
   render: (a) => <Muted component="span">{formatDateTime(a.runAt)}</Muted>,

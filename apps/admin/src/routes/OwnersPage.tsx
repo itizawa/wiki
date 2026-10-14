@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserSummary } from "@wiki/shared";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
-import { HelpHeading } from "../components/HelpTip";
+import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Tooltip } from "../components/Tooltip";
 import { Muted, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
@@ -76,17 +76,19 @@ export function OwnersPage() {
     },
     {
       key: "lastLoginAt",
-      header: "最後のログイン",
-      render: (u) => (
-        <Box>
-          {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <Muted component="span">まだログインしていません</Muted>}
-          {!u.linked && <Muted sx={{ fontSize: 12 }}>このメールアドレスで最初にログインした Google アカウントに結びつきます</Muted>}
-        </Box>
+      header: (
+        <>
+          最後のログイン
+          <HelpTip about="最後のログイン">まだログインしていない人は、このメールアドレスで最初にログインした Google アカウントに結びつきます。</HelpTip>
+        </>
       ),
+      narrow: "hide",
+      render: (u) => (u.lastLoginAt ? formatDateTime(u.lastLoginAt) : <Muted component="span">まだログインしていません</Muted>),
     },
     {
       key: "owner",
       header: "オーナー",
+      narrow: "stack",
       render: (u) => {
         const lastOwner = u.isOwner && owners <= 1;
         return (

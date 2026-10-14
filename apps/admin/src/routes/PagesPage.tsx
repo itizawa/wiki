@@ -68,6 +68,7 @@ export function PagesPage() {
     {
       key: "status",
       header: "状態",
+      narrow: "stack",
       // 「公開」「AI下書き」のチップが並ぶ幅。広く取らず、狭い画面でタイトルに幅を残す
       width: "168px",
       render: (p) => (
@@ -80,6 +81,7 @@ export function PagesPage() {
     {
       key: "updatedAt",
       header: "更新日時",
+      narrow: "hide",
       width: "160px",
       sx: nowrap,
       render: (p) => <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>,
