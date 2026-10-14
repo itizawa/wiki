@@ -49,7 +49,7 @@ export default function SiteMenu() {
         aria-haspopup="menu"
         aria-expanded={!!anchor}
         onClick={(e) => setAnchor(e.currentTarget)}
-        sx={{ width: 32, height: 32, color: "var(--muted)", borderRadius: "var(--radius)", "&:hover, &[aria-expanded=true]": { bgcolor: "var(--bg)", color: "var(--text)" } }}
+        sx={{ width: 32, height: 32, "@media (pointer: coarse), (max-width: 800px)": { width: 44, height: 44, my: "-6px", mr: "-6px" }, color: "var(--muted)", borderRadius: "var(--radius)", "&:hover, &[aria-expanded=true]": { bgcolor: "var(--bg)", color: "var(--text)" } }}
       >
         <Ellipsis size={20} aria-hidden="true" />
       </IconButton>

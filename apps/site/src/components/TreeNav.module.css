@@ -14,3 +14,11 @@ button.twisty:hover { color: var(--text); }
 .retry:hover { background: var(--bg); }
 /* ページのアイコン（絵文字）。タイトルとの間を少し空ける */
 .icon { margin-right: 4px; }
+
+/* スマホなど（指で押す画面）では、押せる範囲を 44px にする（公開サイトの押せる範囲。issue #391）。字の大きさは変えない */
+@media (pointer: coarse), (max-width: 800px) {
+  .item { min-height: 44px; }
+  .item a { display: flex; align-items: center; align-self: stretch; }
+  .twisty { width: 44px; height: 44px; }
+  .retry { min-height: 44px; padding: 0 12px; }
+}
