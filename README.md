@@ -47,7 +47,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   | 一般 | `/w/{key}/settings` | wiki の表示名と画像、key と公開サイトの URL（変えられない） | だれでも（変えるのはオーナーだけ） |
   | 外観 | `/w/{key}/settings/appearance` | 公開サイトの外観（下の「公開サイトの外観（テーマ）」） | 管理者だけ |
   | トップページ | `/w/{key}/settings/home` | 公開サイトのトップの自由記述（下の「公開サイトのトップページ」） | 管理者だけ |
-  | 連携 | `/w/{key}/settings/integrations` | Google Analytics・サーチコンソール | だれでも（変えるのはオーナーだけ） |
+  | 連携 | `/w/{key}/settings/integrations` | Google Analytics・サーチコンソール・AdSense | だれでも（変えるのはオーナーだけ） |
   | SNS | `/w/{key}/settings/sns` | X のアカウントとの連携（下の「SNS 連携」） | 管理者だけ |
   | メンバー | `/w/{key}/settings/members` | メンバーと招待（「ユーザーとロール」） | だれでも（変えるのは管理者だけ） |
   | 監査ログ | `/w/{key}/settings/audit` | この wiki の監査ログ（「監査ログ」） | 管理者だけ |
@@ -64,6 +64,11 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   - 値は公開サイトの HTML にそのまま出るので、決まった形のものだけを通す（測定 ID は `G-` + 英大文字と数字4〜20文字、確認用の値は英数字と `-` `_` で100文字まで。`packages/shared/src/wiki.ts`）。`UA-`・`GTM-`・`AW-` は使えない。API は形の合わない値を 400 にし、公開サイトのビルドも形の合わない値は出さない
   - Cookie の同意バナーは無い。GA は閲覧者のブラウザに Cookie を置く
   - つないだあとの数字は、管理画面の「アクセス解析」で見られる（下の「アクセス解析」）。同じ「設定」に、GA の**プロパティ ID**（数字だけ。測定 ID とは別の番号）を入れる。プロパティ ID は管理画面だけが使い、公開サイトには出さず、変えてもビルドし直さない
+- **Google AdSense** も wiki ごとに設定する。同じ「連携」タブに、AdSense の**パブリッシャー ID**（`ca-pub-` + 数字10〜20桁。`pub-` だけのもの、AdSense のコード（`<script ... ?client=ca-pub-...>`）、確認用の `<meta name="google-adsense-account">` を貼っても、`ca-pub-...` にそろえる）を入れて保存すると、次のビルドで、その wiki の公開サイトの `<head>` に `<meta name="google-adsense-account">` と自動広告のコード（`adsbygoogle.js`）が入り、`/ads.txt`（`google.com, pub-..., DIRECT, f08c47fec0942fa0`）が出る。空にして保存すると外れ、`/ads.txt` は 404 に戻る
+  - 変えるのはオーナーだけ、値が実際に変わったときだけビルドし直す、形の合わない値は API が 400 にし、公開サイトのビルドも出さない（`isAdsensePublisherId`）のは、GA と同じ
+  - **限定公開のページと 404 のページには出さない**（限定公開の URL を Google へ送らないため。エラーのページに広告を出すことは、AdSense のポリシーで認められていないため）。どのページに出すかは `apps/site/src/lib/adsense.ts` が決め、`build:sample` の検査で確かめる
+  - AdSense の審査（サイトの追加）は、wiki ごとではなく、AdSense の画面でルートのドメイン（`hatchery-works.com`）に対して行う。wiki のサブドメインは、そのドメインの審査でまとめて扱われる。この wiki で行うのは、審査が済んだアカウントのパブリッシャー ID を入れることだけ
+  - 広告の枠（iframe）が開けるよう、公開サイトの CSP の `frame-src` に、AdSense の枠の行き先（`*.googlesyndication.com` `*.doubleclick.net` `*.adtrafficquality.google` `fundingchoicesmessages.google.com`）を入れてある（`apps/site/worker/index.ts`）。広告のコードを読み込まない wiki では、枠は作られない
 - **公開サイト**は Worker もビルドも1つ。1回のビルドで全 wiki のぶんを wiki ごとのディレクトリに出力し、Worker が `Host` を見てその wiki のディレクトリから返す（`apps/site/README.md`）。どれか1つの wiki の内容が変わると全体をビルドし直す。公開用のデータ（`/export/public`）には、全体の `contentHash` のほかに wiki ごとの `contentHash` も入れてある（変わった wiki だけを作り直すための準備。いまのビルドは使っていない）
 - データ：`wikis`（`id` / `key` / `name` / `archived_at` / `created_at` / `created_by`（作ったオーナーのメールアドレス））。`pages` `trees` `scheduled_actions` `publish_events` が `wiki_id` を持つ
 
@@ -124,7 +129,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   | ページ | 削除（ゴミ箱に入れる）、ゴミ箱から元に戻す、ゴミ箱から完全に削除する |
   | 設定 | wiki の名前・画像の変更、公開サイトのトップページの自由記述の変更（中身は残さない）、SNS（X）のアカウントの連携・解除・テスト投稿（文面とトークンは残さない）、Routine の登録・変更・削除・テスト実行（トークンは残さない。全体にかかわるものとして wiki なし） |
   | wiki | 作成、アーカイブ、元に戻す |
-- **残らない操作**：本文の保存・下書きの自動保存、ページの作成・並べ替え・移動（記録しない）、下書きから自動で版ができたこと、アイコンの変更、wiki の設定（Google Analytics・サーチコンソール）の変更、公開サイトの外観（テーマ）の変更、スター、テンプレートの作成・変更、画像のアップロード、管理画面でページを開いたこと（閲覧）。アーカイブから戻したときに、止まっていた間に時刻を過ぎた予約を失敗にすること
+- **残らない操作**：本文の保存・下書きの自動保存、ページの作成・並べ替え・移動（記録しない）、下書きから自動で版ができたこと、アイコンの変更、wiki の設定（Google Analytics・サーチコンソール・AdSense）の変更、公開サイトの外観（テーマ）の変更、スター、テンプレートの作成・変更、画像のアップロード、管理画面でページを開いたこと（閲覧）。アーカイブから戻したときに、止まっていた間に時刻を過ぎた予約を失敗にすること
 - **1件に持つもの**：いつ、どの wiki で（ログイン・オーナーの変更・wiki の作成とアーカイブは、全体にかかわるものとして wiki なし）、誰が（ユーザー／システム（予約の実行））、何を（操作の種類・対象）、変更の前と後（`detail`）
   - 予約の実行には、その予約を入れた人も残す
   - 人の名前・メールアドレスと、対象のタイトルは、その時点の値を写して持つ（あとで名前が変わっても、ページが消えても読める）
@@ -202,7 +207,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 - 公開パイプライン：操作ごとに `publish_events` を記録 → ワーカーがデバウンスしてビルド起動（`contentHash` が同じなら省略）→ サイトが `/export/public` を取得して静的出力 → Pagefind
   - 記録する操作（`publish_events.kind`）：公開・予約の実行（`publish`）、非公開化（`unpublish`）、限定公開URLの再発行（`rotate_unlisted_key`）、公開中のページのアイコンの変更（`icon`）、公開中のページのカバーの変更（`cover`）、公開したことのあるページをゴミ箱に入れる・元に戻す（`delete` `restore`）、並べ替え・移動（`structure`）、wiki の作成・設定の変更（`wiki_create` `wiki_rename` `wiki_theme` `wiki_home` `wiki_settings` `wiki_site_visibility` `wiki_archive` `wiki_unarchive`）
   - 並べ替え・移動（サイドバーのドラッグ、MCP の `move_page`）は、公開サイトのツリーに出るもの（公開中のページの親子と並び）が変わるときだけ記録する。非公開・限定公開のページだけを動かしたときは記録せず、ビルドも起動しない。非公開のページを動かしても、その下に公開中のページがあって公開サイトでの位置が変わるなら記録する。公開し直さなくても、次のビルドで公開サイトのツリーに出る
-  - `contentHash` は、公開サイトの出力に出るものだけから作る（`apps/api/src/publishing/manifest.ts` の `wikiContentHash`）。wiki ごとに、key・名前・テーマ・トップの自由記述・Google Analytics とサーチコンソールの値、公開ページの id・公開版の ID・アイコン・カバー・初回の公開日時・収益化の設定、限定公開のページの key・公開版の ID・アイコン・カバー、公開ツリーの親子と並び、公開後に削除した記事の id。全体の `contentHash` は、wiki の key と wiki ごとの `contentHash` から作る（wiki の作成・アーカイブ・復元でも変わる）
+  - `contentHash` は、公開サイトの出力に出るものだけから作る（`apps/api/src/publishing/manifest.ts` の `wikiContentHash`）。wiki ごとに、key・名前・テーマ・トップの自由記述・Google Analytics・サーチコンソール・AdSense の値、公開ページの id・公開版の ID・アイコン・カバー・初回の公開日時・収益化の設定、限定公開のページの key・公開版の ID・アイコン・カバー、公開ツリーの親子と並び、公開後に削除した記事の id。全体の `contentHash` は、wiki の key と wiki ごとの `contentHash` から作る（wiki の作成・アーカイブ・復元でも変わる）
   - 版の題名・本文・作成日時は作ったあと変わらないので、本文の代わりに公開版の ID を入れる。ビルドするか決めるとき（`requestBuild`）は本文を読まない。`/export/public` も同じ計算なので、同じ時点の2つの `contentHash` は必ず同じになる
   - 非公開のページは入れない。非公開のページの作成・並べ替えや、「公開してすぐ非公開に戻した」のように公開サイトに出るものが元に戻った操作では、ビルドしない
   - **公開サイトが使う項目をマニフェストに足したら、`wikiContentHash` にも入るようにする**（wiki の設定は、マニフェストに足せばそのまま入る。ページの項目は、題名・本文・改訂日だけを除いて入る）。入らないと、変えてもビルドが省かれる
@@ -235,7 +240,7 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 | 道具 | スコープ | 内容 |
 |---|---|---|
 | `list_wikis` | 読む | 使用中の wiki の一覧 |
-| `search_pages` | 読む | タイトルと本文から探す |
+| `search_pages` | 読む | タイトルと本文から探す。`tag`（タグの名前）を渡すと、そのタグが付いたページだけにする（`query` と両方なら両方を満たすもの。無いタグは 0 件）。結果の各ページに `tags`（タグの名前）も入る |
 | `get_page` | 読む | 最新の本文（Markdown）と `headVersionId`。アイコン（`icon`）も返す |
 | `get_tree` | 読む | ツリー（親子と並び順） |
 | `create_page` | 書く | ページを作る（非公開の下書き）。`icon` に絵文字1つを渡すと、アイコンを付ける |
@@ -578,6 +583,18 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 - トップにツリー（`/t/{key}/`）へのリンクは出さない。ツリーの一覧のページ（`/t/{key}/`）は廃止し、トップへ 301 で移す
 - データ：`wikis.home`（jsonb：`introMd`）。null や正しくない値は既定（空）として読む（`packages/shared/src/home.ts` の `resolveHome`）。あとでトップに出す部品の並びや表示の切り替えを足せるよう、文字列ではなくオブジェクトで持つ。公開用のデータ（`/export/public`）に、wiki ごとの `home` として入る
 
+## 評価（星1〜5）の埋め込み
+
+本文に専用の1行 `@rating` を書くと、公開サイトのその位置に評価の欄が出る（カードのページなど、評価してほしいページにだけ書く）。読者はログインせずに星1〜5を付けられる。管理画面では「/」メニューの「評価（星1〜5）」で入れられ、編集中は見本のカードで見せる（`apps/admin/src/editor/ratingEmbed.ts`）。記法の判定は `packages/shared/src/rating.ts`（引数は無い。コードブロックの中・文中・引数の付いた行は記法にしない）。
+
+- 欄には、平均（小数第1位）と件数、星ごとの件数の横棒グラフ（最も多い星を全幅にする）、自分で付ける星5つを出す。付け直すと上書きし、件数は増えない。評価の対象は、`@rating` を書いたページ（1つのページに何か所書いても同じ評価）
+- 公開サイトは `@rating` の行を空の枠（`[data-rating-embed]`）にし、記事のページの島（`RatingEmbeds`）がブラウザで枠に欄を入れる。中身はブラウザが読む（ビルドに数を入れないので、付いた評価はすぐ出る）。読めないときは欄ごと出さない。限定公開のページでは枠だけで、欄は出ない
+- 同じ人かどうかは、読者のブラウザが作って localStorage に覚える ID（`wiki.raterId`、UUID）で見分ける。消す・別のブラウザを使うと別の人になるので、厳密な1人1票ではない。API は ID をそのまま持たず、SHA-256 にして持つ
+- 経路：ブラウザは公開サイトと同じオリジンの `GET` / `PUT /api/ratings/{pageId}` を呼び、公開サイトの Worker がサービスバインディング（`API` → `wiki-admin`）で API の `/public/w/{key}/pages/{pageId}/rating` へ渡す（wiki は Host で決めたものを入れる。Cookie は渡さない）。CORS は要らない
+- API は、使用中で公開サイトを出している wiki の、**公開版の本文に `@rating` がある**公開ページだけを受ける（ほかは 404。下書きで書き足しても、公開するまでは受けない）。`PUT` はその wiki の公開サイトのオリジン（`Origin`）からだけ受け（ほかは 403）、接続元ごとに 60 秒で 20 回まで（`RATING_LIMITER`。超えたら 429）
+- `@rating` を消した版を公開すると欄が消え、`PUT` も受けない。付いた評価は消さず、書き戻せば元の数のまま出る。ページを完全に削除すると、そのページの評価も消す
+- データ：`page_ratings`（`page_id` / `rater_hash` / `score` / `created_at` / `updated_at`。主キーは `page_id` と `rater_hash`）
+
 ## デプロイ
 
 `main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
@@ -778,6 +795,20 @@ pnpm test
 ```
 
 スキーマを変えたら `pnpm db:generate` でマイグレーションを生成する。
+
+### E2E テスト（`apps/e2e`）
+
+管理画面をブラウザで操作して確かめる（Playwright）。管理画面はビルドした成果物を、本番と同じく API の Worker（`wrangler dev` の `[assets]`）から配る。DB は PostgreSQL（`wrangler dev` の Hyperdrive は TCP の PostgreSQL にしかつなげないので、PGlite は使えない）。手元の開発用とは別の DB を作っておく。
+
+```sh
+createdb wiki_e2e                                   # 既定の接続先は postgres://postgres:postgres@localhost:5432/wiki_e2e（E2E_DATABASE_URL で変える）
+pnpm --filter @wiki/admin build                     # 配る管理画面（E2E_ADMIN_DIST で別のディレクトリを指定できる）
+pnpm --filter @wiki/e2e exec playwright install chromium
+pnpm --filter @wiki/e2e e2e                         # マイグレーションしてから :8789 で立て、開発用ログインで入って確かめる
+```
+
+- DB は実行をまたいで残る（テストはページのタイトルに時刻を入れて見分ける）
+- CI では、PR が管理画面か API に影響するときだけ走る（`ci.yml` の `e2e`）。管理画面を変えていない PR では、`main` でビルド済みの管理画面（Actions のキャッシュ `admin-dist-<sha>`。`main` への push の `check` が残す）を使い、ビルドを省く。マージ先との分かれ目のコミットから、管理画面に影響する変更の無い範囲をさかのぼって探し（`scripts/ci-admin-dist-keys.sh`）、見つからなければビルドする。どれを使ったかは実行の Summary に出る
 
 ## 既定として選んだこと（設計書の未決事項）
 

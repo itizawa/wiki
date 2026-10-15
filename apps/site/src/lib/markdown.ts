@@ -5,7 +5,9 @@ import {
   googleMapOfParagraph,
   linkCardOfParagraph,
   matchChildren,
+  matchRating,
   matchToggle,
+  ratingStart,
   parseCalloutMarker,
   toggleStart,
   type ChildrenItem,
@@ -185,6 +187,22 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         renderer(token) {
           const items = opts.childrenOf?.(token.options as ChildrenOptions) ?? [];
           return items.length > 0 ? `<ul class="children-list" data-pagefind-ignore>${childrenListItems(items)}</ul>\n` : "";
+        },
+      },
+      // `@rating` の行は、評価の欄を置く場所にする（packages/shared/src/rating.ts）。中身はブラウザで、記事のページの RatingEmbeds が入れる
+      {
+        name: "rating",
+        level: "block",
+        start: (src: string) => {
+          const i = ratingStart(src);
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = matchRating(src);
+          return m ? { type: "rating", raw: m.raw } : undefined;
+        },
+        renderer() {
+          return `<div class="rating-embed" data-rating-embed data-pagefind-ignore></div>\n`;
         },
       },
     ],

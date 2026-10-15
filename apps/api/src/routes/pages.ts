@@ -19,7 +19,7 @@ import {
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pages, pageSearch, pageStars, pageTags, pageVersions, scheduledActions, users } from "../db/schema";
+import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pageRatings, pages, pageSearch, pageStars, pageTags, pageVersions, scheduledActions, users, wikiTags } from "../db/schema";
 import { createVersion, DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
 import { markCronWork } from "../cron/marks";
 import { descendantIds, indexNodes } from "../publishing/hierarchy";
@@ -438,7 +438,7 @@ export async function restorePage(
 
 /**
  * ゴミ箱のページを、いっしょに入れた配下ごと完全に削除する。元に戻せない。
- * 版・下書き・リンク・スター・予約・編集リクエストと、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
+ * 版・下書き・リンク・スター・評価・予約・編集リクエストと、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
  *監査ログに残す。トランザクション内で呼ぶ。
  */
 export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
@@ -449,6 +449,7 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
   await tx.delete(pageDrafts).where(inArray(pageDrafts.pageId, ids));
   await tx.delete(pageLinks).where(or(inArray(pageLinks.fromPageId, ids), inArray(pageLinks.toPageId, ids)));
   await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
+  await tx.delete(pageRatings).where(inArray(pageRatings.pageId, ids));
   await tx.delete(pageTags).where(inArray(pageTags.pageId, ids));
   // 編集リクエストの項目は版を指しているので、版より先に消す
   const requestIds = tx.select({ id: editRequests.id }).from(editRequests).where(inArray(editRequests.pageId, ids));
@@ -486,7 +487,17 @@ export const pageRoutes = new Hono<AppEnv>()
     const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
     // ?published=false：まだ公開したことのないページだけ（ダッシュボードの「下書き」）
     const unpublished = c.req.query("published") === "false" ? isNull(pages.publishedVersionId) : undefined;
-    const base = and(live, unpublished);
+    // ?tag={タグの ID}：そのタグが付いたページだけ。この wiki のタグでなければ 400
+    const tagParam = c.req.query("tag");
+    let tagged: SQL | undefined;
+    if (tagParam !== undefined) {
+      const [tag] = UUID_PATTERN.test(tagParam)
+        ? await db.select({ id: wikiTags.id }).from(wikiTags).where(and(eq(wikiTags.id, tagParam), eq(wikiTags.wikiId, c.get("wiki").id)))
+        : [];
+      if (!tag) throw new HttpError(400, "invalid_tag", "the tag does not exist in this wiki");
+      tagged = sql`exists (select 1 from ${pageTags} where ${pageTags.pageId} = ${pages.id} and ${pageTags.tagId} = ${tag.id})`;
+    }
+    const base = and(live, unpublished, tagged);
     const where = q ? and(base, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : base;
     const order = [desc(pages.updatedAt), desc(pages.id)];
     const limitParam = c.req.query("limit");

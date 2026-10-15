@@ -14,7 +14,7 @@ import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql, type SQ
 import { z } from "zod";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { editRequestItems, editRequests, pages, pageVersions, scheduledActions, wikiTags } from "../db/schema";
+import { editRequestItems, editRequests, pages, pageTags, pageVersions, scheduledActions, wikiTags } from "../db/schema";
 import {
   acceptEditRequestItems,
   addEditRequestComment,
@@ -228,17 +228,24 @@ export const TOOLS = [
   }),
   tool({
     name: "search_pages",
-    description: "ページをタイトルと本文から探す。query を省くと、更新の新しい順に返す。",
+    description:
+      "ページをタイトルと本文から探す。query を省くと、更新の新しい順に返す。tag（タグの名前）を渡すと、そのタグが付いたページだけにする（query と両方なら、両方を満たすもの。その wiki に無いタグは 0 件）。各ページの tags はタグの名前。",
     scope: "wiki.read",
-    input: z.object({ wiki: wikiKey, query: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).default(20) }),
+    input: z.object({ wiki: wikiKey, query: z.string().max(200).optional(), tag: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).default(20) }),
     inputSchema: schema(
-      { ...WIKI_PROP, query: str("探す語（省略可）"), limit: { type: "integer", minimum: 1, maximum: 100, description: "最大件数（既定 20）" } },
+      { ...WIKI_PROP, query: str("探す語（省略可）"), tag: str("タグの名前（省略可）。渡すと、そのタグが付いたページだけにする"), limit: { type: "integer", minimum: 1, maximum: 100, description: "最大件数（既定 20）" } },
       ["wiki"],
     ),
     async run({ db, agent }, input) {
       const wiki = await memberWiki(db, agent, input.wiki);
       const q = input.query?.trim();
       const like = q ? `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null;
+      let tagFilter: SQL | undefined;
+      if (input.tag !== undefined) {
+        const [tag] = await db.select({ id: wikiTags.id }).from(wikiTags).where(and(eq(wikiTags.wikiId, wiki.id), eq(wikiTags.name, input.tag.trim())));
+        if (!tag) return { pages: [] };
+        tagFilter = inArray(pages.id, db.select({ id: pageTags.pageId }).from(pageTags).where(eq(pageTags.tagId, tag.id)));
+      }
       const rows = await db
         .select({
           id: pages.id,
@@ -255,11 +262,13 @@ export const TOOLS = [
             isNull(pages.deletedAt),
             visibleTo(agent),
             like ? or(ilike(pageVersions.title, like), ilike(pageVersions.bodyMd, like)) : undefined,
+            tagFilter,
           ),
         )
         .orderBy(desc(pages.updatedAt))
         .limit(input.limit);
-      return { pages: rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() })) };
+      const tagsById = await tagsForPages(db, rows.map((r) => r.id));
+      return { pages: rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString(), tags: (tagsById.get(r.id) ?? []).map((t) => t.name) })) };
     },
   }),
   tool({

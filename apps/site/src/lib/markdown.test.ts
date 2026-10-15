@@ -98,6 +98,16 @@ describe("excerpt", () => {
   it("strips markdown", () => {
     expect(excerpt("# 見出し\n\n本文の[リンク](/x)です。")).toBe("見出し 本文のリンクです。");
   });
+
+  it("drops the credit line right under an image", () => {
+    const md = "![福袋](https://example.com/a.jpg)\n\n画像: [公式サイト](https://example.com/)より\n\n**予約は10月22日から。**";
+    expect(excerpt(md)).toBe("予約は10月22日から。");
+    expect(excerpt("![福袋](/images/a.webp)\n出典：公式サイト\n\n本文")).toBe("本文");
+  });
+
+  it("keeps a credit-like line that is not under an image", () => {
+    expect(excerpt("本文\n\n画像: 公式サイトより")).toBe("本文 画像: 公式サイトより");
+  });
 });
 
 describe("callouts", () => {
@@ -233,6 +243,24 @@ describe("@children（配下のページの一覧）", () => {
   });
   it("抜粋では、記法の行を落とす", () => {
     expect(excerpt("前の文\n\n@children depth=2\n\n後の文")).toBe("前の文 後の文");
+  });
+});
+
+describe("@rating（評価の欄）", () => {
+  const opts = { publicPaths: new Map() };
+  it("記法の行を、評価の欄を入れる空の枠にし、検索の索引には入れない", () => {
+    const html = renderMarkdown("効果\n\n@rating\n\n使い方", opts);
+    expect(html).toContain('<div class="rating-embed" data-rating-embed data-pagefind-ignore></div>');
+    expect(html).toContain("<p>効果</p>");
+    expect(html).toContain("<p>使い方</p>");
+  });
+  it("コードブロックの中・引数つき・文中の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@rating\n```\n\n@rating 5\n\n文 @rating", opts);
+    expect(html).not.toContain("rating-embed");
+    expect(html).toContain("<p>@rating 5</p>");
+  });
+  it("抜粋では、記法の行を落とす", () => {
+    expect(excerpt("前の文\n\n@rating\n\n後の文")).toBe("前の文 後の文");
   });
 });
 
