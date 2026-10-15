@@ -148,7 +148,10 @@ describe("site worker", () => {
   it("adds security headers to every response, keeping the ones a response sets itself", async () => {
     for (const res of [await wiki("/"), await wiki("/p/yyyyyyyyyy"), await wiki("/p/zzzzzzzzzz"), await get("https://ghost.site.test/")]) {
       expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
-      expect(res.headers.get("content-security-policy")).toContain("frame-src https://www.google.com;");
+      // Google マップと、AdSense の広告の枠だけを埋め込める
+      expect(res.headers.get("content-security-policy")).toContain(
+        "frame-src https://www.google.com https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://fundingchoicesmessages.google.com;",
+      );
       expect(res.headers.get("x-frame-options")).toBe("DENY");
       expect(res.headers.get("x-content-type-options")).toBe("nosniff");
       expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");

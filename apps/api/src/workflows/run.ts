@@ -177,3 +177,15 @@ async function removeTag(db: Db, ctx: Context, tagId: string): Promise<ActionRes
   const removed = await db.transaction((tx) => detachTag(tx, run.wikiId, run.pageId, tagId, WORKFLOW_ACTOR, run.id));
   return { ok: true, result: { removed } };
 }
+
+/**
+ * 積んだ実行を、応答を待たせずに裏で動かす（落ちても実行は pending / running のまま残り、あとで拾う）。
+ * `defer` があれば（Workers の `ctx.waitUntil`）そこへ預ける。管理画面の付け外しと、MCP の付け外しが同じ経路を通る。
+ */
+export function runAfterResponse(db: Db, deps: RunDeps & { defer?: ((promise: Promise<unknown>) => void) | null }, runIds: string[]): void {
+  if (runIds.length === 0) return;
+  const work = (async () => {
+    for (const id of runIds) await executeRun(db, deps, id);
+  })().catch(() => undefined);
+  (deps.defer ?? ((p) => void p))(work);
+}

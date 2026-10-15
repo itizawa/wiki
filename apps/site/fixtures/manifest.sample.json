@@ -14,6 +14,7 @@
       },
       "gaMeasurementId": null,
       "searchConsoleVerification": null,
+      "adsensePublisherId": null,
       "contentHash": "sample-notes",
       "pages": [
         {
@@ -65,6 +66,7 @@
       },
       "gaMeasurementId": "G-SAMPLE1234",
       "searchConsoleVerification": "sampleVerification_0123-abc",
+      "adsensePublisherId": "ca-pub-1234567890123456",
       "contentHash": "sample-wiki",
       "pages": [
         {

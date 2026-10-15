@@ -26,7 +26,7 @@ export type Wiki = {
 
 /**
  * wiki ごとの設定のうち、外部サービスとの連携。null なら未設定。
- * 測定 ID と確認用の値は公開サイトの HTML にそのまま出るので、決まった形のものだけを持つ（どちらも null ならタグを出さない）。
+ * 測定 ID・確認用の値・パブリッシャー ID は公開サイトの HTML にそのまま出るので、決まった形のものだけを持つ（どちらも null ならタグを出さない）。
  */
 export type WikiSettings = {
   /** Google Analytics（GA4）の測定 ID（`G-` で始まる） */
@@ -35,6 +35,8 @@ export type WikiSettings = {
   searchConsoleVerification: string | null;
   /** GA4 のプロパティ ID（数字だけ）。管理画面の「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
   gaPropertyId: string | null;
+  /** Google AdSense のパブリッシャー ID（`ca-pub-` で始まる）。公開サイトの自動広告と ads.txt に使う */
+  adsensePublisherId: string | null;
 };
 
 export const WIKI_KEY_MIN = 3;
@@ -124,6 +126,8 @@ export type UpdateWikiInput = z.infer<typeof updateWikiInput>;
 const GA_MEASUREMENT_ID = /^G-[A-Z0-9]{4,20}$/;
 /** サーチコンソールの確認用の値の形（`content` の中身だけ）。`<`・`"`・空白などは通さない。 */
 const SEARCH_CONSOLE_VERIFICATION = /^[A-Za-z0-9_-]{1,100}$/;
+/** AdSense のパブリッシャー ID の形（`ca-pub-` と数字）。 */
+const ADSENSE_PUBLISHER_ID = /^ca-pub-[0-9]{10,20}$/;
 
 export function isGaMeasurementId(value: string): boolean {
   return GA_MEASUREMENT_ID.test(value);
@@ -131,6 +135,10 @@ export function isGaMeasurementId(value: string): boolean {
 
 export function isSearchConsoleVerification(value: string): boolean {
   return SEARCH_CONSOLE_VERIFICATION.test(value);
+}
+
+export function isAdsensePublisherId(value: string): boolean {
+  return ADSENSE_PUBLISHER_ID.test(value);
 }
 
 /**
@@ -143,6 +151,18 @@ export function extractSearchConsoleVerification(pasted: string): string {
   if (!/^<meta\b/i.test(text)) return text;
   const content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(text);
   return content ? (content[1] ?? content[2] ?? content[3] ?? "").trim() : text;
+}
+
+/**
+ * AdSense のパブリッシャー ID を、貼られたものから取り出して `ca-pub-` つきにそろえる。
+ * `pub-XXXX` だけのもの、AdSense のコード（`<script ... ?client=ca-pub-XXXX ...>`）、
+ * 確認用の meta（`<meta name="google-adsense-account" content="ca-pub-XXXX">`）を受ける。
+ * どれでもないときは前後の空白を落としただけのものを返す（形の確かめは isAdsensePublisherId で行う）。
+ */
+export function extractAdsensePublisherId(pasted: string): string {
+  const text = pasted.trim();
+  const id = /^(?:ca-)?pub-(\d+)$/i.exec(text) ?? (/^</.test(text) ? /\b(?:ca-)?pub-(\d+)\b/i.exec(text) : null);
+  return id ? `ca-pub-${id[1]}` : text;
 }
 
 /** 連携の値。前後の空白は落とす。外すときは null（空の文字列も、外すものとして受ける）。 */
@@ -160,9 +180,10 @@ export const updateWikiSettingsInput = z
     gaMeasurementId: settingValue(isGaMeasurementId, "measurement id must look like G-XXXXXXXXXX").optional(),
     searchConsoleVerification: settingValue(isSearchConsoleVerification, "verification must be the content value of the meta tag").optional(),
     gaPropertyId: settingValue(isGaPropertyId, "property id must be digits only").optional(),
+    adsensePublisherId: settingValue(isAdsensePublisherId, "publisher id must look like ca-pub-XXXXXXXXXXXXXXXX").optional(),
     sitePublic: z.boolean().optional(),
   })
-  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined || v.gaPropertyId !== undefined || v.sitePublic !== undefined, { message: "nothing to update" });
+  .refine((v) => v.gaMeasurementId !== undefined || v.searchConsoleVerification !== undefined || v.gaPropertyId !== undefined || v.adsensePublisherId !== undefined || v.sitePublic !== undefined, { message: "nothing to update" });
 export type UpdateWikiSettingsInput = z.infer<typeof updateWikiSettingsInput>;
 
 /**

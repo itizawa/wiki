@@ -19,7 +19,8 @@ concurrency:
 
 jobs:
   # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる。
-  # ここでビルドした管理画面は、成果物 admin-dist として deploy のジョブへ渡る
+  # ここでビルドした管理画面は、成果物 admin-dist として deploy のジョブへ渡る。
+  # 同じものを、管理画面を変えていない PR の E2E が使えるよう、キャッシュ admin-dist-<sha> にも残す（E2E はここでは走らせない）
   check:
     uses: ./.github/workflows/ci.yml
     with:

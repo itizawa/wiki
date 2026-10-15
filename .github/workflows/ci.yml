@@ -16,6 +16,8 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    outputs:
+      affected: ${{ steps.scope.outputs.affected }}
     # PR に push し直したら、前の実行は止める。PR 以外（デプロイの前の確認）は止めない
     concurrency:
       group: ci-${{ github.event.pull_request.number || github.run_id }}
@@ -35,21 +37,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # PR では、変更したパッケージと、それに依存するパッケージだけを確かめる。
-      # apps/ と packages/ の外（pnpm-lock.yaml、tsconfig.base.json、ワークフローなど）を変えたときと、PR 以外では全部を確かめる
+      # apps/ と packages/ の外（pnpm-lock.yaml、tsconfig.base.json、ワークフローなど）を変えたときと、PR 以外では全部を確かめる（scripts/ci-scope.sh）
       - name: Decide what to check
         id: scope
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: |
-          if [ -z "$BASE" ] || git diff --name-only "$BASE...HEAD" | grep -qvE '^(apps|packages)/|\.md$'; then
-            filter="-r"
-          else
-            filter="--filter='...[$BASE]' --filter='!wiki'"
-          fi
-          affected=$(eval "pnpm $filter ls --depth -1 --json" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>console.log(JSON.parse(s||"[]").map((p)=>p.name).join(" ")))')
-          echo "filter=$filter" >> "$GITHUB_OUTPUT"
-          echo "affected=$affected" >> "$GITHUB_OUTPUT"
-          echo "確かめるパッケージ: ${affected:-（なし）}"
+          scope=$(scripts/ci-scope.sh "$BASE")
+          echo "$scope" >> "$GITHUB_OUTPUT"
+          echo "$scope"
 
       - run: pnpm ${{ steps.scope.outputs.filter }} typecheck
       - if: github.event_name == 'pull_request' || inputs.tests
@@ -69,6 +65,124 @@ jobs:
           retention-days: 7
           # 実行し直したときに、前の回のものと名前が重なっても止まらないようにする
           overwrite: true
+      # main でビルドしたものは、コミットの SHA を付けて Actions のキャッシュにも残す。管理画面を変えていない PR の E2E が、ビルドせずに使う（下の e2e）。
+      # main のキャッシュは、main へ向けた PR から読める。7日使われなければ消え、リポジトリ全体で 10GB を超えると古いものから消える（1つ 3MB ほど）。
+      # path は取り出す側（e2e）と同じ文字列にする（違うとキャッシュの版が変わり、見つからない）
+      - if: contains(steps.scope.outputs.affected, '@wiki/admin') && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: apps/admin/dist
+          key: admin-dist-${{ github.sha }}
       # サンプルのマニフェストで公開サイトをビルドし、限定公開の漏れ等を検査する
       - if: contains(steps.scope.outputs.affected, '@wiki/site')
         run: pnpm --filter @wiki/site build:sample
+
+  # 管理画面と API を、本番と同じ1つの Worker（wrangler dev）で立て、ブラウザで操作して確かめる（apps/e2e）。
+  # PR で、管理画面か API に影響する変更（@wiki/e2e が確かめる対象になる変更。e2e は両方に依存している）のときだけ。デプロイの前の確認では走らせない
+  e2e:
+    needs: check
+    if: github.event_name == 'pull_request' && contains(needs.check.outputs.affected, '@wiki/e2e')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: e2e-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    # DB は CI の Postgres サービスコンテナ。wrangler dev の Hyperdrive は TCP の PostgreSQL にしかつなげない（PGlite は使えない）ので、手元の開発（README「ローカル開発」）と同じ PostgreSQL にそろえる
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # この実行の中だけの使い捨ての DB なので、パスワードは付けない
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: wiki_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # main のビルドを探すのに、マージ先の履歴をさかのぼる
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # 管理画面は、変えた PR では check がビルドしたものを、変えていない PR では main でビルド済みのもの（キャッシュ）を使う。
+      # どちらも見つからない・迷うときはここでビルドする（再利用はただの最適化で、古いものを使うほうが高くつく）
+      - name: Find admin build to reuse
+        id: keys
+        if: "!contains(needs.check.outputs.affected, '@wiki/admin')"
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          keys=$(scripts/ci-admin-dist-keys.sh "$BASE") || keys=""
+          echo "使えるキャッシュの候補: ${keys:-（なし）}"
+          if [ -n "$keys" ]; then
+            {
+              echo "key=$(echo "$keys" | head -n1)"
+              echo "restore-keys<<EOF"
+              echo "$keys" | tail -n +2
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+      - name: Restore admin build from main
+        id: cache
+        if: steps.keys.outputs.key != ''
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: apps/admin/dist
+          key: ${{ steps.keys.outputs.key }}
+          # 1つずつ、この順に探す（キーは SHA まで含むので、前方一致でもほかのコミットには当たらない）
+          restore-keys: ${{ steps.keys.outputs.restore-keys }}
+      - name: Download admin build from check
+        if: contains(needs.check.outputs.affected, '@wiki/admin')
+        uses: actions/download-artifact@v8
+        with:
+          name: admin-dist
+          path: ${{ runner.temp }}/admin-dist
+      - name: Choose admin build
+        id: admin
+        env:
+          BUILT: ${{ contains(needs.check.outputs.affected, '@wiki/admin') }}
+          MATCHED: ${{ steps.cache.outputs.cache-matched-key }}
+        run: |
+          if [ "$BUILT" = "true" ] && [ -f "$RUNNER_TEMP/admin-dist/index.html" ]; then
+            dist="$RUNNER_TEMP/admin-dist"
+            how="この PR でビルドしたもの（check）"
+          elif [ -n "$MATCHED" ] && [ -f apps/admin/dist/index.html ]; then
+            dist="$PWD/apps/admin/dist"
+            how="main でビルド済みのもの（${MATCHED#admin-dist-} のコミット）を再利用"
+          else
+            rm -rf apps/admin/dist
+            pnpm --filter @wiki/admin build
+            dist="$PWD/apps/admin/dist"
+            how="再利用できるものが無いので、ここでビルドしたもの"
+          fi
+          echo "dist=$dist" >> "$GITHUB_OUTPUT"
+          echo "E2E の管理画面: $how"
+          echo "E2E の管理画面: $how" >> "$GITHUB_STEP_SUMMARY"
+
+      - run: pnpm --filter @wiki/e2e exec playwright install --with-deps chromium
+      - name: Run E2E
+        env:
+          E2E_ADMIN_DIST: ${{ steps.admin.outputs.dist }}
+        # wrangler dev の Hyperdrive は接続先の URL にパスワードが無いと起動しない。DB は trust なので値は何でも通る。
+        # ワークフローに決まった値を書かない（秘密情報として検出される）よう、その場で作る
+        run: |
+          export E2E_DATABASE_URL="postgres://postgres:$(openssl rand -hex 8)@localhost:5432/wiki_e2e"
+          pnpm --filter @wiki/e2e e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: |
+            apps/e2e/playwright-report
+            apps/e2e/test-results
+          retention-days: 7

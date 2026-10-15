@@ -1,5 +1,5 @@
 {
-  "id": "d12ac2cb-b4a3-4e4b-aeab-959edfc1bd39",
+  "id": "a7a64b35-eac1-42da-af9e-321bf8b3aefe",
   "prevId": "b897e98d-5b01-4dcb-86a3-36547e1c83cb",
   "version": "7",
   "dialect": "postgresql",
@@ -1559,78 +1559,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.page_ratings": {
-      "name": "page_ratings",
-      "schema": "",
-      "columns": {
-        "page_id": {
-          "name": "page_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rater_hash": {
-          "name": "rater_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "score": {
-          "name": "score",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "page_ratings_page_id_pages_id_fk": {
-          "name": "page_ratings_page_id_pages_id_fk",
-          "tableFrom": "page_ratings",
-          "tableTo": "pages",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "page_ratings_page_id_rater_hash_pk": {
-          "name": "page_ratings_page_id_rater_hash_pk",
-          "columns": [
-            "page_id",
-            "rater_hash"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "page_ratings_score_check": {
-          "name": "page_ratings_score_check",
-          "value": "\"page_ratings\".\"score\" between 1 and 5"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.page_search": {
@@ -3468,6 +3396,12 @@
         },
         "ga_property_id": {
           "name": "ga_property_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adsense_publisher_id": {
+          "name": "adsense_publisher_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false

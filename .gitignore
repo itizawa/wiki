@@ -9,3 +9,5 @@ dist
 .manifest.json
 .astro
 .data
+playwright-report
+test-results

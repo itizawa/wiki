@@ -201,10 +201,10 @@ export const api = {
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   /** ページの一覧を、続きから取る（「すべてのページ」の一覧）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
-  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number; unpublished?: boolean }) => {
+  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number; unpublished?: boolean; tag?: string }) => {
     return request<{ pages: PageSummary[]; nextCursor: string | null }>(
       "GET",
-      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor, published: input.unpublished ? "false" : undefined })}`),
+      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor, published: input.unpublished ? "false" : undefined, tag: input.tag })}`),
     );
   },
   /** 外部の URL の OGP（API が代わりに取る）。取れなければ `preview: null`。取りにいけない URL（http・内部 IP など）は 400 */
