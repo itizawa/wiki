@@ -1,9 +1,14 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, gte } from "drizzle-orm";
 import type { AuditActor } from "../audit/service";
 import type { Db } from "../db/client";
 import { pages, pageVersions, wikis, workflowActions, workflowBlocks, workflowRunActions, workflowRuns } from "../db/schema";
 import { attachTag } from "../tags/service";
 import { markCronWork } from "../cron/marks";
+
+/** 同じページ・同じブロックの実行を積める回数の上限（直近 `RUN_LIMIT_WINDOW_MS` の中）。Routine が自分を呼んだタグを付け直して、呼び続けるのを止める */
+export const MAX_RUNS_PER_BLOCK_PAGE = 5;
+export const RUN_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+export const RUN_LIMIT_REASON = "繰り返しが多すぎる";
 
 /**
  * タグを付けて、付いたときに動くワークフローの実行を積む（同じトランザクションの中で呼ぶ）。
@@ -28,6 +33,7 @@ function markWorkflowQueued(at: Date): void {
  * 「このタグが付いた」ブロックごとに、実行（pending）と、積む時点のアクションの写しを作る。
  * 付けるたびに積み、実行待ち・実行中のものがあってもまとめない。アーカイブ中の wiki では積まない。
  * ページに版が無ければ、`failed`（理由つき）で記録して、実行はしない。
+ * 同じページ・同じブロックの実行が直近1時間に `MAX_RUNS_PER_BLOCK_PAGE` 回に達していたら、積まずに `failed`（繰り返しが多すぎる）で記録する。
  */
 export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string, tagId: string, now: Date = new Date()): Promise<string[]> {
   const [wiki] = await tx.select({ archivedAt: wikis.archivedAt }).from(wikis).where(eq(wikis.id, wikiId));
@@ -45,7 +51,14 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
   const versionId = version?.id ?? null;
 
   const queued: string[] = [];
+  const since = new Date(now.getTime() - RUN_LIMIT_WINDOW_MS);
   for (const block of blocks) {
+    const [{ recent } = { recent: 0 }] = await tx
+      .select({ recent: count() })
+      .from(workflowRuns)
+      .where(and(eq(workflowRuns.blockId, block.id), eq(workflowRuns.pageId, pageId), gte(workflowRuns.createdAt, since)));
+    const tooMany = Number(recent) >= MAX_RUNS_PER_BLOCK_PAGE;
+    const failedReason = !versionId ? "版が無い" : tooMany ? RUN_LIMIT_REASON : null;
     const [run] = await tx
       .insert(workflowRuns)
       .values({
@@ -55,7 +68,7 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
         pageId,
         tagId,
         versionId,
-        ...(versionId ? {} : { status: "failed", lastError: "版が無い", finishedAt: now }),
+        ...(failedReason ? { status: "failed", lastError: failedReason, finishedAt: now } : {}),
       })
       .returning({ id: workflowRuns.id });
     const actions = await tx.select().from(workflowActions).where(eq(workflowActions.blockId, block.id)).orderBy(asc(workflowActions.position));
@@ -64,7 +77,7 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
         .insert(workflowRunActions)
         .values(actions.map((a) => ({ runId: run!.id, position: a.position, type: a.type, routineId: a.routineId, tagId: a.tagId })));
     }
-    if (versionId) queued.push(run!.id);
+    if (!failedReason) queued.push(run!.id);
   }
   if (queued.length > 0) markWorkflowQueued(now);
   return queued;

@@ -65,7 +65,7 @@ export const mcpRoutes = new Hono<AppEnv>()
   .delete("/", (c) => c.body(null, 405, { allow: "POST" }));
 
 async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcRequest) {
-  const { db, config } = c.get("deps");
+  const { db, config, routineFetch, defer } = c.get("deps");
   switch (msg.method) {
     case "initialize": {
       const requested = msg.params?.protocolVersion;
@@ -89,7 +89,7 @@ async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcReque
       const name = msg.params?.name;
       if (typeof name !== "string") return rpcError(msg.id, -32602, "params.name is required");
       try {
-        const result = await callTool({ db, config, agent }, name, msg.params?.arguments);
+        const result = await callTool({ db, config, agent, routineFetch, defer }, name, msg.params?.arguments);
         return rpcResult(msg.id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (err) {
         // 道具の失敗は、エージェントが読んでやり直せるように結果として返す

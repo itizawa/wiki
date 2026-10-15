@@ -14,7 +14,7 @@ import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql, type SQ
 import { z } from "zod";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { editRequestItems, editRequests, pages, pageVersions, scheduledActions } from "../db/schema";
+import { editRequestItems, editRequests, pages, pageVersions, scheduledActions, wikiTags } from "../db/schema";
 import {
   acceptEditRequestItems,
   addEditRequestComment,
@@ -31,7 +31,9 @@ import { cancelSchedule, createSchedule, listActions, publishAudited, unpublishA
 import { agentActor } from "../audit/service";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
-import { tagsForPages } from "../tags/service";
+import { detachTag, listTags, pageTagList, tagsForPages } from "../tags/service";
+import { attachTagAndEnqueue } from "../workflows/enqueue";
+import { runAfterResponse, type RunDeps } from "../workflows/run";
 import { roleIn, rolesByWiki } from "../users/service";
 import { findOpenWiki, listWikis } from "../wikis/service";
 
@@ -41,7 +43,14 @@ import { findOpenWiki, listWikis } from "../wikis/service";
  * ゴミ箱から完全に削除する道具は置かない（完全に消せるのは、管理画面の人だけ）。
  * 編集リクエストを出す・読む・返信する・取り下げるのは wiki.suggest、採用・却下は本文が変わるので wiki.write（指摘を解決済みにするのも、人の代わりに片付ける操作なので wiki.write）。
  */
-type ToolContext = { db: Db; config: AppConfig; agent: AgentContext };
+type ToolContext = {
+  db: Db;
+  config: AppConfig;
+  agent: AgentContext;
+  /** タグを付けて積んだワークフローの実行を、応答のあとに動かすためのもの */
+  routineFetch?: RunDeps["routineFetch"];
+  defer?: ((promise: Promise<unknown>) => void) | null;
+};
 
 type Tool<S extends z.ZodTypeAny> = {
   name: string;
@@ -128,6 +137,16 @@ async function memberWiki(db: Db, agent: AgentContext, key: string) {
   const wiki = await findOpenWiki(db, key);
   if (!(await roleIn(db, agent.user, wiki.id))) throw new HttpError(404, "wiki_not_found", `wiki ${key} not found`);
   return wiki;
+}
+
+/** その wiki のタグを名前で探す。無い名前は断る（MCP からタグは作らない） */
+async function findTagByName(db: Db, wikiId: string, name: string) {
+  const [tag] = await db
+    .select({ id: wikiTags.id })
+    .from(wikiTags)
+    .where(and(eq(wikiTags.wikiId, wikiId), eq(wikiTags.name, name.trim())));
+  if (!tag) throw notFound(`tag ${name} (list_tags で名前を確かめる。タグは管理画面で作る)`);
+  return tag;
 }
 
 async function visiblePage(db: Db, agent: AgentContext, wikiId: string, id: string) {
@@ -623,6 +642,49 @@ export const TOOLS = [
       });
       const { restoredPageIds, ...placed } = result;
       return { id: input.pageId, restored: true, restoredPages: restoredPageIds.length, ...placed };
+    },
+  }),
+  tool({
+    name: "list_tags",
+    description: "その wiki のタグの名前の一覧（名前順）。add_tag と remove_tag には、ここにある名前を渡す。タグは管理画面で作る（ここからは作れない）。",
+    scope: "wiki.read",
+    input: z.object({ wiki: wikiKey }),
+    inputSchema: schema(WIKI_PROP, ["wiki"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      return { tags: (await listTags(db, wiki.id)).map((t) => t.name) };
+    },
+  }),
+  tool({
+    name: "add_tag",
+    description:
+      "ページにタグを付ける。タグは list_tags にある名前で、無い名前は断る（ここからタグは作れない）。すでに付いていれば何もせず成功を返す。" +
+      "そのタグが付いたときに動くワークフローがあれば、その実行を積んで動かす（管理画面から付けたときと同じ）。同じページ・同じブロックの実行が1時間に5回を超えると、積まずに失敗として記録する。",
+    scope: "wiki.write",
+    input: z.object({ wiki: wikiKey, pageId, tag: z.string().min(1).max(100) }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), tag: str("タグの名前（list_tags で分かる）") }, ["wiki", "pageId", "tag"]),
+    async run({ db, config, agent, routineFetch, defer }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const tag = await findTagByName(db, wiki.id, input.tag);
+      const runIds = await db.transaction((tx) => attachTagAndEnqueue(tx, wiki.id, page.id, tag.id, agentActor(agent)));
+      // 積んだ実行は、応答を待たせずに裏で動かす（管理画面から付けたときと同じ）
+      runAfterResponse(db, { config, routineFetch, defer }, runIds);
+      return { id: page.id, tags: (await pageTagList(db, page.id)).tags.map((t) => t.name) };
+    },
+  }),
+  tool({
+    name: "remove_tag",
+    description: "ページからタグを外す。付いていなければ何もせず成功を返す。外してもワークフローの実行は積まない。",
+    scope: "wiki.write",
+    input: z.object({ wiki: wikiKey, pageId, tag: z.string().min(1).max(100) }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID"), tag: str("タグの名前（list_tags で分かる）") }, ["wiki", "pageId", "tag"]),
+    async run({ db, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const tag = await findTagByName(db, wiki.id, input.tag);
+      await db.transaction((tx) => detachTag(tx, wiki.id, page.id, tag.id, agentActor(agent)));
+      return { id: page.id, tags: (await pageTagList(db, page.id)).tags.map((t) => t.name) };
     },
   }),
   tool({
