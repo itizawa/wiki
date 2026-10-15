@@ -19,14 +19,16 @@ import { keepVersion } from "../pages/versions";
 import { markCronWork } from "../cron/marks";
 import { publishPage, rotateUnlistedKey, unpublishPage, type PublishInput } from "../publishing/service";
 import { parseJson } from "../validation";
+import { runAfterResponse } from "../workflows/run";
 import { auditActor, writeAudit, type AuditActor } from "../audit/service";
 import { scheduleRef, scheduleTarget } from "../audit/schedule";
 
 /**
  * 公開して監査ログに残す（管理画面と MCP の両方から）。トランザクション内で呼ぶ。
  * 公開中の同じ版のまま公開範囲だけを変えたなら「公開範囲の変更」、それ以外は「公開」として残す。
+ * 初めての公開で積んだワークフローの実行の ID を返す。呼ぶ側は、トランザクションが終わったあとで `runAfterResponse` に渡す。
  */
-export async function publishAudited(tx: Db, input: PublishInput, actor: AuditActor): Promise<void> {
+export async function publishAudited(tx: Db, input: PublishInput, actor: AuditActor): Promise<string[]> {
   const result = await publishPage(tx, input);
   const target = { type: "page" as const, id: input.pageId, label: result.title };
   const descendants = result.descendants > 0 ? { descendants: result.descendants } : {};
@@ -48,6 +50,7 @@ export async function publishAudited(tx: Db, input: PublishInput, actor: AuditAc
       detail: { versionId: input.versionId, visibility: input.visibility, from: result.from, ...descendants },
     });
   }
+  return result.runIds;
 }
 
 /** 非公開にして監査ログに残す（管理画面と MCP の両方から）。トランザクション内で呼ぶ。 */
@@ -71,11 +74,13 @@ export async function unpublishAudited(
 /** /admin/w/:wikiKey/pages/:id/... の公開操作 */
 export const pagePublishRoutes = new Hono<AppEnv>()
   .post("/:id/publish", async (c) => {
-    const { db } = c.get("deps");
+    const deps = c.get("deps");
+    const { db } = deps;
     const input = await parseJson(c, publishPageInput);
     const wikiId = c.get("wiki").id;
     const pageId = c.req.param("id");
-    await db.transaction((tx) => publishAudited(tx, { wikiId, pageId, ...input }, auditActor(c)));
+    const runIds = await db.transaction((tx) => publishAudited(tx, { wikiId, pageId, ...input }, auditActor(c)));
+    runAfterResponse(db, deps, runIds);
     return c.json({ ok: true });
   })
   .post("/:id/unpublish", async (c) => {

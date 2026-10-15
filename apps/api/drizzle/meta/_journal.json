@@ -337,6 +337,13 @@
       "when": 1792064729258,
       "tag": "0047_workflow_routine_instruction",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792064729259,
+      "tag": "0048_workflow_first_published_trigger",
+      "breakpoints": true
     }
   ]
 }

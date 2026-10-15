@@ -36,7 +36,10 @@ export type WorkflowIndex = { workflows: Workflow[] };
 
 export const tagAttachedTrigger = z.object({ type: z.literal("tag_attached"), tagId: id });
 
-export const workflowTriggerSchema = z.discriminatedUnion("type", [tagAttachedTrigger]);
+/** ページが初めて公開されたとき（一度も公開したことの無いページを、公開か限定公開にしたとき）。選ぶものは無い */
+export const pageFirstPublishedTrigger = z.object({ type: z.literal("page_first_published") });
+
+export const workflowTriggerSchema = z.discriminatedUnion("type", [tagAttachedTrigger, pageFirstPublishedTrigger]);
 export type WorkflowTriggerInput = z.infer<typeof workflowTriggerSchema>;
 
 // ---- アクション ----
@@ -64,6 +67,7 @@ export type WorkflowActionType = WorkflowActionInput["type"];
 /** 種類の選択肢に出す名前（種類ごとの表。足し忘れると型エラー） */
 export const TRIGGER_KINDS: Record<WorkflowTriggerType, { label: string }> = {
   tag_attached: { label: "タグが付いたとき" },
+  page_first_published: { label: "初めて公開されたとき" },
 };
 export const ACTION_KINDS: Record<WorkflowActionType, { label: string }> = {
   call_routine: { label: "Routine を呼ぶ" },
@@ -83,7 +87,7 @@ export const workflowBlockInput = z.object({
 export type WorkflowBlockInput = z.infer<typeof workflowBlockInput>;
 
 /** 画面に出す形：入力に、名前（タグ名・Routine 名）を足したもの */
-export type WorkflowTrigger = { type: "tag_attached"; tagId: string; tagName: string };
+export type WorkflowTrigger = { type: "tag_attached"; tagId: string; tagName: string } | { type: "page_first_published" };
 export type WorkflowAction =
   | { type: "call_routine"; routineId: string; routineName: string; instruction: string }
   | { type: "remove_tag"; tagId: string; tagName: string }
@@ -103,6 +107,8 @@ export function describeTrigger(t: WorkflowTrigger): string {
   switch (t.type) {
     case "tag_attached":
       return `タグ「${t.tagName}」が付いたとき`;
+    case "page_first_published":
+      return "ページが初めて公開されたとき";
   }
 }
 
@@ -111,6 +117,8 @@ export function describeTriggerCondition(t: WorkflowTrigger): string {
   switch (t.type) {
     case "tag_attached":
       return `タグ「${t.tagName}」が付いたら`;
+    case "page_first_published":
+      return "ページが初めて公開されたら";
   }
 }
 
@@ -127,13 +135,14 @@ export function describeAction(a: WorkflowAction): string {
 
 /** 編集中の入力（まだ選んでいない欄がある） */
 export type WorkflowDraft = {
+  triggerType: WorkflowTriggerType;
   tagId: string;
   actions: { type: WorkflowActionType; routineId: string; tagId: string; instruction: string }[];
 };
 
 /** 入力の誤りを、保存ボタンを押す前に出す文にする。誤りが無ければ null */
 export function workflowDraftProblem(draft: WorkflowDraft): string | null {
-  if (!draft.tagId) return "トリガーのタグを選んでください。";
+  if (draft.triggerType === "tag_attached" && !draft.tagId) return "トリガーのタグを選んでください。";
   if (draft.actions.length === 0) return "アクションを1つ以上入れてください。";
   if (draft.actions.length > WORKFLOW_ACTIONS_MAX) return `アクションは${WORKFLOW_ACTIONS_MAX}件までです。`;
   for (const [i, a] of draft.actions.entries()) {
@@ -194,8 +203,10 @@ export type WorkflowRunEntry = {
   finishedAt: string | null;
   /** 完全に削除されたページは、`available: false`、タイトルは「削除されたページ」 */
   page: { id: string; title: string; available: boolean };
-  /** トリガーのタグ名（消えていれば「削除されたタグ」） */
-  tagName: string;
+  /** トリガーのタグ名（消えていれば「削除されたタグ」）。タグがトリガーでない実行（初めて公開されたとき）は null */
+  tagName: string | null;
+  /** トリガーの種類（画面で、タグ名の代わりに「初めての公開」と出す） */
+  triggerType: WorkflowTriggerType;
   /** ブロックの要約。「Routine「校正」を呼ぶ → タグ「校正待ち」を外す」 */
   summary: string;
   /** 見送り・失敗の理由（成功したときは null） */

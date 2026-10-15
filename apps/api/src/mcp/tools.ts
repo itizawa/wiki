@@ -427,7 +427,8 @@ export const TOOLS = [
     name: "publish_page",
     description:
       "ページを公開する（すぐに公開サイトへ反映する）。versionId を省くと最新の版を公開する。公開後の編集は、もう一度公開するまで公開側に出ない。" +
-      "公開範囲は親より広くできない。配下にこれより広く公開中のページがあると止まるので、applyToDescendants で配下もそろえる。",
+      "公開範囲は親より広くできない。配下にこれより広く公開中のページがあると止まるので、applyToDescendants で配下もそろえる。" +
+      "一度も公開したことの無いページを公開したときは、「初めて公開されたとき」で動くワークフローの実行を積んで動かす（管理画面から公開したときと同じ）。",
     scope: "wiki.publish",
     input: z.object({
       wiki: wikiKey,
@@ -446,12 +447,12 @@ export const TOOLS = [
       },
       ["wiki", "pageId"],
     ),
-    async run({ db, agent }, input) {
+    async run({ db, config, agent, routineFetch, defer }, input) {
       const wiki = await memberWiki(db, agent, input.wiki);
       const page = await visiblePage(db, agent, wiki.id, input.pageId);
       if (input.applyToDescendants) await assertSubtreeVisible(db, agent, wiki.id, page.id);
       const versionId = await usableVersion(db, agent, page.id, input.versionId);
-      await db.transaction((tx) =>
+      const runIds = await db.transaction((tx) =>
         publishAudited(
           tx,
           {
@@ -465,6 +466,8 @@ export const TOOLS = [
           agentActor(agent),
         ),
       );
+      // 初めての公開で積んだワークフローの実行は、応答を待たせずに裏で動かす（管理画面から公開したときと同じ）
+      runAfterResponse(db, { config, routineFetch, defer }, runIds);
       return { id: page.id, publishedVersionId: versionId, visibility: input.visibility };
     },
   }),

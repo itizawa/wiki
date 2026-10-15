@@ -27,6 +27,11 @@ import { formatShortDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
 import { BLOCKS_SECTION_ID } from "./WorkflowBlocksSection";
 
+/** 実行のきっかけの表示：タグがトリガーなら、そのタグ名。初めての公開なら「初めての公開」 */
+export function runTriggerText(r: Pick<WorkflowRunEntry, "triggerType" | "tagName">): string {
+  return r.triggerType === "page_first_published" ? "初めての公開" : (r.tagName ?? "");
+}
+
 const PAGE_SIZE = 50;
 const ROW_HEIGHT = 72;
 /** 実行待ち・実行中の行があるあいだ、履歴を取り直す間隔 */
@@ -115,7 +120,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         </Box>
       ),
     },
-    { key: "tag", header: "タグ", width: "minmax(100px, 160px)", sx: { overflowWrap: "anywhere" }, render: (r) => r.tagName },
+    { key: "tag", header: "トリガー", width: "minmax(100px, 160px)", sx: { overflowWrap: "anywhere" }, render: runTriggerText },
   ];
 
   return (
@@ -124,7 +129,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         variant="subtitle1"
         component="h2"
         sx={{ mb: 1 }}
-        help="ブロックのトリガー（タグが付いたとき）で積まれた実行の記録です。新しい順に並び、終わってから90日たった記録は、毎日の掃除で消えます。実行待ちや実行中の行があるあいだは、30秒ごとに最新の状態に取り直します。失敗した実行は、「詳細を見る」から、理由と Routine のセッションを開けます。"
+        help="ブロックのトリガー（タグが付いたとき・初めて公開されたとき）で積まれた実行の記録です。新しい順に並び、終わってから90日たった記録は、毎日の掃除で消えます。実行待ちや実行中の行があるあいだは、30秒ごとに最新の状態に取り直します。失敗した実行は、「詳細を見る」から、理由と Routine のセッションを開けます。"
       >
         実行の履歴
       </HelpHeading>
@@ -176,7 +181,8 @@ function RunDialog({ run, onClose }: { run: WorkflowRunEntry; onClose: () => voi
           {run.page.available ? <RouterLink {...pageLink(run.page.id)}>{run.page.title || "無題"}</RouterLink> : run.page.title}
         </Typography>
         <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>
-          タグ：{run.tagName}
+          {run.triggerType === "page_first_published" ? "トリガー：" : "タグ："}
+          {runTriggerText(run)}
         </Typography>
         {run.error && run.status !== "succeeded" && !run.actions.some((a) => a.error === run.error) && (
           <Alert severity={run.status === "failed" ? "error" : "info"} sx={{ mt: 1.5, overflowWrap: "anywhere" }}>
