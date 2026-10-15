@@ -7,6 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { BlockMove } from "./blockMove";
 import { CalloutBlockquote } from "./callout";
 import { ChildrenList } from "./childrenList";
+import { RatingEmbed } from "./ratingEmbed";
 import { GoogleMap } from "./googleMap";
 import { LinkCard, type LinkCardOptions } from "./linkCard";
 import { PageMentions } from "./pageMentions";
@@ -38,6 +39,7 @@ export const createEditorExtensions = (linkCard?: Partial<LinkCardOptions>) => [
   LinkCard.configure(linkCard ?? {}),
   PageMentions,
   ChildrenList,
+  RatingEmbed,
   // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）
   CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),
   Image,

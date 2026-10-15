@@ -1,9 +1,10 @@
-import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Table, MapPin } from "lucide-react";
+import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Star, Table, MapPin } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
 import { useState, type ReactNode } from "react";
 import { insertChildrenList } from "./childrenList";
+import { insertRatingEmbed } from "./ratingEmbed";
 import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
 import { insertToggle } from "./toggle";
@@ -59,6 +60,13 @@ const blocks: Block[] = [
     keywords: ["children", "lsx", "child", "haika", "@children"],
     icon: <ListTree size={18} />,
     run: (e) => insertChildrenList(e),
+  },
+  {
+    id: "rating",
+    label: "評価（星1〜5）",
+    keywords: ["rating", "star", "review", "hyouka", "@rating"],
+    icon: <Star size={18} />,
+    run: (e) => insertRatingEmbed(e),
   },
   {
     id: "callout",

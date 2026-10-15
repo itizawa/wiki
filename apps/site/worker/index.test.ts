@@ -339,3 +339,51 @@ describe("site worker image cache", () => {
     expect(reads).toEqual([name, name]);
   });
 });
+
+describe("reader ratings", () => {
+  function withApi() {
+    const seen: { url: string; method: string; headers: Record<string, string>; body: string }[] = [];
+    const API = {
+      fetch: async (req: Request) => {
+        seen.push({ url: req.url, method: req.method, headers: Object.fromEntries(req.headers), body: await req.text() });
+        return Response.json({ counts: [0, 0, 0, 0, 1], total: 1, average: 5, mine: 5 });
+      },
+    };
+    return { seen, env: { ...env(files).env, API } };
+  }
+
+  it("forwards to the API for the wiki chosen by the host, without the reader's cookies", async () => {
+    const { seen, env: e } = withApi();
+    const res = await worker.fetch(
+      new Request("https://notes.site.test/api/ratings/abcdefghij", {
+        method: "PUT",
+        headers: { origin: "https://notes.site.test", "content-type": "application/json", cookie: "secret=1", "cf-connecting-ip": "203.0.113.9" },
+        body: '{"score":5}',
+      }),
+      e,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ total: 1 });
+    expect(seen).toEqual([
+      {
+        url: "https://wiki-admin/api/public/w/notes/pages/abcdefghij/rating",
+        method: "PUT",
+        headers: { origin: "https://notes.site.test", "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+        body: '{"score":5}',
+      },
+    ]);
+    await worker.fetch(new Request("https://wiki.site.test/api/ratings/abcdefghij?rater=x"), e);
+    expect(seen[1]!.url).toBe("https://wiki-admin/api/public/w/wiki/pages/abcdefghij/rating?rater=x");
+  });
+
+  it("answers 404 without the API binding or for paths that are not a page id, and 405 for other methods", async () => {
+    expect((await wiki("/api/ratings/abcdefghij")).status).toBe(404);
+    const { seen, env: e } = withApi();
+    for (const path of ["/api/ratings/ABC", "/api/ratings/abcdefghij/x", "/api/ratings/"]) {
+      expect((await worker.fetch(new Request(`https://wiki.site.test${path}`), e)).status).toBe(404);
+    }
+    const del = await worker.fetch(new Request("https://wiki.site.test/api/ratings/abcdefghij", { method: "DELETE" }), e);
+    expect(del.status).toBe(405);
+    expect(seen).toEqual([]);
+  });
+});

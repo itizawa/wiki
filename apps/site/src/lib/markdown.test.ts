@@ -246,6 +246,24 @@ describe("@children（配下のページの一覧）", () => {
   });
 });
 
+describe("@rating（評価の欄）", () => {
+  const opts = { publicPaths: new Map() };
+  it("記法の行を、評価の欄を入れる空の枠にし、検索の索引には入れない", () => {
+    const html = renderMarkdown("効果\n\n@rating\n\n使い方", opts);
+    expect(html).toContain('<div class="rating-embed" data-rating-embed data-pagefind-ignore></div>');
+    expect(html).toContain("<p>効果</p>");
+    expect(html).toContain("<p>使い方</p>");
+  });
+  it("コードブロックの中・引数つき・文中の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@rating\n```\n\n@rating 5\n\n文 @rating", opts);
+    expect(html).not.toContain("rating-embed");
+    expect(html).toContain("<p>@rating 5</p>");
+  });
+  it("抜粋では、記法の行を落とす", () => {
+    expect(excerpt("前の文\n\n@rating\n\n後の文")).toBe("前の文 後の文");
+  });
+});
+
 describe("リンクカード（URL だけの段落）", () => {
   const linkPreviews = { "https://example.com/post": { title: "記事 <b>", description: "説明", siteName: "サイト" } };
 

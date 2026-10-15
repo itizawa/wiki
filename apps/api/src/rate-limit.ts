@@ -17,6 +17,8 @@ export type RateLimiters = {
   mcp?: RateLimiter;
   /** `GET /admin/w/{key}/link-preview`（ログインしている人。人ごとに数える） */
   linkPreview?: RateLimiter;
+  /** `PUT /public/w/{key}/pages/{id}/rating`（公開サイトの読者の評価） */
+  rating?: RateLimiter;
 };
 
 /** wrangler.toml の `simple.period`（秒）。429 の `Retry-After` に入れる */
