@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchRating, RATER_KEY, raterId, sendRating } from "./rating";
+import { applyRating, fetchRating, RATER_KEY, raterId, sendRating } from "./rating";
 
 const ID = "8f14e45f-ceea-467a-9575-3f4e2b0c8a11";
 const summary = { counts: [0, 0, 0, 0, 1], total: 1, average: 5, mine: 5 };
@@ -47,5 +47,29 @@ describe("fetchRating / sendRating", () => {
     const limited = await sendRating((async () => new Response("", { status: 429 })) as unknown as typeof fetch, "abcdefghij", ID, 4);
     expect(limited).toEqual({ ok: false, message: expect.stringContaining("少し待って") });
     expect((await sendRating((async () => new Response("", { status: 500 })) as unknown as typeof fetch, "abcdefghij", ID, 4)).ok).toBe(false);
+  });
+});
+
+describe("applyRating", () => {
+  it("adds a first rating", () => {
+    expect(applyRating({ counts: [0, 0, 0, 0, 1], total: 1, average: 5, mine: null }, 3)).toEqual({
+      counts: [0, 0, 1, 0, 1],
+      total: 2,
+      average: 4,
+      mine: 3,
+    });
+  });
+
+  it("moves my previous rating to the new score", () => {
+    expect(applyRating({ counts: [0, 1, 0, 0, 1], total: 2, average: 3.5, mine: 2 }, 4)).toEqual({
+      counts: [0, 0, 0, 1, 1],
+      total: 2,
+      average: 4.5,
+      mine: 4,
+    });
+  });
+
+  it("keeps the counts when I pick the same score again", () => {
+    expect(applyRating(summary as Parameters<typeof applyRating>[0], 5)).toEqual(summary);
   });
 });

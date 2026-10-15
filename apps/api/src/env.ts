@@ -4,6 +4,7 @@ import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
 import type { XClient } from "./sns/x-client";
 import type { GoogleReporting } from "./analytics/google";
+import type { AudioStore } from "./audio/store";
 import type { ImageStore } from "./images/store";
 import type { RateLimiters } from "./rate-limit";
 import type { CostSource } from "./costs/neon";
@@ -18,6 +19,8 @@ export type Deps = {
   google: GoogleOidc | null;
   /** アップロードした画像の置き場所。無ければアップロードできない（503） */
   images?: ImageStore | null;
+  /** ページに添付した音声の置き場所（画像とは別のバケット）。無ければ音声をアップロードできない（503） */
+  audio?: AudioStore | null;
   /** Google Analytics とサーチコンソールの数字を読むもの。無ければ「アクセス解析」は未設定として出す */
   reporting?: GoogleReporting | null;
   /** SNS 連携の X の API。無ければ（`config.x` が null）X 連携は使えない */

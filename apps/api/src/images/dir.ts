@@ -9,11 +9,12 @@ export function dirImageStore(dir: string, typeOf: (name: string) => string | nu
       await mkdir(dir, { recursive: true });
       await writeFile(join(dir, name), body);
     },
-    async get(name) {
+    async get(name, range) {
       const contentType = typeOf(name);
       if (!contentType) return null;
       try {
-        return { body: new Uint8Array(await readFile(join(dir, name))), contentType };
+        const all = new Uint8Array(await readFile(join(dir, name)));
+        return { body: range ? all.slice(range.offset, range.offset + range.length) : all, contentType };
       } catch {
         return null;
       }

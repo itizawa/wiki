@@ -55,6 +55,8 @@ export const AUDIT_ACTIONS = {
   page_purge: "page",
   page_tag_add: "page",
   page_tag_remove: "page",
+  page_audio_upload: "page",
+  page_audio_delete: "page",
   workflow_run_fail: "page",
 
   wiki_update: "settings",
@@ -148,6 +150,9 @@ export type AuditDetailMap = {
   page_tag_add: { tagId: string; tagName: string };
   /** runId：ワークフローの実行が外したとき、その実行の ID */
   page_tag_remove: { tagId: string; tagName: string; runId?: string };
+  /** ページに音声を添付した・外した（ファイル名は、その時点のもの。中身は残さない） */
+  page_audio_upload: { name: string; bytes: number };
+  page_audio_delete: { name: string };
 
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
@@ -347,6 +352,10 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return [...quoted(t), { text: `にタグ「${entry.detail.tagName}」を付けました` }];
     case "page_tag_remove":
       return [...quoted(t), { text: `からタグ「${entry.detail.tagName}」を外しました` }];
+    case "page_audio_upload":
+      return [...quoted(t), { text: `に音声「${entry.detail.name}」を添付しました` }];
+    case "page_audio_delete":
+      return [...quoted(t), { text: `から音声「${entry.detail.name}」を削除しました` }];
 
     case "wiki_update": {
       const parts: string[] = [];

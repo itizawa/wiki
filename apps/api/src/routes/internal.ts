@@ -4,6 +4,7 @@ import type { AppEnv } from "../env";
 import { runTick } from "../cron/tick";
 import { HttpError } from "../errors";
 import { collectCosts, costSourcesFromConfig } from "../costs/service";
+import { cleanupAudio, type CleanupAudioResult } from "../audio/cleanup";
 import { cleanupImages, type CleanupImagesResult } from "../images/cleanup";
 import { cleanupOAuth } from "../oauth/cleanup";
 import { pruneVersions } from "../pages/prune";
@@ -71,6 +72,7 @@ export const internalRoutes = new Hono<AppEnv>()
   // - `builds`：反映済みの古い公開イベントと、古いビルドの行を消した数
   // - `workflowRuns`：終わって90日を過ぎたワークフローの実行（アクションの記録ごと）を消した数
   // - `images`：参照されていない古い画像を消した数。本文で `images: true` を渡したときだけ行い、それ以外は null
+  // - `audio`：添付の行が無い音声のファイルを消した数（毎回行う。置き場所が無ければ null）
   .post("/versions/prune", async (c) => {
     const { db, images: store } = c.get("deps");
     const input = pruneInput.parse(await c.req.json().catch(() => ({})));
@@ -87,7 +89,16 @@ export const internalRoutes = new Hono<AppEnv>()
         console.error("image cleanup failed", err);
       }
     }
-    return c.json({ ...versions, oauth, builds, workflowRuns, images });
+    // 添付の行が無い音声のファイル。毎回行う（置き場所の障害は、画像と同じく次の回に回す）
+    let audio: CleanupAudioResult | null = null;
+    if (c.get("deps").audio) {
+      try {
+        audio = await cleanupAudio(db, c.get("deps").audio!);
+      } catch (err) {
+        console.error("audio cleanup failed", err);
+      }
+    }
+    return c.json({ ...versions, oauth, builds, workflowRuns, images, audio });
   })
   // 1日1回、運用コスト（使用量）を取って控える。サービスごとに独立していて、失敗は応答の ok: false と error に出す（応答自体は 200）
   .post("/costs/collect", async (c) => {

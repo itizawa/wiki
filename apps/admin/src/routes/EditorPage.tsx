@@ -28,6 +28,7 @@ import { ancestorTitles } from "../lib/ancestorTitles";
 import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { takeJustCreated } from "../lib/newPage";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { PageAudioSection } from "../components/PageAudio";
 import { PageCover, PageCoverPicker, useSetCover } from "../components/PageCover";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
@@ -528,6 +529,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               />
             )}
             <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} onEditor={setEditor} onLeaveTop={focusTitleEnd} />
+            {/* 動画のナレーションなど、公開前の音声の素材。本文には書かず、公開サイトにも出さない */}
+            <PageAudioSection pageId={pageId} />
           </Box>
           {/* 広い画面では、目次を本文の右に置いて、スクロール中も見えるようにする */}
           {/* 見出しが無いときも列は空けておく（見出しを書き足すたびに、本文が左右にずれないように） */}

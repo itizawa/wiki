@@ -518,6 +518,7 @@ describe("POST /internal/versions/prune", () => {
       builds: { events: 0, builds: 0 },
       workflowRuns: 0,
       images: null,
+      audio: { listed: 0, truncated: false, orphaned: 0, deleted: 0 },
     });
     expect(has(orphan)).toBe(true);
 

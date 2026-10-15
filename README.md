@@ -25,6 +25,7 @@ apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite�
 apps/api         API（Hono + Drizzle + PostgreSQL）
 apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、役目を終えたトークンと公開イベント、週1回は参照されていない画像）
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
+apps/video       台本・録音から動画を組み立て、YouTube に限定公開で投稿する（GitHub Actions の `.github/workflows/video.yml` で動く。Worker にはデプロイしない。`apps/video/README.md`）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
 
@@ -126,7 +127,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
   | ログイン | ログイン、ログインの拒否（招待されていない・メールアドレスが未確認）、ログアウト |
   | メンバー | 招待リンクの発行・使用・無効化、ロールの変更、メンバーの削除、自分で抜けた、オーナーの追加・解除 |
   | 公開 | 公開（公開し直しを含む）、非公開化、公開範囲の変更、限定公開 URL の再発行、予約の作成・日時の変更・取り消し、予約の実行（成功・最終的な失敗。再試行に戻したものは残さない）、公開サイトの公開・非公開化 |
-  | ページ | 削除（ゴミ箱に入れる）、ゴミ箱から元に戻す、ゴミ箱から完全に削除する |
+  | ページ | 削除（ゴミ箱に入れる）、ゴミ箱から元に戻す、ゴミ箱から完全に削除する、音声の添付・削除（ファイル名とサイズだけ。中身は残さない） |
   | 設定 | wiki の名前・画像の変更、公開サイトのトップページの自由記述の変更（中身は残さない）、SNS（X）のアカウントの連携・解除・テスト投稿（文面とトークンは残さない）、Routine の登録・変更・削除・テスト実行（トークンは残さない。全体にかかわるものとして wiki なし） |
   | wiki | 作成、アーカイブ、元に戻す |
 - **残らない操作**：本文の保存・下書きの自動保存、ページの作成・並べ替え・移動（記録しない）、下書きから自動で版ができたこと、アイコンの変更、wiki の設定（Google Analytics・サーチコンソール・AdSense）の変更、公開サイトの外観（テーマ）の変更、スター、テンプレートの作成・変更、画像のアップロード、管理画面でページを開いたこと（閲覧）。アーカイブから戻したときに、止まっていた間に時刻を過ぎた予約を失敗にすること
@@ -246,11 +247,13 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 | `create_page` | 書く | ページを作る（非公開の下書き）。`icon` に絵文字1つを渡すと、アイコンを付ける |
 | `update_page` | 書く | 本文・タイトルの保存。`baseVersionId` が必須（楽観ロック） |
 | `move_page` | 書く | 別の親の下へ移す |
+| `set_page_cover` | 書く | カバー画像を付ける・変える・外す。`imageBase64`（PNG・JPEG・WebP を base64 にしたもの、5MB まで）を渡すとアップロードして付け、`cover` にはアップロード済みの画像（`/images/…`）か用意した画像（`/covers/{key}.svg`）のパス、外すなら `null` を渡す（どちらか一方）。版は作らずすぐ反映するので、公開中・限定公開中のページには `wiki.publish` も要る |
 | `publish_page` / `unpublish_page` | 公開 | すぐに公開（公開・限定公開）／非公開に戻す。版を省くと最新の版 |
 | `list_schedule` / `schedule_page` / `cancel_schedule` | 公開 | 公開・非公開化の予約の一覧・作成・取り消し。公開の予約は版を固定する |
 | `delete_page` | 削除 | ページを削除する（ゴミ箱に入れる）。配下のページもいっしょに入る |
 | `list_trash` / `restore_page` | 削除 | ゴミ箱の一覧／ゴミ箱のページを配下ごと元に戻す。完全に削除する道具は無い（管理画面の人だけ） |
 | `list_tags` | 読む | その wiki のタグの名前の一覧 |
+| `list_page_audio` | 読む | ページに添付された音声の一覧（名前・形式・大きさ・長さ）と、1つずつの取り出し URL。URL は署名つきで、発行から1時間だけ使える（ログインは要らないので、他人に渡さない。切れたらこの道具でもう一度取る）。`wiki.private` が無いアプリは、読めるページのものだけ（読めないページは 404）。詳しくは「ページの音声」 |
 | `add_tag` / `remove_tag` | 書く | ページにタグを付ける／外す（`tag` はタグの名前。その wiki に無い名前は 404 で、MCP からタグは作らない）。すでにそうなっていれば何もせず成功。付けると、管理画面から付けたときと同じく、そのタグがトリガーのブロックの実行を積んで応答のあとに動かす（外しても積まない）。`wiki.private` が無いアプリは、読めるページだけが対象（読めないページは 404）。監査ログの実行者は「アプリ名・許可した人」 |
 | `create_edit_request` | 提案 | 本文の行の範囲ごとに「こう直す」（提案）か、置き換え案の無い指摘（`kind: "note"`）を出す（編集リクエスト）。本文は変えない。`baseVersionId` が必須で、最新の版でなければ断る |
 | `list_edit_requests` / `get_edit_request` | 提案 | ページの編集リクエストの一覧／1件の中身（項目の種類・状態・返信と、古くなったかどうか） |
@@ -359,6 +362,27 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 - 受け付けるのは絵文字1つだけ（`packages/shared/src/emoji.ts`。Unicode の RGI_Emoji。肌の色・つないだ絵文字・旗も1つと数える）。公開サイトの HTML に出るので、API で検査する
 - 本文で「:」に続けて名前を打つ（`:memo`、`:メモ`）と、絵文字の候補が出る。候補は、アイコンの一覧と同じもの（`apps/admin/src/lib/emoji.ts`。絵文字のライブラリは入れていない）
 - 外のアプリ（MCP）は、`create_page` でアイコンを付けられ、`get_page` で読める。あとから変える道具は無い（公開中のページでは、公開の許可が無くても公開サイトが変わってしまうため）
+
+## ページの音声
+
+動画のナレーションなど、公開前の素材の音声をページに添付できる（`page_audio`）。本文の Markdown には何も書かず、公開サイトにも出さない。音声を使うのは、MCP（`list_page_audio`）で取り出すアプリ（動画を組み立てる Routine など）。動画の組み立てと YouTube への投稿は `apps/video/README.md`。
+
+- 添付する場所：編集画面の本文の下の「音声」（`apps/admin/src/components/PageAudio.tsx`）
+  - 「録音する」：ブラウザの `MediaRecorder` で録る。止めると聞き直せ、「この録音を上げる」で上げる（「録り直す」「録音を捨てる」もある）。録れる形式は WebM か MP4（`isTypeSupported` で選ぶ）。どちらも録れないブラウザでは、録音のボタンを出さず、ファイルを選ぶ案内を出す。ファイル名は「録音 2026年10月15日 10時05分.webm」（JST）
+  - 「ファイルを選ぶ」：手元の音声を上げる。形式と大きさは、選んだ時点で画面の側でも確かめる
+  - 一覧：ファイル名・長さ・大きさ・日時・上げた人・再生・削除（確認を挟む。削除は元に戻せない）
+- 形式と大きさ：WebM・M4A（MP4）・MP3・WAV、1ファイル 50MB まで（`AUDIO_MAX_BYTES`）、1ページに50件まで。形式は中身の先頭で判定し（`sniffAudioType`）、送られてきた `Content-Type` とファイル名は信じない。上限を超える本文は、`content-length` が無くても、読み込みの途中で打ち切る。MP4 は映像つきのファイルも通る（中身だけでは音声だけかを見分けない）
+- 置き場所：Cloudflare R2 のバケット `wiki-audio`（バインディング `AUDIO`）。画像（`wiki-images`）とは別で、公開の配信経路は無い。名前は `{添付の行の ID}.{拡張子}`。手元の開発（`apps/api/src/node.ts`）は、ディレクトリ `apps/api/.data/audio`（`AUDIO_DIR` で変えられる）。バケットのバインディングが無いと、アップロードは 503（`audio_not_configured`）
+- API（`/admin/w/{key}/pages/{pageId}/audio`。wiki のメンバーなら、管理者も編集者もできる）：`POST`（上げる。本文はファイルの中身そのまま。`?name=` にファイル名、`?durationMs=` に長さ）・`GET`（一覧）・`GET /{id}`（取り出す）・`DELETE /{id}`。別の wiki のページ、ゴミ箱のページは 404
+- だれが取り出せるか：
+  - 管理画面にログインしている、その wiki のメンバー（`GET /admin/w/{key}/pages/{pageId}/audio/{id}`。Cookie で）
+  - MCP の `list_page_audio` が返す署名つきの URL（`GET {管理画面のオリジン}/audio/{id}?exp=…&sig=…`）を持つ人。署名は `{id}.{期限}` の HMAC-SHA256（鍵は `SESSION_SECRET` から作る。`apps/api/src/audio/sign.ts`）で、**発行から1時間**を過ぎる・音声を削除する・ページを完全に削除する・ページがゴミ箱に入ると使えない。署名の誤りも期限切れも、同じ 404 を返す。ログインは要らないので、URL は人に渡さない。`SESSION_SECRET` を変えると、出した URL は全部使えなくなる
+  - 公開サイト（`wiki-site`）からは取り出せない。ログインしていないブラウザも、署名が無ければ取り出せない。応答は `cache-control: private, no-store`。`Range` に 206 で答える（Safari が再生に求める。全体の大きさは行の `bytes`。`parseRange`）
+- 消えるとき：
+  - 音声を削除する、ページをゴミ箱から完全に削除する（配下を含む）と、行と R2 のファイルを消す。置き場所の削除に失敗しても、行は消える
+  - 日次の掃除（`/internal/versions/prune`。`apps/api/src/audio/cleanup.ts`）が、行の無い古いファイルを消す（毎日。アップロードから1日以内のものと、名前が `{行の ID}.{拡張子}` の形でないものには触らない。1回に1000件まで、一覧から読むのは20,000件まで。件数は API のログ `audioCleanup` に出す）。**消したファイルは戻せない**
+- 監査ログ：上げた（`page_audio_upload`）・削除した（`page_audio_delete`）を「ページ」の区分に残す。中身は残さない
+- 使うメモリ：アップロードは本文を全部メモリに読んでから R2 に置く（形式の判定のため）。`content-length` があれば、その大きさの入れ物に直接書くので、50MB のファイルで約50MB（`content-length` が無い chunked だと、貯めてから写すので約100MB で、Workers の上限 128MB に近い）。上限を引き上げるときは、ストリームで置く形に変える
 
 ## ページのカバー画像
 
@@ -623,6 +647,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 | 公開サイト | Cloudflare Workers `wiki-site`（静的アセット + `Host` で wiki を振り分ける Worker。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 | 画像 | Cloudflare R2 のバケット `wiki-images`（`wiki-admin` と `wiki-site` の両方がバインディング `IMAGES` で使う） | 両方の `wrangler.toml` |
+| 音声 | Cloudflare R2 のバケット `wiki-audio`（`wiki-admin` だけがバインディング `AUDIO` で使う。公開サイトは使わない） | `apps/api/wrangler.toml` |
 | Cron への印 | Cloudflare Workers KV の名前空間 `wiki-cron-marks`（`wiki-admin` が書き、`wiki-worker` が読む。どちらもバインディング `CRON_MARKS`） | 両方の `wrangler.toml` |
 
 管理画面と API は同じ Worker が同一オリジンで出す（`/api/*` が API、それ以外は管理画面）。サイトのビルドとワーカーが使う `/export/*` `/internal/*` も同じオリジンにある。
@@ -643,6 +668,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
    - DB の文字の種類の設定（`datctype`）が `C` だと、日本語から trigram が取れず、索引が効かない（検索の結果は変わらない）。`select show_trgm('日本語の検索')` が空でない配列を返せばよい
 2. **Hyperdrive** をその接続文字列で作り（キャッシュは無効にする）、ID を `apps/api/wrangler.toml` の `[[hyperdrive]]` に入れる
 3. **R2 のバケット** `wiki-images` を作る（`npx wrangler r2 bucket create wiki-images`）。公開アクセス（r2.dev や独自ドメイン）は有効にしない。画像は Worker が配る
+   - **R2 のバケット** `wiki-audio` も作る（`npx wrangler r2 bucket create wiki-audio`。ページに添付する音声の置き場所）。こちらも公開アクセスは有効にしない。バケットが無いまま `wrangler deploy` すると失敗する
 4. **Google OAuth クライアント**を作り、承認済みリダイレクトURIに `https://wiki-admin.hatchery-works.com/api/auth/google/callback` を登録する
 5. **公開サイトの Worker**（`wiki-site`）を Cloudflare の Workers Builds（Git 連携）につなぐ。Worker の名前は `apps/site/wrangler.toml` の `name` と一致させる
    - ルートディレクトリ `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ブランチ `main`。`main` 以外のブランチのデプロイコマンドは `npx wrangler preview`（`apps/site/wrangler.toml` に `[previews]` ブロックが要る）
