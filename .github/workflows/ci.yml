@@ -101,8 +101,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      E2E_DATABASE_URL: postgres://postgres@localhost:5432/wiki_e2e
     steps:
       - uses: actions/checkout@v7
         with:
@@ -175,7 +173,11 @@ jobs:
       - name: Run E2E
         env:
           E2E_ADMIN_DIST: ${{ steps.admin.outputs.dist }}
-        run: pnpm --filter @wiki/e2e e2e
+        # wrangler dev の Hyperdrive は接続先の URL にパスワードが無いと起動しない。DB は trust なので値は何でも通る。
+        # ワークフローに決まった値を書かない（秘密情報として検出される）よう、その場で作る
+        run: |
+          export E2E_DATABASE_URL="postgres://postgres:$(openssl rand -hex 8)@localhost:5432/wiki_e2e"
+          pnpm --filter @wiki/e2e e2e
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
