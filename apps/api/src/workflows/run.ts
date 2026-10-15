@@ -1,4 +1,4 @@
-import { ROUTINE_FAILURE_MESSAGES } from "@wiki/shared";
+import { DEFAULT_ROUTINE_INSTRUCTION, ROUTINE_FAILURE_MESSAGES } from "@wiki/shared";
 import { and, asc, count, eq } from "drizzle-orm";
 import { writeAudit, type AuditActor } from "../audit/service";
 import type { AppConfig } from "../config";
@@ -153,13 +153,13 @@ export async function failRun(db: Db, run: RunRow, page: { title: string }, acti
 type Context = { run: RunRow; wikiKey: string; title: string; tagName: string };
 
 async function runAction(db: Db, deps: RunDeps, ctx: Context, action: RunActionRow): Promise<ActionResult> {
-  if (action.type === "call_routine" && action.routineId) return callRoutine(db, deps, ctx, action.routineId);
+  if (action.type === "call_routine" && action.routineId) return callRoutine(db, deps, ctx, action.routineId, action.instruction ?? DEFAULT_ROUTINE_INSTRUCTION);
   if (action.type === "remove_tag" && action.tagId) return removeTag(db, ctx, action.tagId);
   if (action.type === "add_tag" && action.tagId) return addTag(db, ctx, action.tagId);
   return failure("unknown_action", `知らないアクションの種類（${action.type}）`);
 }
 
-async function callRoutine(db: Db, deps: RunDeps, ctx: Context, routineId: string): Promise<ActionResult> {
+async function callRoutine(db: Db, deps: RunDeps, ctx: Context, routineId: string, instruction: string): Promise<ActionResult> {
   const [routine] = await db.select().from(workflowRoutines).where(eq(workflowRoutines.id, routineId));
   if (!routine) return failure("routine_not_found", "Routine が見つからない");
   const key = deps.config.routineTokenKey;
@@ -168,6 +168,7 @@ async function callRoutine(db: Db, deps: RunDeps, ctx: Context, routineId: strin
   if (token === null) return failure("token_unreadable", "Routine のトークンを復号できない");
   const { run } = ctx;
   const text = buildRoutineText({
+    instruction,
     runId: run.id,
     wikiKey: ctx.wikiKey,
     pageId: run.pageId,

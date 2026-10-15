@@ -31,7 +31,7 @@ async function newRoutine(name = "校正"): Promise<string> {
 /** そのワークフローのブロックの URL（`/workflow/{workflowId}/blocks`）。ワークフローが無ければ作る */
 const blocksUrl = async (base = W) => `${base}/workflow/${await defaultWorkflowId(ctx.call, base)}/blocks`;
 const block = (tagId: string, actions: unknown[]) => ({ trigger: { type: "tag_attached", tagId }, actions });
-const callRoutine = (routineId: string) => ({ type: "call_routine", routineId });
+const callRoutine = (routineId: string, instruction = "記事の下書きを書いてください") => ({ type: "call_routine", routineId, instruction });
 const removeTag = (tagId: string) => ({ type: "remove_tag", tagId });
 const addTag = (tagId: string) => ({ type: "add_tag", tagId });
 
@@ -57,7 +57,7 @@ describe("workflow blocks: who can do what", () => {
     expect(made.body).toMatchObject({
       trigger: { type: "tag_attached", tagId: tag, tagName: "校正待ち" },
       actions: [
-        { type: "call_routine", routineId: routine, routineName: "校正" },
+        { type: "call_routine", routineId: routine, routineName: "校正", instruction: "記事の下書きを書いてください" },
         { type: "remove_tag", tagId: tag, tagName: "校正待ち" },
       ],
     });
@@ -116,6 +116,30 @@ describe("workflow blocks: validation", () => {
     expect((await ctx.call("POST", await blocksUrl(), block(mine, [addTag(theirs)]))).status).toBe(400);
     expect((await ctx.call("POST", await blocksUrl(), block(mine, [callRoutine(none)]))).status).toBe(400);
     expect((await ctx.call("GET", await blocksUrl())).body.blocks).toEqual([]);
+  });
+
+  it("requires an instruction for call_routine (400 when empty or over 2000 characters), trims it, and keeps it in the audit detail", async () => {
+    await boot();
+    const tag = await newTag("校正待ち");
+    const routine = await newRoutine();
+    const url = await blocksUrl();
+    const post = (instruction: unknown) => ctx.call("POST", url, block(tag, [{ type: "call_routine", routineId: routine, instruction }]));
+    expect((await post(undefined)).status).toBe(400);
+    expect((await post("")).status).toBe(400);
+    expect((await post("  \n ")).status).toBe(400);
+    expect((await post("あ".repeat(2001))).status).toBe(400);
+    expect((await ctx.call("GET", url)).body.blocks).toEqual([]);
+
+    const made = await post("  台本を作ってください\n");
+    expect(made.status).toBe(201);
+    expect(made.body.actions[0].instruction).toBe("台本を作ってください");
+    expect((await post("あ".repeat(2000))).status).toBe(201);
+
+    const put = await ctx.call("PUT", `${url}/${made.body.id}`, block(tag, [callRoutine(routine, "動画の組み立てを始めてください")]));
+    expect(put.body.actions[0].instruction).toBe("動画の組み立てを始めてください");
+    const logs = (await ctx.call("GET", `/admin/w/wiki/audit-logs?limit=100`)).body.entries as AuditLogEntry[];
+    expect(logs.find((e) => e.action === "workflow_block_create")!.detail).toMatchObject({ actions: 1, instructions: ["あ".repeat(2000)] });
+    expect(logs.find((e) => e.action === "workflow_block_update")!.detail).toMatchObject({ actions: 1, instructions: ["動画の組み立てを始めてください"] });
   });
 
   it("allows identical blocks, and replaces the actions in order", async () => {

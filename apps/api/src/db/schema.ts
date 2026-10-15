@@ -461,6 +461,8 @@ export const workflowActions = pgTable(
     type: text("type").notNull(),
     routineId: uuid("routine_id").references(() => workflowRoutines.id),
     tagId: uuid("tag_id").references(() => wikiTags.id),
+    /** 「Routine を呼ぶ」で Routine に渡す依頼文（call_routine のときだけ） */
+    instruction: text("instruction"),
   },
   (t) => [
     unique("workflow_actions_block_position_unique").on(t.blockId, t.position),
@@ -468,7 +470,7 @@ export const workflowActions = pgTable(
     index("workflow_actions_tag_idx").on(t.tagId),
     check(
       "workflow_actions_type_check",
-      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.tagId} is null) or (${t.type} in ('remove_tag', 'add_tag') and ${t.tagId} is not null and ${t.routineId} is null)`,
+      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.instruction} is not null and ${t.tagId} is null) or (${t.type} in ('remove_tag', 'add_tag') and ${t.tagId} is not null and ${t.routineId} is null)`,
     ),
   ],
 );
@@ -524,6 +526,8 @@ export const workflowRunActions = pgTable(
     type: text("type").notNull(),
     routineId: uuid("routine_id"),
     tagId: uuid("tag_id"),
+    /** 積んだ時点の依頼文の写し（call_routine のときだけ） */
+    instruction: text("instruction"),
     status: text("status").notNull().default("pending"),
     result: jsonb("result"),
     finishedAt: timestamp("finished_at", { withTimezone: true }),

@@ -12,6 +12,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ACTION_KINDS,
   ACTION_TYPES,
+  DEFAULT_ROUTINE_INSTRUCTION,
+  ROUTINE_INSTRUCTION_MAX,
   describeAction,
   describeTrigger,
   describeTriggerCondition,
@@ -40,7 +42,7 @@ const ROUTINES_KEY = ["routine-choices"];
 export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
   return {
     trigger: { type: "tag_attached", tagId: draft.tagId },
-    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId } : { type: a.type, tagId: a.tagId })),
+    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId, instruction: a.instruction.trim() } : { type: a.type, tagId: a.tagId })),
   };
 }
 
@@ -51,8 +53,15 @@ export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
       type: a.type,
       routineId: a.type === "call_routine" ? a.routineId : "",
       tagId: a.type === "call_routine" ? "" : a.tagId,
+      instruction: a.type === "call_routine" ? a.instruction : "",
     })),
   };
+}
+
+/** 一覧に出す、依頼文の先頭（改行は空白にして、長ければ切る） */
+export function instructionPreview(instruction: string, max = 60): string {
+  const flat = instruction.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
 /** 配列の i 番目を、上（-1）か下（+1）と入れ替えた新しい配列。端では、そのまま返す */
@@ -167,6 +176,11 @@ function BlockCard({ block, busy, onEdit, onDelete }: { block: WorkflowBlock; bu
               <Typography component="span" sx={{ overflowWrap: "anywhere" }}>
                 {describeAction(a)}
               </Typography>
+              {a.type === "call_routine" && (
+                <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                  依頼：{instructionPreview(a.instruction)}
+                </Typography>
+              )}
             </li>
           ))}
         </Box>
@@ -218,7 +232,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
     save.reset();
   };
   const addAction = () => {
-    setActions((xs) => [...xs, withKey({ type: routineList.length > 0 ? "call_routine" : "remove_tag", routineId: "", tagId: "" })]);
+    setActions((xs) => [...xs, withKey(routineList.length > 0 ? { type: "call_routine", routineId: "", tagId: "", instruction: DEFAULT_ROUTINE_INSTRUCTION } : { type: "remove_tag", routineId: "", tagId: "", instruction: "" })]);
     save.reset();
   };
 
@@ -296,7 +310,11 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                   size="small"
                   label={`${i + 1} 番目の種類`}
                   value={a.type}
-                  onChange={(e) => change(a.key, { type: e.target.value as WorkflowActionType, routineId: "", tagId: "" })}
+                  onChange={(e) => {
+                    const type = e.target.value as WorkflowActionType;
+                    // 「Routine を呼ぶ」に変えたとき、依頼が空なら初期値を入れる
+                    change(a.key, { type, routineId: "", tagId: "", instruction: type === "call_routine" && !a.instruction ? DEFAULT_ROUTINE_INSTRUCTION : a.instruction });
+                  }}
                   slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
                   sx={{ width: 170 }}
                 >
@@ -353,6 +371,25 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                     <X size={18} />
                   </IconButton>
                 </Row>
+                {a.type === "call_routine" && (
+                  <Box sx={{ flex: "1 1 100%", pl: 3.5, display: "flex", gap: 0.5, alignItems: "flex-start" }}>
+                    <TextField
+                      multiline
+                      minRows={3}
+                      fullWidth
+                      size="small"
+                      label={`${i + 1} 番目の Routine への依頼`}
+                      value={a.instruction}
+                      onChange={(e) => change(a.key, { instruction: e.target.value })}
+                      error={a.instruction.trim().length > ROUTINE_INSTRUCTION_MAX}
+                      helperText={`${a.instruction.trim().length} / ${ROUTINE_INSTRUCTION_MAX} 文字`}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                    />
+                    <HelpTip about="Routine への依頼">
+                      Routine にしてほしいことを書きます（例：記事の下書きを書く、台本を作る）。この文のあとに、対象のページを示す値（ページの ID・タイトル・タグ名・版の ID・URL）が自動で付きます。本文は付かないので、Routine が wiki の MCP で読みます。保存したあとに積まれる実行から、新しい依頼で呼びます。
+                    </HelpTip>
+                  </Box>
+                )}
               </Box>
             ))}
           </Box>

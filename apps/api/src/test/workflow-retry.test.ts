@@ -51,7 +51,7 @@ const newPage = (title: string, base = W) => mk<{ id: string }>(`${base}/pages`,
 const newRoutine = (name: string, url: string) => mk<{ id: string }>("/admin/routines", { name, url, token: TOKEN }).then((r) => r.id);
 const newBlock = async (tagId: string, actions: unknown[], base = W) =>
   mk<{ id: string }>(`${base}/workflow/${await defaultWorkflowId(ctx.call, base)}/blocks`, { trigger: { type: "tag_attached", tagId }, actions });
-const callRoutine = (routineId: string) => ({ type: "call_routine", routineId });
+const callRoutine = (routineId: string, instruction = "記事の下書きを書いてください") => ({ type: "call_routine", routineId, instruction });
 
 const runs = () => ctx.db.select().from(workflowRuns).orderBy(asc(workflowRuns.createdAt), asc(workflowRuns.id));
 const actionsOf = (runId: string) => ctx.db.select().from(workflowRunActions).where(eq(workflowRunActions.runId, runId)).orderBy(asc(workflowRunActions.position));

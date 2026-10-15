@@ -93,7 +93,7 @@ async function triggerOn(tagId: string): Promise<string> {
   const routine = await ctx.call("POST", "/admin/routines", { name: "校正", url: URL_OK, token: "sk-ant-secret" });
   const block = await ctx.call("POST", `${W}/workflow/${await defaultWorkflowId(ctx.call)}/blocks`, {
     trigger: { type: "tag_attached", tagId },
-    actions: [{ type: "call_routine", routineId: routine.body.id }],
+    actions: [{ type: "call_routine", routineId: routine.body.id, instruction: "記事の下書きを書いてください" }],
   });
   expect(block.status).toBe(201);
   return block.body.id;

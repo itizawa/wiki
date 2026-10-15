@@ -1,14 +1,14 @@
 import type { WorkflowBlock } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { ApiError, errorMessage } from "../lib/api";
-import { blockToDraft, deleteBlockBody, draftToInput, moveItem } from "./WorkflowBlocksSection";
+import { blockToDraft, deleteBlockBody, draftToInput, instructionPreview, moveItem } from "./WorkflowBlocksSection";
 
 const block: WorkflowBlock = {
   id: "b",
   createdAt: "2026-10-14T00:00:00.000Z",
   trigger: { type: "tag_attached", tagId: "t1", tagName: "校正待ち" },
   actions: [
-    { type: "call_routine", routineId: "r1", routineName: "校正" },
+    { type: "call_routine", routineId: "r1", routineName: "校正", instruction: "下書きを書いてください" },
     { type: "remove_tag", tagId: "t1", tagName: "校正待ち" },
     { type: "add_tag", tagId: "t2", tagName: "確認待ち" },
   ],
@@ -28,11 +28,20 @@ describe("draft conversion", () => {
     expect(draftToInput(blockToDraft(block))).toEqual({
       trigger: { type: "tag_attached", tagId: "t1" },
       actions: [
-        { type: "call_routine", routineId: "r1" },
+        { type: "call_routine", routineId: "r1", instruction: "下書きを書いてください" },
         { type: "remove_tag", tagId: "t1" },
         { type: "add_tag", tagId: "t2" },
       ],
     });
+  });
+});
+
+describe("instructionPreview", () => {
+  it("一覧には、依頼文の先頭だけを出す", () => {
+    expect(instructionPreview("短い依頼")).toBe("短い依頼");
+    expect(instructionPreview("1行目\n2行目")).toBe("1行目 2行目");
+    const long = "あ".repeat(100);
+    expect(instructionPreview(long)).toBe(`${"あ".repeat(60)}…`);
   });
 });
 

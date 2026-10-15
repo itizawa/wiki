@@ -75,7 +75,7 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
     if (actions.length > 0) {
       await tx
         .insert(workflowRunActions)
-        .values(actions.map((a) => ({ runId: run!.id, position: a.position, type: a.type, routineId: a.routineId, tagId: a.tagId })));
+        .values(actions.map((a) => ({ runId: run!.id, position: a.position, type: a.type, routineId: a.routineId, tagId: a.tagId, instruction: a.instruction })));
     }
     if (!failedReason) queued.push(run!.id);
   }

@@ -41,7 +41,17 @@ export type WorkflowTriggerInput = z.infer<typeof workflowTriggerSchema>;
 
 // ---- アクション ----
 
-export const callRoutineAction = z.object({ type: z.literal("call_routine"), routineId: id });
+/** 「Routine を呼ぶ」で Routine に渡す依頼文の長さ（文字数）の上限 */
+export const ROUTINE_INSTRUCTION_MAX = 2000;
+/** 依頼文の初期値（移行前の固定文と同じ。ブロックを新しく足すときの入力欄の初期値に使う） */
+export const DEFAULT_ROUTINE_INSTRUCTION =
+  "次のページを確認し、wiki の MCP の get_page で本文を読んで、create_edit_request で編集リクエストを出してください。create_edit_request の baseVersionId には、下の versionId を使ってください。";
+
+export const callRoutineAction = z.object({
+  type: z.literal("call_routine"),
+  routineId: id,
+  instruction: z.string().trim().min(1, "Routine への依頼を入れてください").max(ROUTINE_INSTRUCTION_MAX, `Routine への依頼は${ROUTINE_INSTRUCTION_MAX}文字までです`),
+});
 export const removeTagAction = z.object({ type: z.literal("remove_tag"), tagId: id });
 export const addTagAction = z.object({ type: z.literal("add_tag"), tagId: id });
 
@@ -75,7 +85,7 @@ export type WorkflowBlockInput = z.infer<typeof workflowBlockInput>;
 /** 画面に出す形：入力に、名前（タグ名・Routine 名）を足したもの */
 export type WorkflowTrigger = { type: "tag_attached"; tagId: string; tagName: string };
 export type WorkflowAction =
-  | { type: "call_routine"; routineId: string; routineName: string }
+  | { type: "call_routine"; routineId: string; routineName: string; instruction: string }
   | { type: "remove_tag"; tagId: string; tagName: string }
   | { type: "add_tag"; tagId: string; tagName: string };
 
@@ -118,7 +128,7 @@ export function describeAction(a: WorkflowAction): string {
 /** 編集中の入力（まだ選んでいない欄がある） */
 export type WorkflowDraft = {
   tagId: string;
-  actions: { type: WorkflowActionType; routineId: string; tagId: string }[];
+  actions: { type: WorkflowActionType; routineId: string; tagId: string; instruction: string }[];
 };
 
 /** 入力の誤りを、保存ボタンを押す前に出す文にする。誤りが無ければ null */
@@ -128,6 +138,8 @@ export function workflowDraftProblem(draft: WorkflowDraft): string | null {
   if (draft.actions.length > WORKFLOW_ACTIONS_MAX) return `アクションは${WORKFLOW_ACTIONS_MAX}件までです。`;
   for (const [i, a] of draft.actions.entries()) {
     if (a.type === "call_routine" && !a.routineId) return `${i + 1} 番目のアクションの Routine を選んでください。`;
+    if (a.type === "call_routine" && !a.instruction.trim()) return `${i + 1} 番目のアクションの Routine への依頼を入れてください。`;
+    if (a.type === "call_routine" && a.instruction.trim().length > ROUTINE_INSTRUCTION_MAX) return `${i + 1} 番目のアクションの Routine への依頼は${ROUTINE_INSTRUCTION_MAX}文字までです。`;
     if ((a.type === "remove_tag" || a.type === "add_tag") && !a.tagId) return `${i + 1} 番目のアクションのタグを選んでください。`;
   }
   return null;
