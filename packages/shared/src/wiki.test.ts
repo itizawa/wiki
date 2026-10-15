@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   checkWikiKey,
   createWikiInput,
+  extractAdsensePublisherId,
   extractSearchConsoleVerification,
+  isAdsensePublisherId,
   isGaMeasurementId,
   isSearchConsoleVerification,
   isValidWikiKey,
@@ -62,7 +64,7 @@ describe("wiki origin", () => {
   });
 });
 
-describe("wiki settings (Google Analytics and Search Console)", () => {
+describe("wiki settings (Google Analytics, Search Console and AdSense)", () => {
   it("accepts only GA4 measurement ids", () => {
     for (const id of ["G-ABCD", "G-1A2B3C4D5E", `G-${"A".repeat(20)}`]) expect(isGaMeasurementId(id), id).toBe(true);
     const bad = ["", "G-", "G-ABC", `G-${"A".repeat(21)}`, "g-abcd1234", "G-abcd1234", "UA-12345-1", "GTM-ABC123", "AW-123456789", "G-ABCD 1234", " G-ABCD1234", "G-ABCD\n", 'G-ABCD"', "G-AB<CD", "G-ABCD');alert(1)//", "<script>alert(1)</script>"];
@@ -86,6 +88,26 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     expect(isSearchConsoleVerification(extractSearchConsoleVerification('<script content="abc"></script>'))).toBe(false);
   });
 
+  it("accepts only AdSense publisher ids with the ca- prefix", () => {
+    for (const id of ["ca-pub-1234567890", "ca-pub-1234567890123456", `ca-pub-${"1".repeat(20)}`]) expect(isAdsensePublisherId(id), id).toBe(true);
+    const bad = ["", "ca-pub-", "ca-pub-123456789", `ca-pub-${"1".repeat(21)}`, "pub-1234567890123456", "CA-PUB-1234567890123456", "ca-pub-12345678901234ab", " ca-pub-1234567890123456", "ca-pub-1234567890123456\n", 'ca-pub-1234567890"><script>', "ca-app-pub-1234567890123456"];
+    for (const id of bad) expect(isAdsensePublisherId(id), id).toBe(false);
+  });
+
+  it("takes the publisher id out of pasted pub- ids, AdSense code and the account meta tag", () => {
+    expect(extractAdsensePublisherId(" pub-1234567890123456 ")).toBe("ca-pub-1234567890123456");
+    expect(extractAdsensePublisherId("ca-pub-1234567890123456")).toBe("ca-pub-1234567890123456");
+    expect(
+      extractAdsensePublisherId(
+        '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456"\n     crossorigin="anonymous"></script>',
+      ),
+    ).toBe("ca-pub-1234567890123456");
+    expect(extractAdsensePublisherId('<meta name="google-adsense-account" content="ca-pub-1234567890123456">')).toBe("ca-pub-1234567890123456");
+    // 取り出せないものは、そのあとの形の確かめで落ちる
+    expect(isAdsensePublisherId(extractAdsensePublisherId("<script>alert(1)</script>"))).toBe(false);
+    expect(isAdsensePublisherId(extractAdsensePublisherId("G-ABCD1234"))).toBe(false);
+  });
+
   it("trims the values, takes null or an empty string as removing, and needs at least one of them", () => {
     expect(updateWikiSettingsInput.parse({ gaMeasurementId: " G-ABCD1234 " })).toEqual({ gaMeasurementId: "G-ABCD1234" });
     expect(updateWikiSettingsInput.parse({ gaMeasurementId: null, searchConsoleVerification: " " })).toEqual({ gaMeasurementId: null, searchConsoleVerification: null });
@@ -93,5 +115,8 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     expect(updateWikiSettingsInput.safeParse({ gaMeasurementId: "UA-12345-1" }).success).toBe(false);
     expect(updateWikiSettingsInput.safeParse({ gaMeasurementId: 1 }).success).toBe(false);
     expect(updateWikiSettingsInput.safeParse({ searchConsoleVerification: '<meta name="google-site-verification" content="abc" />' }).success).toBe(false);
+    expect(updateWikiSettingsInput.parse({ adsensePublisherId: " ca-pub-1234567890123456 " })).toEqual({ adsensePublisherId: "ca-pub-1234567890123456" });
+    expect(updateWikiSettingsInput.parse({ adsensePublisherId: "" })).toEqual({ adsensePublisherId: null });
+    expect(updateWikiSettingsInput.safeParse({ adsensePublisherId: "pub-1234567890123456" }).success).toBe(false);
   });
 });

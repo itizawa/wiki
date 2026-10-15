@@ -1,5 +1,6 @@
 ---
 import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
+import { adsensePublisherId, adsenseScriptSrc } from "../lib/adsense";
 import { googleTags } from "../lib/googleTags";
 import { serializeJsonLd, type JsonLd } from "../lib/jsonLd";
 import { siteData } from "../lib/manifest";
@@ -18,7 +19,7 @@ interface Props {
   canonical?: string;
   /** 限定公開ページ */
   noindex?: boolean;
-  /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す */
+  /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す（AdSense は出さない） */
   notFound?: boolean;
   /**
    * ツリーナビ（NavDrawer）を置いたページだけ渡す、トップのパス（`/`）。
@@ -70,6 +71,8 @@ const ogImageUrl = ogImageSrc ? new URL(ogImageSrc, site.origin).href : undefine
 const twitterCard = ogImage ? "summary_large_image" : "summary";
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
 const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = googleTags(site.wiki, { noindex, notFound });
+// AdSense（自動広告）。限定公開のページと 404 には出さない
+const adsenseId = adsensePublisherId(site.wiki, { noindex, notFound });
 ---
 
 <!doctype html>
@@ -154,6 +157,14 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
             }
           }
         </script>
+      )
+    }
+    {
+      adsenseId && (
+        <>
+          <meta name="google-adsense-account" content={adsenseId} />
+          <script is:inline async src={adsenseScriptSrc(adsenseId)} crossorigin="anonymous" />
+        </>
       )
     }
   </head>

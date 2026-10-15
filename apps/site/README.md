@@ -20,7 +20,7 @@ pnpm build:sample   # fixtures/manifest.sample.json でビルドし、scripts/ve
 ```
 dist/
   _astro/ favicon.svg     どの wiki にも共通のファイル
-  {key}/                  wiki 1つ分（index.html, p/, t/, u/, search.html, feed.xml, sitemap.xml, robots.txt, 404.html,
+  {key}/                  wiki 1つ分（index.html, p/, t/, u/, search.html, feed.xml, sitemap.xml, robots.txt, ads.txt, 404.html,
                           nav.{hash}.json, page-routes.json, pagefind/）
 ```
 
@@ -53,6 +53,16 @@ wiki ごとの設定（マニフェストの `gaMeasurementId` / `searchConsoleV
 - 値は HTML にそのまま出るので、形の合わないもの（`packages/shared/src/wiki.ts` の `isGaMeasurementId` / `isSearchConsoleVerification`）は出さない
 - `build:sample` の検査で、設定のある wiki の公開ページに入っていること、限定公開のページと未設定の wiki に入っていないことを確かめる
 
+### Google AdSense
+
+wiki ごとの設定（マニフェストの `adsensePublisherId`。`ca-pub-XXXX`。管理画面の「設定」の「連携」で入れる）があれば、`src/layouts/Base.astro` がその wiki のページの `<head>` に `<meta name="google-adsense-account">` と自動広告のコード（`adsbygoogle.js?client=ca-pub-XXXX`）を出す。どのページに出すかは `src/lib/adsense.ts` が決める。
+
+- 限定公開のページ（`noindex`）と 404 のページには出さない（404 は、AdSense のポリシーでエラーのページに広告を出せないため。GA と違い、404 にも出さない）
+- `/ads.txt`（`src/pages/[wiki]/ads.txt.ts`）は、パブリッシャー ID のある wiki にだけ出す。中身は `google.com, pub-XXXX, DIRECT, f08c47fec0942fa0`（ads.txt には `ca-` を付けない）。無い wiki は、ファイルが無いので 404。`robots.txt` と同じく、Worker が wiki のディレクトリから返す
+- 値は HTML と ads.txt にそのまま出るので、形の合わないもの（`packages/shared/src/wiki.ts` の `isAdsensePublisherId`）は出さない
+- 広告は iframe に入るので、Worker の CSP の `frame-src` に AdSense の枠の行き先を入れてある（`worker/index.ts` の `FRAME_SRC`）
+- `build:sample` の検査で、設定のある wiki の公開ページに入っていること、限定公開のページ・404・未設定の wiki に入っていないこと、ads.txt の中身と、未設定の wiki に ads.txt が無いことを確かめる
+
 ## URL
 
 wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下に、次の URL がある。
@@ -63,9 +73,10 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 | `/t/{treeKey}/{nodeId}` | 廃止。`/p/{nodeId}` へ 301（`worker/index.ts`）。ツリーは1本なので、記事のページと同じサイドバーを出すだけの再掲だった。ツリーナビのリンクは `/p/` を指す |
 | `/t/{treeKey}`、`/t/{treeKey}/` | 廃止。トップへ 301（`worker/index.ts`）。ツリーはトップと記事のサイドバーに出る |
 | `/nav.{hash}.json` | ツリーナビの全体。記事のページのツリーナビが読む。名前に中身のハッシュが入り、ブラウザに1年キャッシュさせる（下の「サイドバー（ページ一覧）」） |
-| `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（下の「Google Analytics とサーチコンソール」）も出さない |
+| `/u/{unlisted_key}/` | 限定公開。noindex、検索・サイトマップ・RSS・ナビには出さない。Google のタグ（上の「Google Analytics とサーチコンソール」）と AdSense のコードも出さない |
 | `/search?q=` | Pagefind（アイランド、インデックスは遅延ロード） |
 | `/feed.xml` `/sitemap.xml` | publicのみ |
+| `/ads.txt` | AdSense のパブリッシャー ID のある wiki だけ（上の「Google AdSense」） |
 | `/images/{name}` | アップロードした画像。R2 のバケット（バインディング `IMAGES`）から返す。どの wiki でも同じ（`worker/index.ts`）。2回目からはエッジのキャッシュから返し、R2 を読まない（キーは Host を含む URL。プレビューの `*.workers.dev` ではキャッシュが働かず、毎回 R2 から返す） |
 
 別の wiki のページへのリンクは、外部リンクと同じ扱いになる（`/p/{id}` と書いても、その wiki に無いページなのでテキストだけになる）。

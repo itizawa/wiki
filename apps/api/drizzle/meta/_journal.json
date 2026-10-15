@@ -309,6 +309,13 @@
       "when": 1792015983601,
       "tag": "0043_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792022149627,
+      "tag": "0044_wiki_adsense",
+      "breakpoints": true
     }
   ]
 }

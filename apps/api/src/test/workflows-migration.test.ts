@@ -18,10 +18,12 @@ describe("migration 0043_workflows", () => {
     cpSync(DRIZZLE, folder, { recursive: true });
     const journalPath = join(folder, "meta", "_journal.json");
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries.at(-1)!.tag).toBe(TARGET);
+    // 0043 のあとにマイグレーションが足されても、0043 の手前までを流す
+    const index = journal.entries.findIndex((e) => e.tag === TARGET);
+    expect(index).toBeGreaterThan(0);
 
     const client = new PGlite({ extensions: pgliteExtensions });
-    writeFileSync(journalPath, JSON.stringify({ ...journal, entries: journal.entries.slice(0, -1) }));
+    writeFileSync(journalPath, JSON.stringify({ ...journal, entries: journal.entries.slice(0, index) }));
     await migrate(drizzle(client) as never, { migrationsFolder: folder });
 
     // 外部キーは確かめない（ページやタグを用意せず、ブロックと実行の行だけ入れる）

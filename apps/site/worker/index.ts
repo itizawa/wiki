@@ -57,11 +57,24 @@ export default {
 };
 
 /**
+ * 埋め込んでよい枠（iframe）の行き先。Google マップ（www.google.com）と、AdSense の広告の枠
+ * （広告は googlesyndication.com・doubleclick.net の枠に入り、不正な表示の検出は adtrafficquality.google、同意の確認は fundingchoicesmessages.google.com の枠を使う）。
+ * AdSense を設定していない wiki でも同じ値にする（Worker は wiki ごとの設定を持たない。広告のコードを読み込まなければ、これらの枠は作られない）
+ */
+const FRAME_SRC = [
+  "https://www.google.com",
+  "https://*.googlesyndication.com",
+  "https://*.doubleclick.net",
+  "https://*.adtrafficquality.google",
+  "https://fundingchoicesmessages.google.com",
+].join(" ");
+
+/**
  * どの応答にも付けるヘッダー。応答が自分で付けたもの（限定公開の no-referrer、画像の CSP など）は上書きしない。
  * スクリプトは Astro がページに埋め込むことがあるので、CSP では枠に入れさせないことと、base・object だけを絞る。
  */
 const SECURITY_HEADERS = {
-  "content-security-policy": "frame-ancestors 'none'; frame-src https://www.google.com; base-uri 'self'; object-src 'none'",
+  "content-security-policy": `frame-ancestors 'none'; frame-src ${FRAME_SRC}; base-uri 'self'; object-src 'none'`,
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
