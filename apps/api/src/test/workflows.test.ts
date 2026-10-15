@@ -27,7 +27,7 @@ async function newRoutine(): Promise<string> {
   return res.body.id;
 }
 const block = (tagId: string, actions: unknown[]) => ({ trigger: { type: "tag_attached", tagId }, actions });
-const callRoutine = (routineId: string) => ({ type: "call_routine", routineId });
+const callRoutine = (routineId: string, instruction = "記事の下書きを書いてください") => ({ type: "call_routine", routineId, instruction });
 const removeTag = (tagId: string) => ({ type: "remove_tag", tagId });
 
 async function trail(): Promise<[string, string][]> {

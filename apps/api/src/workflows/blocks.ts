@@ -23,7 +23,7 @@ import { HttpError, notFound } from "../errors";
  */
 
 type ActionRow = typeof workflowActions.$inferSelect;
-type ActionColumns = Pick<typeof workflowActions.$inferInsert, "routineId" | "tagId">;
+type ActionColumns = Pick<typeof workflowActions.$inferInsert, "routineId" | "tagId" | "instruction">;
 
 /** アクションの種類ごとの、DB の列との対応と、参照の確かめ */
 const ACTION_COLUMNS: {
@@ -35,21 +35,21 @@ const ACTION_COLUMNS: {
   };
 } = {
   call_routine: {
-    toColumns: (a) => ({ routineId: a.routineId, tagId: null }),
+    toColumns: (a) => ({ routineId: a.routineId, tagId: null, instruction: a.instruction }),
     check: (ctx, a) => {
       if (!ctx.routines.has(a.routineId)) throw badRef("unknown_routine", `routine ${a.routineId} is not registered`);
     },
-    toAction: (row, ctx) => ({ type: "call_routine", routineId: row.routineId!, routineName: ctx.routines.get(row.routineId!) ?? "" }),
+    toAction: (row, ctx) => ({ type: "call_routine", routineId: row.routineId!, routineName: ctx.routines.get(row.routineId!) ?? "", instruction: row.instruction ?? "" }),
   },
   remove_tag: {
-    toColumns: (a) => ({ routineId: null, tagId: a.tagId }),
+    toColumns: (a) => ({ routineId: null, tagId: a.tagId, instruction: null }),
     check: (ctx, a) => {
       if (!ctx.tags.has(a.tagId)) throw badRef("unknown_tag", `tag ${a.tagId} is not in this wiki`);
     },
     toAction: (row, ctx) => ({ type: "remove_tag", tagId: row.tagId!, tagName: ctx.tags.get(row.tagId!) ?? "" }),
   },
   add_tag: {
-    toColumns: (a) => ({ routineId: null, tagId: a.tagId }),
+    toColumns: (a) => ({ routineId: null, tagId: a.tagId, instruction: null }),
     check: (ctx, a) => {
       if (!ctx.tags.has(a.tagId)) throw badRef("unknown_tag", `tag ${a.tagId} is not in this wiki`);
     },
@@ -161,6 +161,12 @@ const actionValues = (blockId: string, actions: WorkflowActionInput[]) =>
 const triggerLabel = (input: WorkflowBlockInput, names: Names) =>
   describeTrigger({ type: "tag_attached", tagId: input.trigger.tagId, tagName: names.tags.get(input.trigger.tagId) ?? "" });
 
+/** 監査ログの detail：アクションの数と、「Routine を呼ぶ」の依頼文（何を頼んだかを残す） */
+const auditDetail = (input: WorkflowBlockInput) => {
+  const instructions = input.actions.flatMap((a) => (a.type === "call_routine" ? [a.instruction] : []));
+  return { actions: input.actions.length, ...(instructions.length > 0 && { instructions }) };
+};
+
 const blockTarget = (id: string, label: string) => ({ type: "workflow_block" as const, id, label });
 
 export async function createBlock(tx: Db, wikiId: string, workflowId: string, input: WorkflowBlockInput, actor: AuditActor): Promise<WorkflowBlock> {
@@ -181,7 +187,7 @@ export async function createBlock(tx: Db, wikiId: string, workflowId: string, in
     actor,
     action: "workflow_block_create",
     target: blockTarget(row!.id, triggerLabel(input, names)),
-    detail: { actions: input.actions.length },
+    detail: auditDetail(input),
   });
   return (await loadBlocks(tx, wikiId, workflowId, row!.id))[0]!;
 }
@@ -204,7 +210,7 @@ export async function replaceBlock(tx: Db, wikiId: string, workflowId: string, i
     actor,
     action: "workflow_block_update",
     target: blockTarget(id, triggerLabel(input, names)),
-    detail: { actions: input.actions.length },
+    detail: auditDetail(input),
   });
   return (await loadBlocks(tx, wikiId, workflowId, id))[0]!;
 }
