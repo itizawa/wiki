@@ -42,6 +42,8 @@ export function PageAudioSection({ pageId }: { pageId: string }) {
   });
   const remove = useMutation({
     mutationFn: (id: string) => api.deletePageAudio(pageId, id),
+    // 前の失敗の表示は、次の操作を始めたときに消す
+    onMutate: () => setError(null),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
 
@@ -188,7 +190,7 @@ export function PageAudioSection({ pageId }: { pageId: string }) {
               {busy ? "上げています" : "この録音を上げる"}
             </Button>
             <Button variant="outlined" color="inherit" onClick={() => void startRecording()} disabled={busy}>
-              撮り直す
+              録り直す
             </Button>
             <Button color="inherit" onClick={discard} disabled={busy}>
               録音を捨てる

@@ -49,6 +49,24 @@ describe("page audio", () => {
     expect(new Uint8Array(await served.res.arrayBuffer())).toEqual(WEBM);
   });
 
+  it("answers byte-range requests with 206 (Safari plays nothing otherwise)", async () => {
+    ctx = await setup();
+    const page = await newPage();
+    const added = await upload(page, WEBM);
+    const path = `${W}/pages/${page}/audio/${added.body.id}`;
+    const part = await ctx.call("GET", path, undefined, { range: "bytes=4-7" });
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe(`bytes 4-7/${WEBM.byteLength}`);
+    expect(part.headers.get("content-length")).toBe("4");
+    expect(new Uint8Array(await part.res.arrayBuffer())).toEqual(WEBM.slice(4, 8));
+    expect(new Uint8Array(await (await ctx.call("GET", path, undefined, { range: "bytes=10-" })).res.arrayBuffer())).toEqual(WEBM.slice(10));
+    expect(new Uint8Array(await (await ctx.call("GET", path, undefined, { range: "bytes=-2" })).res.arrayBuffer())).toEqual(WEBM.slice(-2));
+    const out = await ctx.call("GET", path, undefined, { range: "bytes=100-" });
+    expect(out.status).toBe(416);
+    expect(out.headers.get("content-range")).toBe(`bytes */${WEBM.byteLength}`);
+    expect((await ctx.call("GET", path)).headers.get("accept-ranges")).toBe("bytes");
+  });
+
   it("decides the type from the content and refuses the rest", async () => {
     ctx = await setup();
     const page = await newPage();

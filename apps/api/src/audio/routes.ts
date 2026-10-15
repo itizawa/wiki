@@ -1,4 +1,4 @@
-import { AUDIO_MAX_BYTES, AUDIO_MAX_PER_PAGE, AUDIO_NAME_MAX, audioObjectName, durationMsOf, sniffAudioType, type AudioType } from "@wiki/shared";
+import { AUDIO_MAX_BYTES, AUDIO_MAX_PER_PAGE, AUDIO_NAME_MAX, audioObjectName, durationMsOf, sniffAudioType } from "@wiki/shared";
 import { and, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { auditActor, writeAudit } from "../audit/service";
@@ -16,10 +16,59 @@ function requireStore(store: AudioStore | null | undefined): AudioStore {
   return store;
 }
 
-/** 音声を返す応答。ログインした人か、署名つきの URL を持つ人にだけ返すものなので、キャッシュさせない */
-function audioResponse(file: { body: ReadableStream | Uint8Array }, contentType: string, name: string, disposition: "inline" | "attachment"): Response {
+/**
+ * `Range: bytes=…` を、先頭から数えた位置と長さにする。Range が無ければ null（全体を返す）。
+ * 範囲が全体の外なら "unsatisfiable"。複数の範囲は、最初の1つだけを返す
+ */
+export function parseRange(header: string | undefined, total: number): { offset: number; length: number } | "unsatisfiable" | null {
+  const m = header ? /^bytes=(\d*)-(\d*)/.exec(header) : null;
+  if (!m || (m[1] === "" && m[2] === "")) return null;
+  let start: number;
+  let end: number;
+  if (m[1] === "") {
+    // 末尾から n バイト
+    start = Math.max(0, total - Number(m[2]));
+    end = total - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] === "" ? total - 1 : Math.min(Number(m[2]), total - 1);
+  }
+  if (start >= total || start > end) return "unsatisfiable";
+  return { offset: start, length: end - start + 1 };
+}
+
+/**
+ * 音声を返す応答。ログインした人か、署名つきの URL を持つ人にだけ返すものなので、キャッシュさせない。
+ * Safari は、Range に答えない音声を再生しないので、`Range` には 206 で答える（`row.bytes` が全体の大きさ）
+ */
+async function serveAudio(
+  req: { header(name: string): string | undefined },
+  store: AudioStore | null | undefined,
+  row: { id: string; name: string; contentType: string; bytes: number },
+  disposition: "inline" | "attachment",
+): Promise<Response> {
+  const range = parseRange(req.header("range"), row.bytes);
+  if (range === "unsatisfiable") return new Response(null, { status: 416, headers: { "content-range": `bytes */${row.bytes}` } });
+  const file = store ? await store.get(objectNameOf(row), range ?? undefined) : null;
+  if (!file) throw notFound("audio");
+  return audioResponse(file, row.contentType, row.name, disposition, range ? { range, total: row.bytes } : undefined);
+}
+
+function audioResponse(
+  file: { body: ReadableStream | Uint8Array },
+  contentType: string,
+  name: string,
+  disposition: "inline" | "attachment",
+  partial?: { range: { offset: number; length: number }; total: number },
+): Response {
   return new Response(file.body as BodyInit, {
+    status: partial ? 206 : 200,
     headers: {
+      ...(partial && {
+        "content-range": `bytes ${partial.range.offset}-${partial.range.offset + partial.range.length - 1}/${partial.total}`,
+        "content-length": String(partial.range.length),
+      }),
+      "accept-ranges": "bytes",
       "content-type": contentType,
       "content-disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(name)}`,
       "cache-control": "private, no-store",
@@ -89,9 +138,8 @@ export const pageAudioRoutes = new Hono<AppEnv>()
     const { db } = deps;
     const page = await findLivePage(db, c.get("wiki").id, c.req.param("pageId"));
     const row = await findPageAudio(db, page.id, c.req.param("id"));
-    const file = row && deps.audio ? await deps.audio.get(objectNameOf(row)) : null;
-    if (!row || !file) throw notFound("audio");
-    return audioResponse(file, row.contentType, row.name, "inline");
+    if (!row) throw notFound("audio");
+    return serveAudio(c.req, deps.audio, row, "inline");
   })
   .delete("/:pageId/audio/:id", async (c) => {
     const deps = c.get("deps");
@@ -128,7 +176,6 @@ export const audioSignedRoutes = new Hono<AppEnv>().get("/:id", async (c) => {
     .from(pageAudio)
     .innerJoin(pages, eq(pages.id, pageAudio.pageId))
     .where(and(eq(pageAudio.id, id), isNull(pages.deletedAt)));
-  const file = row && deps.audio ? await deps.audio.get(objectNameOf(row.audio)) : null;
-  if (!row || !file) throw notFound("audio");
-  return audioResponse(file, row.audio.contentType as AudioType, row.audio.name, "attachment");
+  if (!row) throw notFound("audio");
+  return serveAudio(c.req, deps.audio, row.audio, "attachment");
 });
