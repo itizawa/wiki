@@ -78,8 +78,9 @@ async function executeOne(db: Db, deps: RunDeps, runId: string, now: () => Date,
     .where(and(eq(workflowRunActions.runId, run.id), eq(workflowRunActions.status, "pending")))
     .orderBy(asc(workflowRunActions.position));
 
-  const [tag] = await db.select({ name: wikiTags.name }).from(wikiTags).where(eq(wikiTags.id, run.tagId));
-  const context = { run, wikiKey: wiki.key, title: page.title, tagName: tag?.name ?? "" };
+  // タグがトリガーでない実行は null。タグが消えていたときは空の文字列（これまでどおり）
+  const [tag] = run.tagId ? await db.select({ name: wikiTags.name }).from(wikiTags).where(eq(wikiTags.id, run.tagId)) : [];
+  const context = { run, wikiKey: wiki.key, title: page.title, tagName: run.tagId ? (tag?.name ?? "") : null };
 
   for (const action of actions) {
     const outcome = await runAction(db, deps, context, action).catch(
@@ -150,7 +151,7 @@ export async function failRun(db: Db, run: RunRow, page: { title: string }, acti
   });
 }
 
-type Context = { run: RunRow; wikiKey: string; title: string; tagName: string };
+type Context = { run: RunRow; wikiKey: string; title: string; tagName: string | null };
 
 async function runAction(db: Db, deps: RunDeps, ctx: Context, action: RunActionRow): Promise<ActionResult> {
   if (action.type === "call_routine" && action.routineId) return callRoutine(db, deps, ctx, action.routineId, action.instruction ?? DEFAULT_ROUTINE_INSTRUCTION);

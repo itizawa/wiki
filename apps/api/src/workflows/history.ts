@@ -8,6 +8,7 @@ import {
   type WorkflowRunPage,
   type WorkflowRunsQuery,
   type WorkflowRunStatus,
+  type WorkflowTriggerType,
 } from "@wiki/shared";
 import { and, asc, desc, eq, inArray, lt, or } from "drizzle-orm";
 import type { Db } from "../db/client";
@@ -97,7 +98,8 @@ export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: strin
       createdAt: run.createdAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null,
       page: { id: run.pageId, title: available ? pageTitle! : DELETED_PAGE_TITLE, available },
-      tagName: trigger ?? DELETED_TAG,
+      tagName: run.tagId === null ? null : (trigger ?? DELETED_TAG),
+      triggerType: (run.tagId === null ? "page_first_published" : "tag_attached") as WorkflowTriggerType,
       summary: actions.map((a) => a.label).join(" → "),
       error: run.status === "succeeded" ? null : run.lastError,
       actions,

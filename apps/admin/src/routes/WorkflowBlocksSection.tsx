@@ -16,6 +16,9 @@ import {
   ROUTINE_INSTRUCTION_MAX,
   describeAction,
   describeTrigger,
+  TRIGGER_KINDS,
+  TRIGGER_TYPES,
+  type WorkflowTriggerType,
   describeTriggerCondition,
   workflowDraftProblem,
   type WorkflowActionInput,
@@ -41,14 +44,15 @@ const ROUTINES_KEY = ["routine-choices"];
 /** 編集の入力 → API に送る形（選び終えていることは、呼ぶ前に `workflowDraftProblem` で確かめてある） */
 export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
   return {
-    trigger: { type: "tag_attached", tagId: draft.tagId },
+    trigger: draft.triggerType === "tag_attached" ? { type: "tag_attached", tagId: draft.tagId } : { type: "page_first_published" },
     actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId, instruction: a.instruction.trim() } : { type: a.type, tagId: a.tagId })),
   };
 }
 
 export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
   return {
-    tagId: block.trigger.tagId,
+    triggerType: block.trigger.type,
+    tagId: block.trigger.type === "tag_attached" ? block.trigger.tagId : "",
     actions: block.actions.map((a) => ({
       type: a.type,
       routineId: a.type === "call_routine" ? a.routineId : "",
@@ -208,7 +212,8 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
   const routines = useQuery({ queryKey: ROUTINES_KEY, queryFn: api.listRoutineChoices });
   const nextKey = useRef(0);
   const withKey = (a: WorkflowDraft["actions"][number]): DraftAction => ({ ...a, key: nextKey.current++ });
-  const initial = block ? blockToDraft(block) : { tagId: "", actions: [] };
+  const initial: WorkflowDraft = block ? blockToDraft(block) : { triggerType: "tag_attached", tagId: "", actions: [] };
+  const [triggerType, setTriggerType] = useState<WorkflowTriggerType>(initial.triggerType);
   const [tagId, setTagId] = useState(initial.tagId);
   const [actions, setActions] = useState<DraftAction[]>(() => initial.actions.map(withKey));
 
@@ -225,7 +230,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
     },
   });
 
-  const draft: WorkflowDraft = { tagId, actions };
+  const draft: WorkflowDraft = { triggerType, tagId, actions };
   const problem = workflowDraftProblem(draft);
   const change = (key: number, patch: Partial<DraftAction>) => {
     setActions((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
@@ -267,29 +272,55 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
             </Alert>
           )}
 
-          <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
-            トリガー
-          </Typography>
+          <Row sx={{ mb: 1, gap: 0.5 }}>
+            <Typography variant="subtitle2" component="h3">
+              トリガー
+            </Typography>
+            <HelpTip about="トリガーの種類">
+              「タグが付いたとき」は、選んだタグがページに付くたびに動きます。「初めて公開されたとき」は、一度も公開したことのないページを、公開か限定公開にしたときだけ動きます（公開し直し・非公開にしたときは動きません）。管理画面・MCP・予約のどれから公開しても動きます。Routine に渡す値のタグ名は、空になります。
+            </HelpTip>
+          </Row>
           <TextField
             select
             fullWidth
             size="small"
-            label="タグが付いたとき（このタグ）"
-            value={tagId}
-            disabled={noTags}
+            label="きっかけ"
+            value={triggerType}
             onChange={(e) => {
-              setTagId(e.target.value);
+              setTriggerType(e.target.value as WorkflowTriggerType);
               save.reset();
             }}
             slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
           >
-            <option value="">選んでください</option>
-            {tagList.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            {TRIGGER_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {TRIGGER_KINDS[t].label}
               </option>
             ))}
           </TextField>
+          {triggerType === "tag_attached" && (
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="このタグ"
+              value={tagId}
+              disabled={noTags}
+              onChange={(e) => {
+                setTagId(e.target.value);
+                save.reset();
+              }}
+              slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+              sx={{ mt: 1.5 }}
+            >
+              <option value="">選んでください</option>
+              {tagList.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </TextField>
+          )}
 
           <Row sx={{ mt: 2.5, mb: 1, gap: 0.5 }}>
             <Typography variant="subtitle2" component="h3">

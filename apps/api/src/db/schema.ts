@@ -435,9 +435,8 @@ export const workflowBlocks = pgTable(
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
     triggerType: text("trigger_type").notNull(),
-    triggerTagId: uuid("trigger_tag_id")
-      .notNull()
-      .references(() => wikiTags.id),
+    /** トリガーのタグ（`tag_attached` のときだけ。`page_first_published` では null） */
+    triggerTagId: uuid("trigger_tag_id").references(() => wikiTags.id),
     createdAt: createdAt(),
     createdBy: uuid("created_by").references(() => users.id),
   },
@@ -445,7 +444,10 @@ export const workflowBlocks = pgTable(
     index("workflow_blocks_wiki_idx").on(t.wikiId, t.createdAt),
     index("workflow_blocks_workflow_idx").on(t.workflowId, t.createdAt),
     index("workflow_blocks_trigger_tag_idx").on(t.triggerTagId),
-    check("workflow_blocks_trigger_type_check", sql`${t.triggerType} in ('tag_attached')`),
+    check(
+      "workflow_blocks_trigger_type_check",
+      sql`(${t.triggerType} = 'tag_attached' and ${t.triggerTagId} is not null) or (${t.triggerType} = 'page_first_published' and ${t.triggerTagId} is null)`,
+    ),
   ],
 );
 
@@ -493,8 +495,8 @@ export const workflowRuns = pgTable(
     pageId: text("page_id")
       .notNull()
       .references(() => pages.id),
-    /** トリガーのタグ（積んだ時点） */
-    tagId: uuid("tag_id").notNull(),
+    /** トリガーのタグ（積んだ時点）。タグがトリガーでない実行（初めて公開されたとき）は null */
+    tagId: uuid("tag_id"),
     /** 積んだ時点の、ページの最新の保存済みの版。版が無かったときは null */
     versionId: uuid("version_id"),
     status: text("status").notNull().default("pending"),

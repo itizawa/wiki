@@ -6,7 +6,8 @@ export type RoutineTextInput = {
   wikiKey: string;
   pageId: string;
   title: string;
-  tagName: string;
+  /** トリガーのタグ名。タグがトリガーでない実行（初めて公開されたとき）は null */
+  tagName: string | null;
   versionId: string;
   /** 管理画面のページの URL */
   url: string;

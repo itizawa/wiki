@@ -1,6 +1,6 @@
 import type { WorkflowRunEntry, WorkflowRunPage } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { refetchIntervalFor, runResultText, RUNS_REFETCH_MS } from "./WorkflowRunsSection";
+import { refetchIntervalFor, runResultText, runTriggerText, RUNS_REFETCH_MS } from "./WorkflowRunsSection";
 
 const run = (patch: Partial<WorkflowRunEntry>): WorkflowRunEntry => ({
   id: "r",
@@ -10,6 +10,7 @@ const run = (patch: Partial<WorkflowRunEntry>): WorkflowRunEntry => ({
   finishedAt: null,
   page: { id: "p", title: "記事", available: true },
   tagName: "校正待ち",
+  triggerType: "tag_attached" as const,
   summary: "",
   error: null,
   actions: [],
@@ -35,5 +36,12 @@ describe("refetchIntervalFor", () => {
     expect(refetchIntervalFor([page("succeeded"), page("pending")])).toBe(RUNS_REFETCH_MS);
     expect(refetchIntervalFor([page("running")])).toBe(RUNS_REFETCH_MS);
     expect(refetchIntervalFor(undefined)).toBe(false);
+  });
+});
+
+describe("runTriggerText", () => {
+  it("shows the tag name, or 初めての公開 for a run that no tag started", () => {
+    expect(runTriggerText(run({}))).toBe("校正待ち");
+    expect(runTriggerText(run({ triggerType: "page_first_published", tagName: null }))).toBe("初めての公開");
   });
 });

@@ -30,7 +30,7 @@ describe("workflowBlockInput", () => {
 });
 
 describe("workflowDraftProblem", () => {
-  const ok = { tagId: id, actions: [{ type: "remove_tag" as const, routineId: "", tagId: id, instruction: "" }] };
+  const ok = { triggerType: "tag_attached" as const, tagId: id, actions: [{ type: "remove_tag" as const, routineId: "", tagId: id, instruction: "" }] };
   it("says why it cannot be saved yet", () => {
     expect(workflowDraftProblem({ ...ok, tagId: "" })).toContain("トリガーのタグ");
     expect(workflowDraftProblem({ ...ok, actions: [] })).toContain("アクションを1つ以上");
@@ -46,6 +46,8 @@ describe("workflowDraftProblem", () => {
   });
   it("is null when everything is chosen", () => {
     expect(workflowDraftProblem(ok)).toBeNull();
+    // 「初めて公開されたとき」はタグを選ばない
+    expect(workflowDraftProblem({ ...ok, triggerType: "page_first_published", tagId: "" })).toBeNull();
   });
 });
 
@@ -54,6 +56,8 @@ describe("sentences", () => {
     const t = { type: "tag_attached" as const, tagId: id, tagName: "校正待ち" };
     expect(describeTrigger(t)).toBe("タグ「校正待ち」が付いたとき");
     expect(describeTriggerCondition(t)).toBe("タグ「校正待ち」が付いたら");
+    expect(describeTrigger({ type: "page_first_published" })).toBe("ページが初めて公開されたとき");
+    expect(describeTriggerCondition({ type: "page_first_published" })).toBe("ページが初めて公開されたら");
     expect(describeAction({ type: "call_routine", routineId: id, routineName: "校正", instruction: "x" })).toBe("Routine「校正」を呼ぶ");
     expect(describeAction({ type: "remove_tag", tagId: id, tagName: "校正待ち" })).toBe("タグ「校正待ち」を外す");
     expect(describeAction({ type: "add_tag", tagId: id, tagName: "確認待ち" })).toBe("タグ「確認待ち」を付ける");

@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte } from "drizzle-orm";
+import { and, asc, count, eq, gte, type SQL } from "drizzle-orm";
 import type { AuditActor } from "../audit/service";
 import type { Db } from "../db/client";
 import { pages, pageVersions, wikis, workflowActions, workflowBlocks, workflowRunActions, workflowRuns } from "../db/schema";
@@ -30,19 +30,34 @@ function markWorkflowQueued(at: Date): void {
 }
 
 /**
- * 「このタグが付いた」ブロックごとに、実行（pending）と、積む時点のアクションの写しを作る。
+ * 「このタグが付いた」ブロックごとに、実行（pending）と、積む時点のアクションの写しを作る。積み方は `enqueueRuns` を見る。
+ */
+export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string, tagId: string, now: Date = new Date()): Promise<string[]> {
+  return enqueueRuns(tx, wikiId, pageId, and(eq(workflowBlocks.triggerType, "tag_attached"), eq(workflowBlocks.triggerTagId, tagId)), tagId, now);
+}
+
+/**
+ * 「ページが初めて公開された」ブロックごとに、実行を積む（`publishPage` が、一度も公開していなかったページを公開したときに、同じトランザクションの中で呼ぶ）。
+ * 実行の `tag_id` は null。積み方は `enqueueRuns` を見る（繰り返しの上限も同じ。初公開は1ページに1回だけだが、判定を分けない）。
+ */
+export async function enqueueFirstPublished(tx: Db, wikiId: string, pageId: string, now: Date = new Date()): Promise<string[]> {
+  return enqueueRuns(tx, wikiId, pageId, eq(workflowBlocks.triggerType, "page_first_published"), null, now);
+}
+
+/**
+ * `trigger` に当たるブロックごとに、実行（pending）と、積む時点のアクションの写しを作る。
  * 付けるたびに積み、実行待ち・実行中のものがあってもまとめない。アーカイブ中の wiki では積まない。
  * ページに版が無ければ、`failed`（理由つき）で記録して、実行はしない。
  * 同じページ・同じブロックの実行が直近1時間に `MAX_RUNS_PER_BLOCK_PAGE` 回に達していたら、積まずに `failed`（繰り返しが多すぎる）で記録する。
  */
-export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string, tagId: string, now: Date = new Date()): Promise<string[]> {
+async function enqueueRuns(tx: Db, wikiId: string, pageId: string, trigger: SQL | undefined, tagId: string | null, now: Date): Promise<string[]> {
   const [wiki] = await tx.select({ archivedAt: wikis.archivedAt }).from(wikis).where(eq(wikis.id, wikiId));
   if (!wiki || wiki.archivedAt) return [];
 
   const blocks = await tx
     .select({ id: workflowBlocks.id, workflowId: workflowBlocks.workflowId })
     .from(workflowBlocks)
-    .where(and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.triggerType, "tag_attached"), eq(workflowBlocks.triggerTagId, tagId)))
+    .where(and(eq(workflowBlocks.wikiId, wikiId), trigger))
     .orderBy(asc(workflowBlocks.createdAt), asc(workflowBlocks.id));
   if (blocks.length === 0) return [];
 

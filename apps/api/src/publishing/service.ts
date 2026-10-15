@@ -5,6 +5,7 @@ import type { Db } from "../db/client";
 import { pages, pageVersions, publishEvents } from "../db/schema";
 import { HttpError, notFound } from "../errors";
 import { keepVersion } from "../pages/versions";
+import { enqueueFirstPublished } from "../workflows/enqueue";
 import { assertWithinParent, descendantIds, descendantsWider, livePages, loadTreeIndex, widerThan, type TreeIndex } from "./hierarchy";
 
 /**
@@ -134,7 +135,9 @@ export async function publishPage(db: Db, input: PublishInput): Promise<PublishR
       changed = targets.length;
     }
   }
-  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: changed };
+  // 一度も公開したことの無いページを公開したときだけ、「初めて公開されたとき」のワークフローの実行を積む（公開し直し・非公開化では積まない）
+  const runIds = page.firstPublishedAt === null ? await enqueueFirstPublished(db, input.wikiId, input.pageId) : [];
+  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: changed, runIds };
 }
 
 /** 公開・非公開化の前の状態（監査ログに残す）。 */
@@ -143,6 +146,8 @@ export type PublishResult = {
   from: { visibility: "public" | "unlisted" | "private"; versionId: string | null };
   /** 配下もまとめて変えたページの数 */
   descendants: number;
+  /** 積んだワークフローの実行のうち、これから動かすもの（`pending`）。呼ぶ側は、トランザクションが終わったあとで `runAfterResponse` に渡す。公開以外は、いつも空 */
+  runIds: string[];
 };
 
 /**
@@ -172,7 +177,7 @@ export async function unpublishPage(
     scheduledActionId: options.scheduledActionId,
     oauthGrantId: options.oauthGrantId,
   });
-  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: wider.length };
+  return { title: page.title, from: { visibility: page.visibility, versionId: page.publishedVersionId }, descendants: wider.length, runIds: [] };
 }
 
 /** 限定公開URLの失効：キーを再発行してリビルドすると旧URLは404になる。 */

@@ -36,6 +36,14 @@ describe("draft conversion", () => {
   });
 });
 
+describe("draft conversion: 初めて公開されたとき", () => {
+  it("has no tag in either direction", () => {
+    const first: WorkflowBlock = { ...block, trigger: { type: "page_first_published" }, actions: [block.actions[0]!] };
+    expect(blockToDraft(first)).toMatchObject({ triggerType: "page_first_published", tagId: "" });
+    expect(draftToInput(blockToDraft(first))).toEqual({ trigger: { type: "page_first_published" }, actions: [{ type: "call_routine", routineId: "r1", instruction: "下書きを書いてください" }] });
+  });
+});
+
 describe("instructionPreview", () => {
   it("一覧には、依頼文の先頭だけを出す", () => {
     expect(instructionPreview("短い依頼")).toBe("短い依頼");

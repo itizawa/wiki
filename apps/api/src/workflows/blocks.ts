@@ -57,10 +57,12 @@ const ACTION_COLUMNS: {
   },
 };
 
+type TriggerColumns = { triggerTagId: string | null };
+
 /** トリガーの種類ごと */
 const TRIGGER_COLUMNS: {
   [T in WorkflowTriggerType]: {
-    toColumns: (t: Extract<WorkflowTriggerInput, { type: T }>) => { triggerTagId: string };
+    toColumns: (t: Extract<WorkflowTriggerInput, { type: T }>) => TriggerColumns;
     check: (ctx: Refs, t: Extract<WorkflowTriggerInput, { type: T }>) => void;
     toTrigger: (row: typeof workflowBlocks.$inferSelect, ctx: Names) => WorkflowTrigger;
   };
@@ -70,7 +72,12 @@ const TRIGGER_COLUMNS: {
     check: (ctx, t) => {
       if (!ctx.tags.has(t.tagId)) throw badRef("unknown_tag", `tag ${t.tagId} is not in this wiki`);
     },
-    toTrigger: (row, ctx) => ({ type: "tag_attached", tagId: row.triggerTagId, tagName: ctx.tags.get(row.triggerTagId) ?? "" }),
+    toTrigger: (row, ctx) => ({ type: "tag_attached", tagId: row.triggerTagId!, tagName: ctx.tags.get(row.triggerTagId!) ?? "" }),
+  },
+  page_first_published: {
+    toColumns: () => ({ triggerTagId: null }),
+    check: () => {},
+    toTrigger: () => ({ type: "page_first_published" }),
   },
 };
 
@@ -159,7 +166,7 @@ const actionValues = (blockId: string, actions: WorkflowActionInput[]) =>
   }));
 
 const triggerLabel = (input: WorkflowBlockInput, names: Names) =>
-  describeTrigger({ type: "tag_attached", tagId: input.trigger.tagId, tagName: names.tags.get(input.trigger.tagId) ?? "" });
+  describeTrigger(input.trigger.type === "tag_attached" ? { type: "tag_attached", tagId: input.trigger.tagId, tagName: names.tags.get(input.trigger.tagId) ?? "" } : { type: "page_first_published" });
 
 /** 監査ログの detail：アクションの数と、「Routine を呼ぶ」の依頼文（何を頼んだかを残す） */
 const auditDetail = (input: WorkflowBlockInput) => {
@@ -177,7 +184,7 @@ export async function createBlock(tx: Db, wikiId: string, workflowId: string, in
       wikiId,
       workflowId,
       triggerType: input.trigger.type,
-      ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => { triggerTagId: string })(input.trigger),
+      ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => TriggerColumns)(input.trigger),
       createdBy: actorUserId(actor),
     })
     .returning();
@@ -200,7 +207,7 @@ export async function replaceBlock(tx: Db, wikiId: string, workflowId: string, i
     .update(workflowBlocks)
     .set({
       triggerType: input.trigger.type,
-      ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => { triggerTagId: string })(input.trigger),
+      ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => TriggerColumns)(input.trigger),
     })
     .where(eq(workflowBlocks.id, id));
   await tx.delete(workflowActions).where(eq(workflowActions.blockId, id));
