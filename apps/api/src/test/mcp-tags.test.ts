@@ -170,6 +170,48 @@ describe("MCP tag tools", () => {
   });
 });
 
+describe("MCP search_pages by tag", () => {
+  const search = (token: string, args: Record<string, unknown>) => callTool(token, "search_pages", { wiki: "wiki", ...args });
+  const titles = (res: { data: { pages: { title: string }[] } }) => res.data.pages.map((p) => p.title).sort();
+
+  it("filters by tag alone or with query, returns tags, skips trashed pages, and gives 0 for an unknown tag", async () => {
+    await boot();
+    const tag = await newTag("校正待ち");
+    await newTag("動画待ち");
+    const a = await newPage("りんごの記事", true);
+    const b = await newPage("みかんの記事", true);
+    await newPage("タグ無し", true);
+    const trashed = await newPage("ゴミ箱の記事", true);
+    for (const id of [a, b, trashed]) expect((await ctx.call("PUT", `${W}/pages/${id}/tags/${tag}`)).status).toBe(200);
+    expect((await ctx.call("DELETE", `${W}/pages/${trashed}`)).status).toBeLessThan(300);
+    const token = await connect("wiki.read");
+
+    const byTag = await search(token, { tag: "校正待ち" });
+    expect(byTag.isError).toBe(false);
+    expect(titles(byTag)).toEqual(["みかんの記事", "りんごの記事"]);
+    expect(byTag.data.pages.every((p: { tags: string[] }) => p.tags.join() === "校正待ち")).toBe(true);
+
+    expect(titles(await search(token, { tag: "校正待ち", query: "りんご" }))).toEqual(["りんごの記事"]);
+    expect(titles(await search(token, { tag: "動画待ち" }))).toEqual([]);
+    const unknown = await search(token, { tag: "無い名前" });
+    expect(unknown).toEqual({ isError: false, data: { pages: [] } });
+
+    // tag を渡さなければ今までどおり（tags は付いたぶんだけ入る）
+    const all = await search(token, {});
+    expect(all.data.pages.find((p: { title: string }) => p.title === "タグ無し").tags).toEqual([]);
+  });
+
+  it("does not return private pages to an app without wiki.private", async () => {
+    await boot();
+    const tag = await newTag("校正待ち");
+    const open = await newPage("公開の記事", true);
+    const hidden = await newPage("非公開の記事");
+    for (const id of [open, hidden]) expect((await ctx.call("PUT", `${W}/pages/${id}/tags/${tag}`)).status).toBe(200);
+    expect(titles(await search(await connect("wiki.read"), { tag: "校正待ち" }))).toEqual(["公開の記事"]);
+    expect(titles(await search(await connect("wiki.read wiki.private"), { tag: "校正待ち" }))).toEqual(["公開の記事", "非公開の記事"]);
+  });
+});
+
 describe("repeat limit on queued runs", () => {
   it("records a failed run instead of queueing once the limit is passed, for MCP and the admin UI alike", async () => {
     await boot();

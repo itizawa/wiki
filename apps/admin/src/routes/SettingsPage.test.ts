@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gaMeasurementIdProblem, normalizeGaMeasurementId, savedMessage, searchConsoleVerificationProblem } from "./SettingsPage";
+import { adsensePublisherIdProblem, gaMeasurementIdProblem, normalizeGaMeasurementId, rootDomain, savedMessage, searchConsoleVerificationProblem } from "./SettingsPage";
 
 describe("測定 ID の確かめ", () => {
   it("空（連携しない）と、G- で始まる ID は通す。前後の空白と小文字はそろえる", () => {
@@ -39,7 +39,7 @@ describe("確認用の値の確かめ", () => {
 });
 
 describe("保存したあとの文", () => {
-  const none = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null };
+  const none = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null, adsensePublisherId: null };
 
   it("反映までの時間を伝え、測定 ID を入れたときは GA に数字が出るまでの時間も添える", () => {
     expect(savedMessage(none, { ...none, searchConsoleVerification: "abc" })).toBe("保存しました。公開サイトには数分で反映されます。");
@@ -58,5 +58,44 @@ describe("保存したあとの文", () => {
     const both = { ...none, gaMeasurementId: "G-ABCD1234", searchConsoleVerification: "abc" };
     expect(savedMessage(both, { ...both, gaMeasurementId: null })).toContain("Google Analyticsの連携を外しました");
     expect(savedMessage(both, none)).toContain("Google AnalyticsとGoogle サーチコンソールの連携を外しました");
+  });
+});
+
+describe("パブリッシャー ID の確かめ", () => {
+  it("空（連携しない）、ca-pub- の ID、pub- だけのもの、AdSense のコード、確認用のメタタグは通す", () => {
+    expect(adsensePublisherIdProblem("")).toBeNull();
+    expect(adsensePublisherIdProblem(" ca-pub-1234567890123456 ")).toBeNull();
+    expect(adsensePublisherIdProblem("pub-1234567890123456")).toBeNull();
+    expect(
+      adsensePublisherIdProblem('<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456" crossorigin="anonymous"></script>'),
+    ).toBeNull();
+    expect(adsensePublisherIdProblem('<meta name="google-adsense-account" content="ca-pub-1234567890123456">')).toBeNull();
+  });
+
+  it("形の合わないものは、何が違うかを伝える", () => {
+    expect(adsensePublisherIdProblem("<script>alert(1)</script>")).toContain("取り出せませんでした");
+    for (const value of ["G-ABCD1234", "ca-pub-123", `ca-pub-${"1".repeat(21)}`, "ca-pub-12345678901234ab", 'ca-pub-1234567890"><script>']) {
+      expect(adsensePublisherIdProblem(value), value).toContain("「ca-pub-」で始まるパブリッシャー ID");
+    }
+  });
+
+  it("審査を受けるルートのドメインを、公開サイトのオリジンから取り出す", () => {
+    expect(rootDomain("https://wiki.hatchery-works.com")).toBe("hatchery-works.com");
+    expect(rootDomain("http://notes.localhost:4321")).toBe("localhost:4321");
+  });
+});
+
+describe("AdSense を保存したあとの文", () => {
+  const none = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null, adsensePublisherId: null };
+
+  it("入れたときは公開サイトへの反映を伝え、外したときはタグが消えることを伝える", () => {
+    const withAdsense = { ...none, adsensePublisherId: "ca-pub-1234567890123456" };
+    expect(savedMessage(none, withAdsense)).toBe("保存しました。公開サイトには数分で反映されます。");
+    expect(savedMessage(withAdsense, none)).toContain("Google AdSenseの連携を外しました");
+  });
+
+  it("3つとも外したときは、読点でつないで伝える", () => {
+    const all = { ...none, gaMeasurementId: "G-ABCD1234", searchConsoleVerification: "abc", adsensePublisherId: "ca-pub-1234567890123456" };
+    expect(savedMessage(all, none)).toContain("Google Analytics、Google サーチコンソールとGoogle AdSenseの連携を外しました");
   });
 });

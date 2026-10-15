@@ -1,6 +1,6 @@
 {
-  "id": "e1a23f7f-2636-4b6a-ad82-e13454e4fb38",
-  "prevId": "f5e99116-1b63-485b-b8ff-ae212274e85a",
+  "id": "84d6f9fc-49b7-4ea2-b721-c3c234487632",
+  "prevId": "a7a64b35-eac1-42da-af9e-321bf8b3aefe",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1559,6 +1559,78 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.page_ratings": {
+      "name": "page_ratings",
+      "schema": "",
+      "columns": {
+        "page_id": {
+          "name": "page_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rater_hash": {
+          "name": "rater_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "page_ratings_page_id_pages_id_fk": {
+          "name": "page_ratings_page_id_pages_id_fk",
+          "tableFrom": "page_ratings",
+          "tableTo": "pages",
+          "columnsFrom": [
+            "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "page_ratings_page_id_rater_hash_pk": {
+          "name": "page_ratings_page_id_rater_hash_pk",
+          "columns": [
+            "page_id",
+            "rater_hash"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "page_ratings_score_check": {
+          "name": "page_ratings_score_check",
+          "value": "\"page_ratings\".\"score\" between 1 and 5"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.page_search": {
@@ -3400,6 +3472,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "adsense_publisher_id": {
+          "name": "adsense_publisher_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "site_public": {
           "name": "site_public",
           "type": "boolean",
@@ -3481,12 +3559,6 @@
         "tag_id": {
           "name": "tag_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "instruction": {
-          "name": "instruction",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -3579,7 +3651,7 @@
       "checkConstraints": {
         "workflow_actions_type_check": {
           "name": "workflow_actions_type_check",
-          "value": "(\"workflow_actions\".\"type\" = 'call_routine' and \"workflow_actions\".\"routine_id\" is not null and \"workflow_actions\".\"instruction\" is not null and \"workflow_actions\".\"tag_id\" is null) or (\"workflow_actions\".\"type\" in ('remove_tag', 'add_tag') and \"workflow_actions\".\"tag_id\" is not null and \"workflow_actions\".\"routine_id\" is null)"
+          "value": "(\"workflow_actions\".\"type\" = 'call_routine' and \"workflow_actions\".\"routine_id\" is not null and \"workflow_actions\".\"tag_id\" is null) or (\"workflow_actions\".\"type\" = 'remove_tag' and \"workflow_actions\".\"tag_id\" is not null and \"workflow_actions\".\"routine_id\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -3861,12 +3933,6 @@
         "tag_id": {
           "name": "tag_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "instruction": {
-          "name": "instruction",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

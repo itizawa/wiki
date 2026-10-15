@@ -38,6 +38,9 @@ describe("本文のMarkdown往復", () => {
     ["配下のページの一覧（depth と sort）", "@children depth=2 sort=title"],
     ["コードブロックの中の @children", "```\n@children\n```"],
     ["分からない引数の @children は、ふつうの文字", "@children filter=a"],
+    ["評価の欄", "効果\n\n@rating\n\n使い方"],
+    ["コードブロックの中の @rating", "```\n@rating\n```"],
+    ["引数の付いた @rating は、ふつうの文字", "@rating 5"],
     ["閉じていない +++ は、ふつうの文字", "+++ 見出しだけ"],
   ])("%s はそのまま残る", (_name, md) => {
     expect(roundTrip(md).trim()).toBe(md);
@@ -103,6 +106,12 @@ describe("本文のMarkdown往復", () => {
     };
     expect(JSON.stringify(render("https://www.google.com/maps/embed?pb=1"))).toContain('"iframe"');
     expect(JSON.stringify(render("https://maps.app.goo.gl/abc"))).not.toContain('"iframe"');
+  });
+
+  it("@rating は評価の欄の部品になり、文中は部品にならない", () => {
+    const first = (md: string) => manager.parse(md).content?.[0];
+    expect(first("@rating")?.type).toBe("ratingEmbed");
+    expect(first("文 @rating")?.type).toBe("paragraph");
   });
 
   it("トグルは、見出しと中身を持つ部品として読む", () => {

@@ -313,15 +313,29 @@
     {
       "idx": 44,
       "version": "7",
-      "when": 1792022751763,
-      "tag": "0044_workflow_add_tag",
+      "when": 1792022149627,
+      "tag": "0044_wiki_adsense",
       "breakpoints": true
     },
     {
       "idx": 45,
       "version": "7",
-      "when": 1792023548933,
-      "tag": "0045_workflow_routine_instruction",
+      "when": 1792064729256,
+      "tag": "0045_page_ratings",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792064729257,
+      "tag": "0046_workflow_add_tag",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792064729258,
+      "tag": "0047_workflow_routine_instruction",
       "breakpoints": true
     }
   ]

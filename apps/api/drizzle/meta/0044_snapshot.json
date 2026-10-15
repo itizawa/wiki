@@ -1,5 +1,5 @@
 {
-  "id": "f5e99116-1b63-485b-b8ff-ae212274e85a",
+  "id": "a7a64b35-eac1-42da-af9e-321bf8b3aefe",
   "prevId": "b897e98d-5b01-4dcb-86a3-36547e1c83cb",
   "version": "7",
   "dialect": "postgresql",
@@ -3400,6 +3400,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "adsense_publisher_id": {
+          "name": "adsense_publisher_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "site_public": {
           "name": "site_public",
           "type": "boolean",
@@ -3573,7 +3579,7 @@
       "checkConstraints": {
         "workflow_actions_type_check": {
           "name": "workflow_actions_type_check",
-          "value": "(\"workflow_actions\".\"type\" = 'call_routine' and \"workflow_actions\".\"routine_id\" is not null and \"workflow_actions\".\"tag_id\" is null) or (\"workflow_actions\".\"type\" in ('remove_tag', 'add_tag') and \"workflow_actions\".\"tag_id\" is not null and \"workflow_actions\".\"routine_id\" is null)"
+          "value": "(\"workflow_actions\".\"type\" = 'call_routine' and \"workflow_actions\".\"routine_id\" is not null and \"workflow_actions\".\"tag_id\" is null) or (\"workflow_actions\".\"type\" = 'remove_tag' and \"workflow_actions\".\"tag_id\" is not null and \"workflow_actions\".\"routine_id\" is null)"
         }
       },
       "isRLSEnabled": false

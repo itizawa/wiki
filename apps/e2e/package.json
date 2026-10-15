@@ -1,0 +1,17 @@
+{
+  "name": "@wiki/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.0.0",
+    "@wiki/admin": "workspace:*",
+    "@wiki/api": "workspace:*",
+    "typescript": "5.9.3"
+  }
+}

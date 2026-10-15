@@ -27,11 +27,11 @@ if (source.kind === "api") {
   // API より先に公開サイトがビルドされたとき（デプロイの順番、古い API を見るプレビュー）に失敗させないため
   if (!Array.isArray(manifest.wikis)) {
     const { generatedAt, contentHash, ...content } = manifest;
-    // その頃の API は連携の設定（GA・サーチコンソール）を持たないので、どちらも未設定として扱う
+    // その頃の API は連携の設定（GA・サーチコンソール・AdSense）を持たないので、どれも未設定として扱う
     manifest = {
       generatedAt,
       contentHash,
-      wikis: [{ key: "wiki", name: process.env.SITE_NAME ?? "wiki", gaMeasurementId: null, searchConsoleVerification: null, ...content }],
+      wikis: [{ key: "wiki", name: process.env.SITE_NAME ?? "wiki", gaMeasurementId: null, searchConsoleVerification: null, adsensePublisherId: null, ...content }],
     };
     console.log("manifest: the API returned the single-wiki format; building it as the first wiki");
   }
