@@ -2,6 +2,8 @@ import {
   bodyLines,
   COVER_UPLOAD_TYPES,
   createEditRequestInput,
+  createTagInput,
+  createWikiInput,
   createPageInput,
   EDIT_REQUEST_ITEM_KINDS,
   EDIT_REQUEST_LIMITS,
@@ -10,8 +12,17 @@ import {
   newImageName,
   pageCoverSchema,
   publishVisibilitySchema,
+  renameTagInput,
+  ROUTINE_INSTRUCTION_MAX,
   savePageInput,
   sniffImageType,
+  WORKFLOW_ACTIONS_MAX,
+  workflowBlockInput,
+  workflowInput,
+  WORKFLOWS_MAX,
+  wikiOrigin,
+  type WorkflowBlock,
+  type WorkflowBlockInput,
   type EditRequest,
   type OAuthScope,
 } from "@wiki/shared";
@@ -39,11 +50,13 @@ import { listPageAudio } from "../audio/service";
 import { signAudioUrl } from "../audio/sign";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
-import { detachTag, listTags, pageTagList, tagsForPages } from "../tags/service";
+import { createTag, deleteTag, detachTag, listTags, pageTagList, renameTag, tagsForPages } from "../tags/service";
+import { createBlock, deleteBlock, listBlocks, listRoutineChoices, replaceBlock } from "../workflows/blocks";
+import { createWorkflow, deleteWorkflow, findWorkflow, listWorkflows, renameWorkflow } from "../workflows/workflows";
 import { attachTagAndEnqueue } from "../workflows/enqueue";
 import { runAfterResponse, type RunDeps } from "../workflows/run";
 import { roleIn, rolesByWiki } from "../users/service";
-import { findOpenWiki, listWikis } from "../wikis/service";
+import { createWiki, findOpenWiki, listWikis } from "../wikis/service";
 
 /**
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
@@ -158,6 +171,92 @@ async function findTagByName(db: Db, wikiId: string, name: string) {
   if (!tag) throw notFound(`tag ${name} (list_tags で名前を確かめる。タグは管理画面で作る)`);
   return tag;
 }
+
+// ---------------------------------------------------------------------------
+// wiki の設定（wiki.admin）
+// ---------------------------------------------------------------------------
+
+/** 許可した人がその wiki の管理者（かオーナー）であること。メンバーでなければ無いものとして扱う */
+async function adminWiki(db: Db, agent: AgentContext, key: string) {
+  const wiki = await memberWiki(db, agent, key);
+  if ((await roleIn(db, agent.user, wiki.id)) !== "admin") throw new HttpError(403, "admin_only", "only admins of this wiki can do this");
+  return wiki;
+}
+
+const tagName = z.string().min(1).max(100);
+/** MCP で渡すブロック：タグと Routine を、ID の代わりに名前で指す */
+const namedBlockInput = z.object({
+  trigger: z.discriminatedUnion("type", [z.object({ type: z.literal("tag_attached"), tag: tagName }), z.object({ type: z.literal("page_first_published") })]),
+  actions: z
+    .array(
+      z.discriminatedUnion("type", [
+        z.object({ type: z.literal("call_routine"), routine: z.string().min(1).max(200), instruction: z.string() }),
+        z.object({ type: z.literal("remove_tag"), tag: tagName }),
+        z.object({ type: z.literal("add_tag"), tag: tagName }),
+      ]),
+    )
+    .min(1)
+    .max(WORKFLOW_ACTIONS_MAX),
+});
+type NamedBlockInput = z.output<typeof namedBlockInput>;
+
+const BLOCK_DESCRIPTION =
+  "ブロックは、トリガー1つと、上から順に行うアクションの並び（1〜" + WORKFLOW_ACTIONS_MAX + "件）。" +
+  "トリガーは tag_attached（tag のタグが付いたとき）か page_first_published（ページが初めて公開されたとき）。" +
+  "アクションは call_routine（routine の Routine を呼び、instruction を依頼として渡す。Routine が始まった時点で成功になり、終わるのを待たない）・remove_tag・add_tag（付けたタグのブロックも動く）。" +
+  "タグは list_tags、Routine は list_routines にある名前で指す。";
+const BLOCK_PROPS = {
+  trigger: {
+    type: "object",
+    description: '{ "type": "tag_attached", "tag": "タグの名前" } か { "type": "page_first_published" }',
+    properties: { type: { type: "string", enum: ["tag_attached", "page_first_published"] }, tag: str("タグの名前（tag_attached のとき）") },
+    required: ["type"],
+  },
+  actions: {
+    type: "array",
+    minItems: 1,
+    maxItems: WORKFLOW_ACTIONS_MAX,
+    description:
+      '上から順に行う。{ "type": "call_routine", "routine": "Routine の名前", "instruction": "Routine への依頼" } / { "type": "remove_tag", "tag": "…" } / { "type": "add_tag", "tag": "…" }',
+    items: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["call_routine", "remove_tag", "add_tag"] },
+        routine: str("Routine の名前（call_routine のとき）"),
+        instruction: str(`Routine への依頼（call_routine のとき。${ROUTINE_INSTRUCTION_MAX}文字まで）`),
+        tag: str("タグの名前（remove_tag / add_tag のとき）"),
+      },
+      required: ["type"],
+    },
+  },
+};
+
+/** 名前で指したブロックを、ID で指す入力に直す。無いタグ・Routine は 404、依頼文の誤りは 400 */
+async function resolveBlock(tx: Db, wikiId: string, input: NamedBlockInput): Promise<WorkflowBlockInput> {
+  const routines = new Map((await listRoutineChoices(tx)).map((r) => [r.name, r.id]));
+  const routineId = (name: string) => {
+    const id = routines.get(name.trim());
+    if (!id) throw notFound(`routine ${name} (list_routines で名前を確かめる。Routine は管理画面で登録する)`);
+    return id;
+  };
+  const trigger = input.trigger.type === "tag_attached" ? { type: "tag_attached" as const, tagId: (await findTagByName(tx, wikiId, input.trigger.tag)).id } : input.trigger;
+  const actions = [];
+  for (const a of input.actions) {
+    actions.push(a.type === "call_routine" ? { type: a.type, routineId: routineId(a.routine), instruction: a.instruction } : { type: a.type, tagId: (await findTagByName(tx, wikiId, a.tag)).id });
+  }
+  const parsed = workflowBlockInput.safeParse({ trigger, actions });
+  if (!parsed.success) throw new HttpError(400, "invalid_input", "invalid block", parsed.error.issues);
+  return parsed.data;
+}
+
+/** ブロックを、create_workflow_block に渡すのと同じ形（名前で指す）で返す */
+const describeBlock = (b: WorkflowBlock) => ({
+  id: b.id,
+  trigger: b.trigger.type === "tag_attached" ? { type: b.trigger.type, tag: b.trigger.tagName } : b.trigger,
+  actions: b.actions.map((a) =>
+    a.type === "call_routine" ? { type: a.type, routine: a.routineName, instruction: a.instruction } : { type: a.type, tag: a.tagName },
+  ),
+});
 
 async function visiblePage(db: Db, agent: AgentContext, wikiId: string, id: string) {
   const page = await findLivePage(db, wikiId, id);
@@ -1003,6 +1102,178 @@ export const TOOLS = [
       return { id: input.itemId, status: "resolved" };
     },
   }),
+  // ---------------------------------------------------------------------------
+  // wiki の作成と設定（wiki.admin）。許可した人のロールの範囲でだけ効く：
+  // wiki を作るのはオーナー、タグとワークフローを変えるのはその wiki の管理者（オーナーはどの wiki でも管理者）
+  // ---------------------------------------------------------------------------
+  tool({
+    name: "create_wiki",
+    description:
+      "wiki を作る（許可した人がオーナーのときだけ）。空のツリーを1本用意し、許可した人をその wiki の管理者にする。" +
+      "key は公開サイトのサブドメインになる名前で、作ったあとは変えられない（半角の英小文字・数字・ハイフン、3〜32文字、先頭は英字、末尾はハイフン以外。使用中・予約済みの名前は使えない）。name は表示名。",
+    scope: "wiki.admin",
+    input: createWikiInput.pick({ key: true, name: true }),
+    inputSchema: schema({ key: str("公開サイトのサブドメインになる名前（作ったあとは変えられない）"), name: str("wiki の表示名") }, ["key", "name"]),
+    async run({ db, config, agent }, input) {
+      if (!agent.user.isOwner) throw new HttpError(403, "owner_only", "only owners can create wikis");
+      const row = await createWiki(db, input, agent.user, agentActor(agent));
+      return { key: row.key, name: row.name, adminUrl: `${config.adminOrigin}/w/${row.key}`, siteUrl: wikiOrigin(row.key, config.siteBaseDomain) };
+    },
+  }),
+  tool({
+    name: "create_tag",
+    description: "その wiki にタグを作る（その wiki の管理者だけ）。同じ名前のタグがあればエラー（tag_exists）。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey }).merge(createTagInput),
+    inputSchema: schema({ ...WIKI_PROP, name: str("タグの名前") }, ["wiki", "name"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const tag = await db.transaction((tx) => createTag(tx, wiki.id, input.name, agentActor(agent)));
+      return { name: tag.name };
+    },
+  }),
+  tool({
+    name: "rename_tag",
+    description: "タグの名前を変える（その wiki の管理者だけ）。付いているページと、ワークフローのブロックは、そのまま新しい名前で続く。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, tag: z.string().min(1).max(100) }).merge(renameTagInput),
+    inputSchema: schema({ ...WIKI_PROP, tag: str("いまのタグの名前"), name: str("新しい名前") }, ["wiki", "tag", "name"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const tag = await findTagByName(db, wiki.id, input.tag);
+      await db.transaction((tx) => renameTag(tx, wiki.id, tag.id, input.name, agentActor(agent)));
+      return { name: input.name };
+    },
+  }),
+  tool({
+    name: "delete_tag",
+    description:
+      "タグを消す（その wiki の管理者だけ）。ページからも外れる。そのタグがトリガーのブロックは消え、そのタグを付ける・外すアクションは取り除かれ、アクションが無くなったブロックも消える。元に戻せない。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, tag: z.string().min(1).max(100) }),
+    inputSchema: schema({ ...WIKI_PROP, tag: str("タグの名前") }, ["wiki", "tag"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const tag = await findTagByName(db, wiki.id, input.tag);
+      await db.transaction((tx) => deleteTag(tx, wiki.id, tag.id, agentActor(agent)));
+      return { deleted: input.tag };
+    },
+  }),
+  tool({
+    name: "list_routines",
+    description:
+      "ワークフローの「Routine を呼ぶ」で選べる Routine の名前の一覧（その wiki の管理者だけ）。Routine の登録は管理画面の「全体の管理」の「Routine」タブで、オーナーが行う（ここからは登録できない）。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey }),
+    inputSchema: schema(WIKI_PROP, ["wiki"]),
+    async run({ db, agent }, input) {
+      await adminWiki(db, agent, input.wiki);
+      return { routines: (await listRoutineChoices(db)).map((r) => r.name) };
+    },
+  }),
+  tool({
+    name: "list_workflows",
+    description:
+      "その wiki のワークフローと、それぞれのブロック（トリガーとアクションの並び）を返す（その wiki の管理者だけ）。" +
+      "ブロックのトリガーとアクションは、create_workflow_block に渡すのと同じ形（タグと Routine は名前）で返す。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey }),
+    inputSchema: schema(WIKI_PROP, ["wiki"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const list = await listWorkflows(db, wiki.id);
+      return {
+        workflows: await Promise.all(
+          list.map(async (w) => ({ id: w.id, name: w.name, blocks: (await listBlocks(db, wiki.id, w.id)).map(describeBlock) })),
+        ),
+      };
+    },
+  }),
+  tool({
+    name: "create_workflow",
+    description: `ワークフローを作る（その wiki の管理者だけ）。名前は同じ wiki の中で重ねられない。1つの wiki に ${WORKFLOWS_MAX} 個まで。ブロックは create_workflow_block で足す。`,
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey }).merge(workflowInput),
+    inputSchema: schema({ ...WIKI_PROP, name: str("ワークフローの名前（例：記事の下書き）") }, ["wiki", "name"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const made = await db.transaction((tx) => createWorkflow(tx, wiki.id, { name: input.name }, agentActor(agent)));
+      return { id: made.id, name: made.name };
+    },
+  }),
+  tool({
+    name: "rename_workflow",
+    description: "ワークフローの名前を変える（その wiki の管理者だけ）。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, workflowId: z.string().uuid() }).merge(workflowInput),
+    inputSchema: schema({ ...WIKI_PROP, workflowId: str("ワークフローの ID（list_workflows で分かる）"), name: str("新しい名前") }, ["wiki", "workflowId", "name"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const renamed = await db.transaction((tx) => renameWorkflow(tx, wiki.id, input.workflowId, { name: input.name }, agentActor(agent)));
+      return { id: renamed.id, name: renamed.name };
+    },
+  }),
+  tool({
+    name: "delete_workflow",
+    description: "ワークフローを消す（その wiki の管理者だけ）。ブロックと実行の履歴もいっしょに消え、元に戻せない。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, workflowId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, workflowId: str("ワークフローの ID（list_workflows で分かる）") }, ["wiki", "workflowId"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      await db.transaction((tx) => deleteWorkflow(tx, wiki.id, input.workflowId, agentActor(agent)));
+      return { deleted: input.workflowId };
+    },
+  }),
+  tool({
+    name: "create_workflow_block",
+    description: BLOCK_DESCRIPTION + "ブロックを足す（その wiki の管理者だけ）。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, workflowId: z.string().uuid() }).merge(namedBlockInput),
+    inputSchema: schema({ ...WIKI_PROP, workflowId: str("ワークフローの ID（list_workflows で分かる）"), ...BLOCK_PROPS }, ["wiki", "workflowId", "trigger", "actions"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const block = await db.transaction(async (tx) => {
+        const workflow = await findWorkflow(tx, wiki.id, input.workflowId);
+        return createBlock(tx, wiki.id, workflow.id, await resolveBlock(tx, wiki.id, input), agentActor(agent));
+      });
+      return describeBlock(block);
+    },
+  }),
+  tool({
+    name: "update_workflow_block",
+    description: BLOCK_DESCRIPTION + "ブロックを、渡したトリガーとアクションの並びで置き換える（その wiki の管理者だけ）。積んであった実行は、積んだ時点の内容のまま動く。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, workflowId: z.string().uuid(), blockId: z.string().uuid() }).merge(namedBlockInput),
+    inputSchema: schema(
+      { ...WIKI_PROP, workflowId: str("ワークフローの ID"), blockId: str("ブロックの ID（list_workflows で分かる）"), ...BLOCK_PROPS },
+      ["wiki", "workflowId", "blockId", "trigger", "actions"],
+    ),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      const block = await db.transaction(async (tx) => {
+        const workflow = await findWorkflow(tx, wiki.id, input.workflowId);
+        return replaceBlock(tx, wiki.id, workflow.id, input.blockId, await resolveBlock(tx, wiki.id, input), agentActor(agent));
+      });
+      return describeBlock(block);
+    },
+  }),
+  tool({
+    name: "delete_workflow_block",
+    description: "ブロックを消す（その wiki の管理者だけ）。実行の履歴は残る。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey, workflowId: z.string().uuid(), blockId: z.string().uuid() }),
+    inputSchema: schema({ ...WIKI_PROP, workflowId: str("ワークフローの ID"), blockId: str("ブロックの ID（list_workflows で分かる）") }, ["wiki", "workflowId", "blockId"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      await db.transaction(async (tx) => {
+        const workflow = await findWorkflow(tx, wiki.id, input.workflowId);
+        await deleteBlock(tx, wiki.id, workflow.id, input.blockId, agentActor(agent));
+      });
+      return { deleted: input.blockId };
+    },
+  }),
+
 ];
 
 export function toolsFor(agent: AgentContext) {
