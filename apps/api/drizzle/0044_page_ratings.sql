@@ -8,5 +8,4 @@ CREATE TABLE "page_ratings" (
 	CONSTRAINT "page_ratings_score_check" CHECK ("page_ratings"."score" between 1 and 5)
 );
 --> statement-breakpoint
-ALTER TABLE "wikis" ADD COLUMN "ratings_enabled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "page_ratings" ADD CONSTRAINT "page_ratings_page_id_pages_id_fk" FOREIGN KEY ("page_id") REFERENCES "public"."pages"("id") ON DELETE no action ON UPDATE no action;

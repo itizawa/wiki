@@ -1,35 +1,35 @@
-import { rateInput, raterIdSchema, summarizeRatings, wikiOrigin, type RatingSummary } from "@wiki/shared";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { hasRatingEmbed, rateInput, raterIdSchema, summarizeRatings, wikiOrigin, type RatingSummary } from "@wiki/shared";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { Db } from "../db/client";
-import { pageRatings, pages, wikis } from "../db/schema";
+import { pageRatings, pages, pageVersions, wikis } from "../db/schema";
 import type { AppEnv } from "../env";
 import { HttpError, notFound } from "../errors";
 import { RATE_LIMIT_PERIOD_SEC, withinRateLimit } from "../rate-limit";
 import { parseJson } from "../validation";
 
 /**
- * 評価を付けられるページ：評価を使う wiki（使用中で、公開サイトを出している）の、公開版がある公開ページ。
- * 限定公開・非公開・ゴミ箱のページと、別の wiki のページ ID は、無いものとして扱う。
+ * 評価を付けられるページ：使用中で公開サイトを出している wiki の、公開版の本文に `@rating` の行がある公開ページ。
+ * 限定公開・非公開・ゴミ箱のページ、`@rating` を書いていないページ、別の wiki のページ ID は、無いものとして扱う。
+ * 本文は公開版のものを見る（下書きで書き足しても、公開するまでは受けない）。
  */
 async function findRatablePage(db: Db, wikiKey: string, pageId: string): Promise<{ id: string; wikiKey: string }> {
   const [row] = await db
-    .select({ id: pages.id })
+    .select({ id: pages.id, bodyMd: pageVersions.bodyMd })
     .from(pages)
     .innerJoin(wikis, eq(wikis.id, pages.wikiId))
+    .innerJoin(pageVersions, eq(pageVersions.id, pages.publishedVersionId))
     .where(
       and(
         eq(wikis.key, wikiKey),
         isNull(wikis.archivedAt),
         eq(wikis.sitePublic, true),
-        eq(wikis.ratingsEnabled, true),
         eq(pages.id, pageId),
         eq(pages.visibility, "public"),
-        isNotNull(pages.publishedVersionId),
         isNull(pages.deletedAt),
       ),
     );
-  if (!row) throw notFound(`page ${pageId}`);
+  if (!row || !hasRatingEmbed(row.bodyMd)) throw notFound(`page ${pageId}`);
   return { id: row.id, wikiKey };
 }
 
@@ -60,7 +60,7 @@ async function loadSummary(db: Db, pageId: string, raterId: string | null): Prom
 
 /**
  * `/public/w/:wikiKey/pages/:pageId/rating`：公開サイトの読者が付ける、ページの評価（星1〜5）。ログインは要らない。
- * 公開サイトの Worker が、同じオリジンの `/api/ratings/{pageId}` で受けて、ここへ渡す（apps/site/worker）。
+ * 本文の `@rating` の位置に出す評価の欄が呼ぶ。公開サイトの Worker が、同じオリジンの `/api/ratings/{pageId}` で受けて、ここへ渡す（apps/site/worker）。
  * - `GET`：星ごとの件数・合計・平均。`?rater={id}` を付けると、その読者が付けた星も返す
  * - `PUT`：付ける・付け直す（1人1ページ1件）。その wiki の公開サイトのオリジンからだけ受ける。接続元ごとに回数の制限がある
  * 応答は読者ごとに違う（`mine`）ので、キャッシュさせない。

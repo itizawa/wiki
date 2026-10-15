@@ -50,8 +50,6 @@ export const wikis = pgTable("wikis", {
   gaPropertyId: text("ga_property_id"),
   /** 公開サイトを出しているか。false なら、ページごとの公開範囲は変えずに、サイトだけをビルドから外す（アーカイブとは別） */
   sitePublic: boolean("site_public").notNull().default(true),
-  /** 公開サイトのページで、読者が星1〜5の評価を付けられるか。既定は付けられない */
-  ratingsEnabled: boolean("ratings_enabled").notNull().default(false),
   /** nullなら使用中 */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -372,7 +370,7 @@ export const pageStars = pgTable(
 );
 
 /**
- * ページの評価（星1〜5）。公開サイトの読者がログインせずに付ける。1人（読者のブラウザが作る ID）につき1ページ1件で、付け直すと上書きする。
+ * ページの評価（星1〜5）。本文に `@rating` を書いたページに、公開サイトの読者がログインせずに付ける。1人（読者のブラウザが作る ID）につき1ページ1件で、付け直すと上書きする。
  * 読者の ID はそのまま持たず、SHA-256 にして持つ。どの wiki のものかは、ページで決まる。
  */
 export const pageRatings = pgTable(

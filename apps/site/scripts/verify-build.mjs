@@ -48,7 +48,10 @@ const noIconPage = await read("wiki/p/aaaaaaaaa2.html");
 check(/<a href="\/p\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
 check(!/<h1[^>]*>\s*<span/.test(noIconPage), "a page without an icon has nothing before its title");
 check(!/<title>[^<]*👋/.test(iconPage), "the icon is not part of <title>");
-check(iconPage.includes("rating-heading") && !(await read("notes/p/" + (await readdir(join(dist, "notes/p")))[0])).includes("rating-heading"), "the rating section is on pages of wikis that turned ratings on, and only there");
+check(
+  iconPage.includes("data-rating-embed") && iconPage.includes("RatingEmbeds") && !iconPage.includes("@rating") && !noIconPage.includes("RatingEmbeds"),
+  "a page with @rating gets the rating slot and its island; a page without it gets neither",
+);
 check(noIconPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "a page has canonical to /p/ on the wiki's origin");
 
 check(

@@ -48,7 +48,6 @@ export function GeneralSettingsPage() {
         )}
       </Section>
       <SitePublicSection />
-      <RatingsSection />
       <Section>
         <HelpHeading variant="subtitle1" component="h2" help="key は作成後に変えられません（公開サイトの URL がすべて変わるため）。" sx={{ mb: 0.5 }}>
           key と公開サイト
@@ -173,65 +172,6 @@ function SitePublicSection() {
         </Button>
       ) : (
         <Alert severity="info">公開サイトの公開・非公開の切り替えは、オーナーだけが行えます。</Alert>
-      )}
-    </Section>
-  );
-}
-
-/**
- * 公開サイトのページの評価（星1〜5）を使うか（変えるのはオーナーだけ）。使うと、公開ページの本文の下に評価の欄が出て、
- * 読者がログインせずに付けられる。止めても、付いた評価は消さない（もう一度使えば、元の数のまま出る）。
- */
-function RatingsSection() {
-  const { wiki, isOwner } = useWiki();
-  const refreshWikis = useRefreshWikis();
-  const [done, setDone] = useState<string | null>(null);
-  const save = useMutation({
-    mutationFn: (ratingsEnabled: boolean) => api.updateSettings({ ratingsEnabled }),
-    onSuccess: async (_, ratingsEnabled) => {
-      await refreshWikis();
-      setDone(
-        ratingsEnabled
-          ? "ページの評価を使うようにしました。公開サイトへの反映は数分後（ビルド後）です。"
-          : "ページの評価を止めました。公開サイトへの反映は数分後（ビルド後）です。付いた評価は残しています。",
-      );
-    },
-  });
-
-  return (
-    <Section>
-      <HelpHeading
-        variant="subtitle1"
-        component="h2"
-        help="使うと、公開ページの本文の下に「このページの評価」の欄が出ます。読者はログインせずに星1〜5を付けられ、付け直せます。ほかの人の評価は、平均と、星ごとの件数の棒グラフで出ます。同じ人かどうかはブラウザごとに見分けるので、厳密な1人1票ではありません。止めても、付いた評価は消えません。"
-        sx={{ mb: 0.5 }}
-      >
-        ページの評価
-      </HelpHeading>
-      <Row sx={{ mb: 1 }}>
-        <Muted>いまの状態</Muted>
-        {wiki.ratingsEnabled ? <StatusChip status="public" label="使う" /> : <StatusChip label="使わない" />}
-      </Row>
-      {save.error && (
-        <Alert severity="error" sx={{ mb: 1.5 }}>
-          {errorMessage(save.error)}
-        </Alert>
-      )}
-      {done && <SaveNotice onClose={() => setDone(null)}>{done}</SaveNotice>}
-      {isOwner ? (
-        <Button
-          variant={wiki.ratingsEnabled ? "outlined" : "contained"}
-          size="medium"
-          disabled={save.isPending}
-          onClick={() => {
-            setDone(null);
-            save.mutate(!wiki.ratingsEnabled);
-          }}
-        >
-          {wiki.ratingsEnabled ? "ページの評価を止める" : "ページの評価を使う"}
-        </Button>
-      ) : (
-        <Alert severity="info">ページの評価を使うかどうかの切り替えは、オーナーだけが行えます。</Alert>
       )}
     </Section>
   );

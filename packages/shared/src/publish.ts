@@ -126,8 +126,6 @@ export type WikiManifest = {
   gaMeasurementId: string | null;
   /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */
   searchConsoleVerification: string | null;
-  /** 公開ページに評価（星1〜5）の欄を出すか。無ければ出さない（古いマニフェスト） */
-  ratingsEnabled?: boolean;
   /**
    * この wiki の公開内容のハッシュ。公開サイトの出力に出るものだけから作る（apps/api/src/publishing/manifest.ts）。
    * 前のビルドと同じなら、この wiki の出力は変わらない

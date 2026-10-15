@@ -1,6 +1,6 @@
 import { RATING_MAX, ratingBarWidths, type RatingSummary } from "@wiki/shared";
 import { Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { fetchRating, raterId, sendRating } from "../lib/rating";
 import s from "./Rating.module.css";
 
@@ -9,7 +9,7 @@ const LABELS = ["", "いまいち", "もう少し", "ふつう", "よい", "と�
 
 /**
  * ページの評価（星1〜5）。だれでもログインせずに付けられ、付け直せる。ほかの人の評価は、星ごとの件数の横棒グラフで出す。
- * 評価を使う wiki の公開ページにだけ置く（[page].astro）。中身はブラウザで API から読み、読めなければ（404・通信の失敗）欄ごと出さない。
+ * 本文の `@rating` の位置に置く（RatingEmbeds）。中身はブラウザで API から読み、読めなければ（404・通信の失敗）欄ごと出さない。
  */
 export default function Rating({ pageId }: { pageId: string }) {
   const [summary, setSummary] = useState<RatingSummary | null | undefined>(undefined);
@@ -17,12 +17,13 @@ export default function Rating({ pageId }: { pageId: string }) {
   const [hover, setHover] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const id = useId();
 
   useEffect(() => {
-    const id = raterId(typeof localStorage === "undefined" ? undefined : localStorage, () => crypto.randomUUID());
-    setRater(id);
+    const rater = raterId(typeof localStorage === "undefined" ? undefined : localStorage, () => crypto.randomUUID());
+    setRater(rater);
     let active = true;
-    void fetchRating(fetch, pageId, id).then((r) => active && setSummary(r));
+    void fetchRating(fetch, pageId, rater).then((r) => active && setSummary(r));
     return () => {
       active = false;
     };
@@ -47,8 +48,8 @@ export default function Rating({ pageId }: { pageId: string }) {
   const widths = ratingBarWidths(summary?.counts ?? [0, 0, 0, 0, 0]);
 
   return (
-    <section className={s.rating} aria-labelledby="rating-heading" aria-busy={summary === undefined} data-pagefind-ignore>
-      <h2 id="rating-heading">このページの評価</h2>
+    <section className={s.rating} aria-labelledby={`${id}-heading`} aria-busy={summary === undefined} data-pagefind-ignore>
+      <h2 id={`${id}-heading`}>評価</h2>
       <div className={s.layout}>
         <div className={s.overall}>
           <p className={s.average}>{summary?.average?.toFixed(1) ?? "–"}</p>
@@ -78,10 +79,10 @@ export default function Rating({ pageId }: { pageId: string }) {
         </ol>
       </div>
       <div className={s.mine}>
-        <span id="rating-mine-label" className={s.mineLabel}>
+        <span id={`${id}-mine`} className={s.mineLabel}>
           {mine ? "あなたの評価（押すと付け直せます）" : "評価する"}
         </span>
-        <div role="radiogroup" aria-labelledby="rating-mine-label" className={s.picker} onMouseLeave={() => setHover(null)}>
+        <div role="radiogroup" aria-labelledby={`${id}-mine`} className={s.picker} onMouseLeave={() => setHover(null)}>
           {SCORES.map((score) => (
             <button
               key={score}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rateInput, ratingBarWidths, summarizeRatings } from "./rating";
+import { hasRatingEmbed, matchRating, rateInput, ratingBarWidths, ratingStart, summarizeRatings } from "./rating";
 
 describe("summarizeRatings", () => {
   it("returns the total and the average rounded to one decimal", () => {
@@ -27,5 +27,23 @@ describe("rateInput", () => {
 
   it("needs a uuid for the rater", () => {
     expect(rateInput.safeParse({ score: 3, raterId: "me" }).success).toBe(false);
+  });
+});
+
+describe("@rating", () => {
+  it("is a line of its own", () => {
+    expect(matchRating("@rating\n後ろ")).toEqual({ raw: "@rating\n" });
+    expect(matchRating("@rating  ")).toEqual({ raw: "@rating  " });
+    for (const src of ["@ratings", "@rating 5", "文 @rating", " @rating"]) expect(matchRating(src)).toBeNull();
+    expect(ratingStart("前\n\n@rating\n")).toBe(3);
+    expect(ratingStart("@ratingx")).toBe(-1);
+  });
+
+  it("finds the line outside code blocks only", () => {
+    expect(hasRatingEmbed("# カード\n\n@rating\n\n本文")).toBe(true);
+    expect(hasRatingEmbed("```\n@rating\n```")).toBe(false);
+    expect(hasRatingEmbed("~~~md\n@rating\n~~~\n\n@rating")).toBe(true);
+    expect(hasRatingEmbed("````\n```\n@rating\n````")).toBe(false);
+    expect(hasRatingEmbed("評価は @rating で")).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ export function excerpt(md: string, length = 120): string {
     // 地図の URL だけの行（本文では地図になる）
     .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))
     .replace(/^@children(?:[ \t].*)?$/gm, (line) => (matchChildren(line) ? "" : line))
+    .replace(/^@rating[ \t]*$/gm, "")
     .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")

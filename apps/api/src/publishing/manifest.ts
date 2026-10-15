@@ -133,7 +133,6 @@ async function buildWikiManifest(db: Db, wiki: WikiRow, withBodies: boolean): Pr
     home: resolveHome(wiki.home),
     gaMeasurementId: wiki.gaMeasurementId,
     searchConsoleVerification: wiki.searchConsoleVerification,
-    ratingsEnabled: wiki.ratingsEnabled,
     pages: publicPages,
     unlisted,
     trees,
@@ -163,7 +162,7 @@ export async function refreshLinkPreviews(db: Db, manifest: PublicManifest, fetc
 
 /**
  * 1つの wiki の contentHash。公開サイトの出力に出るものをすべて入れ、出ないもの（構造のコミット ID、非公開のページ）は入れない。
- * - wiki の設定：key、名前、テーマ、トップの自由記述、Google Analytics とサーチコンソールの値、評価の欄を出すか
+ * - wiki の設定：key、名前、テーマ、トップの自由記述、Google Analytics とサーチコンソールの値
  * - 公開ページ：id、公開版の ID（題名・本文・改訂日の代わり）、アイコン、初回の公開日時、収益化の設定
  * - 限定公開のページ：key、公開版の ID、アイコン
  * - 公開ツリー：ノードの親子と並び（非公開のページを除いたあとのもの）
