@@ -35,6 +35,8 @@ import type { AgentContext } from "../oauth/service";
 import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage, setPageCover } from "../routes/pages";
 import { cancelSchedule, createSchedule, listActions, publishAudited, unpublishAudited } from "../routes/publishing";
 import { agentActor } from "../audit/service";
+import { listPageAudio } from "../audio/service";
+import { signAudioUrl } from "../audio/sign";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
 import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
 import { detachTag, listTags, pageTagList, tagsForPages } from "../tags/service";
@@ -336,6 +338,34 @@ export const TOOLS = [
           position: n.position,
           title: titles.get(n.pageId) ?? null,
         })),
+      };
+    },
+  }),
+  tool({
+    name: "list_page_audio",
+    description:
+      "ページに添付された音声（動画のナレーションなど。管理画面で人が録音・アップロードしたもの）の一覧を返す。" +
+      "各音声の url は、ログインなしで取り出せる署名つきの URL（GET で音声のファイルそのものが返る）。expiresAt（発行から1時間後）を過ぎると使えないので、必要になったらもう一度この道具で取り直す。URL を他人に渡さない。" +
+      "非公開のページも読む許可が無いと、読めるページ（公開中のものと、その許可で作ったもの）のものだけ。",
+    scope: "wiki.read",
+    input: z.object({ wiki: wikiKey, pageId }),
+    inputSchema: schema({ ...WIKI_PROP, pageId: str("ページの ID") }, ["wiki", "pageId"]),
+    async run({ db, config, agent }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      const audio = await listPageAudio(db, page.id);
+      return {
+        audio: await Promise.all(
+          audio.map(async (a) => ({
+            id: a.id,
+            name: a.name,
+            contentType: a.contentType,
+            bytes: a.bytes,
+            durationMs: a.durationMs,
+            createdAt: a.createdAt,
+            ...(await signAudioUrl(config, a.id)),
+          })),
+        ),
       };
     },
   }),

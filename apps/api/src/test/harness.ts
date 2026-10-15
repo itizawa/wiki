@@ -17,6 +17,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { users, wikiMembers, wikis } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
+import { memoryAudioStore, type AudioStore } from "../audio/store";
 import { memoryImageStore, type ImageStore } from "../images/store";
 import type { RateLimiter, RateLimiters } from "../rate-limit";
 import type { CostSource } from "../costs/neon";
@@ -91,6 +92,7 @@ export async function setup(
     x?: XClient;
     config?: Partial<AppConfig>;
     images?: ImageStore | null;
+    audio?: AudioStore | null;
     reporting?: GoogleReporting | null;
     rateLimits?: RateLimiters;
     linkFetch?: LinkFetch;
@@ -104,6 +106,7 @@ export async function setup(
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
+  const audio = opts.audio === undefined ? memoryAudioStore() : opts.audio;
   // 応答のあとに続ける処理（ワークフローの実行）を集める。テストは `settle()` で終わるのを待つ
   const deferred: Promise<unknown>[] = [];
   const app = createApp({
@@ -113,6 +116,7 @@ export async function setup(
     google: opts.google ?? null,
     x: opts.x ?? null,
     images,
+    audio,
     reporting: opts.reporting ?? null,
     rateLimits: opts.rateLimits ?? null,
     linkFetch: opts.linkFetch ?? null,
@@ -165,7 +169,7 @@ export async function setup(
     while (deferred.length > 0) await Promise.allSettled(deferred.splice(0));
   }
 
-  return { app, db, client, config, images, call, callAs, addUser, settle, owner: owner!, close: () => client.close() };
+  return { app, db, client, config, images, audio, call, callAs, addUser, settle, owner: owner!, close: () => client.close() };
 }
 
 /** Workers の Rate Limiting のバインディングの代わり。鍵ごとに limit 回まで通す（窓は進まない）。calls は数えた鍵 */

@@ -389,6 +389,31 @@ export const pageRatings = pgTable(
   (t) => [primaryKey({ columns: [t.pageId, t.raterHash] }), check("page_ratings_score_check", sql`${t.score} between 1 and 5`)],
 );
 
+/**
+ * ページに添付した音声（動画のナレーションなど、公開前の素材）。本文には書かず、公開サイトにも出さない。
+ * 中身は別の R2 バケット（`AUDIO`）に、`{id}.{拡張子}` の名前で置く。ページを完全に削除したら、行も中身も消す。
+ */
+export const pageAudio = pgTable(
+  "page_audio",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** ファイル名（録音は日時から付けた名前） */
+    name: text("name").notNull(),
+    /** 中身から判定した形式（shared の AUDIO_TYPES） */
+    contentType: text("content_type").notNull(),
+    bytes: integer("bytes").notNull(),
+    /** 長さ（ミリ秒）。ブラウザが測れたときだけ */
+    durationMs: integer("duration_ms"),
+    createdAt: createdAt(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
+  },
+  (t) => [index("page_audio_page_idx").on(t.pageId, t.createdAt)],
+);
+
 /** 管理用タグ。wiki ごとに管理者が作り、ページに付ける。公開サイトには出さない（ワークフローの起点やページの整理に使う） */
 export const wikiTags = pgTable(
   "wiki_tags",

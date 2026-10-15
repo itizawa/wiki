@@ -18,6 +18,7 @@ import {
 } from "@wiki/shared";
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
+import { deleteAudioObjects, removeAudioRowsOfPages } from "../audio/service";
 import type { Db } from "../db/client";
 import { editRequestComments, editRequestItems, editRequests, oauthClients, oauthGrants, pageDrafts, pageLinks, pageRatings, pages, pageSearch, pageStars, pageTags, pageVersions, scheduledActions, users, wikiTags } from "../db/schema";
 import { createVersion, DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS, isOwnAutoVersion, ownDraft, replaceLinks, syncPageSearch } from "../pages/versions";
@@ -441,7 +442,7 @@ export async function restorePage(
  * 版・下書き・リンク・スター・評価・予約・編集リクエストと、検索用の本文の写しを消す。pages の行は残す：公開したことがあるページを公開サイトで 410 にし続けるためと、
  *監査ログに残す。トランザクション内で呼ぶ。
  */
-export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[] }> {
+export async function purgePage(tx: Db, wikiId: string, id: string, opts: { actor: AuditActor }): Promise<{ purgedPageIds: string[]; audioObjects: string[] }> {
   const { root, members } = await lockTrashGroup(tx, wikiId, id);
   const ids = members.map((m) => m.id);
   // 予約は版を指しているので、版より先に消す
@@ -450,6 +451,8 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
   await tx.delete(pageLinks).where(or(inArray(pageLinks.fromPageId, ids), inArray(pageLinks.toPageId, ids)));
   await tx.delete(pageStars).where(inArray(pageStars.pageId, ids));
   await tx.delete(pageRatings).where(inArray(pageRatings.pageId, ids));
+  // 添付した音声の行。中身（置き場所のファイル）は、コミットしたあとに呼ぶ側が消す（`audioObjects`）
+  const audioObjects = await removeAudioRowsOfPages(tx, ids);
   await tx.delete(pageTags).where(inArray(pageTags.pageId, ids));
   // 編集リクエストの項目は版を指しているので、版より先に消す
   const requestIds = tx.select({ id: editRequests.id }).from(editRequests).where(inArray(editRequests.pageId, ids));
@@ -477,7 +480,7 @@ export async function purgePage(tx: Db, wikiId: string, id: string, opts: { acto
     target: { type: "page", id, label: root.title },
     detail: ids.length > 1 ? { descendants: ids.length - 1 } : {},
   });
-  return { purgedPageIds: ids };
+  return { purgedPageIds: ids, audioObjects };
 }
 
 export const pageRoutes = new Hono<AppEnv>()
@@ -648,7 +651,8 @@ export const pageRoutes = new Hono<AppEnv>()
   .delete("/:id/trash", async (c) => {
     const { db } = c.get("deps");
     const wikiId = c.get("wiki").id;
-    const { purgedPageIds } = await db.transaction((tx) => purgePage(tx, wikiId, c.req.param("id"), { actor: auditActor(c) }));
+    const { purgedPageIds, audioObjects } = await db.transaction((tx) => purgePage(tx, wikiId, c.req.param("id"), { actor: auditActor(c) }));
+    await deleteAudioObjects(c.get("deps").audio, audioObjects);
     return c.json({ ok: true, purgedPages: purgedPageIds.length });
   })
   .get("/:id/versions", async (c) => {

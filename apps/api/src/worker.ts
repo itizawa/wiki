@@ -6,6 +6,7 @@ import { loadConfig } from "./config";
 import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
 import { createPostgresDb } from "./db/postgres";
+import { r2AudioStore } from "./audio/store";
 import { r2ImageStore, type R2BucketLike } from "./images/store";
 import type { RateLimiter } from "./rate-limit";
 
@@ -14,6 +15,8 @@ export type WorkerEnv = {
   HYPERDRIVE: { connectionString: string };
   /** アップロードした画像（R2）。無ければアップロードできない */
   IMAGES?: R2BucketLike;
+  /** ページに添付した音声（R2、画像とは別のバケット）。無ければ音声をアップロードできない */
+  AUDIO?: R2BucketLike;
   /** Cron のワーカーへの印（Workers KV）。無ければ印を書かない（ワーカーは毎回 DB を見に行く） */
   CRON_MARKS?: CronMarkStore;
   /** 接続元ごとの回数の制限（wrangler.toml の [[ratelimits]]）。無ければ、その経路は制限しない */
@@ -31,10 +34,10 @@ type Context = { waitUntil(promise: Promise<unknown>): void };
 /** 管理画面と同一オリジンで `/api/*` として出す（ローカルの Vite プロキシと同じ形）。 */
 const API_PREFIX = "/api";
 /**
- * プレフィックス無しで出す経路：サイトのビルドと Cron ワーカーがトークンで呼ぶもの、画像（本文に書くパスのまま配る）、
+ * プレフィックス無しで出す経路：サイトのビルドと Cron ワーカーがトークンで呼ぶもの、画像（本文に書くパスのまま配る）、MCP が受け取る署名つきの音声の URL（`/audio/`）、
  * MCP クライアントが呼ぶ OAuth と MCP サーバー（場所は OAuth のメタデータの決まりによる）。
  */
-const DIRECT_PATHS = ["/export/", "/internal/", "/images/", "/oauth/", "/.well-known/oauth-"];
+const DIRECT_PATHS = ["/export/", "/internal/", "/images/", "/audio/", "/oauth/", "/.well-known/oauth-"];
 
 function toAppRequest(request: Request): Request | null {
   const url = new URL(request.url);
@@ -97,6 +100,7 @@ export function createWorker(connect: Connect) {
           google,
           x,
           images: env.IMAGES ? r2ImageStore(env.IMAGES) : null,
+          audio: env.AUDIO ? r2AudioStore(env.AUDIO) : null,
           reporting: reportingFromConfig(config),
           cronMarks: env.CRON_MARKS ?? null,
           rateLimits,

@@ -21,6 +21,7 @@ import type {
   Me,
   Member,
   PageDetail,
+  PageAudio,
   PageDraft,
   SavePageDraftResult,
   PageTemplate,
@@ -64,7 +65,7 @@ import type {
   WikiTag,
   WikiSummary,
 } from "@wiki/shared";
-import { IMAGE_LIMIT_LABEL, PAGE_TITLE_MAX } from "@wiki/shared";
+import { AUDIO_LIMIT_LABEL, IMAGE_LIMIT_LABEL, PAGE_TITLE_MAX } from "@wiki/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -230,6 +231,24 @@ export const api = {
    * wiki の外の画面（wiki の管理）から使うときは、どの wiki の経路で送るかを key で渡す
    */
   uploadImage: (file: Blob, key: string = wikiKey) => upload(`/admin/w/${encodeURIComponent(key)}/images`, file),
+  /** ページに添付した音声の一覧（古い順） */
+  listPageAudio: (pageId: string) => request<{ audio: PageAudio[] }>("GET", w(`/pages/${pageId}/audio`)),
+  /** 音声を添付する。中身はそのまま送る（形式は API が中身で判定する）。durationMs：ブラウザが測れた長さ */
+  uploadPageAudio: async (pageId: string, file: Blob, meta: { name: string; durationMs: number | null }): Promise<PageAudio> => {
+    const q = query({ name: meta.name, durationMs: meta.durationMs === null ? null : String(meta.durationMs) });
+    const res = await fetch(`/api${w(`/pages/${pageId}/audio`)}${q}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw apiError(res, data);
+    return data as PageAudio;
+  },
+  deletePageAudio: (pageId: string, id: string) => request<{ ok: true }>("DELETE", w(`/pages/${pageId}/audio/${id}`)),
+  /** 音声を再生する URL（管理画面にログインしている Cookie で取り出す） */
+  pageAudioUrl: (pageId: string, id: string) => `/api${w(`/pages/${pageId}/audio/${id}`)}`,
   /** ゴミ箱に入れる（配下のページもいっしょに入る） */
   deletePage: (id: string) => request<{ ok: true; trashedPages: number }>("DELETE", w(`/pages/${id}`)),
   /** ゴミ箱の一覧。削除で選んだページごとに1行、新しい順 */
@@ -423,6 +442,8 @@ const MESSAGES: Record<string, string> = {
   line_out_of_range: "提案の指している行が、本文の外にあります。最新の版に合わせてから、もう一度送信してください。",
   not_rejected: "却下した提案だけを、未対応に戻せます。最新の状態を読み込みました。",
   images_not_configured: "画像の置き場所が設定されていないため、アップロードできません。",
+  audio_not_configured: "音声の置き場所が設定されていないため、アップロードできません。",
+  too_many_audio: "1つのページに添付できる音声の数の上限です。いらない音声を削除してから、もう一度上げてください。",
   has_children: "子があるため外せません。先に子を移動してください。",
   run_at_in_past: "過去の日時は指定できません。",
   not_scheduled: "実行中または実行済みのため変更できません。",
@@ -460,6 +481,8 @@ const DETAIL_MESSAGES: Record<string, (err: ApiError) => string> = {
     return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
   },
   image_too_large: (err) => `画像が大きすぎます。${imageLimit(err)}です。`,
+  audio_too_large: () => `音声が大きすぎます。${AUDIO_LIMIT_LABEL}です。`,
+  unsupported_audio_type: () => `この形式の音声は上げられません。${AUDIO_LIMIT_LABEL}です。`,
   unsupported_image_type: (err) => `この形式の画像はアップロードできません。${imageLimit(err)}です。`,
   x_rejected: (err) => {
     const detail = (err.details as { detail?: unknown } | undefined)?.detail;
