@@ -246,6 +246,7 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 | `create_page` | 書く | ページを作る（非公開の下書き）。`icon` に絵文字1つを渡すと、アイコンを付ける |
 | `update_page` | 書く | 本文・タイトルの保存。`baseVersionId` が必須（楽観ロック） |
 | `move_page` | 書く | 別の親の下へ移す |
+| `set_page_cover` | 書く | カバー画像を付ける・変える・外す。`imageBase64`（PNG・JPEG・WebP を base64 にしたもの、5MB まで）を渡すとアップロードして付け、`cover` にはアップロード済みの画像（`/images/…`）か用意した画像（`/covers/{key}.svg`）のパス、外すなら `null` を渡す（どちらか一方）。版は作らずすぐ反映するので、公開中・限定公開中のページには `wiki.publish` も要る |
 | `publish_page` / `unpublish_page` | 公開 | すぐに公開（公開・限定公開）／非公開に戻す。版を省くと最新の版 |
 | `list_schedule` / `schedule_page` / `cancel_schedule` | 公開 | 公開・非公開化の予約の一覧・作成・取り消し。公開の予約は版を固定する |
 | `delete_page` | 削除 | ページを削除する（ゴミ箱に入れる）。配下のページもいっしょに入る |
