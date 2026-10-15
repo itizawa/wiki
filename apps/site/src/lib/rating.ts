@@ -1,4 +1,4 @@
-import type { RatingSummary } from "@wiki/shared";
+import { type RatingSummary, summarizeRatings } from "@wiki/shared";
 
 /** 読者の ID を覚えておく localStorage のキー。どの wiki でも同じ ID を使う（wiki はサブドメインごとに別のオリジンなので、実際は wiki ごと） */
 export const RATER_KEY = "wiki.raterId";
@@ -31,6 +31,18 @@ export async function fetchRating(fetchImpl: typeof fetch, pageId: string, rater
   } catch {
     return null;
   }
+}
+
+/**
+ * 星を付けた直後に出す、見込みの評価（楽観的更新）。送った結果を待たずに、自分の星・件数・平均を先に変える。
+ * 付け直しなら前の星の件数を1つ減らし、新しい星を1つ増やす。サーバーの返事が来たら、そちらで置き換える。
+ */
+export function applyRating(summary: RatingSummary, score: number): RatingSummary {
+  const counts = summary.counts.map((n, i) => {
+    const star = i + 1;
+    return n - (star === summary.mine && n > 0 ? 1 : 0) + (star === score ? 1 : 0);
+  }) as RatingSummary["counts"];
+  return summarizeRatings(counts, score);
 }
 
 export type RateResult = { ok: true; summary: RatingSummary } | { ok: false; message: string };
