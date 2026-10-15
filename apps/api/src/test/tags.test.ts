@@ -271,3 +271,51 @@ describe("tags: MCP get_page and the public export", () => {
     expect(await res.text()).not.toContain("秘密のタグ");
   });
 });
+
+describe("tags: filtering the page list", () => {
+  const ids = async (query: string) => (await ctx.call("GET", `${W}/pages${query}`)).body.pages.map((p: { id: string }) => p.id).sort();
+
+  it("returns only the pages with the tag, together with q, published, limit and cursor", async () => {
+    ctx = await setup();
+    const tag = await newTag("waiting");
+    const a = await newPage("alpha one");
+    const b = await newPage("alpha two");
+    const c = await newPage("beta");
+    await newPage("untagged");
+    for (const id of [a, b, c]) expect((await ctx.call("PUT", `${W}/pages/${id}/tags/${tag}`)).status).toBeLessThan(300);
+
+    expect(await ids(`?tag=${tag}`)).toEqual([a, b, c].sort());
+    expect(await ids(`?tag=${tag}&q=alpha`)).toEqual([a, b].sort());
+    expect(await ids(`?tag=${tag}&published=false`)).toEqual([a, b, c].sort());
+
+    const first = (await ctx.call("GET", `${W}/pages?tag=${tag}&limit=2`)).body;
+    expect(first.pages).toHaveLength(2);
+    const second = (await ctx.call("GET", `${W}/pages?tag=${tag}&limit=2&cursor=${encodeURIComponent(first.nextCursor)}`)).body;
+    expect(second.pages).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+    expect([...first.pages, ...second.pages].map((p: { id: string }) => p.id).sort()).toEqual([a, b, c].sort());
+  });
+
+  it("does not list trashed pages, and an unused tag gives an empty list", async () => {
+    ctx = await setup();
+    const tag = await newTag("waiting");
+    const empty = await newTag("empty");
+    const a = await newPage("alpha");
+    await ctx.call("PUT", `${W}/pages/${a}/tags/${tag}`);
+    expect(await ids(`?tag=${empty}`)).toEqual([]);
+    expect((await ctx.call("DELETE", `${W}/pages/${a}`)).status).toBeLessThan(300);
+    expect(await ids(`?tag=${tag}`)).toEqual([]);
+  });
+
+  it("answers 400 for a malformed id, an unknown tag and a tag of another wiki", async () => {
+    ctx = await setup();
+    await newPage("alpha");
+    expect((await ctx.call("GET", `${W}/pages?tag=nope`)).status).toBe(400);
+    expect((await ctx.call("GET", `${W}/pages?tag=00000000-0000-0000-0000-000000000000`)).status).toBe(400);
+    expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" })).status).toBe(201);
+    const other = await newTag("elsewhere", N);
+    const res = await ctx.call("GET", `${W}/pages?tag=${other}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("invalid_tag");
+  });
+});
