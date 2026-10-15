@@ -98,6 +98,16 @@ describe("excerpt", () => {
   it("strips markdown", () => {
     expect(excerpt("# 見出し\n\n本文の[リンク](/x)です。")).toBe("見出し 本文のリンクです。");
   });
+
+  it("drops the credit line right under an image", () => {
+    const md = "![福袋](https://example.com/a.jpg)\n\n画像: [公式サイト](https://example.com/)より\n\n**予約は10月22日から。**";
+    expect(excerpt(md)).toBe("予約は10月22日から。");
+    expect(excerpt("![福袋](/images/a.webp)\n出典：公式サイト\n\n本文")).toBe("本文");
+  });
+
+  it("keeps a credit-like line that is not under an image", () => {
+    expect(excerpt("本文\n\n画像: 公式サイトより")).toBe("本文 画像: 公式サイトより");
+  });
 });
 
 describe("callouts", () => {
