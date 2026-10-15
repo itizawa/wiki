@@ -9,19 +9,32 @@ export async function readBodyUpTo(req: Request, maxBytes: number, tooLarge: () 
   // 中身を読む前に、申告された大きさで断る
   if (Number(req.headers.get("content-length") ?? 0) > maxBytes) throw tooLarge();
   if (!req.body) return new Uint8Array(0);
+  // 大きさが申告されていれば、その大きさの入れ物に直接書く（塊を貯めてから写すと、大きなファイルで使うメモリが倍になる）。
+  // 申告より多く来たら、貯めて写す方に切り替える
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  let direct: Uint8Array | null = declared > 0 ? new Uint8Array(declared) : null;
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    size += value.byteLength;
-    if (size > maxBytes) {
+    if (size + value.byteLength > maxBytes) {
       await reader.cancel().catch(() => {});
       throw tooLarge();
     }
-    chunks.push(value);
+    if (direct && size + value.byteLength <= direct.byteLength) {
+      direct.set(value, size);
+    } else {
+      if (direct) {
+        chunks.push(direct.slice(0, size));
+        direct = null;
+      }
+      chunks.push(value);
+    }
+    size += value.byteLength;
   }
+  if (direct) return size === direct.byteLength ? direct : direct.slice(0, size);
   const body = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) {

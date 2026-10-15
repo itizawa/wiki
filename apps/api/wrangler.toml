@@ -15,7 +15,7 @@ directory = "../admin/dist"
 not_found_handling = "single-page-application"
 # API の経路はアセットより先に Worker へ渡す（OAuth のコールバックは画面遷移なので、指定しないと index.html が返る）
 # /oauth/* /.well-known/* /mcp は MCP クライアント（外部のアプリ）が呼ぶ。同意の画面（/consent）は管理画面の側
-run_worker_first = ["/api/*", "/export/*", "/internal/*", "/images/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
+run_worker_first = ["/api/*", "/export/*", "/internal/*", "/images/*", "/audio/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
 
 # DB（PostgreSQL）へは Hyperdrive 経由でつなぐ
 [[hyperdrive]]
@@ -26,6 +26,13 @@ id = "24df08d8191143e5aae33847792525cc"
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "wiki-images"
+
+# ページに添付した音声（動画のナレーションなど、公開前の素材）。画像とは別のバケットで、公開の配信経路は無い。
+# 取り出せるのは、管理画面にログインした人と、MCP の list_page_audio が返す署名つきの URL（1時間だけ有効、`/audio/{id}`）だけ。
+# バケットは先に作る（README「デプロイ → 初回の準備」。`npx wrangler r2 bucket create wiki-audio`）
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "wiki-audio"
 
 # Cron ワーカー（wiki-worker）への「やることがある」の印（Workers KV）。API が書き、ワーカーが読む。
 # 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、

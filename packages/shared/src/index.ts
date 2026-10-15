@@ -18,6 +18,7 @@ export * from "./wiki";
 export * from "./template";
 export * from "./visibility";
 export * from "./images";
+export * from "./audio";
 export * from "./users";
 export * from "./audit";
 export * from "./theme";

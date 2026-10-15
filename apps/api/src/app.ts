@@ -6,6 +6,7 @@ import { homeRoutes } from "./routes/home";
 import { collectCronMarks } from "./cron/marks";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
+import { audioSignedRoutes, pageAudioRoutes } from "./audio/routes";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
@@ -89,6 +90,8 @@ export function createApp(deps: Deps) {
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
   app.route("/images", imageServeRoutes);
+  // MCP が返す、署名つきの音声の取り出し（ログインは要らないが、署名と期限を確かめる）
+  app.route("/audio", audioSignedRoutes);
   // 招待リンクを開いた人向け。メンバーでなくても使える
   app.route("/invites", inviteRoutes);
   // 外部のアプリ（MCP クライアント）：OAuth 2.1 の認可サーバーと、MCP サーバー
@@ -117,6 +120,7 @@ export function createApp(deps: Deps) {
 
   const wiki = new Hono<AppEnv>();
   wiki.route("/pages", pageRoutes);
+  wiki.route("/pages", pageAudioRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/pages", editRequestRoutes);
   wiki.route("/edit-requests", wikiEditRequestRoutes);
