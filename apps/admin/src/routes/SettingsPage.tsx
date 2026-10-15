@@ -8,7 +8,15 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { extractSearchConsoleVerification, isGaMeasurementId, isSearchConsoleVerification, type GoogleConnection, type WikiSettings } from "@wiki/shared";
+import {
+  extractAdsensePublisherId,
+  extractSearchConsoleVerification,
+  isAdsensePublisherId,
+  isGaMeasurementId,
+  isSearchConsoleVerification,
+  type GoogleConnection,
+  type WikiSettings,
+} from "@wiki/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Row, SaveNotice, Section, SkeletonSection } from "../components/ui";
@@ -41,9 +49,23 @@ export function searchConsoleVerificationProblem(value: string): string | null {
   return "確認用の値に使えるのは、半角の英字・数字・「-」「_」だけです。サーチコンソールの「HTML タグ」に表示されたタグか、その content の値を貼ってください。";
 }
 
+/**
+ * パブリッシャー ID の欄の確かめ。`pub-XXXX`・AdSense のコード・確認用の meta タグごと貼られたものは、`ca-pub-XXXX` を取り出してから確かめる。
+ * 空なら「連携しない」。
+ */
+export function adsensePublisherIdProblem(value: string): string | null {
+  const v = extractAdsensePublisherId(value);
+  if (v === "" || isAdsensePublisherId(v)) return null;
+  if (/^</.test(v)) return "貼られたコードから、パブリッシャー ID（ca-pub-…）を取り出せませんでした。AdSense の「サイト」に表示されたコードを、そのまま貼ってください。";
+  return "「ca-pub-」で始まるパブリッシャー ID を入れてください。「ca-pub-」のあとは、半角の数字が10〜20桁です（例：ca-pub-1234567890123456）。";
+}
+
 /** 保存したあとに出す文。反映までの時間と、外したときにタグが消えることを伝える。 */
 export function savedMessage(before: WikiSettings, after: WikiSettings): string {
-  const siteChanged = after.gaMeasurementId !== before.gaMeasurementId || after.searchConsoleVerification !== before.searchConsoleVerification;
+  const siteChanged =
+    after.gaMeasurementId !== before.gaMeasurementId ||
+    after.searchConsoleVerification !== before.searchConsoleVerification ||
+    after.adsensePublisherId !== before.adsensePublisherId;
   // プロパティ ID は管理画面の「アクセス解析」だけが使う。公開サイトは変わらない
   const parts = [siteChanged ? "保存しました。公開サイトには数分で反映されます。" : "保存しました。"];
   if (after.gaPropertyId !== before.gaPropertyId) {
@@ -55,15 +77,19 @@ export function savedMessage(before: WikiSettings, after: WikiSettings): string 
   const removed = [
     before.gaMeasurementId && !after.gaMeasurementId ? "Google Analytics" : null,
     before.searchConsoleVerification && !after.searchConsoleVerification ? "Google サーチコンソール" : null,
+    before.adsensePublisherId && !after.adsensePublisherId ? "Google AdSense" : null,
   ].filter((name) => name !== null);
-  if (removed.length > 0) parts.push(`${removed.join("と")}の連携を外しました。次のビルドで、公開サイトからタグが消えます。`);
+  if (removed.length > 0) {
+    const names = removed.length > 2 ? `${removed.slice(0, -1).join("、")}と${removed.at(-1)}` : removed.join("と");
+    parts.push(`${names}の連携を外しました。次のビルドで、公開サイトからタグが消えます。`);
+  }
   return parts.join("");
 }
 
 const textSx = { maxWidth: 680 } as const;
 const stepsSx = { m: 0, pl: 2.75, fontSize: "0.9rem", "& > li": { mb: 0.75 }, ...textSx } as const;
 
-/** 「設定」の「Google 連携」タブ（`/w/{key}/settings/integrations`）：公開サイトの外部サービスとの連携（Google Analytics・サーチコンソール）。 */
+/** 「設定」の「Google 連携」タブ（`/w/{key}/settings/integrations`）：公開サイトの外部サービスとの連携（Google Analytics・サーチコンソール・AdSense）。 */
 export function SettingsPage() {
   const { wiki, isOwner } = useWiki();
   const settings = useQuery({ queryKey: ["wiki-settings"], queryFn: api.getSettings });
@@ -78,7 +104,7 @@ export function SettingsPage() {
           component="h2"
           help={
             <>
-              「{wiki.name}」の公開サイト（{wiki.origin}）を Google のサービスとつなぎます。限定公開のページ（/u/...）には、どちらのタグも入れません（限定公開の URL を外へ送らないため）。
+              「{wiki.name}」の公開サイト（{wiki.origin}）を Google のサービスとつなぎます。限定公開のページ（/u/...）には、どのタグも入れません（限定公開の URL を外へ送らないため）。
             </>
           }
         >
@@ -92,8 +118,8 @@ export function SettingsPage() {
 
       {!isOwner && <Alert severity="info">変更はオーナーだけが行えます。いまの値は、下で見られます。</Alert>}
       {settings.error && <Alert severity="error">{errorMessage(settings.error)}</Alert>}
-      {/* 2つのまとまり（Google Analytics・サーチコンソール）の形 */}
-      {settings.isPending && [0, 1].map((i) => <SkeletonSection key={i} lines={3} />)}
+      {/* 3つのまとまり（Google Analytics・サーチコンソール・AdSense）の形 */}
+      {settings.isPending && [0, 1, 2].map((i) => <SkeletonSection key={i} lines={3} />)}
       {settings.data &&
         (isOwner ? (
           <SettingsForm origin={wiki.origin} saved={settings.data} connection={connection.data} />
@@ -115,12 +141,17 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
   const [verificationProblem, setVerificationProblem] = useState<string | null>(null);
   /** タグごと貼られたものから、content の値を取り出した */
   const [extracted, setExtracted] = useState(false);
+  const [adsenseId, setAdsenseId] = useState(saved.adsensePublisherId ?? "");
+  const [adsenseProblem, setAdsenseProblem] = useState<string | null>(null);
+  /** コードやタグごと（または pub- だけ）貼られたものから、ca-pub-… を取り出した */
+  const [adsenseExtracted, setAdsenseExtracted] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   /** 誤りのまま保存を押した（ボタンのそばに、誤りの知らせを出す） */
   const [blocked, setBlocked] = useState(false);
   const gaRef = useRef<HTMLInputElement>(null);
   const propertyRef = useRef<HTMLInputElement>(null);
   const verificationRef = useRef<HTMLInputElement>(null);
+  const adsenseRef = useRef<HTMLInputElement>(null);
 
   const save = useMutation({
     mutationFn: (input: WikiSettings) => api.updateSettings(input),
@@ -156,17 +187,27 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
     setVerificationProblem(problem);
     return { value: next === "" ? null : next, problem };
   };
+  const checkAdsense = () => {
+    const next = extractAdsensePublisherId(adsenseId);
+    const problem = adsensePublisherIdProblem(next);
+    if (next !== adsenseId.trim()) setAdsenseExtracted(problem === null);
+    setAdsenseId(next);
+    setAdsenseProblem(problem);
+    return { value: next === "" ? null : next, problem };
+  };
 
   const propertyChanged = (propertyId.trim() || null) !== saved.gaPropertyId;
   const changed =
     (normalizeGaMeasurementId(gaId) || null) !== saved.gaMeasurementId ||
     (extractSearchConsoleVerification(verification) || null) !== saved.searchConsoleVerification ||
+    (extractAdsensePublisherId(adsenseId) || null) !== saved.adsensePublisherId ||
     propertyChanged;
   // 画面の上から順。誤りが直った欄は、ここから外れる
   const invalidFields = [
     gaProblem !== null && "GA4 の測定 ID",
     propertyProblem !== null && "GA4 のプロパティ ID",
     verificationProblem !== null && "サーチコンソールの確認用の値",
+    adsenseProblem !== null && "AdSense のパブリッシャー ID",
   ].filter((name): name is string => name !== false);
   const edited = () => {
     setDone(null);
@@ -183,18 +224,19 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
         const ga = checkGa();
         const sc = checkVerification();
         const property = checkProperty();
-        if (ga.problem || sc.problem || property.problem) {
+        const adsense = checkAdsense();
+        if (ga.problem || sc.problem || property.problem || adsense.problem) {
           // 誤りは欄の下に出ている。押したボタンのそばにも知らせ、最初の誤りの欄へ移す
           setBlocked(true);
           setDone(null);
-          const first = ga.problem ? gaRef : property.problem ? propertyRef : verificationRef;
+          const first = ga.problem ? gaRef : property.problem ? propertyRef : sc.problem ? verificationRef : adsenseRef;
           first.current?.focus({ preventScroll: true });
           first.current?.scrollIntoView?.({ block: "center" });
           return;
         }
         if (!changed || save.isPending) return;
         setBlocked(false);
-        save.mutate({ gaMeasurementId: ga.value, searchConsoleVerification: sc.value, gaPropertyId: property.value });
+        save.mutate({ gaMeasurementId: ga.value, searchConsoleVerification: sc.value, gaPropertyId: property.value, adsensePublisherId: adsense.value });
       }}
     >
       <Section>
@@ -337,6 +379,57 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
         </ReadNumbers>
       </Section>
 
+      <Section>
+        <IntegrationTitle
+          name="Google AdSense"
+          connected={saved.adsensePublisherId !== null}
+          help="パブリッシャー ID を保存すると、公開サイトのページに AdSense のコード（自動広告）と確認用のタグが入り、/ads.txt も出ます。限定公開のページと、ページが見つからないとき（404）には入れません。"
+        />
+        <Box component="ol" sx={{ ...stepsSx, mt: 1 }}>
+          <li>
+            <ExternalSite href="https://adsense.google.com/">Google AdSense</ExternalSite>{" "}
+            の「サイト」に、公開サイトのルートのドメイン（{rootDomain(origin)}）を追加して、審査を受けます。wiki ごとのサブドメインは、ルートのドメインの審査でまとめて扱われるので、wiki ごとに申し込む必要はありません。
+          </li>
+          <li>AdSense の「アカウント → 設定 → アカウント情報」に出ているパブリッシャー ID（「pub-」で始まる）を、下の欄に貼って保存します。</li>
+          <li>
+            保存から数分で、公開サイトに ads.txt が出ます。AdSense の「サイト」で ads.txt の状態が「承認済み」になるまで、数日かかることがあります。
+            <CopyField label="ads.txt の URL" value={`${origin}/ads.txt`} />
+          </li>
+        </Box>
+        <TextField
+          label="パブリッシャー ID"
+          value={adsenseId}
+          onChange={(e) => {
+            setAdsenseId(e.target.value);
+            setAdsenseProblem(null);
+            setAdsenseExtracted(false);
+            edited();
+          }}
+          onBlur={checkAdsense}
+          inputRef={adsenseRef}
+          placeholder="例：ca-pub-1234567890123456"
+          error={adsenseProblem !== null}
+          // 欄のすぐ下が保存ボタンなので、知らせの1行ぶんを空けておく（欄を離れたときに知らせが出て、押そうとしたボタンがずれないように）
+          helperText={adsenseProblem ?? (adsenseExtracted ? "パブリッシャー ID（ca-pub-…）を取り出しました。" : " ")}
+          slotProps={{
+            htmlInput: { maxLength: 400, autoCapitalize: "off", autoCorrect: "off", spellCheck: false },
+            inputLabel: { shrink: true },
+            input: {
+              sx: { fontFamily: "monospace" },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <HelpTip about="パブリッシャー ID">
+                    「pub-」だけのもの、AdSense のコード、確認用のメタタグのどれを貼っても、「ca-pub-」で始まる ID にそろえます。空にして保存すると、連携が外れます。
+                  </HelpTip>
+                </InputAdornment>
+              ),
+            },
+            formHelperText: { role: adsenseProblem ? "alert" : adsenseExtracted ? "status" : undefined },
+          }}
+          sx={{ mt: 2, width: "100%", maxWidth: 420 }}
+        />
+      </Section>
+
       {/* 結果は、押したボタンのすぐ上に出す（一般・外観・トップページと同じ場所） */}
       <Stack spacing={1} sx={{ alignItems: "flex-start" }}>
         {save.error && (
@@ -363,9 +456,14 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
   );
 }
 
+/** 公開サイトのオリジン（`https://{key}.{baseDomain}`）から、ルートのドメイン（baseDomain）を取り出す。AdSense の審査はこのドメインで受ける */
+export function rootDomain(origin: string): string {
+  return new URL(origin).host.split(".").slice(1).join(".");
+}
+
 function saveErrorMessage(err: unknown): string {
   if (err instanceof ApiError && err.code === "invalid_input") {
-    return "保存できませんでした。測定 ID は「G-」で始まるもの、プロパティ ID は数字だけのもの、確認用の値は半角の英字・数字・「-」「_」だけのものを入れてください。";
+    return "保存できませんでした。測定 ID は「G-」で始まるもの、プロパティ ID は数字だけのもの、確認用の値は半角の英字・数字・「-」「_」だけのもの、パブリッシャー ID は「ca-pub-」で始まるものを入れてください。";
   }
   if (err instanceof ApiError && err.code === "owner_only") return "保存できませんでした。変更はオーナーだけが行えます。";
   return errorMessage(err);
@@ -385,6 +483,10 @@ function ReadOnlySettings({ settings, connection }: { settings: WikiSettings; co
         <IntegrationTitle name="Google サーチコンソール" connected={settings.searchConsoleVerification !== null} />
         <ReadOnlyValue label="確認用の値" value={settings.searchConsoleVerification} />
         <ConnectionCheckButton target="search_console" connection={connection} blocked={null} />
+      </Section>
+      <Section>
+        <IntegrationTitle name="Google AdSense" connected={settings.adsensePublisherId !== null} />
+        <ReadOnlyValue label="パブリッシャー ID" value={settings.adsensePublisherId} />
       </Section>
     </>
   );

@@ -126,6 +126,8 @@ export type WikiManifest = {
   gaMeasurementId: string | null;
   /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */
   searchConsoleVerification: string | null;
+  /** Google AdSense のパブリッシャー ID（`ca-pub-XXXX`）。null なら AdSense のタグと ads.txt を出さない */
+  adsensePublisherId: string | null;
   /**
    * この wiki の公開内容のハッシュ。公開サイトの出力に出るものだけから作る（apps/api/src/publishing/manifest.ts）。
    * 前のビルドと同じなら、この wiki の出力は変わらない
