@@ -95,6 +95,8 @@ export async function createWiki(
   db: Db,
   input: CreateWikiInput,
   creator: { id: string; email: string; name: string | null } | null,
+  /** 監査ログの実行者。省くと作った人（外部のアプリ（MCP）からなら、アプリの名前つきの実行者を渡す） */
+  actor?: AuditActor,
 ): Promise<WikiRow> {
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -110,7 +112,7 @@ export async function createWiki(
     // wiki の作成・アーカイブ・戻すは、全体にかかわる操作として残す（オーナーだけが見る）
     await writeAudit(tx, {
       wikiId: null,
-      actor: creator ? userActor(creator) : SYSTEM_ACTOR,
+      actor: actor ?? (creator ? userActor(creator) : SYSTEM_ACTOR),
       action: "wiki_create",
       target: { type: "wiki", id: row.id, label: row.name },
       detail: { key: row.key },

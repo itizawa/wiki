@@ -21,6 +21,7 @@ const SHORT_LABEL: Record<string, string> = {
   "wiki.publish": "公開・予約",
   "wiki.delete": "削除",
   "wiki.suggest": "編集リクエスト",
+  "wiki.admin": "wiki の設定",
 };
 
 /** 「許可しているアプリ」の行の高さ（読み込み中の行も、この高さで出す）。 */
