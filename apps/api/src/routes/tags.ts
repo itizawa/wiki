@@ -5,7 +5,7 @@ import type { AppEnv } from "../env";
 import { createTag, deleteTag, detachTag, listTags, pageTagList, renameTag } from "../tags/service";
 import { parseJson } from "../validation";
 import { attachTagAndEnqueue } from "../workflows/enqueue";
-import { executeRun } from "../workflows/run";
+import { runAfterResponse } from "../workflows/run";
 import { requireWikiAdmin } from "./wikis";
 
 /** /admin/w/{key}/tags：管理用タグの一覧は wiki のメンバーなら誰でも読める。作る・名前を変える・消すのは管理者だけ */
@@ -41,13 +41,7 @@ export const pageTagRoutes = new Hono<AppEnv>()
     const { db } = deps;
     const pageId = c.req.param("pageId");
     const runIds = await db.transaction((tx) => attachTagAndEnqueue(tx, c.get("wiki").id, pageId, c.req.param("tagId"), auditActor(c)));
-    // 積んだ実行は、応答を待たせずに裏で動かす（落ちても実行は pending / running のまま残り、あとで拾う）
-    if (runIds.length > 0) {
-      const work = (async () => {
-        for (const id of runIds) await executeRun(db, deps, id);
-      })().catch(() => undefined);
-      (deps.defer ?? ((p) => void p))(work);
-    }
+    runAfterResponse(db, deps, runIds);
     return c.json(await pageTagList(db, pageId));
   })
   .delete("/:pageId/tags/:tagId", async (c) => {
