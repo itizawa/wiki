@@ -64,6 +64,12 @@ name = "LINK_PREVIEW_LIMITER"
 namespace_id = "6104"
 simple = { limit = 30, period = 60 }
 
+# 公開サイトの読者がページに評価を付ける PUT /public/w/{key}/pages/{id}/rating：60 秒で 20 回まで
+[[ratelimits]]
+name = "RATING_LIMITER"
+namespace_id = "6105"
+simple = { limit = 20, period = 60 }
+
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする
 NODE_ENV = "production"

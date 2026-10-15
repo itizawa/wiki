@@ -21,6 +21,7 @@ export type WorkerEnv = {
   OAUTH_LIMITER?: RateLimiter;
   MCP_LIMITER?: RateLimiter;
   LINK_PREVIEW_LIMITER?: RateLimiter;
+  RATING_LIMITER?: RateLimiter;
   [key: string]: unknown;
 };
 
@@ -88,7 +89,7 @@ export function createWorker(connect: Connect) {
       const { db, close } = connect(env);
       // 応答のあとも続ける処理（ワークフローの実行）。DB の接続は、それが終わってから閉じる
       const deferred: Promise<unknown>[] = [];
-      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER, linkPreview: env.LINK_PREVIEW_LIMITER };
+      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER, linkPreview: env.LINK_PREVIEW_LIMITER, rating: env.RATING_LIMITER };
       try {
         const res = await createApp({
           db,

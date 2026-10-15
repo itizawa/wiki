@@ -65,6 +65,7 @@
       },
       "gaMeasurementId": "G-SAMPLE1234",
       "searchConsoleVerification": "sampleVerification_0123-abc",
+      "ratingsEnabled": true,
       "contentHash": "sample-wiki",
       "pages": [
         {

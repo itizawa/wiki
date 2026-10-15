@@ -35,6 +35,11 @@ not_found_handling = "404-page"
 binding = "IMAGES"
 bucket_name = "wiki-images"
 
+# 管理画面と API の Worker。読者の評価（/api/ratings/{pageId}）を、同じオリジンで受けてこちらへ渡す（worker/index.ts）
+[[services]]
+binding = "API"
+service = "wiki-admin"
+
 [vars]
 # 公開サイトのドメインの共通部分。ビルドの環境変数 SITE_BASE_DOMAIN と同じ値
 SITE_BASE_DOMAIN = "hatchery-works.com"

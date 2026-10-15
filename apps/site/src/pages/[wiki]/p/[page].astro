@@ -10,6 +10,7 @@ import { articleJsonLd, breadcrumbJsonLd } from "../../../lib/jsonLd";
 import { excerpt, ogImagePath } from "../../../lib/markdown";
 import { ancestors, childrenItems } from "../../../lib/tree";
 import Backlinks from "../../../components/Backlinks.astro";
+import Rating from "../../../components/Rating";
 import { siteBacklinks } from "../../../lib/backlinks";
 
 export async function getStaticPaths() {
@@ -67,6 +68,7 @@ const navSrc = (await navFile(wiki)).path;
         previewOf={previewOf}
         childrenOf={primaryTree && ((options) => childrenItems(primaryTree, page.id, options, pagesById))}
       />
+      {manifest.ratingsEnabled && <Rating client:visible pageId={page.id} />}
       <Backlinks pages={backlinks} />
     </main>
     {
