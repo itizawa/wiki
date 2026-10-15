@@ -48,6 +48,13 @@ const ACTION_COLUMNS: {
     },
     toAction: (row, ctx) => ({ type: "remove_tag", tagId: row.tagId!, tagName: ctx.tags.get(row.tagId!) ?? "" }),
   },
+  add_tag: {
+    toColumns: (a) => ({ routineId: null, tagId: a.tagId }),
+    check: (ctx, a) => {
+      if (!ctx.tags.has(a.tagId)) throw badRef("unknown_tag", `tag ${a.tagId} is not in this wiki`);
+    },
+    toAction: (row, ctx) => ({ type: "add_tag", tagId: row.tagId!, tagName: ctx.tags.get(row.tagId!) ?? "" }),
+  },
 };
 
 /** トリガーの種類ごと */
@@ -211,7 +218,7 @@ export async function deleteBlock(tx: Db, wikiId: string, workflowId: string, id
 }
 
 /**
- * タグを消す前に呼ぶ：そのタグがトリガーのブロックは消す。「タグを外す」で指しているアクションは取り除き、アクションが無くなったブロックも消す。
+ * タグを消す前に呼ぶ：そのタグがトリガーのブロックは消す。「タグを外す」「タグを付ける」で指しているアクションは取り除き、アクションが無くなったブロックも消す。
  * 消したブロックの数を返す（タグの削除の監査ログに残す）。
  */
 export async function removeTagFromWorkflows(tx: Db, wikiId: string, tagId: string, actor: AuditActor): Promise<number> {

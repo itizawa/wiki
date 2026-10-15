@@ -1,3 +1,5 @@
+import { closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -22,8 +24,8 @@ import {
   type WorkflowBlockInput,
   type WorkflowDraft,
 } from "@wiki/shared";
-import { ArrowDown, ArrowUp, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowDown, ArrowUp, GripVertical, X } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Muted, Row, RouterLink, Section, SkeletonRows } from "../components/ui";
@@ -40,7 +42,7 @@ const ROUTINES_KEY = ["routine-choices"];
 export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
   return {
     trigger: { type: "tag_attached", tagId: draft.tagId },
-    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId } : { type: "remove_tag", tagId: a.tagId })),
+    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId } : { type: a.type, tagId: a.tagId })),
   };
 }
 
@@ -50,7 +52,7 @@ export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
     actions: block.actions.map((a) => ({
       type: a.type,
       routineId: a.type === "call_routine" ? a.routineId : "",
-      tagId: a.type === "remove_tag" ? a.tagId : "",
+      tagId: a.type === "call_routine" ? "" : a.tagId,
     })),
   };
 }
@@ -184,6 +186,33 @@ function BlockCard({ block, busy, onEdit, onDelete }: { block: WorkflowBlock; bu
   );
 }
 
+/** つまみ（GripVertical）だけを掴めるようにして、行の中の選択欄は今までどおり操作できるようにする */
+function SortableItem({ id, children }: { id: number; children: (handle: ReactNode) => ReactNode }) {
+  const sortable = useSortable({ id });
+  const handle = (
+    <IconButton
+      size="small"
+      ref={sortable.setActivatorNodeRef}
+      {...sortable.attributes}
+      {...sortable.listeners}
+      aria-label="ドラッグして順番を変える"
+      sx={{ cursor: "grab", touchAction: "none", mt: 0.25 }}
+    >
+      <GripVertical size={18} />
+    </IconButton>
+  );
+  return (
+    <Box
+      component="li"
+      ref={sortable.setNodeRef}
+      style={{ transform: sortable.transform ? `translate3d(0, ${sortable.transform.y}px, 0)` : undefined, transition: sortable.transition }}
+      sx={[{ display: "flex", gap: 1, alignItems: "flex-start", flexWrap: "wrap", bgcolor: "background.paper" }, sortable.isDragging && { position: "relative", zIndex: 1, opacity: 0.7 }]}
+    >
+      {children(handle)}
+    </Box>
+  );
+}
+
 type DraftAction = WorkflowDraft["actions"][number] & { key: number };
 
 /** 作る・編集のダイアログ。選び終えていない欄があれば、保存ボタンの横に理由を出す */
@@ -197,6 +226,17 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
   const initial = block ? blockToDraft(block) : { tagId: "", actions: [] };
   const [tagId, setTagId] = useState(initial.tagId);
   const [actions, setActions] = useState<DraftAction[]>(() => initial.actions.map(withKey));
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const onDragEnd = (e: DragEndEvent) => {
+    if (!e.over || e.active.id === e.over.id) return;
+    setActions((xs) => arrayMove(xs, xs.findIndex((x) => x.key === e.active.id), xs.findIndex((x) => x.key === e.over!.id)));
+    save.reset();
+  };
 
   const tagList = tags.data?.tags ?? [];
   const routineList = routines.data?.routines ?? [];
@@ -282,80 +322,89 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
               アクション（上から順に行う）
             </Typography>
             <HelpTip about="アクションの順番">
-              上から順に行います。「タグを外す」を最後に置くと、ほかのアクションを行ったあとにタグが外れます。上へ・下へのボタンで順番を入れ替えられます。
+              上から順に行います。「タグを外す」を最後に置くと、ほかのアクションを行ったあとにタグが外れます。左のつまみをドラッグするか、上へ・下へのボタンで順番を入れ替えられます。
             </HelpTip>
           </Row>
-          <Box component="ol" aria-label="アクション" sx={{ listStyle: "none", m: 0, p: 0, display: "grid", gap: 1.5 }}>
-            {actions.map((a, i) => (
-              <Box component="li" key={a.key} sx={{ display: "flex", gap: 1, alignItems: "flex-start", flexWrap: "wrap" }}>
-                <Typography sx={{ width: 20, pt: 0.75, textAlign: "right", color: "text.secondary" }} aria-hidden>
-                  {i + 1}
-                </Typography>
-                <TextField
-                  select
-                  size="small"
-                  label={`${i + 1} 番目の種類`}
-                  value={a.type}
-                  onChange={(e) => change(a.key, { type: e.target.value as WorkflowActionType, routineId: "", tagId: "" })}
-                  slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                  sx={{ width: 170 }}
-                >
-                  {ACTION_TYPES.map((t) => (
-                    <option key={t} value={t} disabled={t === "call_routine" && noRoutines && a.type !== t}>
-                      {ACTION_KINDS[t].label}
-                    </option>
-                  ))}
-                </TextField>
-                {a.type === "call_routine" ? (
-                  <TextField
-                    select
-                    size="small"
-                    label={`${i + 1} 番目の Routine`}
-                    value={a.routineId}
-                    onChange={(e) => change(a.key, { routineId: e.target.value })}
-                    slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                    sx={{ flex: "1 1 160px", minWidth: 140 }}
-                  >
-                    <option value="">選んでください</option>
-                    {routineList.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </TextField>
-                ) : (
-                  <TextField
-                    select
-                    size="small"
-                    label={`${i + 1} 番目の外すタグ`}
-                    value={a.tagId}
-                    disabled={noTags}
-                    onChange={(e) => change(a.key, { tagId: e.target.value })}
-                    slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-                    sx={{ flex: "1 1 160px", minWidth: 140 }}
-                  >
-                    <option value="">選んでください</option>
-                    {tagList.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </TextField>
-                )}
-                <Row sx={{ flexWrap: "nowrap", gap: 0 }}>
-                  <IconButton size="small" aria-label={`${i + 1} 番目のアクションを上へ`} disabled={i === 0} onClick={() => setActions((xs) => moveItem(xs, i, -1))}>
-                    <ArrowUp size={18} />
-                  </IconButton>
-                  <IconButton size="small" aria-label={`${i + 1} 番目のアクションを下へ`} disabled={i === actions.length - 1} onClick={() => setActions((xs) => moveItem(xs, i, 1))}>
-                    <ArrowDown size={18} />
-                  </IconButton>
-                  <IconButton size="small" aria-label={`${i + 1} 番目のアクションを取り除く`} onClick={() => setActions((xs) => xs.filter((x) => x.key !== a.key))}>
-                    <X size={18} />
-                  </IconButton>
-                </Row>
-              </Box>
-            ))}
-          </Box>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={actions.map((a) => a.key)} strategy={verticalListSortingStrategy}>
+            <Box component="ol" aria-label="アクション" sx={{ listStyle: "none", m: 0, p: 0, display: "grid", gap: 1.5 }}>
+              {actions.map((a, i) => (
+                <SortableItem key={a.key} id={a.key}>
+                  {(handle) => (
+                    <>
+                      {handle}
+                      <Typography sx={{ width: 20, pt: 0.75, textAlign: "right", color: "text.secondary" }} aria-hidden>
+                        {i + 1}
+                      </Typography>
+                      <TextField
+                        select
+                        size="small"
+                        label={`${i + 1} 番目の種類`}
+                        value={a.type}
+                        onChange={(e) => change(a.key, { type: e.target.value as WorkflowActionType, routineId: "", tagId: "" })}
+                        slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                        sx={{ width: 170 }}
+                      >
+                        {ACTION_TYPES.map((t) => (
+                          <option key={t} value={t} disabled={t === "call_routine" && noRoutines && a.type !== t}>
+                            {ACTION_KINDS[t].label}
+                          </option>
+                        ))}
+                      </TextField>
+                      {a.type === "call_routine" ? (
+                        <TextField
+                          select
+                          size="small"
+                          label={`${i + 1} 番目の Routine`}
+                          value={a.routineId}
+                          onChange={(e) => change(a.key, { routineId: e.target.value })}
+                          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                          sx={{ flex: "1 1 160px", minWidth: 140 }}
+                        >
+                          <option value="">選んでください</option>
+                          {routineList.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </TextField>
+                      ) : (
+                        <TextField
+                          select
+                          size="small"
+                          label={`${i + 1} 番目の${a.type === "add_tag" ? "付ける" : "外す"}タグ`}
+                          value={a.tagId}
+                          disabled={noTags}
+                          onChange={(e) => change(a.key, { tagId: e.target.value })}
+                          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                          sx={{ flex: "1 1 160px", minWidth: 140 }}
+                        >
+                          <option value="">選んでください</option>
+                          {tagList.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </TextField>
+                      )}
+                      <Row sx={{ flexWrap: "nowrap", gap: 0 }}>
+                        <IconButton size="small" aria-label={`${i + 1} 番目のアクションを上へ`} disabled={i === 0} onClick={() => setActions((xs) => moveItem(xs, i, -1))}>
+                          <ArrowUp size={18} />
+                        </IconButton>
+                        <IconButton size="small" aria-label={`${i + 1} 番目のアクションを下へ`} disabled={i === actions.length - 1} onClick={() => setActions((xs) => moveItem(xs, i, 1))}>
+                          <ArrowDown size={18} />
+                        </IconButton>
+                        <IconButton size="small" aria-label={`${i + 1} 番目のアクションを取り除く`} onClick={() => setActions((xs) => xs.filter((x) => x.key !== a.key))}>
+                          <X size={18} />
+                        </IconButton>
+                      </Row>
+                    </>
+                  )}
+                </SortableItem>
+              ))}
+            </Box>
+            </SortableContext>
+          </DndContext>
           <Button variant="outlined" onClick={addAction} sx={{ mt: 1.5 }}>
             アクションを足す
           </Button>

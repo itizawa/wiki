@@ -13,10 +13,10 @@ export const RUN_LIMIT_REASON = "繰り返しが多すぎる";
 /**
  * タグを付けて、付いたときに動くワークフローの実行を積む（同じトランザクションの中で呼ぶ）。
  * 積んだ実行のうち、これから動かすもの（`pending`）の ID を返す。呼ぶ側は、トランザクションが終わったあとで `executeRun` に渡す。
- * すでに付いていたものに付け直したときは、何も積まない。
+ * すでに付いていたものに付け直したときは、何も積まない。ワークフローの実行から付けるときは、`runId` を渡す（監査ログの detail に残す）。
  */
-export async function attachTagAndEnqueue(tx: Db, wikiId: string, pageId: string, tagId: string, actor: AuditActor): Promise<string[]> {
-  const added = await attachTag(tx, wikiId, pageId, tagId, actor);
+export async function attachTagAndEnqueue(tx: Db, wikiId: string, pageId: string, tagId: string, actor: AuditActor, runId?: string): Promise<string[]> {
+  const added = await attachTag(tx, wikiId, pageId, tagId, actor, runId);
   return added ? enqueueTagAttached(tx, wikiId, pageId, tagId) : [];
 }
 

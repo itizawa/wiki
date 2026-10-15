@@ -43,8 +43,9 @@ export type WorkflowTriggerInput = z.infer<typeof workflowTriggerSchema>;
 
 export const callRoutineAction = z.object({ type: z.literal("call_routine"), routineId: id });
 export const removeTagAction = z.object({ type: z.literal("remove_tag"), tagId: id });
+export const addTagAction = z.object({ type: z.literal("add_tag"), tagId: id });
 
-export const workflowActionSchema = z.discriminatedUnion("type", [callRoutineAction, removeTagAction]);
+export const workflowActionSchema = z.discriminatedUnion("type", [callRoutineAction, removeTagAction, addTagAction]);
 export type WorkflowActionInput = z.infer<typeof workflowActionSchema>;
 
 export type WorkflowTriggerType = WorkflowTriggerInput["type"];
@@ -57,6 +58,7 @@ export const TRIGGER_KINDS: Record<WorkflowTriggerType, { label: string }> = {
 export const ACTION_KINDS: Record<WorkflowActionType, { label: string }> = {
   call_routine: { label: "Routine を呼ぶ" },
   remove_tag: { label: "タグを外す" },
+  add_tag: { label: "タグを付ける" },
 };
 export const TRIGGER_TYPES = Object.keys(TRIGGER_KINDS) as WorkflowTriggerType[];
 export const ACTION_TYPES = Object.keys(ACTION_KINDS) as WorkflowActionType[];
@@ -74,7 +76,8 @@ export type WorkflowBlockInput = z.infer<typeof workflowBlockInput>;
 export type WorkflowTrigger = { type: "tag_attached"; tagId: string; tagName: string };
 export type WorkflowAction =
   | { type: "call_routine"; routineId: string; routineName: string }
-  | { type: "remove_tag"; tagId: string; tagName: string };
+  | { type: "remove_tag"; tagId: string; tagName: string }
+  | { type: "add_tag"; tagId: string; tagName: string };
 
 export type WorkflowBlock = { id: string; trigger: WorkflowTrigger; actions: WorkflowAction[]; createdAt: string };
 
@@ -107,6 +110,8 @@ export function describeAction(a: WorkflowAction): string {
       return `Routine「${a.routineName}」を呼ぶ`;
     case "remove_tag":
       return `タグ「${a.tagName}」を外す`;
+    case "add_tag":
+      return `タグ「${a.tagName}」を付ける`;
   }
 }
 
@@ -123,7 +128,7 @@ export function workflowDraftProblem(draft: WorkflowDraft): string | null {
   if (draft.actions.length > WORKFLOW_ACTIONS_MAX) return `アクションは${WORKFLOW_ACTIONS_MAX}件までです。`;
   for (const [i, a] of draft.actions.entries()) {
     if (a.type === "call_routine" && !a.routineId) return `${i + 1} 番目のアクションの Routine を選んでください。`;
-    if (a.type === "remove_tag" && !a.tagId) return `${i + 1} 番目のアクションのタグを選んでください。`;
+    if ((a.type === "remove_tag" || a.type === "add_tag") && !a.tagId) return `${i + 1} 番目のアクションのタグを選んでください。`;
   }
   return null;
 }

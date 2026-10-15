@@ -74,8 +74,8 @@ export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: strin
 
   const labelOf = (a: (typeof actionRows)[number]): string => {
     const action: WorkflowAction =
-      a.type === "remove_tag"
-        ? { type: "remove_tag", tagId: a.tagId ?? "", tagName: tagName.get(a.tagId ?? "") ?? DELETED_TAG }
+      a.type === "remove_tag" || a.type === "add_tag"
+        ? { type: a.type, tagId: a.tagId ?? "", tagName: tagName.get(a.tagId ?? "") ?? DELETED_TAG }
         : { type: "call_routine", routineId: a.routineId ?? "", routineName: routineName.get(a.routineId ?? "") ?? DELETED_ROUTINE };
     return describeAction(action);
   };

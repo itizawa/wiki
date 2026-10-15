@@ -11,7 +11,7 @@ import { pgliteExtensions } from "./harness";
 const DRIZZLE = fileURLToPath(new URL("../../drizzle", import.meta.url));
 const TARGET = "0043_workflows";
 
-/** 0043 の手前までのマイグレーションを流して既存のデータを入れ、そのあとで 0043 を流す */
+/** 0043 の手前までのマイグレーションを流して既存のデータを入れ、そのあとで 0043 を流す（0043 のあとのものは流さない） */
 describe("migration 0043_workflows", () => {
   it("puts each wiki's existing blocks and runs under one workflow named 「ワークフロー」, and adds none for wikis with neither", async () => {
     const folder = mkdtempSync(join(tmpdir(), "wiki-migrations-"));

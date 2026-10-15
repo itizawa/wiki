@@ -514,14 +514,15 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 
 - 繰り返しの上限：同じページ・同じブロックの実行は、直近1時間に5回まで（`apps/api/src/workflows/enqueue.ts` の `MAX_RUNS_PER_BLOCK_PAGE`）。6回目からは実行を積まず、`failed`（理由「繰り返しが多すぎる」）で記録する。Routine が自分を呼んだタグを付け直して呼び続けるのを止めるため。管理画面からの付け外しにも、MCP（`add_tag`）にも同じ上限がかかる。外すときは数えない。失敗で記録したぶんも数に入るので、繰り返しが続くあいだは止まったまま、1時間なにも積まれなければ戻る
 - MCP からの付け外し：外部のアプリ（MCP）の `add_tag` / `remove_tag`（上の「外部のアプリ（MCP）からの操作」の道具の表）でも、同じ経路（`attachTagAndEnqueue`）でワークフローの実行を積む。Routine が仕事を終えたときに、次の工程のタグを付けて鎖をつなげる
-- 種類：トリガーは「タグが付いたとき」、アクションは「Routine を呼ぶ」「タグを外す」。型は `packages/shared/src/workflow.ts` の判別付きユニオン（`type` で見分ける）。種類を足すときは、そこと、API の `apps/api/src/workflows/blocks.ts` の種類ごとの表（`TRIGGER_COLUMNS` `ACTION_COLUMNS`。足し忘れると型エラー）、実行側の表に足す
+- 「タグを付ける」の実行：`attachTagAndEnqueue` で付け、付いたタグがトリガーのブロックの実行も積んで、その実行のあとに動かす（同じブロック・同じページは直近1時間に5回までの上限がかかるので、自分のトリガーと同じタグを付けても止まる）。すでに付いていれば何もせず成功、タグが消えていても成功。実行の結果は `added`（付けたか）
+- 種類：トリガーは「タグが付いたとき」、アクションは「Routine を呼ぶ」「タグを外す」「タグを付ける」。型は `packages/shared/src/workflow.ts` の判別付きユニオン（`type` で見分ける）。種類を足すときは、そこと、API の `apps/api/src/workflows/blocks.ts` の種類ごとの表（`TRIGGER_COLUMNS` `ACTION_COLUMNS`。足し忘れると型エラー）、実行側の表に足す
 - API（`/admin/w/{key}/workflow`。読むのはメンバーなら誰でも、作る・変える・消すのは管理者だけ。別の wiki のワークフローは 404）：
   - `GET /`（一覧。ブロックの数つき）・`POST /`（`{ name }`。名前の重なりは 409 `workflow_name_taken`、21個目は 409 `workflow_limit`）・`GET /{workflowId}`・`PATCH /{workflowId}`（名前の変更）・`DELETE /{workflowId}`（ブロックと実行の履歴もいっしょに消える）
   - ブロックはワークフローの下：`GET /{workflowId}/blocks`・`POST /{workflowId}/blocks`・`PUT /{workflowId}/blocks/{id}`（アクションの並びごと置き換える）・`DELETE /{workflowId}/blocks/{id}`。別の wiki のタグ・登録されていない Routine は 400
   - `GET /{workflowId}/runs`（実行の履歴。管理者だけ。`status` `limit` `cursor`）
   - `GET /admin/w/{key}/routines`（ブロックで選ぶための Routine の ID と名前だけ。管理者だけ）
 - 監査ログ：ワークフローの作成 `workflow_create`・名前の変更 `workflow_rename`・削除 `workflow_delete`（いっしょに消えたブロックと履歴の数つき）。ブロックは `workflow_block_create` / `_update` / `_delete`
-- タグを消すと、そのタグがトリガーのブロックは消え、「タグを外す」で指しているアクションは取り除かれ、アクションが無くなったブロックも消える（監査ログに残る）。ワークフロー自体は、ブロックが0件になっても残る
+- タグを消すと、そのタグがトリガーのブロックは消え、「タグを外す」「タグを付ける」で指しているアクションは取り除かれ、アクションが無くなったブロックも消える（監査ログに残る）。ワークフロー自体は、ブロックが0件になっても残る
 - データ：`workflows`（`wiki_id` / `name`（wiki の中で一意）/ `created_at` / `created_by`）、`workflow_blocks`（`workflow_id`（ワークフローを消すと消える）/ `wiki_id` / `trigger_type` / `trigger_tag_id`）、`workflow_actions`（`block_id`（ブロックを消すと消える）/ `position` / `type` / `routine_id` / `tag_id`。`type` ごとに必要な列を check で縛る）、`workflow_runs`（`workflow_id`（ワークフローを消すと、履歴も消える）。`block_id` は、ブロックだけ消えたときは null になって履歴は残る）
 - 移行（`0043_workflows`）：すでにブロックか実行の履歴がある wiki ごとに「ワークフロー」という名前のワークフローを1つ作り、既存のブロックと履歴をそこへ入れてから、`workflow_id` を `NOT NULL` にした。どちらも無い wiki には作らない
 - 履歴の保持期間（終わって90日）と、日次の掃除（`cleanup.ts`）は、ワークフローが増えても変わらない
