@@ -2,6 +2,7 @@
 // - 限定公開ページが検索・サイトマップ・RSS・ナビに漏れていないこと
 // - ある wiki の内容（非公開・限定公開を含む）が、別の wiki の出力に混ざっていないこと
 // - Google のタグ（Analytics・サーチコンソール）が、設定した wiki の公開ページにだけ入り、限定公開のページに入っていないこと
+// - AdSense のタグと ads.txt が、設定した wiki の公開ページにだけ入り、限定公開のページと 404 に入っていないこと
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -185,6 +186,21 @@ check(
   "the 404 page does not load the Google tag when the URL is under /u/",
 );
 
+// AdSense：設定のある wiki（サンプルでは wiki）の公開ページ・一覧・検索に入れる。限定公開のページと 404 には出さない
+const adsenseId = "ca-pub-1234567890123456";
+const adsenseMeta = `<meta name="google-adsense-account" content="${adsenseId}">`;
+const adsenseSrc = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseId}" crossorigin="anonymous"></script>`;
+for (const [path, html] of Object.entries(withTags)) {
+  check(html.includes(adsenseMeta) && html.includes(adsenseSrc), `${path} has the AdSense account meta and the auto ads code`);
+}
+const adsenseWords = ["adsbygoogle", "google-adsense-account", "googlesyndication", adsenseId];
+const adsenseInUnlisted = adsenseWords.filter((w) => unlisted.includes(w));
+check(adsenseInUnlisted.length === 0, `an unlisted page has no AdSense code${adsenseInUnlisted.length ? ` (${adsenseInUnlisted.join(", ")})` : ""}`);
+const adsenseIn404 = adsenseWords.filter((w) => notFoundPage.includes(w));
+check(adsenseIn404.length === 0, `the 404 page has no AdSense code (no ads on error pages)${adsenseIn404.length ? ` (${adsenseIn404.join(", ")})` : ""}`);
+check((await exists("wiki/ads.txt")) && (await read("wiki/ads.txt")) === "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0\n", "ads.txt lists the wiki's publisher id (pub- without ca-)");
+check(!(await exists("notes/ads.txt")), "a wiki without a publisher id has no ads.txt");
+
 const routes = JSON.parse(await read("wiki/page-routes.json"));
 check(routes.canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check(routes.gone.includes("ggggggggg1"), "page-routes.json lists gone pages");
@@ -211,7 +227,7 @@ const sharedPaths = [
 ];
 const sharedFiles = await Promise.all(sharedPaths.map(async (path) => ({ path: path.slice(dist.length), text: await readFile(path, "utf8") })));
 const perWikiWords = [
-  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc"],
+  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc", "1234567890123456"],
   ...["bbbbbbbbb1", "hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート", "#00716b", "notes0logo0sample0000000"],
 ];
 const inShared = leaks(sharedFiles, perWikiWords);
@@ -241,14 +257,14 @@ check((await read("notes/robots.txt")).includes("Sitemap: http://notes.localhost
 check((await read("notes/p/bbbbbbbbb1.html")).includes('rel="canonical" href="http://notes.localhost:4321/p/bbbbbbbbb1"'), "canonical uses the wiki's origin");
 
 // ---- wiki どうしの漏れ：id・限定公開の key・本文・タイトル・削除済みの id が、別の wiki の出力に無いこと
-const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", gaId, verification];
+const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", gaId, verification, "1234567890123456"];
 const ofNotes = ["hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート"];
 const inWiki = leaks(await readAll("wiki"), ofNotes);
 const inNotes = leaks(await readAll("notes"), ofWiki);
 check(inWiki.length === 0, `nothing of the notes wiki appears in the first wiki's output${inWiki.length ? ` (${inWiki.join(", ")})` : ""}`);
 check(inNotes.length === 0, `nothing of the first wiki appears in the notes wiki's output${inNotes.length ? ` (${inNotes.join(", ")})` : ""}`);
 // 未設定の wiki（サンプルでは notes）には、どのページにも Google のタグが無い
-const googleInNotes = leaks(await readAll("notes"), ["googletagmanager", "google-site-verification", "gtag", "dataLayer"]);
+const googleInNotes = leaks(await readAll("notes"), ["googletagmanager", "google-site-verification", "gtag", "dataLayer", "adsbygoogle", "google-adsense-account"]);
 check(googleInNotes.length === 0, `a wiki without the settings has no Google tag and no verification meta${googleInNotes.length ? ` (${googleInNotes.join(", ")})` : ""}`);
 check((await exists("notes/p/bbbbbbbbb1.html")) && !(await exists("wiki/p/bbbbbbbbb1.html")), "a page is generated only in its own wiki");
 check(JSON.parse(await read("notes/page-routes.json")).gone.join() === "hhhhhhhhh1", "each wiki has its own page-routes.json");

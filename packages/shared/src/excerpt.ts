@@ -5,6 +5,8 @@ import { matchChildren } from "./children";
 export function excerpt(md: string, length = 120): string {
   const text = md
     .replace(/```[\s\S]*?```/g, "")
+    // 画像のすぐ下の出典の段落（`画像: [○○](…)より`）。画像と一緒に落とし、説明文が出典から始まらないようにする
+    .replace(/^([ \t]*!\[[^\]]*\]\([^)]*\)[ \t]*\n)(?:[ \t]*\n)*[ \t]*(?:画像|写真|出典)[ \t]*[:：].*$/gm, "$1")
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
     // 地図の URL だけの行（本文では地図になる）
     .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))

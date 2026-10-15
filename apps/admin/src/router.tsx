@@ -20,6 +20,7 @@ import { CostsPage } from "./routes/CostsPage";
 import { RoutinesPage } from "./routes/RoutinesPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
+import { validatePagesSearch } from "./lib/pagesSearch";
 import { FIRST_WIKI } from "./lib/wiki";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
@@ -109,7 +110,8 @@ const wikiRoute = createRoute({
 });
 // wiki のトップ：最近更新したページ・下書き・予約公開・閲覧数の要約。全ページの一覧は /pages
 const dashboardRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(DashboardPage) });
-const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "pages", component: padded(PagesPage) });
+// ?tag={タグの ID}：そのタグが付いたページだけの一覧。再読み込みや URL の共有で同じ絞り込みが開く
+const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "pages", validateSearch: validatePagesSearch, component: padded(PagesPage) });
 const editorRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "pages/$pageId",
