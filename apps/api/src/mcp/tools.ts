@@ -1,12 +1,17 @@
 import {
   bodyLines,
+  COVER_UPLOAD_TYPES,
   createEditRequestInput,
   createPageInput,
   EDIT_REQUEST_ITEM_KINDS,
   EDIT_REQUEST_LIMITS,
   editRequestCommentInput,
+  IMAGE_MAX_BYTES,
+  newImageName,
+  pageCoverSchema,
   publishVisibilitySchema,
   savePageInput,
+  sniffImageType,
   type EditRequest,
   type OAuthScope,
 } from "@wiki/shared";
@@ -25,8 +30,9 @@ import {
   withdrawEditRequest,
 } from "../editRequests/service";
 import { HttpError, notFound } from "../errors";
+import type { ImageStore } from "../images/store";
 import type { AgentContext } from "../oauth/service";
-import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage } from "../routes/pages";
+import { createPage, deletePage, findLivePage, listTrash, lockTrashGroup, restorePage, savePage, setPageCover } from "../routes/pages";
 import { cancelSchedule, createSchedule, listActions, publishAudited, unpublishAudited } from "../routes/publishing";
 import { agentActor } from "../audit/service";
 import { descendantIds, loadTreeIndex } from "../publishing/hierarchy";
@@ -47,6 +53,8 @@ type ToolContext = {
   db: Db;
   config: AppConfig;
   agent: AgentContext;
+  /** アップロードした画像の置き場所（カバー画像を送ってもらうときに使う）。無ければ画像は受け取らない */
+  images?: ImageStore | null;
   /** タグを付けて積んだワークフローの実行を、応答のあとに動かすためのもの */
   routineFetch?: RunDeps["routineFetch"];
   defer?: ((promise: Promise<unknown>) => void) | null;
@@ -421,6 +429,60 @@ export const TOOLS = [
         recordPublishEvent: true,
       });
       return { ok: true };
+    },
+  }),
+  tool({
+    name: "set_page_cover",
+    description:
+      "ページのカバー画像（タイトルの上に出す横長の画像）を付ける・変える・外す。版は作らず、すぐに反映する。" +
+      "画像は imageBase64（PNG・JPEG・WebP の中身を base64 にしたもの、5MB まで）で送るとアップロードして付ける。" +
+      "アップロード済みの画像（/images/…）か用意した画像（/covers/{key}.svg）を付けるなら cover にパスを、外すなら cover に null を渡す。" +
+      "公開中・限定公開中のページは公開サイトにもすぐ出るので、wiki.publish の許可も要る。",
+    scope: "wiki.write",
+    input: z
+      .object({
+        wiki: wikiKey,
+        pageId,
+        imageBase64: z.string().min(1).max(Math.ceil((IMAGE_MAX_BYTES * 4) / 3) + 4).optional(),
+        cover: pageCoverSchema.nullable().optional(),
+      })
+      .refine((v) => (v.imageBase64 === undefined) !== (v.cover === undefined), { message: "pass exactly one of imageBase64 or cover" }),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        pageId: str("ページの ID"),
+        imageBase64: str("カバーにする画像の中身（PNG・JPEG・WebP を base64 にしたもの。5MB まで）。cover とどちらか一方"),
+        cover: {
+          type: ["string", "null"],
+          description: "アップロード済みの画像のパス（/images/…）か用意した画像（/covers/{key}.svg）。null で外す。imageBase64 とどちらか一方",
+        },
+      },
+      ["wiki", "pageId"],
+    ),
+    async run({ db, agent, images }, input) {
+      const wiki = await memberWiki(db, agent, input.wiki);
+      const page = await visiblePage(db, agent, wiki.id, input.pageId);
+      // カバーは版に入らず、公開中のページなら公開サイトにすぐ出る。公開する許可が無いアプリには、公開側を変えさせない
+      if (page.publishedVersionId !== null && page.visibility !== "private" && !agent.scopes.includes("wiki.publish")) {
+        throw new HttpError(403, "insufficient_scope", "this page is published; changing its cover needs wiki.publish");
+      }
+      let cover = input.cover ?? null;
+      if (input.imageBase64 !== undefined) {
+        if (!images) throw new HttpError(503, "images_not_configured", "image storage is not configured");
+        const body = new Uint8Array(Buffer.from(input.imageBase64.replace(/^data:[^,]*,/, ""), "base64"));
+        if (body.byteLength > IMAGE_MAX_BYTES) {
+          throw new HttpError(413, "image_too_large", `images must be ${IMAGE_MAX_BYTES} bytes or smaller`, { maxBytes: IMAGE_MAX_BYTES });
+        }
+        const type = sniffImageType(body);
+        if (!type || !(COVER_UPLOAD_TYPES as readonly string[]).includes(type)) {
+          throw new HttpError(415, "unsupported_image_type", "covers must be PNG, JPEG or WebP images");
+        }
+        const name = newImageName(type);
+        await images.put(name, body, type);
+        cover = `/images/${name}`;
+      }
+      await db.transaction((tx) => setPageCover(tx, wiki.id, page.id, cover));
+      return { id: page.id, cover };
     },
   }),
   tool({
