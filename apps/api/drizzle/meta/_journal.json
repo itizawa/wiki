@@ -316,6 +316,13 @@
       "when": 1792022149627,
       "tag": "0044_wiki_adsense",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792064729256,
+      "tag": "0045_page_ratings",
+      "breakpoints": true
     }
   ]
 }

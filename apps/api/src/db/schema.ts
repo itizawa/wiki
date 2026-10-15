@@ -371,6 +371,24 @@ export const pageStars = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.pageId] })],
 );
 
+/**
+ * ページの評価（星1〜5）。本文に `@rating` を書いたページに、公開サイトの読者がログインせずに付ける。1人（読者のブラウザが作る ID）につき1ページ1件で、付け直すと上書きする。
+ * 読者の ID はそのまま持たず、SHA-256 にして持つ。どの wiki のものかは、ページで決まる。
+ */
+export const pageRatings = pgTable(
+  "page_ratings",
+  {
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    raterHash: text("rater_hash").notNull(),
+    score: integer("score").notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.raterHash] }), check("page_ratings_score_check", sql`${t.score} between 1 and 5`)],
+);
+
 /** 管理用タグ。wiki ごとに管理者が作り、ページに付ける。公開サイトには出さない（ワークフローの起点やページの整理に使う） */
 export const wikiTags = pgTable(
   "wiki_tags",

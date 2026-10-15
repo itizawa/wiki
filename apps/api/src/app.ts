@@ -16,6 +16,7 @@ import { exportRoutes, internalRoutes } from "./routes/internal";
 import { linkPreviewRoutes } from "./routes/linkPreview";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
+import { publicRatingRoutes } from "./routes/ratings";
 import { snsRoutes, xCallbackRoutes } from "./routes/sns";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
@@ -63,7 +64,8 @@ export function createApp(deps: Deps) {
   // 画像（/images）のようにキャッシュさせる応答には Set-Cookie を付けない
   for (const path of ["/auth/*", "/admin/*", "/invites/*"]) app.use(path, clearLegacyCookies);
   // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
-  // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外
+  // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外。
+  // /public はログインせずに使う経路（公開サイトの読者の評価）で、受けるオリジンは経路ごとに確かめる
   app.use("*", async (c, next) => {
     const path = c.req.path;
     const safe =
@@ -72,6 +74,7 @@ export function createApp(deps: Deps) {
       c.req.method === "OPTIONS" ||
       path.startsWith("/internal/") ||
       path.startsWith("/oauth/") ||
+      path.startsWith("/public/") ||
       path === "/mcp" ||
       path.startsWith("/mcp/");
     if (!safe && c.req.header("origin") !== deps.config.adminOrigin) {
@@ -92,6 +95,8 @@ export function createApp(deps: Deps) {
   app.route("/.well-known", wellKnownRoutes);
   app.route("/oauth", oauthRoutes);
   app.route("/mcp", mcpRoutes);
+  // 公開サイトの読者が使う（ログインは要らない）
+  app.route("/public/w/:wikiKey/pages/:pageId/rating", publicRatingRoutes);
 
   // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
