@@ -11,17 +11,18 @@ import { pgliteExtensions } from "./harness";
 const DRIZZLE = fileURLToPath(new URL("../../drizzle", import.meta.url));
 const TARGET = "0043_workflows";
 
-/** 0043 の手前までのマイグレーションを流して既存のデータを入れ、そのあとで 0043 を流す */
+/** 0043 の手前までのマイグレーションを流して既存のデータを入れ、そのあとで 0043 を流す（0043 のあとのものは流さない） */
 describe("migration 0043_workflows", () => {
   it("puts each wiki's existing blocks and runs under one workflow named 「ワークフロー」, and adds none for wikis with neither", async () => {
     const folder = mkdtempSync(join(tmpdir(), "wiki-migrations-"));
     cpSync(DRIZZLE, folder, { recursive: true });
     const journalPath = join(folder, "meta", "_journal.json");
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries.at(-1)!.tag).toBe(TARGET);
+    const at = journal.entries.findIndex((e) => e.tag === TARGET);
+    expect(at).toBeGreaterThan(0);
 
     const client = new PGlite({ extensions: pgliteExtensions });
-    writeFileSync(journalPath, JSON.stringify({ ...journal, entries: journal.entries.slice(0, -1) }));
+    writeFileSync(journalPath, JSON.stringify({ ...journal, entries: journal.entries.slice(0, at) }));
     await migrate(drizzle(client) as never, { migrationsFolder: folder });
 
     // 外部キーは確かめない（ページやタグを用意せず、ブロックと実行の行だけ入れる）

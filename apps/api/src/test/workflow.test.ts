@@ -33,6 +33,7 @@ const blocksUrl = async (base = W) => `${base}/workflow/${await defaultWorkflowI
 const block = (tagId: string, actions: unknown[]) => ({ trigger: { type: "tag_attached", tagId }, actions });
 const callRoutine = (routineId: string) => ({ type: "call_routine", routineId });
 const removeTag = (tagId: string) => ({ type: "remove_tag", tagId });
+const addTag = (tagId: string) => ({ type: "add_tag", tagId });
 
 async function trail(base = W): Promise<[string, string][]> {
   const res = await ctx.call("GET", `${base}/audit-logs?limit=100`);
@@ -112,6 +113,7 @@ describe("workflow blocks: validation", () => {
 
     expect((await ctx.call("POST", await blocksUrl(), block(theirs, [removeTag(mine)]))).status).toBe(400);
     expect((await ctx.call("POST", await blocksUrl(), block(mine, [removeTag(theirs)]))).status).toBe(400);
+    expect((await ctx.call("POST", await blocksUrl(), block(mine, [addTag(theirs)]))).status).toBe(400);
     expect((await ctx.call("POST", await blocksUrl(), block(mine, [callRoutine(none)]))).status).toBe(400);
     expect((await ctx.call("GET", await blocksUrl())).body.blocks).toEqual([]);
   });
@@ -147,18 +149,21 @@ describe("workflow blocks: deleting a tag", () => {
     const triggered = (await post(block(doomed, [callRoutine(routine)]))).body.id;
     const mixed = (await post(block(other, [removeTag(doomed), callRoutine(routine), removeTag(doomed)]))).body.id;
     const onlyRemove = (await post(block(other, [removeTag(doomed)]))).body.id;
+    const onlyAdd = (await post(block(other, [addTag(doomed)]))).body.id;
+    const addAndKeep = (await post(block(other, [addTag(doomed), addTag(other)]))).body.id;
     const untouched = (await post(block(other, [removeTag(other)]))).body.id;
 
     expect((await ctx.call("DELETE", `${W}/tags/${doomed}`)).status).toBe(204);
 
     const blocks = (await ctx.call("GET", await blocksUrl())).body.blocks as { id: string; actions: { type: string }[] }[];
-    expect(blocks.map((b) => b.id)).toEqual([mixed, untouched]);
+    expect(blocks.map((b) => b.id)).toEqual([mixed, addAndKeep, untouched]);
+    expect(blocks.find((b) => b.id === addAndKeep)!.actions.map((a) => a.type)).toEqual(["add_tag"]);
     expect(blocks.find((b) => b.id === mixed)!.actions.map((a) => a.type)).toEqual(["call_routine"]);
-    expect([triggered, onlyRemove].some((id) => blocks.some((b) => b.id === id))).toBe(false);
+    expect([triggered, onlyRemove, onlyAdd].some((id) => blocks.some((b) => b.id === id))).toBe(false);
 
     const log = await trail();
-    expect(log.filter(([a]) => a === "workflow_block_delete")).toHaveLength(2);
-    expect(log.some(([a, s]) => a === "tag_delete" && s.includes("ワークフローのブロック 2 件も削除しました"))).toBe(true);
+    expect(log.filter(([a]) => a === "workflow_block_delete")).toHaveLength(3);
+    expect(log.some(([a, s]) => a === "tag_delete" && s.includes("ワークフローのブロック 3 件も削除しました"))).toBe(true);
   });
 });
 

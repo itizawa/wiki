@@ -366,7 +366,7 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）にテスト投稿をしました`);
 
     case "workflow_run_fail": {
-      const kind = entry.detail.actionType === "call_routine" ? "Routine を呼ぶ" : entry.detail.actionType === "remove_tag" ? "タグを外す" : entry.detail.actionType;
+      const kind = entry.detail.actionType === "call_routine" ? "Routine を呼ぶ" : entry.detail.actionType === "remove_tag" ? "タグを外す" : entry.detail.actionType === "add_tag" ? "タグを付ける" : entry.detail.actionType;
       return [...quoted(t), { text: `のワークフローの実行に失敗しました（${kind}：${entry.detail.error}）` }];
     }
 

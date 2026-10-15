@@ -10,6 +10,7 @@ const block: WorkflowBlock = {
   actions: [
     { type: "call_routine", routineId: "r1", routineName: "校正" },
     { type: "remove_tag", tagId: "t1", tagName: "校正待ち" },
+    { type: "add_tag", tagId: "t2", tagName: "確認待ち" },
   ],
 };
 
@@ -29,6 +30,7 @@ describe("draft conversion", () => {
       actions: [
         { type: "call_routine", routineId: "r1" },
         { type: "remove_tag", tagId: "t1" },
+        { type: "add_tag", tagId: "t2" },
       ],
     });
   });
@@ -36,7 +38,7 @@ describe("draft conversion", () => {
 
 describe("deleteBlockBody", () => {
   it("says what goes and what stays", () => {
-    expect(deleteBlockBody(block)).toContain("アクション 2 件");
+    expect(deleteBlockBody(block)).toContain("アクション 3 件");
     expect(deleteBlockBody(block)).toContain("タグと Routine は消えません");
   });
 });

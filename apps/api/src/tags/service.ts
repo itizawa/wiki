@@ -124,7 +124,7 @@ async function findPair(tx: Db, wikiId: string, pageId: string, tagId: string) {
  * ページにタグを付ける。すでに付いていれば何もしない。
  * 実際に付けたときだけ true を返し、監査ログを書く。続きの処理（付けた瞬間のイベントなど）は、true のときにだけ、同じ tx で足す。
  */
-export async function attachTag(tx: Db, wikiId: string, pageId: string, tagId: string, actor: AuditActor): Promise<boolean> {
+export async function attachTag(tx: Db, wikiId: string, pageId: string, tagId: string, actor: AuditActor, runId?: string): Promise<boolean> {
   const { page, tag } = await findPair(tx, wikiId, pageId, tagId);
   const added = await tx.insert(pageTags).values({ pageId, tagId }).onConflictDoNothing().returning({ pageId: pageTags.pageId });
   if (added.length === 0) return false;
@@ -133,7 +133,7 @@ export async function attachTag(tx: Db, wikiId: string, pageId: string, tagId: s
     actor,
     action: "page_tag_add",
     target: { type: "page", id: page.id, label: page.title },
-    detail: { tagId, tagName: tag.name },
+    detail: { tagId, tagName: tag.name, ...(runId && { runId }) },
   });
   return true;
 }

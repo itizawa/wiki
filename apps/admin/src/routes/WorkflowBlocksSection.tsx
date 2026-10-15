@@ -40,7 +40,7 @@ const ROUTINES_KEY = ["routine-choices"];
 export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
   return {
     trigger: { type: "tag_attached", tagId: draft.tagId },
-    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId } : { type: "remove_tag", tagId: a.tagId })),
+    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId } : { type: a.type, tagId: a.tagId })),
   };
 }
 
@@ -50,7 +50,7 @@ export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
     actions: block.actions.map((a) => ({
       type: a.type,
       routineId: a.type === "call_routine" ? a.routineId : "",
-      tagId: a.type === "remove_tag" ? a.tagId : "",
+      tagId: a.type === "call_routine" ? "" : a.tagId,
     })),
   };
 }
@@ -327,7 +327,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                   <TextField
                     select
                     size="small"
-                    label={`${i + 1} 番目の外すタグ`}
+                    label={`${i + 1} 番目の${a.type === "add_tag" ? "付ける" : "外す"}タグ`}
                     value={a.tagId}
                     disabled={noTags}
                     onChange={(e) => change(a.key, { tagId: e.target.value })}

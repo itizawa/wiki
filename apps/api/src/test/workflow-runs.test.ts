@@ -3,6 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { pages, workflowRunActions, workflowRuns } from "../db/schema";
 import { buildRoutineText } from "../workflows/payload";
+import { MAX_RUNS_PER_BLOCK_PAGE, RUN_LIMIT_REASON } from "../workflows/enqueue";
 import { executeRun } from "../workflows/run";
 import { defaultWorkflowId, setup, W } from "./harness";
 
@@ -58,6 +59,7 @@ async function newBlock(tagId: string, actions: unknown[], base = W) {
 }
 const callRoutine = (routineId: string) => ({ type: "call_routine", routineId });
 const removeTag = (tagId: string) => ({ type: "remove_tag", tagId });
+const addTag = (tagId: string) => ({ type: "add_tag", tagId });
 
 const attach = (pageId: string, tagId: string, base = W) => ctx.call("PUT", `${base}/pages/${pageId}/tags/${tagId}`);
 const detach = (pageId: string, tagId: string, base = W) => ctx.call("DELETE", `${base}/pages/${pageId}/tags/${tagId}`);
@@ -354,6 +356,82 @@ describe("workflow runs: execute", () => {
     release();
     await ctx.settle();
     expect((await runs())[0]!.status).toBe("succeeded");
+  });
+});
+
+describe("workflow runs: add_tag action", () => {
+  it("attaches the tag and runs the blocks triggered by it", async () => {
+    const fake = await boot();
+    const review = await newTag("確認待ち");
+    const proofread = await newTag("校正待ち");
+    const routine = await newRoutine();
+    await newBlock(proofread, [removeTag(proofread), addTag(review)]);
+    await newBlock(review, [callRoutine(routine)]);
+    const page = await newPage("はじめに");
+
+    await attach(page, proofread);
+    await ctx.settle();
+
+    expect(await tagNames(page)).toEqual(["確認待ち"]);
+    expect((await runs()).map((r) => [r.tagId, r.status])).toEqual([
+      [proofread, "succeeded"],
+      [review, "succeeded"],
+    ]);
+    expect(fake.calls).toHaveLength(1);
+    const [first] = await runs();
+    expect((await runActions(first!.id)).map((a) => [a.type, a.status, a.result])).toEqual([
+      ["remove_tag", "succeeded", { removed: true }],
+      ["add_tag", "succeeded", { added: true }],
+    ]);
+  });
+
+  it("does nothing and succeeds when the tag is already attached", async () => {
+    await boot();
+    const a = await newTag("A");
+    const b = await newTag("B");
+    await newBlock(a, [addTag(b)]);
+    await newBlock(b, [removeTag(a)]);
+    const page = await newPage("はじめに");
+    await attach(page, b);
+    await ctx.settle();
+    await attach(page, a);
+    await ctx.settle();
+    expect(await tagNames(page)).toEqual(["A", "B"]);
+    const all = await runs();
+    // B が付いたとき（b のブロック：A はまだ付いていない）、A が付いたとき（a のブロック：B はすでに付いていて何もしない）
+    expect(all.map((r) => [r.tagId, r.status])).toEqual([[b, "succeeded"], [a, "succeeded"]]);
+    expect((await runActions(all[1]!.id))[0]).toMatchObject({ status: "succeeded", result: { added: false } });
+  });
+
+  it("stops a block that adds its own trigger tag at the repeat limit", async () => {
+    await boot();
+    const tag = await newTag("ループ");
+    await newBlock(tag, [removeTag(tag), addTag(tag)]);
+    const page = await newPage("はじめに");
+
+    await attach(page, tag);
+    await ctx.settle();
+
+    const all = await runs();
+    expect(all).toHaveLength(MAX_RUNS_PER_BLOCK_PAGE + 1);
+    expect(all.filter((r) => r.status === "succeeded")).toHaveLength(MAX_RUNS_PER_BLOCK_PAGE);
+    const stopped = all.filter((r) => r.status === "failed");
+    expect(stopped).toHaveLength(1);
+    expect(stopped[0]!.lastError).toBe(RUN_LIMIT_REASON);
+  });
+
+  it("succeeds when the tag has been deleted since", async () => {
+    await boot();
+    const a = await newTag("A");
+    const b = await newTag("B");
+    await newBlock(a, [addTag(b)]);
+    const page = await newPage("はじめに");
+    const { enqueueTagAttached } = await import("../workflows/enqueue");
+    const [pageRow] = await ctx.db.select().from(pages).where(eq(pages.id, page));
+    const ids = await ctx.db.transaction((tx) => enqueueTagAttached(tx, pageRow!.wikiId, page, a));
+    expect((await ctx.call("DELETE", `${W}/tags/${b}`)).status).toBeLessThan(300);
+    await executeRun(ctx.db, { config: ctx.config, routineFetch: null }, ids[0]!);
+    expect((await runActions(ids[0]!))[0]).toMatchObject({ status: "succeeded", result: { added: false, tagDeleted: true } });
   });
 });
 

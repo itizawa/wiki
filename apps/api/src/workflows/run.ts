@@ -1,12 +1,13 @@
 import { ROUTINE_FAILURE_MESSAGES } from "@wiki/shared";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { writeAudit, type AuditActor } from "../audit/service";
 import type { AppConfig } from "../config";
 import { decryptToken } from "../crypto/token";
 import type { Db } from "../db/client";
-import { pages, wikis, wikiTags, workflowRoutines, workflowRunActions, workflowRuns } from "../db/schema";
+import { pages, pageTags, wikis, wikiTags, workflowRoutines, workflowRunActions, workflowRuns } from "../db/schema";
 import { HttpError } from "../errors";
 import { detachTag } from "../tags/service";
+import { attachTagAndEnqueue } from "./enqueue";
 import { buildRoutineText } from "./payload";
 import { fireRoutine } from "./routine";
 
@@ -26,7 +27,7 @@ export type RunOutcome = "skipped" | "not_pending" | RunStatus;
 type RunStatus = "succeeded" | "failed" | "pending";
 
 type Failure = { retryable: boolean; reason: string; message: string; status?: number };
-type ActionResult = { ok: true; result: Record<string, unknown> } | ({ ok: false } & Failure);
+type ActionResult = { ok: true; result: Record<string, unknown>; queued?: string[] } | ({ ok: false } & Failure);
 
 export type RunRow = typeof workflowRuns.$inferSelect;
 type RunActionRow = typeof workflowRunActions.$inferSelect;
@@ -51,6 +52,15 @@ const failure = (reason: string, message: string, retryable = false): ActionResu
  * Routine は「少なくとも1回」呼ぶ決まりで、「ちょうど1回」ではない（Routine 側は、渡す `runId` で重複を見分けられる）。
  */
 export async function executeRun(db: Db, deps: RunDeps, runId: string, now: () => Date = () => new Date()): Promise<RunOutcome> {
+  const spawned: string[] = [];
+  const outcome = await executeOne(db, deps, runId, now, spawned);
+  // 「タグを付ける」が積んだ実行（付いたタグがトリガーのブロック）は、この実行のあとで動かす。繰り返しは `enqueueTagAttached` の上限で止まる。
+  // 動かせなくても（落ちた）、実行は pending のまま残り、Cron が拾う
+  for (const id of spawned) await executeRun(db, deps, id, now).catch(() => undefined);
+  return outcome;
+}
+
+async function executeOne(db: Db, deps: RunDeps, runId: string, now: () => Date, spawned: string[]): Promise<RunOutcome> {
   const run = await claim(db, runId, now());
   if (!run) return "not_pending";
 
@@ -78,6 +88,7 @@ export async function executeRun(db: Db, deps: RunDeps, runId: string, now: () =
         err instanceof HttpError ? failure("not_found", `実行できなかった（${err.message}）`) : failure("unexpected", "実行中に予期しないエラーが起きた", true),
     );
     if (outcome.ok) {
+      spawned.push(...(outcome.queued ?? []));
       await db
         .update(workflowRunActions)
         .set({ status: "succeeded", result: outcome.result, finishedAt: now() })
@@ -144,6 +155,7 @@ type Context = { run: RunRow; wikiKey: string; title: string; tagName: string };
 async function runAction(db: Db, deps: RunDeps, ctx: Context, action: RunActionRow): Promise<ActionResult> {
   if (action.type === "call_routine" && action.routineId) return callRoutine(db, deps, ctx, action.routineId);
   if (action.type === "remove_tag" && action.tagId) return removeTag(db, ctx, action.tagId);
+  if (action.type === "add_tag" && action.tagId) return addTag(db, ctx, action.tagId);
   return failure("unknown_action", `知らないアクションの種類（${action.type}）`);
 }
 
@@ -176,6 +188,19 @@ async function removeTag(db: Db, ctx: Context, tagId: string): Promise<ActionRes
   if (!tag) return { ok: true, result: { removed: false, tagDeleted: true } };
   const removed = await db.transaction((tx) => detachTag(tx, run.wikiId, run.pageId, tagId, WORKFLOW_ACTOR, run.id));
   return { ok: true, result: { removed } };
+}
+
+/**
+ * タグを付ける。すでに付いていれば何もせず成功、タグが消えていても成功（外すときと同じ）。
+ * 付けたときは、付いたタグがトリガーのブロックの実行を積む（`attachTagAndEnqueue`。繰り返しの上限がかかる）。積んだ実行の ID は `queued` で返す。
+ */
+async function addTag(db: Db, ctx: Context, tagId: string): Promise<ActionResult> {
+  const { run } = ctx;
+  const [tag] = await db.select({ id: wikiTags.id }).from(wikiTags).where(and(eq(wikiTags.id, tagId), eq(wikiTags.wikiId, run.wikiId)));
+  if (!tag) return { ok: true, result: { added: false, tagDeleted: true } };
+  const [before] = await db.select({ n: count() }).from(pageTags).where(and(eq(pageTags.pageId, run.pageId), eq(pageTags.tagId, tagId)));
+  const queued = await db.transaction((tx) => attachTagAndEnqueue(tx, run.wikiId, run.pageId, tagId, WORKFLOW_ACTOR, run.id));
+  return { ok: true, result: { added: Number(before?.n ?? 0) === 0 }, queued };
 }
 
 /**

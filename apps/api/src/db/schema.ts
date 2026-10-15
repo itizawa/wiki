@@ -468,7 +468,7 @@ export const workflowActions = pgTable(
     index("workflow_actions_tag_idx").on(t.tagId),
     check(
       "workflow_actions_type_check",
-      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.tagId} is null) or (${t.type} = 'remove_tag' and ${t.tagId} is not null and ${t.routineId} is null)`,
+      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.tagId} is null) or (${t.type} in ('remove_tag', 'add_tag') and ${t.tagId} is not null and ${t.routineId} is null)`,
     ),
   ],
 );
