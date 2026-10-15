@@ -1,7 +1,7 @@
 import { RATING_MAX, ratingBarWidths, type RatingSummary } from "@wiki/shared";
 import { Star } from "lucide-react";
-import { useEffect, useId, useState } from "react";
-import { fetchRating, raterId, sendRating } from "../lib/rating";
+import { useEffect, useId, useRef, useState } from "react";
+import { applyRating, fetchRating, raterId, sendRating } from "../lib/rating";
 import s from "./Rating.module.css";
 
 const SCORES = Array.from({ length: RATING_MAX }, (_, i) => i + 1);
@@ -15,15 +15,22 @@ export default function Rating({ pageId }: { pageId: string }) {
   const [summary, setSummary] = useState<RatingSummary | null | undefined>(undefined);
   const [rater, setRater] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const id = useId();
+  /** サーバーが最後に返した評価。送るのに失敗したら、星をここへ戻す */
+  const confirmed = useRef<RatingSummary | null>(null);
+  /** 送った回数。続けて付け直したとき、最後に送った分の返事だけを反映する */
+  const sent = useRef(0);
 
   useEffect(() => {
     const rater = raterId(typeof localStorage === "undefined" ? undefined : localStorage, () => crypto.randomUUID());
     setRater(rater);
     let active = true;
-    void fetchRating(fetch, pageId, rater).then((r) => active && setSummary(r));
+    void fetchRating(fetch, pageId, rater).then((r) => {
+      if (!active) return;
+      confirmed.current = r;
+      setSummary(r);
+    });
     return () => {
       active = false;
     };
@@ -31,16 +38,20 @@ export default function Rating({ pageId }: { pageId: string }) {
 
   if (summary === null) return null;
 
+  // 星は押したらすぐ変える（楽観的更新）。送るのに失敗したら、サーバーが最後に返した評価へ戻す
   const rate = async (score: number) => {
-    if (!rater || sending) return;
-    setSending(true);
-    setMessage(null);
+    if (!rater || !summary) return;
+    const seq = ++sent.current;
+    setSummary(applyRating(summary, score));
+    setMessage("評価しました。ありがとうございます");
     const result = await sendRating(fetch, pageId, rater, score);
-    setSending(false);
-    if (result.ok) {
-      setSummary(result.summary);
-      setMessage("評価しました。ありがとうございます");
-    } else setMessage(result.message);
+    if (result.ok) confirmed.current = result.summary;
+    if (seq !== sent.current) return;
+    if (result.ok) setSummary(result.summary);
+    else {
+      setSummary(confirmed.current);
+      setMessage(result.message);
+    }
   };
 
   const mine = summary?.mine ?? null;
@@ -93,7 +104,7 @@ export default function Rating({ pageId }: { pageId: string }) {
               title={`星${score}（${LABELS[score]}）`}
               className={s.pick}
               data-on={score <= shown ? "" : undefined}
-              disabled={!summary || sending}
+              disabled={!summary}
               onMouseEnter={() => setHover(score)}
               onFocus={() => setHover(score)}
               onBlur={() => setHover(null)}
