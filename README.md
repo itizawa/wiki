@@ -25,6 +25,7 @@ apps/admin       管理画面（React + TanStack Router/Query + dnd-kit、Vite�
 apps/api         API（Hono + Drizzle + PostgreSQL）
 apps/worker      Cron Triggers：下書きを版にする・予約公開の実行・公開ビルドの起動、1日1回の間引きと掃除（版、役目を終えたトークンと公開イベント、週1回は参照されていない画像）
 apps/site        公開サイト（Astro + Reactアイランド、Pagefind、Cloudflare Workers の静的アセット）
+apps/video       台本・録音から動画を組み立て、YouTube に限定公開で投稿する（GitHub Actions の `.github/workflows/video.yml` で動く。Worker にはデプロイしない。`apps/video/README.md`）
 packages/shared  型、zodスキーマ（構造操作）、URLルール、構造の適用・検証・差分
 ```
 
@@ -358,7 +359,7 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 
 ## ページの音声
 
-動画のナレーションなど、公開前の素材の音声をページに添付できる（`page_audio`）。本文の Markdown には何も書かず、公開サイトにも出さない。音声を使うのは、MCP（`list_page_audio`）で取り出すアプリ（動画を組み立てる Routine など）。
+動画のナレーションなど、公開前の素材の音声をページに添付できる（`page_audio`）。本文の Markdown には何も書かず、公開サイトにも出さない。音声を使うのは、MCP（`list_page_audio`）で取り出すアプリ（動画を組み立てる Routine など）。動画の組み立てと YouTube への投稿は `apps/video/README.md`。
 
 - 添付する場所：編集画面の本文の下の「音声」（`apps/admin/src/components/PageAudio.tsx`）
   - 「録音する」：ブラウザの `MediaRecorder` で録る。止めると聞き直せ、「この録音を上げる」で上げる（「録り直す」「録音を捨てる」もある）。録れる形式は WebM か MP4（`isTypeSupported` で選ぶ）。どちらも録れないブラウザでは、録音のボタンを出さず、ファイルを選ぶ案内を出す。ファイル名は「録音 2026年10月15日 10時05分.webm」（JST）
