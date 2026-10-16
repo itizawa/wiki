@@ -277,7 +277,7 @@ function Invites() {
       <Muted sx={{ mb: 1.5 }}>
         1つのリンクで1人が参加できます。期限は{INVITE_TTL_DAYS}日です。
       </Muted>
-      <Row>
+      <Row sx={{ alignItems: "flex-end" }}>
         <Field select label="参加する人のロール" value={role} onChange={(e) => setRole(e.target.value as WikiRole)} sx={{ minWidth: 180 }}>
           {WIKI_ROLES.map((r) => (
             <MenuItem key={r} value={r}>
