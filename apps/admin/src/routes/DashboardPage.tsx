@@ -8,12 +8,14 @@ import type { GaAnalytics, PageSummary, ScheduledAction, WikiAnalytics } from "@
 import { DEFAULT_ANALYTICS_DAYS } from "@wiki/shared";
 import type { ReactNode } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
+import { DonutChart } from "../components/DonutChart";
 import { HelpHeading } from "../components/HelpTip";
 import { actionLabel } from "../components/PublishPanel";
 import { LoadingRegion, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
-import { changeLabel, failureText, gaIsEmpty } from "../lib/analytics";
+import { changeLabel, channelLabel, failureText, gaIsEmpty } from "../lib/analytics";
 import { api, errorMessage } from "../lib/api";
 import { useScreenTitle } from "../lib/documentTitle";
+import { donutSlices } from "../lib/donut";
 import { formatDateTime } from "../lib/format";
 import { pageLink, screenLink } from "../lib/wiki";
 
@@ -229,6 +231,7 @@ function ViewsBody({ data }: { data: WikiAnalytics }) {
 function ViewsNumbers({ data, stale, fetchedAt }: { data: GaAnalytics; stale: boolean; fetchedAt: string | null }) {
   if (gaIsEmpty(data)) return <Muted>まだ数字がありません。つないでから数字が出るまで、数時間かかります。</Muted>;
   const change = changeLabel(data.totals.views, data.previous.views);
+  const channels = donutSlices(data.channels.map((c) => ({ label: channelLabel(c.channel), value: c.sessions })));
   return (
     <Stack spacing={0.5}>
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 3, rowGap: 0.5 }}>
@@ -245,6 +248,12 @@ function ViewsNumbers({ data, stale, fetchedAt }: { data: GaAnalytics; stale: bo
           ユーザー {count(data.totals.users)} 人
         </Muted>
       </Box>
+      {channels.length > 0 && (
+        <Box sx={{ pt: 1.5 }}>
+          <Muted sx={{ fontSize: "0.75rem", mb: 1 }}>流入元の内訳（どこから来たか。セッション数）</Muted>
+          <DonutChart slices={channels} ariaLabel="流入元の内訳" unit="" totalLabel="セッション" />
+        </Box>
+      )}
       {stale && fetchedAt && <Muted>Google から取り直せなかったため、{formatDateTime(fetchedAt)} に取れた数字です。</Muted>}
     </Stack>
   );
