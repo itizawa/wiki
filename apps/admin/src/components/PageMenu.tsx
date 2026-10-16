@@ -13,7 +13,6 @@ import {
   Search,
   SmilePlus,
   Star,
-  Tag,
   TableOfContents,
   Trash2,
 } from "lucide-react";
@@ -41,7 +40,6 @@ import { UNTITLED_TITLE } from "../lib/untitled";
 import { templateLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
 import { Presentation } from "./Presentation";
-import { PageTagMenu } from "./PageTagPicker";
 import { PublishSheet, usePublishState } from "./PublishMenu";
 import type { EnsureVersion } from "./PublishPanel";
 import { modKey } from "./ShortcutGuide";
@@ -93,8 +91,6 @@ export function PageMenu(props: {
   // スマホ幅でだけメニューから開くもの。開いたあとに幅が広がっても、閉じるまでは出しておく
   const [publishOpen, setPublishOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
-  // 「タグ…」から開く、タグの付け外しのメニュー（このメニューを閉じて、同じ「…」ボタンの下に開く）
-  const [tagsOpen, setTagsOpen] = useState(false);
   const publishLabel = usePublishState(props.page).label;
   const stars = useStars();
   const starred = stars.ids.includes(props.pageId);
@@ -238,23 +234,6 @@ export function PageMenu(props: {
           </ListItemIcon>
           <ListItemText>{props.hasIcon ? "アイコンを変える…" : "アイコンを付ける…"}</ListItemText>
         </MenuItem>
-        <MenuItem
-          aria-haspopup="menu"
-          onClick={() => {
-            setAnchor(null);
-            setTagsOpen(true);
-          }}
-        >
-          <ListItemIcon>
-            <Tag size={18} />
-          </ListItemIcon>
-          <ListItemText>タグ…</ListItemText>
-          {props.page.tags.length > 0 && (
-            <Muted component="span" sx={{ ml: 3, fontSize: "0.75rem" }}>
-              {props.page.tags.length} 件
-            </Muted>
-          )}
-        </MenuItem>
         <Divider />
         <MenuItem
           onClick={() => {
@@ -336,7 +315,6 @@ export function PageMenu(props: {
       </Menu>
       {/* 終了したら、フォーカスを「…」ボタンに戻す */}
       <Presentation open={presenting} title={title} bodyMd={bodyMd} onClose={() => setPresenting(false)} onExited={() => menuButton.current?.focus({ preventScroll: true })} />
-      <PageTagMenu pageId={props.pageId} anchorEl={menuButton.current} open={tagsOpen} onClose={() => setTagsOpen(false)} />
       <PublishSheet page={props.page} dirty={props.dirty} ensureVersion={props.ensureVersion} open={publishOpen} onClose={() => setPublishOpen(false)} />
       {props.editor && (
         <OutlinePopover editor={props.editor} headings={props.headings} title={title.trim() || "無題"} onJumpTitle={props.onJumpTitle} anchorEl={menuButton.current} open={outlineOpen} onClose={() => setOutlineOpen(false)} />
