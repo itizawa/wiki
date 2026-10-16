@@ -12,6 +12,16 @@ import Alert from "@mui/material/Alert";
 import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { monoFont } from "../theme";
 
+/**
+ * タグのチップの左右の余白。MUI の小さいチップは文字の左右が 8px で窮屈なので、タグだけ 12px にする（アイコンがあれば、アイコンの左も 10px）。
+ * 状態チップなど、ほかのチップは変えない。タグを出すところ（付け外し、一覧のタグ列、絞り込み）は、これを `sx` に渡して見た目を揃える。
+ */
+export const tagChipSx = {
+  "& .MuiChip-label": { px: 1.5 },
+  "& .MuiChip-icon": { ml: 1.25 },
+  "& .MuiChip-icon + .MuiChip-label": { pl: 1 },
+} as const;
+
 /** 画面をまたいで使う部品（カード・レイアウト補助・バッジ・ルーターのリンク） */
 
 const sxList = (sx: BoxProps["sx"]) => (Array.isArray(sx) ? sx : [sx]);

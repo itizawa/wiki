@@ -14,7 +14,7 @@ import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
 import { withTag } from "../lib/pageTags";
 import { screenLink, useWiki } from "../lib/wiki";
-import { Muted } from "./ui";
+import { Muted, tagChipSx } from "./ui";
 
 const MenuItemLink = createLink(MenuItem);
 
@@ -118,7 +118,7 @@ export function PageTagMenu(props: {
 
 /**
  * 編集画面のタイトルの下に置く、タグの付け外し。ウィキにあるタグを並べ、付いているものは塗って「レ」を付ける。押すと付け外しする。
- * 余白を足すなら、外側の `ul`（gap と mb）か、各タグを包む `li` に足す。
+ * タグの左右の余白は `tagChipSx`（一覧のタグ列・絞り込みと共通）。タグ同士の間は外側の `ul` の gap。
  */
 export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonly PageTag[] }) {
   const { role } = useWiki();
@@ -161,7 +161,7 @@ export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonl
                 icon={on ? <Check size={14} /> : <Tag size={14} />}
                 label={tag.name}
                 onClick={() => toggle.mutate({ tag, on: !on })}
-                sx={{ maxWidth: "100%" }}
+                sx={{ maxWidth: "100%", ...tagChipSx }}
               />
             </li>
           );
