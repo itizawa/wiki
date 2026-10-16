@@ -42,10 +42,10 @@ export function audioFileProblem(file: { name: string; type: string; size: numbe
 export function microphoneProblem(err: unknown): string {
   const name = err instanceof DOMException ? err.name : "";
   if (name === "NotAllowedError" || name === "SecurityError") {
-    return "マイクの使用が許可されていません。アドレスバーの左のアイコンからこのサイトのマイクを「許可」にして、もう一度「録音する」を押してください。";
+    return "マイクの使用が許可されていません。アドレスバーの左のアイコンからこのサイトのマイクを「許可」にして、もう一度「録音を始める」を押してください。";
   }
-  if (name === "NotFoundError" || name === "OverconstrainedError") return "マイクが見つかりません。マイクをつないでから、もう一度「録音する」を押してください。";
-  if (name === "NotReadableError") return "マイクを使えません。ほかのアプリがマイクを使っていないか確かめて、もう一度「録音する」を押してください。";
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "マイクが見つかりません。マイクをつないでから、もう一度「録音を始める」を押してください。";
+  if (name === "NotReadableError") return "マイクを使えません。ほかのアプリがマイクを使っていないか確かめて、もう一度「録音を始める」を押してください。";
   return `録音を始められませんでした。${err instanceof Error ? err.message : ""}`.trim();
 }
 
