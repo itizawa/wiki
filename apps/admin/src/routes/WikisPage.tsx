@@ -38,6 +38,12 @@ const WIKI_ROW_HEIGHT = 54;
  * wiki の一覧と、一覧に対する操作（作成・アーカイブ・戻す）。オーナーにだけ出す。
  * 一覧を先頭に置き、作成は見出しの横のボタンから開く。表示名と画像は、その wiki の「設定」（GeneralSettingsPage）だけで変える。
  */
+/**
+ * 「設定を開く」と「アーカイブする」の行。広い幅では1行に並べる。狭い幅（md 未満）ではこの列が行の2段目に積まれ、
+ * 2つ並べると 320px の幅に収まらず表が横に送れてしまうので、収まらなければ折り返す。
+ */
+export const actionsRowSx = { flexWrap: { xs: "wrap", md: "nowrap" } } as const;
+
 export function WikisPage() {
   const session = useSession();
   const wikis = useWikis();
@@ -68,11 +74,11 @@ export function WikisPage() {
       width: "max-content",
       render: (w) => (
         // 取り返しのつきにくい操作（アーカイブ）は、ほかの操作から離して置く
-        <Row sx={{ flexWrap: "nowrap" }}>
+        <Row sx={actionsRowSx}>
           <RouterLink to="/w/$wikiKey/settings" params={{ wikiKey: w.key }} underline="always" sx={{ whiteSpace: "nowrap" }}>
             設定を開く
           </RouterLink>
-          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: 3, whiteSpace: "nowrap" }}>
+          <Button variant="outlined" color="error" onClick={() => setArchiving(w)} sx={{ ml: { md: 3 }, whiteSpace: "nowrap" }}>
             アーカイブする
           </Button>
         </Row>
@@ -161,11 +167,14 @@ function WikiName({ wiki, children }: { wiki: WikiSummary; children: ReactNode }
   );
 }
 
+/** 公開 URL の文字。狭い幅で枠からはみ出さないよう、途中で折り返せる。 */
+export const siteUrlSx = { minWidth: 0, overflowWrap: "anywhere" } as const;
+
 /** 公開サイトへのリンク（別のタブで開く）。 */
 function SiteLink({ origin }: { origin: string }) {
   return (
-    <MuiLink href={origin} target="_blank" rel="noopener" underline="always" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-      <Mono>{origin}</Mono>
+    <MuiLink href={origin} target="_blank" rel="noopener" underline="always" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, maxWidth: "100%" }}>
+      <Mono sx={siteUrlSx}>{origin}</Mono>
       <ExternalLink aria-label="別のタブで開く" size={14} />
     </MuiLink>
   );
