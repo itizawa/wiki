@@ -7,14 +7,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { errorMessage } from "../lib/api";
-import { LoadingRegion, Muted, skeletonWidth } from "./ui";
+import { LoadingRegion, skeletonWidth } from "./ui";
 
 /**
  * 一覧（表）の共通コンポーネント。管理画面の一覧はこれで作る。
  * - `rowLink` を渡すと、行のどこを押してもそこへ移る。渡さない一覧は、押せる見た目にしない。行によって遷移先が無いときは、その行では `undefined` を返す
  * - `virtualized` で、見えている行とその前後だけを描く。スクロールは画面本体（いちばん近い、縦に送れる親）に乗せる
  * - `hasNextPage` `isFetchingNextPage` `fetchNextPage` を渡すと、末尾が見えたときに続きを読み込む
- * - 最初の読み込み中（行の形の Skeleton）・エラー・0件の表示も受け持つ
+ * - 最初の読み込み中（行の形の Skeleton）・エラー・0件の表示も受け持つ。0件でも、見出しつきの表の枠は出し、表の中に `empty` を出す（どんな一覧かが、空のときも分かる）。`empty` が空文字なら、何も出さない
  *
  * `<table>` は見えている行だけを描くのに向かないので、`div` と `role="table"` で組んでいる。
  */
@@ -45,7 +45,7 @@ export type DataListColumn<T> = {
 };
 
 /** 行の遷移先。`pageLink(id)` などの、`RouterLink` に渡すものと同じ形。 */
-export type RowLink = { to: string; params?: Record<string, string> };
+export type RowLink = { to: string; params?: Record<string, string>; search?: Record<string, string> };
 
 export type DataListProps<T> = {
   /** 読み上げで伝える、表の名前 */
@@ -58,7 +58,7 @@ export type DataListProps<T> = {
   rowLink?: (row: T) => RowLink | undefined;
   /** 最初の読み込みのエラー */
   error?: unknown;
-  /** 0件のときに出す文言 */
+  /** 0件のときに、表の中に出す文言。空文字なら、表も文言も出さない */
   empty: ReactNode;
   /** 行の高さの目安（px）。読み込み中の行はこの高さで出し、`virtualized` では測る前の高さに使う */
   rowHeight?: number;
@@ -222,7 +222,7 @@ export function DataList<T>(props: DataListProps<T>) {
   }, [canLoadMore, scrollEl, count]);
 
   if (rows === undefined && error) return <Alert severity="error">{errorMessage(error)}</Alert>;
-  if (rows !== undefined && rows.length === 0) return <Muted>{props.empty}</Muted>;
+  if (rows !== undefined && rows.length === 0 && props.empty === "") return null;
 
   const hasHeader = columns.some((c) => c.header !== undefined);
   const skeletonRow = (i: number, label?: string) => (
@@ -258,6 +258,14 @@ export function DataList<T>(props: DataListProps<T>) {
                   {c.header}
                 </Box>
               ))}
+            </Box>
+          )}
+          {rows !== undefined && rows.length === 0 && (
+            // 0件でも見出しは出し、表の中に案内を置く（行ではなく、全列にまたがる1つのセル）
+            <Box role="row" aria-rowindex={props.virtualized ? (hasHeader ? 2 : 1) : undefined} sx={rowSx}>
+              <Box role="cell" sx={{ gridColumn: "1 / -1", px: 2, py: 2, fontSize: "0.875rem", lineHeight: 1.43, color: "text.secondary", borderBottom: border }}>
+                {props.empty}
+              </Box>
             </Box>
           )}
           {rows === undefined && Array.from({ length: props.skeletonRows ?? 5 }, (_, i) => skeletonRow(i, i === 0 ? "読み込み中" : undefined))}
