@@ -1,4 +1,4 @@
-import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, MapPin, Megaphone, Minus, Plus, Quote, Strikethrough, Table, CirclePlay } from "lucide-react";
+import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, MapPin, Megaphone, Minus, Plus, Quote, Strikethrough, Table, CirclePlay, Mic, FileAudio } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -21,6 +21,9 @@ import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
 import { YoutubeDialog } from "./YoutubeDialog";
 import { insertYoutube } from "./youtube";
+import { AudioDialog } from "./AudioDialog";
+import { insertPageAudio } from "./pageAudio";
+import { useParams } from "@tanstack/react-router";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { LinkHoverPreview } from "./LinkHoverPreview";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -454,6 +457,14 @@ function InsertMenu({ editor }: { editor: Editor }) {
   const [imageOpen, setImageOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [youtubeOpen, setYoutubeOpen] = useState(false);
+  // 音声は、ページの本文でだけ入れられる（テンプレートなど、ページに紐づかない本文では出さない）
+  const { pageId } = useParams({ strict: false }) as { pageId?: string };
+  const [audioMode, setAudioMode] = useState<"record" | "file" | null>(null);
+  const [lastAudioMode, setLastAudioMode] = useState<"record" | "file">("record");
+  const openAudio = (mode: "record" | "file") => () => {
+    setLastAudioMode(mode);
+    setAudioMode(mode);
+  };
   // 「挿入」の説明。FloatingMenu が隠れるとき、ボタンからは mouseleave が来ず、開いたまま画面の隅に残るので、
   // 文字を打つ・選択が動くたびに閉じる（開閉は自分で持つ）
   const [tipOpen, setTipOpen] = useState(false);
@@ -522,6 +533,22 @@ function InsertMenu({ editor }: { editor: Editor }) {
           </ListItemIcon>
           <ListItemText>YouTube…</ListItemText>
         </MenuItem>
+        {pageId && (
+          <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(openAudio("record"))}>
+            <ListItemIcon>
+              <Mic size={18} />
+            </ListItemIcon>
+            <ListItemText>録音…</ListItemText>
+          </MenuItem>
+        )}
+        {pageId && (
+          <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(openAudio("file"))}>
+            <ListItemIcon>
+              <FileAudio size={18} />
+            </ListItemIcon>
+            <ListItemText>音声を添付…</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
             <Braces size={18} />
@@ -577,6 +604,19 @@ function InsertMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setYoutubeOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <AudioDialog
+        open={audioMode !== null}
+        mode={audioMode ?? lastAudioMode}
+        pageId={pageId}
+        onUploaded={(audio) => {
+          setAudioMode(null);
+          insertPageAudio(editor, audio.id);
+        }}
+        onClose={() => {
+          setAudioMode(null);
           editor.commands.focus();
         }}
       />

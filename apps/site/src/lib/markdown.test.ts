@@ -261,6 +261,7 @@ describe("@rating（評価の欄）", () => {
   });
   it("抜粋では、記法の行を落とす", () => {
     expect(excerpt("前の文\n\n@rating\n\n後の文")).toBe("前の文 後の文");
+    expect(excerpt("前の文\n\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n\n後の文")).toBe("前の文 後の文");
   });
 });
 
@@ -381,5 +382,19 @@ describe("OGP image", () => {
     expect(ogImagePath(null, `![](${a})`)).toBe(a);
     expect(ogImagePath("/covers/forest.svg", "画像なし")).toBeNull();
     expect(ogImagePath(undefined, "")).toBeNull();
+  });
+});
+
+describe("@audio（本文に置いた音声の印）", () => {
+  const id = "0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41";
+  const opts = { publicPaths: new Map<string, string>() };
+  it("公開サイトには何も出さない（行の文字も出さない）", () => {
+    expect(renderMarkdown(`前\n\n@audio ${id}\n\n後`, opts)).toBe("<p>前</p>\n<p>後</p>\n");
+    expect(renderMarkdown(`@audio ${id}`, opts)).toBe("");
+  });
+  it("コードブロックの中・ID でない行・文の途中は、ふつうの文字のまま", () => {
+    expect(renderMarkdown("```\n@audio " + id + "\n```", opts)).toContain(`@audio ${id}`);
+    expect(renderMarkdown("@audio abc", opts)).toContain("@audio abc");
+    expect(renderMarkdown(`文 @audio ${id}`, opts)).toContain("@audio");
   });
 });

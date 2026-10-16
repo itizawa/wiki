@@ -1,5 +1,6 @@
 /**
- * ページに添付する音声。動画のナレーションなど、公開前の素材として置く（本文の Markdown には書かず、公開サイトにも出さない）。
+ * ページに添付する音声。動画のナレーションなど、公開前の素材として置く（公開サイトには出さない）。
+ * 本文の好きな位置に置くときは、専用の1行 `@audio {音声の ID}` を書く（下の `audioMarkdown`）。印の無い音声は、本文の下の一覧に出る。
  * 置き場所は画像（`images.ts`）とは別の R2 バケットで、配る経路は2つだけ：
  * 管理画面のログイン（Cookie）で取り出す `GET /admin/w/{key}/pages/{pageId}/audio/{id}` と、
  * MCP の `list_page_audio` が返す、署名つきで時間が来ると使えなくなる URL。
@@ -106,4 +107,52 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const AUDIO_LINE = new RegExp(`^@audio[ \\t]+(${UUID})[ \\t]*(?:\\n|$)`);
+
+/**
+ * 本文に音声を置く記法。専用の1行にする（`@rating`・`@children` と同じ並び）。
+ *
+ * ```md
+ * @audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41
+ * ```
+ *
+ * ID は添付した音声のもの（UUID）。ID の形でない行は記法にしない（ふつうの段落として読む）。
+ * 公開サイトには音声を出さない（行そのものも文字として出さない）。
+ */
+export function audioMarkdown(id: string): string {
+  return `@audio ${id}`;
+}
+
+/** `src` の先頭が `@audio {ID}` の行なら、その行（改行まで）と ID を返す。 */
+export function matchAudio(src: string): { raw: string; id: string } | null {
+  const m = AUDIO_LINE.exec(src);
+  return m ? { raw: m[0], id: m[1]! } : null;
+}
+
+/** 文字の中で、記法の行が始まる位置。無ければ -1。 */
+export function audioStart(src: string): number {
+  const m = new RegExp(`^@audio[ \\t]+${UUID}[ \\t]*$`, "m").exec(src);
+  return m ? m.index : -1;
+}
+
+/** 本文に印を書いてある音声の ID（コードブロックの中の行は数えない）。 */
+export function audioIdsInBody(md: string): string[] {
+  const ids: string[] = [];
+  let fence: string | null = null;
+  for (const line of md.split("\n")) {
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (f) {
+      if (fence === null) fence = f[1]![0]!.repeat(f[1]!.length);
+      else if (f[1]!.startsWith(fence)) fence = null;
+      continue;
+    }
+    if (fence === null) {
+      const m = matchAudio(line);
+      if (m) ids.push(m.id);
+    }
+  }
+  return ids;
 }

@@ -41,6 +41,9 @@ describe("本文のMarkdown往復", () => {
     ["評価の欄", "効果\n\n@rating\n\n使い方"],
     ["コードブロックの中の @rating", "```\n@rating\n```"],
     ["引数の付いた @rating は、ふつうの文字", "@rating 5"],
+    ["音声", "前\n\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n\n後"],
+    ["コードブロックの中の @audio", "```\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n```"],
+    ["ID でない @audio は、ふつうの文字", "@audio abc"],
     ["閉じていない +++ は、ふつうの文字", "+++ 見出しだけ"],
   ])("%s はそのまま残る", (_name, md) => {
     expect(roundTrip(md).trim()).toBe(md);
@@ -124,6 +127,15 @@ describe("本文のMarkdown往復", () => {
     const first = (md: string) => manager.parse(md).content?.[0];
     expect(first("@rating")?.type).toBe("ratingEmbed");
     expect(first("文 @rating")?.type).toBe("paragraph");
+  });
+
+  it("@audio {ID} は音声の部品になり、ID を持つ。文中・ID でない行は部品にならない", () => {
+    const id = "0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41";
+    const first = manager.parse(`@audio ${id}`).content?.[0];
+    expect(first?.type).toBe("pageAudio");
+    expect(first?.attrs?.id).toBe(id);
+    expect(manager.parse(`文 @audio ${id}`).content?.[0]?.type).toBe("paragraph");
+    expect(manager.parse("@audio abc").content?.[0]?.type).toBe("paragraph");
   });
 
   it("トグルは、見出しと中身を持つ部品として読む", () => {

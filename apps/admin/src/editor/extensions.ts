@@ -10,6 +10,7 @@ import { ChildrenList } from "./childrenList";
 import { RatingEmbed } from "./ratingEmbed";
 import { GoogleMap } from "./googleMap";
 import { Youtube } from "./youtube";
+import { PageAudioBlock } from "./pageAudio";
 import { LinkCard, type LinkCardOptions } from "./linkCard";
 import { PageMentions } from "./pageMentions";
 import { lowlight } from "./highlight";
@@ -43,6 +44,7 @@ export const createEditorExtensions = (linkCard?: Partial<LinkCardOptions>) => [
   PageMentions,
   ChildrenList,
   RatingEmbed,
+  PageAudioBlock,
   // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）
   CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),
   Image,

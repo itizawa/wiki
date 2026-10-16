@@ -530,7 +530,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
             )}
             <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} onEditor={setEditor} onLeaveTop={focusTitleEnd} />
             {/* 動画のナレーションなど、公開前の音声の素材。本文には書かず、公開サイトにも出さない */}
-            <PageAudioSection pageId={pageId} />
+            <PageAudioSection pageId={pageId} bodyMd={draft.bodyMd} />
           </Box>
           {/* 広い画面では、目次を本文の右に置いて、スクロール中も見えるようにする */}
           {/* 見出しが無いときも列は空けておく（見出しを書き足すたびに、本文が左右にずれないように） */}

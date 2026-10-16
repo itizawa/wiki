@@ -15,7 +15,7 @@ describe("「/」メニュー", () => {
   });
 
   it("日本語の名前でも、英語名やMarkdownの記法でも絞り込める", () => {
-    expect(filterBlocks("")).toHaveLength(17);
+    expect(filterBlocks("")).toHaveLength(19);
     expect(filterBlocks("見出し")).toEqual(["h1", "h2", "h3"]);
     expect(filterBlocks("table")).toEqual(["table"]);
     expect(filterBlocks("地図")).toEqual(["map"]);
@@ -32,6 +32,13 @@ describe("「/」メニュー", () => {
     expect(filterBlocks("lsx")).toEqual(["children"]);
     expect(filterBlocks("評価")).toEqual(["rating"]);
     expect(filterBlocks("star")).toEqual(["rating"]);
+    expect(filterBlocks("録音")).toEqual(["record", "audio"]);
+    expect(filterBlocks("音声")).toEqual(["record", "audio"]);
     expect(filterBlocks("zzz")).toEqual([]);
+  });
+
+  it("音声は、ページに紐づかない本文（テンプレートなど）では出さない", () => {
+    expect(filterBlocks("", false)).toHaveLength(17);
+    expect(filterBlocks("音声", false)).toEqual([]);
   });
 });
