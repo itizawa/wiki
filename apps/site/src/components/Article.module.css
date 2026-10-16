@@ -94,6 +94,8 @@
 }
 .body :global([data-code-tools] button:hover) { border-color: var(--muted); }
 .body :global([data-code-tools] button[aria-pressed="true"]) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* 項目になっているリンク（文中ではなく、項目がリンクだけのもの）。押せる高さを 24px 以上にする（WCAG 2.5.8）。文中のリンクは変えない */
+.body :global(li > a:only-child) { display: inline-block; padding-block: 2px; }
 .body :global(img) { max-width: 100%; }
 /* 画像の拡大表示（スクリプトが足す要素なので data 属性で当てる）。画像を包むボタンは、見た目を画像だけにする */
 .body :global([data-image-zoom-open]) {
