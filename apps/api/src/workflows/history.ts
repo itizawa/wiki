@@ -99,7 +99,7 @@ export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: strin
       finishedAt: run.finishedAt?.toISOString() ?? null,
       page: { id: run.pageId, title: available ? pageTitle! : DELETED_PAGE_TITLE, available },
       tagName: run.tagId === null ? null : (trigger ?? DELETED_TAG),
-      triggerType: (run.tagId === null ? "page_first_published" : "tag_attached") as WorkflowTriggerType,
+      triggerType: run.triggerType as WorkflowTriggerType,
       summary: actions.map((a) => a.label).join(" → "),
       error: run.status === "succeeded" ? null : run.lastError,
       actions,

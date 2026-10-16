@@ -1,3 +1,4 @@
+import type { WorkflowTriggerType } from "@wiki/shared";
 import { and, asc, count, eq, gte, type SQL } from "drizzle-orm";
 import type { AuditActor } from "../audit/service";
 import type { Db } from "../db/client";
@@ -33,7 +34,7 @@ function markWorkflowQueued(at: Date): void {
  * 「このタグが付いた」ブロックごとに、実行（pending）と、積む時点のアクションの写しを作る。積み方は `enqueueRuns` を見る。
  */
 export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string, tagId: string, now: Date = new Date()): Promise<string[]> {
-  return enqueueRuns(tx, wikiId, pageId, and(eq(workflowBlocks.triggerType, "tag_attached"), eq(workflowBlocks.triggerTagId, tagId)), tagId, now);
+  return enqueueRuns(tx, wikiId, pageId, and(eq(workflowBlocks.triggerType, "tag_attached"), eq(workflowBlocks.triggerTagId, tagId)), { type: "tag_attached", tagId }, now);
 }
 
 /**
@@ -41,7 +42,18 @@ export async function enqueueTagAttached(tx: Db, wikiId: string, pageId: string,
  * 実行の `tag_id` は null。積み方は `enqueueRuns` を見る（繰り返しの上限も同じ。初公開は1ページに1回だけだが、判定を分けない）。
  */
 export async function enqueueFirstPublished(tx: Db, wikiId: string, pageId: string, now: Date = new Date()): Promise<string[]> {
-  return enqueueRuns(tx, wikiId, pageId, eq(workflowBlocks.triggerType, "page_first_published"), null, now);
+  return enqueueRuns(tx, wikiId, pageId, eq(workflowBlocks.triggerType, "page_first_published"), { type: "page_first_published", tagId: null }, now);
+}
+
+/**
+ * 時刻の来た「時刻で起動する」ブロック1つの実行を積む（`enqueueDueSchedules` が、同じトランザクションの中で呼ぶ）。対象は、ブロックに指定されたページ。
+ * ページがゴミ箱に入っている・完全に削除されているときも積み、動かす時に `skipped`（理由つき）で記録する（ほかのトリガーと同じ扱い）。
+ * 積み方と、繰り返しの上限は `enqueueRuns` を見る。
+ */
+export async function enqueueSchedule(tx: Db, blockId: string, now: Date = new Date()): Promise<string[]> {
+  const [block] = await tx.select({ wikiId: workflowBlocks.wikiId, pageId: workflowBlocks.triggerPageId }).from(workflowBlocks).where(eq(workflowBlocks.id, blockId));
+  if (!block?.pageId) return [];
+  return enqueueRuns(tx, block.wikiId, block.pageId, eq(workflowBlocks.id, blockId), { type: "schedule", tagId: null }, now);
 }
 
 /**
@@ -50,7 +62,7 @@ export async function enqueueFirstPublished(tx: Db, wikiId: string, pageId: stri
  * ページに版が無ければ、`failed`（理由つき）で記録して、実行はしない。
  * 同じページ・同じブロックの実行が直近1時間に `MAX_RUNS_PER_BLOCK_PAGE` 回に達していたら、積まずに `failed`（繰り返しが多すぎる）で記録する。
  */
-async function enqueueRuns(tx: Db, wikiId: string, pageId: string, trigger: SQL | undefined, tagId: string | null, now: Date): Promise<string[]> {
+async function enqueueRuns(tx: Db, wikiId: string, pageId: string, trigger: SQL | undefined, source: { type: WorkflowTriggerType; tagId: string | null }, now: Date): Promise<string[]> {
   const [wiki] = await tx.select({ archivedAt: wikis.archivedAt }).from(wikis).where(eq(wikis.id, wikiId));
   if (!wiki || wiki.archivedAt) return [];
 
@@ -81,7 +93,8 @@ async function enqueueRuns(tx: Db, wikiId: string, pageId: string, trigger: SQL 
         workflowId: block.workflowId,
         blockId: block.id,
         pageId,
-        tagId,
+        tagId: source.tagId,
+        triggerType: source.type,
         versionId,
         ...(failedReason ? { status: "failed", lastError: failedReason, finishedAt: now } : {}),
       })

@@ -30,7 +30,7 @@ describe("workflowBlockInput", () => {
 });
 
 describe("workflowDraftProblem", () => {
-  const ok = { triggerType: "tag_attached" as const, tagId: id, actions: [{ type: "remove_tag" as const, routineId: "", tagId: id, instruction: "" }] };
+  const ok = { triggerType: "tag_attached" as const, tagId: id, pageId: "", time: "09:00", weekdays: [0, 1, 2, 3, 4, 5, 6], actions: [{ type: "remove_tag" as const, routineId: "", tagId: id, instruction: "" }] };
   it("says why it cannot be saved yet", () => {
     expect(workflowDraftProblem({ ...ok, tagId: "" })).toContain("トリガーのタグ");
     expect(workflowDraftProblem({ ...ok, actions: [] })).toContain("アクションを1つ以上");
@@ -48,6 +48,28 @@ describe("workflowDraftProblem", () => {
     expect(workflowDraftProblem(ok)).toBeNull();
     // 「初めて公開されたとき」はタグを選ばない
     expect(workflowDraftProblem({ ...ok, triggerType: "page_first_published", tagId: "" })).toBeNull();
+  });
+  it("checks the page, time and weekdays of a schedule", () => {
+    const schedule = { ...ok, triggerType: "schedule" as const, tagId: "", pageId: "p1" };
+    expect(workflowDraftProblem(schedule)).toBeNull();
+    expect(workflowDraftProblem({ ...schedule, pageId: "" })).toContain("対象のページ");
+    expect(workflowDraftProblem({ ...schedule, time: "" })).toContain("時刻");
+    expect(workflowDraftProblem({ ...schedule, weekdays: [] })).toContain("曜日");
+  });
+});
+
+describe("schedule trigger", () => {
+  const base = { type: "schedule" as const, pageId: "p1", time: "09:00", weekdays: [1, 3] };
+  it("accepts HH:MM and unique weekdays", () => {
+    expect(workflowBlockInput.safeParse({ trigger: base, actions: [{ type: "add_tag", tagId: id }] }).success).toBe(true);
+    for (const bad of [{ time: "9:00" }, { time: "24:00" }, { time: "09:60" }, { weekdays: [] }, { weekdays: [7] }, { weekdays: [1, 1] }, { pageId: "" }]) {
+      expect(workflowBlockInput.safeParse({ trigger: { ...base, ...bad }, actions: [{ type: "add_tag", tagId: id }] }).success).toBe(false);
+    }
+  });
+  it("reads as a sentence", () => {
+    const t = { ...base, pageTitle: "週報" };
+    expect(describeTrigger(t)).toBe("毎週月・水 09:00 になったとき");
+    expect(describeTriggerCondition({ ...t, weekdays: [0, 1, 2, 3, 4, 5, 6] })).toBe("毎日 09:00 になったら（対象：「週報」）");
   });
 });
 
