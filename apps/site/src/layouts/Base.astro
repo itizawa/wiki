@@ -1,5 +1,5 @@
 ---
-import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
+import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeBackdrop, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
 import { adsensePublisherId, adsenseScriptSrc } from "../lib/adsense";
 import { googleTags } from "../lib/googleTags";
 import { serializeJsonLd, type JsonLd } from "../lib/jsonLd";
@@ -55,6 +55,10 @@ const dark = themeVariant(preset, "dark");
 // 背景画像と飾りの変数。テーマにも wiki の画像にも無いモードは、もう一方のモードの画像を打ち消す（どちらにも無ければ、何も出さない）
 const lightDecoration = themeDecorationCssVars(light, light.mode === "light" ? theme.backgroundLight : theme.backgroundDark);
 const darkDecoration = themeDecorationCssVars(dark, dark.mode === "light" ? theme.backgroundLight : theme.backgroundDark) || (lightDecoration ? NO_DECORATION_CSS_VARS : "");
+// 本文と一緒にスクロールさせる背景（手書きノート風の方眼）か。どちらのモードの背景も、そうなっているときだけ（wiki の画像を入れたモードは固定）
+const lightBackdrop = themeBackdrop(light, light.mode === "light" ? theme.backgroundLight : theme.backgroundDark);
+const darkBackdrop = themeBackdrop(dark, dark.mode === "light" ? theme.backgroundLight : theme.backgroundDark);
+const backdropScrolls = Boolean(lightBackdrop?.scrolls && (!darkBackdrop || darkBackdrop.scrolls));
 const withDecoration = (colors: string, decoration: string) => (decoration ? `${colors};${decoration}` : colors);
 const themeCss = `html:root{${withDecoration(themeCssVars(light.colors), lightDecoration)}}@media (prefers-color-scheme: dark){html:root{${withDecoration(themeCssVars(dark.colors), darkDecoration)}}}`;
 // 背景画像と飾りの要素は、どちらかのモードに画像があるときだけ置く
@@ -199,7 +203,7 @@ const adsenseId = adsensePublisherId(site.wiki, { noindex, notFound });
       hasBackdrop && (
         <>
           {/* 背景画像と飾り。本文のあとに置き、後ろに固定する。押せず、読み上げず、印刷には出さない（global.css） */}
-          <div class="theme-backdrop" aria-hidden="true" />
+          <div class="theme-backdrop" data-scrolls={backdropScrolls ? "" : undefined} aria-hidden="true" />
           <div class="theme-ornament" aria-hidden="true" />
           <div class="theme-motion" aria-hidden="true" />
         </>

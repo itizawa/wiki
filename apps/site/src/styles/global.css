@@ -57,6 +57,9 @@
   background-repeat: var(--bg-repeat);
   background-position: center;
 }
+/* 本文と一緒に動かす背景（手書きノート風の方眼）：画面ではなくページ全体（html）の高さに敷く。スクロールすると、文字と一緒に動く */
+html:has(.theme-backdrop[data-scrolls]) { position: relative; min-height: 100vh; }
+.theme-backdrop[data-scrolls] { position: absolute; background-position: 0 0; }
 .theme-ornament {
   right: 16px; bottom: 16px;
   width: var(--ornament-size); height: var(--ornament-size);

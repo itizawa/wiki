@@ -24,7 +24,7 @@ import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
 import { hasOpenOverlay, PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, shouldHoldPeek } from "../lib/sidebarPeek";
 import { usePersistentState } from "../lib/storage";
 import { useTabIcon } from "../lib/tabIcon";
-import { useThemeBackdrop } from "../components/ThemeBackdrop";
+import { scrollingBackdropSx, useThemeBackdrop } from "../components/ThemeBackdrop";
 import { useAdminThemeFor, useAdminThemePreset } from "../lib/adminTheme";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { TOUCH } from "../theme";
@@ -375,7 +375,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
       <ConfirmHost />
       <ToastHost />
       <StarsHost />
-      <Box {...mainProps} sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...mainSx }}>
+      <Box {...mainProps} sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...mainSx, ...scrollingBackdropSx(backdrop) }}>
         <NarrowBarSlot.Provider value={barSlot}>
           <Outlet />
         </NarrowBarSlot.Provider>
