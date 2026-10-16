@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { audioIdOfObjectName, audioObjectName, durationMsOf, formatDuration, sniffAudioType } from "./audio";
+import { audioIdsInBody, audioMarkdown, audioStart, matchAudio, audioIdOfObjectName, audioObjectName, durationMsOf, formatDuration, sniffAudioType } from "./audio";
 
 const pad = (...b: number[]) => new Uint8Array([...b, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 const text = (s: string) => new TextEncoder().encode(`${s}\0\0\0\0\0\0\0\0`);
@@ -37,5 +37,27 @@ describe("audio", () => {
     expect(durationMsOf(Infinity)).toBeNull();
     expect(formatDuration(185_000)).toBe("3:05");
     expect(formatDuration(3_723_000)).toBe("1:02:03");
+  });
+});
+
+describe("@audio（本文に音声を置く行）", () => {
+  const id = "0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41";
+  it("writes and reads one line", () => {
+    expect(audioMarkdown(id)).toBe(`@audio ${id}`);
+    expect(matchAudio(`@audio ${id}\n次`)).toEqual({ raw: `@audio ${id}\n`, id });
+    expect(matchAudio(`@audio  ${id}  `)?.id).toBe(id);
+  });
+  it("is not a line when the id is not a uuid or text follows", () => {
+    expect(matchAudio("@audio")).toBeNull();
+    expect(matchAudio("@audio abc")).toBeNull();
+    expect(matchAudio(`@audio ${id} 続き`)).toBeNull();
+    expect(matchAudio(`文 @audio ${id}`)).toBeNull();
+    expect(audioStart(`前\n\n@audio ${id}\n`)).toBe(3);
+    expect(audioStart("@audio abc")).toBe(-1);
+  });
+  it("collects the ids in the body but not in code blocks", () => {
+    const other = "11111111-2222-4333-8444-555555555555";
+    expect(audioIdsInBody(`a\n\n@audio ${id}\n\n\`\`\`\n@audio ${other}\n\`\`\`\n\n@audio ${other}`)).toEqual([id, other]);
+    expect(audioIdsInBody("本文だけ")).toEqual([]);
   });
 });

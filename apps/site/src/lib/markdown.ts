@@ -1,5 +1,7 @@
 import {
   CALLOUT_LABELS,
+  audioStart,
+  matchAudio,
   IMAGE_NAME_PATTERN,
   childrenStart,
   googleMapOfParagraph,
@@ -204,6 +206,22 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
         },
         renderer() {
           return `<div class="rating-embed" data-rating-embed data-pagefind-ignore></div>\n`;
+        },
+      },
+      // `@audio {ID}` の行は、編集画面で本文に置いた音声の印。音声は公開サイトに出さないので、何も出さない（行の文字も出さない。packages/shared/src/audio.ts）
+      {
+        name: "audio",
+        level: "block",
+        start: (src: string) => {
+          const i = audioStart(src);
+          return i < 0 ? undefined : i;
+        },
+        tokenizer(src: string) {
+          const m = matchAudio(src);
+          return m ? { type: "audio", raw: m.raw } : undefined;
+        },
+        renderer() {
+          return "";
         },
       },
     ],
