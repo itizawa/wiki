@@ -89,6 +89,8 @@ const ADMIN_TOOLS = [
   "create_workflow_block",
   "update_workflow_block",
   "delete_workflow_block",
+  "get_home",
+  "update_home",
 ];
 
 describe("MCP wiki admin tools", () => {
@@ -127,6 +129,8 @@ describe("MCP wiki admin tools", () => {
       ["create_tag", { wiki: "wiki", name: "採用" }],
       ["list_workflows", { wiki: "wiki" }],
       ["create_workflow", { wiki: "wiki", name: "記事" }],
+      ["get_home", { wiki: "wiki" }],
+      ["update_home", { wiki: "wiki", introMd: "x" }],
     ] as const) {
       expect((await callTool(token, name, args)).data.error.code).toBe("admin_only");
     }
@@ -192,6 +196,30 @@ describe("MCP wiki admin tools", () => {
     expect((await callTool(token, "rename_workflow", { wiki: "wiki", workflowId: wf.data.id, name: "記事の下書き" })).data.name).toBe("記事の下書き");
     expect((await callTool(token, "delete_workflow", { wiki: "wiki", workflowId: wf.data.id })).isError).toBe(false);
     expect((await callTool(token, "list_workflows", { wiki: "wiki" })).data.workflows).toEqual([]);
+  });
+
+  it("reads and saves the site top page (home), recording the app in the audit log", async () => {
+    await boot();
+    const token = await connect("wiki.read wiki.admin");
+    expect((await callTool(token, "get_home", { wiki: "wiki" })).data).toEqual({ introMd: "", blocks: null });
+    const blocks = [
+      { id: "intro", kind: "intro", col: 1, row: 1, colSpan: 7, rowSpan: 2, limit: null },
+      { id: "latest", kind: "latest", col: 8, row: 1, colSpan: 5, rowSpan: 2, limit: 10 },
+    ];
+    const saved = await callTool(token, "update_home", { wiki: "wiki", introMd: "# ようこそ", blocks });
+    expect(saved.isError).toBe(false);
+    expect(saved.data).toMatchObject({ introMd: "# ようこそ", blocks: [expect.objectContaining({ id: "intro" }), expect.objectContaining({ id: "latest", limit: 10 })] });
+    // 管理画面の API からも同じものが読める
+    const viaApi = await ctx.call("GET", `/admin/w/wiki/home`);
+    expect(viaApi.body).toEqual(saved.data);
+    const [log] = await ctx.db.select().from(auditLogs).where(eq(auditLogs.action, "wiki_home_update"));
+    expect(JSON.stringify(log)).toContain("テストのアプリ");
+    // blocks を省くと配置なしに戻る
+    expect((await callTool(token, "update_home", { wiki: "wiki", introMd: "# ようこそ" })).data.blocks).toBeNull();
+    // 重なる配置と、範囲を超える配置は断る
+    const overlap = [blocks[0], { ...blocks[1], col: 7 }];
+    expect((await callTool(token, "update_home", { wiki: "wiki", introMd: "x", blocks: overlap })).data.error.code).toBe("invalid_input");
+    expect((await callTool(token, "update_home", { wiki: "wiki", introMd: "x", blocks: [{ ...blocks[0], col: 10, colSpan: 7 }] })).data.error.code).toBe("invalid_input");
   });
 
   it("treats a wiki the user is not a member of as missing", async () => {
