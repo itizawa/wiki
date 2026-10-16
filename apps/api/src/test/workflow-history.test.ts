@@ -198,6 +198,25 @@ describe("cleanupWorkflowRuns", () => {
   const now = new Date("2026-10-14T00:00:00Z");
   const ago = (days: number) => new Date(now.getTime() - days * DAY);
 
+  it("filters by page, together with status and the cursor", async () => {
+    ctx = await setup({ config: { routineTokenKey: KEY } });
+    const a = await newPage("記事A");
+    const b = await newPage("記事B");
+    const tag = await newTag("校正待ち");
+    const t0 = Date.now();
+    const a1 = await addRun({ pageId: a, tagId: tag, createdAt: new Date(t0 - 3000) });
+    const b1 = await addRun({ pageId: b, tagId: tag, createdAt: new Date(t0 - 2000) });
+    const a2 = await addRun({ pageId: a, tagId: tag, status: "failed", createdAt: new Date(t0 - 1000) });
+    const ids = async (qs: string) => ((await ctx.call("GET", `${await runsUrl()}${qs}`)).body.runs as { id: string }[]).map((r) => r.id);
+    expect(await ids(`?pageId=${a}`)).toEqual([a2, a1]);
+    expect(await ids(`?pageId=${b}`)).toEqual([b1]);
+    expect(await ids(`?pageId=${a}&status=failed`)).toEqual([a2]);
+    const first = (await ctx.call("GET", `${await runsUrl()}?pageId=${a}&limit=1`)).body;
+    expect(first.runs.map((r: { id: string }) => r.id)).toEqual([a2]);
+    expect(await ids(`?pageId=${a}&limit=1&cursor=${encodeURIComponent(first.nextCursor)}`)).toEqual([a1]);
+    expect(await ids(`?pageId=00000000-0000-4000-8000-000000000000`)).toEqual([]);
+  });
+
   it("removes only finished runs older than 90 days, with their actions, and keeps pending, running and recent ones", async () => {
     ctx = await setup({ config: { routineTokenKey: KEY } });
     const page = await newPage("記事");

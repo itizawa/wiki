@@ -399,8 +399,8 @@ export const api = {
   replaceWorkflowBlock: (workflowId: string, id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/${workflowId}/blocks/${id}`), input),
   deleteWorkflowBlock: (workflowId: string, id: string) => request<null>("DELETE", w(`/workflow/${workflowId}/blocks/${id}`)),
   /** そのワークフローの実行の履歴（新しい順。管理者だけ）。`cursor` で続きを取る */
-  listWorkflowRuns: (workflowId: string, input: { status?: WorkflowRunStatus; limit: number; cursor?: string }) =>
-    request<WorkflowRunPage>("GET", w(`/workflow/${workflowId}/runs${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`)),
+  listWorkflowRuns: (workflowId: string, input: { status?: WorkflowRunStatus; pageId?: string; limit: number; cursor?: string }) =>
+    request<WorkflowRunPage>("GET", w(`/workflow/${workflowId}/runs${query({ status: input.status, pageId: input.pageId, limit: String(input.limit), cursor: input.cursor })}`)),
   /** ブロックで選ぶための、登録済み Routine の ID と名前（管理者だけ） */
   listRoutineChoices: () => request<RoutineChoiceList>("GET", w("/routines")),
 
