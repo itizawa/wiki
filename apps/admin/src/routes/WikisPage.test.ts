@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { nameProblem } from "../components/WikiIdentityForm";
-import { keyChecks } from "./WikisPage";
+import { actionsRowSx, keyChecks, siteUrlSx } from "./WikisPage";
 
 const unmet = (key: string, taken: string[] = []) => keyChecks(key, taken).filter((c) => !c.ok).length;
 
@@ -25,5 +25,17 @@ describe("nameProblem", () => {
     expect(nameProblem("")).toBe("表示名を入れてください");
     expect(nameProblem("  ")).toBe("表示名を入れてください");
     expect(nameProblem("社内 wiki")).toBeNull();
+  });
+});
+
+describe("wiki 一覧の操作の行", () => {
+  it("狭い幅（xs〜md 未満）では折り返し、広い幅では1行に並べる", () => {
+    expect(actionsRowSx.flexWrap.xs).toBe("wrap");
+    expect(actionsRowSx.flexWrap.md).toBe("nowrap");
+  });
+
+  it("公開 URL は、長くても枠からはみ出さず、途中で折り返せる", () => {
+    expect(siteUrlSx.overflowWrap).toBe("anywhere");
+    expect(siteUrlSx.minWidth).toBe(0);
   });
 });
