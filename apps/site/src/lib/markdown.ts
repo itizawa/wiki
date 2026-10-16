@@ -8,6 +8,7 @@ import {
   matchRating,
   matchToggle,
   ratingStart,
+  youtubeOfParagraph,
   parseCalloutMarker,
   toggleStart,
   type ChildrenItem,
@@ -220,6 +221,14 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
       },
       // 地図の URL だけの段落は、Google マップの埋め込みにする（packages/shared/src/googleMap.ts）。埋め込めない URL（短縮 URL など）は、これまでどおりリンク
       paragraph(token: Tokens.Paragraph) {
+        // 動画の URL だけの段落は、YouTube の埋め込み（packages/shared/src/youtube.ts）
+        const video = youtubeOfParagraph(token.text);
+        if (video) {
+          return (
+            `<figure class="video-embed"><iframe src="${escapeHtml(video.embedSrc)}" title="YouTube の動画" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>` +
+            `<figcaption><a href="${escapeHtml(video.url)}" rel="noopener">YouTube で開く</a></figcaption></figure>\n`
+          );
+        }
         const map = googleMapOfParagraph(token.text);
         if (!map) {
           // 外部の URL だけの段落は、OGP があればカードにする（内部リンクは、ふつうのリンクの見た目で出す）

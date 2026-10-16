@@ -72,6 +72,18 @@ describe("本文のMarkdown往復", () => {
     expect(types("<https://www.google.com/maps/embed?pb=1>")).toEqual(["googleMap"]);
   });
 
+  it("動画の URL だけの段落は動画の部品になる（リンクカードにはならない）。文章の中・YouTube 以外は変わらない。往復しても同じ", () => {
+    const types = (md: string) => manager.parse(md).content?.map((n) => n.type);
+    expect(types("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(["youtube"]);
+    expect(types("https://youtu.be/dQw4w9WgXcQ")).toEqual(["youtube"]);
+    expect(types("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toEqual(["youtube"]);
+    expect(types("前\n\nhttps://youtu.be/dQw4w9WgXcQ\n\n後")).toEqual(["paragraph", "youtube", "paragraph"]);
+    expect(types("ここ https://youtu.be/dQw4w9WgXcQ")).toEqual(["paragraph"]);
+    expect(types("https://www.youtube.com/@channel")).toEqual(["linkCard"]);
+    expect(types("https://vimeo.com/123456789")).toEqual(["linkCard"]);
+    expect(roundTrip("前\n\nhttps://youtu.be/dQw4w9WgXcQ\n\n後")).toBe("前\n\nhttps://youtu.be/dQw4w9WgXcQ\n\n後");
+  });
+
   it("外部の URL だけの段落はカードの部品になり、文章の中・続きの行・[文字](URL)・内部リンクは段落のまま。往復しても同じ", () => {
     const types = (md: string) => manager.parse(md).content?.map((n) => n.type);
     expect(types("https://example.com/post")).toEqual(["linkCard"]);

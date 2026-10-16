@@ -29,6 +29,7 @@ export * from "./costs";
 export * from "./sns";
 export * from "./editRequest";
 export * from "./googleMap";
+export * from "./youtube";
 export * from "./children";
 export * from "./linkCard";
 export * from "./excerpt";

@@ -1,4 +1,5 @@
 import { parseGoogleMapUrl } from "./googleMap";
+import { parseYoutubeUrl } from "./youtube";
 
 /**
  * 本文に貼った URL をカード（OGP）で出す。書き方は、段落に「URL だけ」を置く（専用の記法は足さない）。
@@ -41,7 +42,7 @@ function parseHttpUrl(text: string): string | null {
 /** 段落の文字が「URL だけ」なら、その URL を返す。Google マップの URL と、URL 以外が混ざった段落は null。 */
 export function linkCardOfParagraph(text: string): { url: string } | null {
   const url = parseHttpUrl(text);
-  if (!url || parseGoogleMapUrl(url)) return null;
+  if (!url || parseGoogleMapUrl(url) || parseYoutubeUrl(url)) return null;
   return { url };
 }
 

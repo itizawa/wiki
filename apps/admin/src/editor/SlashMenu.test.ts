@@ -15,11 +15,13 @@ describe("「/」メニュー", () => {
   });
 
   it("日本語の名前でも、英語名やMarkdownの記法でも絞り込める", () => {
-    expect(filterBlocks("")).toHaveLength(16);
+    expect(filterBlocks("")).toHaveLength(17);
     expect(filterBlocks("見出し")).toEqual(["h1", "h2", "h3"]);
     expect(filterBlocks("table")).toEqual(["table"]);
     expect(filterBlocks("地図")).toEqual(["map"]);
     expect(filterBlocks("google")).toEqual(["map"]);
+    expect(filterBlocks("youtube")).toEqual(["youtube"]);
+    expect(filterBlocks("動画")).toEqual(["youtube"]);
     expect(filterBlocks("TODO")).toEqual(["task"]);
     expect(filterBlocks("##")).toEqual(["h2", "h3"]);
     expect(filterBlocks("コールアウト")).toEqual(["callout"]);
