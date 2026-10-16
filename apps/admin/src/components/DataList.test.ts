@@ -1,5 +1,9 @@
+import { ThemeProvider } from "@mui/material/styles";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { INTERACTIVE_SELECTOR, gridTemplate, narrowColumns, shouldFollowRowClick, stackedColumns } from "./DataList";
+import { adminThemeFor } from "../theme";
+import { DataList, INTERACTIVE_SELECTOR, gridTemplate, narrowColumns, shouldFollowRowClick, stackedColumns } from "./DataList";
 
 const click = { defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
 
@@ -57,5 +61,33 @@ describe("狭い幅での列の扱い", () => {
   it("指定が無い列は、狭い幅でもそのまま1段目に残る", () => {
     expect(narrowColumns([{ key: "a", narrow: undefined }, { key: "b", narrow: undefined }])).toHaveLength(2);
     expect(stackedColumns([{ key: "a", narrow: undefined }])).toHaveLength(0);
+  });
+});
+
+describe("0件のときの表示", () => {
+  const render = (empty: string) =>
+    renderToStaticMarkup(
+      createElement(
+        ThemeProvider,
+        { theme: adminThemeFor("default" as never) },
+        createElement(DataList<{ id: string }>, {
+          label: "タグ",
+          columns: [{ key: "name", header: "名前", render: (r) => r.id }],
+          rows: [],
+          rowKey: (r) => r.id,
+          empty,
+        }),
+      ),
+    );
+
+  it("見出しつきの表の中に、案内を出す", () => {
+    const html = render("タグはまだありません。");
+    expect(html).toContain('role="table"');
+    expect(html).toContain("名前");
+    expect(html).toContain("タグはまだありません。");
+  });
+
+  it("案内が空文字なら、表も出さない", () => {
+    expect(render("")).not.toContain("role=");
   });
 });

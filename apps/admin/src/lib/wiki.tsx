@@ -71,6 +71,11 @@ export function pageLink(pageId: string) {
   return { to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: currentWikiKey(), pageId } } as const;
 }
 
+/** 開いている wiki の「すべてのページ」を、そのタグが付いたページだけに絞って開くリンク。 */
+export function tagPagesLink(tagId: string) {
+  return { to: "/w/$wikiKey/pages", params: { wikiKey: currentWikiKey() }, search: { tag: tagId } } as const;
+}
+
 /** 開いている wiki のテンプレートの編集画面へのリンク。 */
 export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;

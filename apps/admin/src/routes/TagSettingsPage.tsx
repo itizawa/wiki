@@ -13,10 +13,10 @@ import { useState } from "react";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
-import { Row, Section } from "../components/ui";
+import { Row, RouterLink, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
-import { useWiki } from "../lib/wiki";
+import { tagPagesLink, useWiki } from "../lib/wiki";
 
 /** 入力したタグ名の誤り（空・長すぎ）。誤りが無ければ null。API に送る前に、入力欄の下へその場で出す。 */
 export function tagNameProblem(name: string): string | null {
@@ -77,7 +77,13 @@ function TagsSection() {
   };
 
   const columns: DataListColumn<WikiTag>[] = [
-    { key: "name", header: "名前", width: "minmax(140px, 1fr)", sx: { fontWeight: 600, overflowWrap: "anywhere" }, render: (t) => t.name },
+    { key: "name", header: "名前", width: "minmax(140px, 1fr)", sx: { overflowWrap: "anywhere" }, render: (t) => (
+        // 行のどこを押しても移れるが、Tab・Enter・新しいタブで開く操作は、この本物のリンクが受け持つ
+        <RouterLink {...tagPagesLink(t.id)} sx={{ fontWeight: 600 }}>
+          {t.name}
+        </RouterLink>
+      ),
+    },
     { key: "pages", header: "付いているページ", width: "max-content", sx: { whiteSpace: "nowrap" }, render: (t) => `${t.pageCount} ページ` },
     {
       key: "actions",
@@ -123,6 +129,7 @@ function TagsSection() {
         columns={columns}
         rows={list.data?.tags}
         rowKey={(t) => t.id}
+        rowLink={(t) => tagPagesLink(t.id)}
         error={list.error}
         empty="タグはまだありません。上の入力欄から作ってください。"
         rowHeight={ROW_HEIGHT}
