@@ -5,7 +5,6 @@ import Button from "@mui/material/Button";
 import InputAdornment from "@mui/material/InputAdornment";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -19,7 +18,7 @@ import {
 } from "@wiki/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
-import { Mono, Muted, RouterLink, Row, SaveNotice, Section, SkeletonSection } from "../components/ui";
+import { Field, Mono, Muted, RouterLink, Row, SaveNotice, Section, SkeletonSection } from "../components/ui";
 import { checkResultText, gaPropertyIdProblem, SERVICE_ACCOUNT_HELP, type AnalyticsTarget } from "../lib/analytics";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { screenLink, useWiki } from "../lib/wiki";
@@ -256,7 +255,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
           </li>
           <li>表示された測定 ID（「G-」で始まる）を、下の欄に貼って保存します。</li>
         </Box>
-        <TextField
+        <Field
           label="測定 ID"
           value={gaId}
           onChange={(e) => {
@@ -271,7 +270,6 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
           helperText={gaProblem}
           slotProps={{
             htmlInput: { maxLength: 60, autoCapitalize: "characters", autoCorrect: "off", spellCheck: false },
-            inputLabel: { shrink: true },
             input: {
               sx: { fontFamily: "monospace" },
               endAdornment: (
@@ -288,7 +286,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
         <ReadNumbers target="ga" connection={connection} blocked={propertyChanged ? "プロパティ ID を保存してから、確かめられます。" : saved.gaPropertyId ? null : "プロパティ ID を入れて保存すると、確かめられます。"}>
           <li>
             GA の「管理 → プロパティの詳細」の右上に出ている<strong>プロパティ ID</strong>（数字だけ。測定 ID とは別の番号）を、下の欄に入れて保存します。
-            <TextField
+            <Field
               label="プロパティ ID"
               value={propertyId}
               onChange={(e) => {
@@ -303,7 +301,6 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
               helperText={propertyProblem}
               slotProps={{
                 htmlInput: { maxLength: 40, inputMode: "numeric", autoCorrect: "off", spellCheck: false },
-                inputLabel: { shrink: true },
                 input: {
               sx: { fontFamily: "monospace" },
               endAdornment: (
@@ -341,7 +338,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
             <CopyField label="サイトマップの URL" value={`${origin}/sitemap.xml`} />
           </li>
         </Box>
-        <TextField
+        <Field
           label="確認用の値"
           value={verification}
           onChange={(e) => {
@@ -357,7 +354,6 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
           helperText={verificationProblem ?? (extracted ? "貼られたタグから、content の値を取り出しました。" : null)}
           slotProps={{
             htmlInput: { maxLength: 400, autoCapitalize: "off", autoCorrect: "off", spellCheck: false },
-            inputLabel: { shrink: true },
             input: {
               sx: { fontFamily: "monospace" },
               endAdornment: (
@@ -396,7 +392,7 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
             <CopyField label="ads.txt の URL" value={`${origin}/ads.txt`} />
           </li>
         </Box>
-        <TextField
+        <Field
           label="パブリッシャー ID"
           value={adsenseId}
           onChange={(e) => {
@@ -413,7 +409,6 @@ function SettingsForm({ origin, saved, connection }: { origin: string; saved: Wi
           helperText={adsenseProblem ?? (adsenseExtracted ? "パブリッシャー ID（ca-pub-…）を取り出しました。" : " ")}
           slotProps={{
             htmlInput: { maxLength: 400, autoCapitalize: "off", autoCorrect: "off", spellCheck: false },
-            inputLabel: { shrink: true },
             input: {
               sx: { fontFamily: "monospace" },
               endAdornment: (

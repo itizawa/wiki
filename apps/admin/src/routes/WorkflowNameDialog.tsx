@@ -4,11 +4,11 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import TextField from "@mui/material/TextField";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { WORKFLOW_NAME_MAX, workflowInput, type Workflow } from "@wiki/shared";
 import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
+import { Field } from "../components/ui";
 
 /** 入力したワークフロー名の誤り（空・長すぎ）。誤りが無ければ null。API に送る前に、入力欄の下へその場で出す。 */
 export function workflowNameProblem(name: string): string | null {
@@ -49,7 +49,7 @@ export function WorkflowNameDialog({ workflow, onClose, onDone }: { workflow: Wo
       >
         <DialogTitle id="workflow-name-title">{workflow ? `「${workflow.name}」の名前を変える` : "ワークフローを作る"}</DialogTitle>
         <DialogContent>
-          <TextField
+          <Field
             label="ワークフローの名前"
             autoFocus
             fullWidth
@@ -61,7 +61,7 @@ export function WorkflowNameDialog({ workflow, onClose, onDone }: { workflow: Wo
             error={message !== null}
             helperText={message ?? `${WORKFLOW_NAME_MAX}文字まで。同じ wiki の中で、ほかのワークフローと重ならない名前にします（いま ${length} 文字）。`}
             placeholder="例：校正"
-            slotProps={{ htmlInput: { maxLength: WORKFLOW_NAME_MAX + 20, autoComplete: "off" }, inputLabel: { shrink: true } }}
+            slotProps={{ htmlInput: { maxLength: WORKFLOW_NAME_MAX + 20, autoComplete: "off" } }}
             sx={{ mt: 1 }}
           />
         </DialogContent>

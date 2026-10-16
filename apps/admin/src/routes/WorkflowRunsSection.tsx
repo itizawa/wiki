@@ -8,7 +8,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Link from "@mui/material/Link";
 import Autocomplete from "@mui/material/Autocomplete";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
@@ -23,7 +22,7 @@ import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircl
 import { useState, type ReactElement } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
-import { Muted, RouterLink, Section } from "../components/ui";
+import { Field, Muted, RouterLink, Section } from "../components/ui";
 import { api } from "../lib/api";
 import { formatShortDateTime } from "../lib/format";
 import { pageLink } from "../lib/wiki";
@@ -96,7 +95,7 @@ function RunsPageFilter({ value, onChange }: { value: PageOption | null; onChang
       loadingText="検索しています…"
       noOptionsText="見つかるページがありません"
       clearText="絞り込みを外す"
-      renderInput={(params) => <TextField {...params} placeholder="ページで絞り込む（タイトルで探す）" slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps.htmlInput, "aria-label": "実行の履歴をページで絞り込む" } }} />}
+      renderInput={(params) => <Field {...params} placeholder="ページで絞り込む（タイトルで探す）" slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps.htmlInput, "aria-label": "実行の履歴をページで絞り込む" } }} />}
     />
   );
 }

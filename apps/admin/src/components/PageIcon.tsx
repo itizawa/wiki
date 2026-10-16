@@ -3,7 +3,6 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
 import Popover from "@mui/material/Popover";
-import TextField from "@mui/material/TextField";
 import { SmilePlus } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { normalizePageIcon, type PageDetail } from "@wiki/shared";
@@ -11,7 +10,7 @@ import { useEffect, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { EMOJI_GROUPS, searchEmoji, type Emoji } from "../lib/emoji";
 import { Tooltip } from "./Tooltip";
-import { Muted } from "./ui";
+import { Field, Muted } from "./ui";
 
 /** タイトルの左の余白に置くボタンの大きさ。余白（広い画面で 32px）に収める */
 const GUTTER_BUTTON = 28;
@@ -138,11 +137,11 @@ export function PageIconPicker(props: { pageId: string; icon: string | null; anc
       slotProps={{ paper: { role: "dialog", "aria-label": "ページのアイコンを選ぶ", sx: { width: 344, maxWidth: "calc(100vw - 32px)", mt: 0.5 } } }}
     >
       <Box sx={{ p: 1.5, pb: 1 }}>
-        <TextField
+        <Field
           fullWidth
           autoFocus
-          label="絵文字を探す・入れる"
           placeholder="例：メモ、idea"
+          slotProps={{ htmlInput: { "aria-label": "絵文字を探す・入れる" } }}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

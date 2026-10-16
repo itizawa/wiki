@@ -3,7 +3,6 @@ import Button from "@mui/material/Button";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
-import TextField from "@mui/material/TextField";
 import { EDIT_REQUEST_LIMITS, type EditRequestItemKind } from "@wiki/shared";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type MutableRefObject } from "react";
@@ -11,6 +10,7 @@ import { buildSuggestion, editorInputFor, type BuiltSuggestion } from "../../lib
 import type { UnitSelection } from "../../lib/blockLines";
 import { TOUCH } from "../../theme";
 import { SuggestionEditor } from "./SuggestionEditor";
+import { Field } from "../ui";
 
 /** 入力欄で書いたもの（「提案に追加する」「指摘を追加する」で、送信前の項目になる） */
 export type ComposedItem = { kind: "suggestion"; suggestion: BuiltSuggestion; editorMarkdown: string; reason: string } | { kind: "note"; body: string };
@@ -198,7 +198,7 @@ export function ItemComposer(props: {
       </Box>
 
       {note && (
-        <TextField
+        <Field
           label="指摘（必須）"
           placeholder="例：この数字の出典が分かりません。いまの値に直したほうがよさそうです"
           value={noteBody}
@@ -206,11 +206,10 @@ export function ItemComposer(props: {
           multiline
           minRows={2}
           maxRows={10}
-          size="small"
           fullWidth
           required
           autoFocus
-          slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.note }, inputLabel: { shrink: true } }}
+          slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.note } }}
           helperText={
             noteBody.length > EDIT_REQUEST_LIMITS.note * 0.9
               ? `${noteBody.length.toLocaleString()} / ${EDIT_REQUEST_LIMITS.note.toLocaleString()} 字`
@@ -221,7 +220,7 @@ export function ItemComposer(props: {
         />
       )}
 
-      <TextField
+      <Field
         sx={{ display: note ? "none" : undefined }}
         label="理由（任意）"
         placeholder="例：ほかのページと表記をそろえるため"
@@ -230,9 +229,8 @@ export function ItemComposer(props: {
         multiline
         minRows={1}
         maxRows={6}
-        size="small"
         fullWidth
-        slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.reason }, inputLabel: { shrink: true } }}
+        slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.reason } }}
         helperText={reason.length > EDIT_REQUEST_LIMITS.reason * 0.9 ? `${reason.length.toLocaleString()} / ${EDIT_REQUEST_LIMITS.reason.toLocaleString()} 字` : undefined}
       />
 

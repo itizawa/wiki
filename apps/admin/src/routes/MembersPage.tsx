@@ -5,7 +5,6 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -15,7 +14,7 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
 import { Tooltip } from "../components/Tooltip";
-import { Muted, Row, Section } from "../components/ui";
+import { Field, Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
@@ -137,9 +136,8 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
         if (!isAdmin) return WIKI_ROLE_LABELS[m.role];
         return (
           <Box>
-            <TextField
+            <Field
               select
-              size="small"
               value={m.role}
               disabled={lastAdmin || changeRole.isPending}
               onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as WikiRole })}
@@ -151,7 +149,7 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
                   {WIKI_ROLE_LABELS[r]}
                 </MenuItem>
               ))}
-            </TextField>
+            </Field>
             {lastAdmin && <Muted sx={{ mt: 0.5, whiteSpace: "nowrap" }}>最後の管理者なので、変えられません</Muted>}
           </Box>
         );
@@ -280,13 +278,13 @@ function Invites() {
         1つのリンクで1人が参加できます。期限は{INVITE_TTL_DAYS}日です。
       </Muted>
       <Row>
-        <TextField select size="small" label="参加する人のロール" value={role} onChange={(e) => setRole(e.target.value as WikiRole)} sx={{ minWidth: 180 }}>
+        <Field select label="参加する人のロール" value={role} onChange={(e) => setRole(e.target.value as WikiRole)} sx={{ minWidth: 180 }}>
           {WIKI_ROLES.map((r) => (
             <MenuItem key={r} value={r}>
               {WIKI_ROLE_LABELS[r]}
             </MenuItem>
           ))}
-        </TextField>
+        </Field>
         <Button variant="contained" disabled={create.isPending} onClick={() => create.mutate()}>
           招待リンクを発行する
         </Button>
@@ -311,8 +309,7 @@ function Invites() {
             </Button>
           </Box>
           <Row sx={{ flexWrap: "nowrap", display: { xs: "none", sm: "flex" } }}>
-            <TextField
-              size="small"
+            <Field
               value={issued.url}
               fullWidth
               slotProps={{ htmlInput: { readOnly: true, "aria-label": "招待リンク", onFocus: (e: React.FocusEvent<HTMLInputElement>) => e.target.select() } }}

@@ -4,7 +4,6 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
@@ -17,7 +16,7 @@ import {
 } from "@wiki/shared";
 import { useState } from "react";
 import { HelpHeading } from "../components/HelpTip";
-import { Muted, Row, RouterLink, Section } from "../components/ui";
+import { Field, Muted, RouterLink, Row, Section } from "../components/ui";
 import { api, errorMessage, type AuditLogFilter, type AuditScope } from "../lib/api";
 import { formatDay } from "../lib/format";
 import { monoFont } from "../theme";
@@ -26,7 +25,7 @@ import { useWikis } from "./Layout";
 const GLOBAL = "global";
 
 /** 「すべて」を選んでいるときも、ラベルを上に出して選んでいるものを見せる */
-const selectSlots = { inputLabel: { shrink: true }, select: { displayEmpty: true } } as const;
+const selectSlots = { select: { displayEmpty: true } } as const;
 
 /**
  * 監査ログ：重要な操作を「いつ・誰が・何をした」の文で、新しい順に出す。
@@ -121,38 +120,38 @@ function Filters({ scope, filter, onChange }: { scope: AuditScope; filter: Audit
   return (
     <Section>
       <Row sx={{ gap: 1.5, alignItems: "flex-start" }}>
-        <TextField
+        <Field
           type="date"
           label="いつから"
           value={filter.from ?? ""}
           onChange={(e) => set({ from: e.target.value || undefined })}
-          slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: filter.to } }}
+          slotProps={{ htmlInput: { max: filter.to } }}
         />
-        <TextField
+        <Field
           type="date"
           label="いつまで"
           value={filter.to ?? ""}
           onChange={(e) => set({ to: e.target.value || undefined })}
-          slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: filter.from } }}
+          slotProps={{ htmlInput: { min: filter.from } }}
         />
-        <TextField select label="人" slotProps={selectSlots} value={filter.actor ?? ""} onChange={(e) => set({ actor: e.target.value || undefined })} sx={{ minWidth: 180 }}>
+        <Field select label="人" slotProps={selectSlots} value={filter.actor ?? ""} onChange={(e) => set({ actor: e.target.value || undefined })} sx={{ minWidth: 180 }}>
           <MenuItem value="">すべての人</MenuItem>
           {actors.data?.actors.map((a) => (
             <MenuItem key={a.userId} value={a.userId}>
               {a.label}
             </MenuItem>
           ))}
-        </TextField>
-        <TextField select label="分類" slotProps={selectSlots} value={filter.category ?? ""} onChange={(e) => set({ category: e.target.value || undefined })} sx={{ minWidth: 140 }}>
+        </Field>
+        <Field select label="分類" slotProps={selectSlots} value={filter.category ?? ""} onChange={(e) => set({ category: e.target.value || undefined })} sx={{ minWidth: 140 }}>
           <MenuItem value="">すべての分類</MenuItem>
           {AUDIT_CATEGORIES.map((c) => (
             <MenuItem key={c} value={c}>
               {AUDIT_CATEGORY_LABELS[c]}
             </MenuItem>
           ))}
-        </TextField>
+        </Field>
         {scope === "all" && (
-          <TextField select label="wiki" slotProps={selectSlots} value={filter.wiki ?? ""} onChange={(e) => set({ wiki: e.target.value || undefined })} sx={{ minWidth: 180 }}>
+          <Field select label="wiki" slotProps={selectSlots} value={filter.wiki ?? ""} onChange={(e) => set({ wiki: e.target.value || undefined })} sx={{ minWidth: 180 }}>
             <MenuItem value="">すべて</MenuItem>
             <MenuItem value={GLOBAL}>全体にかかわるもの</MenuItem>
             {wikis.data?.wikis.map((w) => (
@@ -160,7 +159,7 @@ function Filters({ scope, filter, onChange }: { scope: AuditScope; filter: Audit
                 {w.name}
               </MenuItem>
             ))}
-          </TextField>
+          </Field>
         )}
       </Row>
       {conditions.length > 0 && (

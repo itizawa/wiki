@@ -9,7 +9,6 @@ import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
-import TextField from "@mui/material/TextField";
 import { confirmDialog } from "./ConfirmDialog";
 import { HelpTip } from "./HelpTip";
 import { Tooltip } from "./Tooltip";
@@ -34,7 +33,7 @@ import { publicPageUrl } from "../lib/publicUrl";
 import { scheduleChoices, type ScheduleKind } from "../lib/scheduleKind";
 import { descendantImpact, pageHierarchy } from "../lib/visibility";
 import { visibilityLabel } from "../routes/PagesPage";
-import { Mono, Muted, Row, StatusChip } from "./ui";
+import { Field, Mono, Muted, Row, StatusChip } from "./ui";
 
 const statusLabel: Record<ScheduledAction["status"], string> = {
   scheduled: "予約中",
@@ -124,9 +123,10 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
 
   // 公開範囲は、今すぐの公開にも、公開の予約にも使う。どちらのタブでも選べるようにする
   const visibilitySelect = (sx: object, label?: string) => (
-    <TextField
+    <Field
       select
       label={label}
+      slotProps={label ? undefined : { htmlInput: { "aria-label": "公開範囲" } }}
       value={visibility}
       disabled={blockedByParent}
       onChange={(e) => setVisibility(e.target.value as PublishVisibility)}
@@ -138,7 +138,7 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
       <MenuItem value="unlisted" disabled={!canPick("unlisted")}>
         限定公開（URLを知る人のみ）{!canPick("unlisted") && `（${parentReason}選べません）`}
       </MenuItem>
-    </TextField>
+    </Field>
   );
 
   return (
@@ -309,15 +309,15 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
         {tab === "schedule" && (
           <>
             <Stack spacing={2} sx={{ alignItems: "flex-start" }}>
-              <TextField select fullWidth value={scheduleKind} onChange={(e) => setPickedKind(e.target.value as ScheduleKind)}>
+              <Field select fullWidth slotProps={{ htmlInput: { "aria-label": "予約する操作" } }} value={scheduleKind} onChange={(e) => setPickedKind(e.target.value as ScheduleKind)}>
                 {kindChoices.map((c) => (
                   <MenuItem key={c.value} value={c.value} disabled={c.disabled}>
                     {c.label}
                   </MenuItem>
                 ))}
-              </TextField>
+              </Field>
               {scheduleKind === "publish_page" && visibilitySelect({ width: "100%" }, "公開範囲")}
-              <TextField
+              <Field
                 type="datetime-local"
                 label="日時（JST）"
                 fullWidth
@@ -329,7 +329,7 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
                 }}
                 error={runAtCheck.error !== null}
                 helperText={runAtCheck.error ?? "いまより先の日時を選べます。"}
-                slotProps={{ htmlInput: { min: runAtCheck.min }, inputLabel: { shrink: true } }}
+                slotProps={{ htmlInput: { min: runAtCheck.min } }}
               />
               <Button
                 variant="outlined"

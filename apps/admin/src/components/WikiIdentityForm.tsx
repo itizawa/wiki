@@ -3,7 +3,6 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import InputAdornment from "@mui/material/InputAdornment";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation } from "@tanstack/react-query";
 import { SITE_NAME_MAX, type WikiSummary } from "@wiki/shared";
@@ -12,7 +11,7 @@ import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis } from "../lib/wiki";
 import { HelpTip } from "./HelpTip";
 import { ImageUploader } from "./ImageUploader";
-import { Muted } from "./ui";
+import { Field, Muted } from "./ui";
 import { WikiIcon } from "./WikiIcon";
 
 /** 表示名の欄の確かめ。空だと保存できない。 */
@@ -47,7 +46,7 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
 
   const fields: ReactNode = (
     <Stack spacing={2.5}>
-      <TextField
+      <Field
         label="表示名"
         value={name}
         onChange={(e) => setName(e.target.value)}

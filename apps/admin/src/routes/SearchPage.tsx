@@ -3,14 +3,13 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import InputAdornment from "@mui/material/InputAdornment";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { parseSearchQuery, searchTerms, splitByTerms, type SearchResult } from "@wiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpTip } from "../components/HelpTip";
-import { Mono, Muted, RouterLink, Section, StatusChip } from "../components/ui";
+import { Field, Mono, Muted, RouterLink, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useComposition, useSearchTerm } from "../lib/searchTerm";
@@ -85,7 +84,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
       <Typography variant="h5" component="h1">
         検索
       </Typography>
-      <TextField
+      <Field
         autoFocus
         fullWidth
         value={input}

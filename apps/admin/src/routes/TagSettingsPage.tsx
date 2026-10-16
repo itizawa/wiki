@@ -5,7 +5,6 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Box from "@mui/material/Box";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TAG_NAME_MAX, tagNameSchema, type WikiTag } from "@wiki/shared";
@@ -13,7 +12,7 @@ import { useState } from "react";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
-import { Row, RouterLink, Section } from "../components/ui";
+import { Field, RouterLink, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
 import { tagPagesLink, useWiki } from "../lib/wiki";
@@ -178,17 +177,15 @@ function CreateTagForm({ onCreated }: { onCreated: (name: string) => void }) {
       }}
       sx={{ display: "flex", alignItems: "flex-start", gap: 1, flexWrap: "wrap", mb: 1.5 }}
     >
-      <TextField
-        label="新しいタグの名前"
+      <Field
         value={name}
         onChange={(e) => {
           setName(e.target.value);
           create.reset();
         }}
-        size="small"
         error={message !== null}
         helperText={message ?? " "}
-        slotProps={{ htmlInput: { maxLength: TAG_NAME_MAX + 20, autoComplete: "off", "aria-label": "新しいタグの名前" }, inputLabel: { shrink: true } }}
+        slotProps={{ htmlInput: { maxLength: TAG_NAME_MAX + 20, autoComplete: "off", "aria-label": "新しいタグの名前" } }}
         placeholder="例：要レビュー"
         sx={{ width: 280, maxWidth: "100%" }}
       />
@@ -227,7 +224,7 @@ function RenameTagDialog({ tag, onClose, onDone }: { tag: WikiTag; onClose: () =
       >
         <DialogTitle id="rename-tag-title">タグ「{tag.name}」の名前を変える</DialogTitle>
         <DialogContent>
-          <TextField
+          <Field
             label="タグの名前"
             autoFocus
             fullWidth
@@ -238,7 +235,7 @@ function RenameTagDialog({ tag, onClose, onDone }: { tag: WikiTag; onClose: () =
             }}
             error={message !== null}
             helperText={message ?? " "}
-            slotProps={{ htmlInput: { maxLength: TAG_NAME_MAX + 20, autoComplete: "off" }, inputLabel: { shrink: true } }}
+            slotProps={{ htmlInput: { maxLength: TAG_NAME_MAX + 20, autoComplete: "off" } }}
             sx={{ mt: 1 }}
           />
         </DialogContent>

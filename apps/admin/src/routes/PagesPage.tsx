@@ -2,7 +2,6 @@ import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -11,7 +10,7 @@ import { useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { StarButton } from "../components/StarButton";
-import { Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Field, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import type { PagesSearch } from "../lib/pagesSearch";
 import { pageLink } from "../lib/wiki";
@@ -124,7 +123,7 @@ export function PagesPage() {
             ページ
           </Typography>
           {/* 狭い幅では、見出しの下の段に全幅で置く（見出しを省略させない） */}
-          <TextField value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" sx={{ flex: { xs: "1 1 100%", sm: "0 1 auto" } }} />
+          <Field value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" slotProps={{ htmlInput: { "aria-label": "ページをタイトルで絞り込む" } }} sx={{ flex: { xs: "1 1 100%", sm: "0 1 auto" } }} />
         </Row>
         {/* タグで絞り込む。選んだタグは塗りつぶし＋チェック＋×で示し、もう一度押すか × で外す（色だけに頼らない） */}
         {tags.data && tags.data.tags.length > 0 && (

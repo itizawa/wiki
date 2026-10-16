@@ -3,14 +3,13 @@ import Alert, { type AlertProps } from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X_POST_MAX_WEIGHT, xPostWeight, xProfileUrl, type SnsAccount, type SnsStatus, type XConnectResult } from "@wiki/shared";
 import { useEffect, useState } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpTip } from "../components/HelpTip";
-import { Mono, Muted, Row, Section, SkeletonSection } from "../components/ui";
+import { Field, Mono, Muted, Row, Section, SkeletonSection } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useWiki } from "../lib/wiki";
@@ -254,7 +253,7 @@ function TestPost({ account, connecting, onReconnect }: { account: SnsAccount; c
       <Muted sx={textSx}>
         下の文面を <Mono>@{account.username}</Mono> に実際にポストして、連携が働いているかを確かめます。フォロワーにも見えます。1ポストは、全角で140文字（半角なら280文字）までです。
       </Muted>
-      <TextField
+      <Field
         label="ポストする文面"
         value={text}
         onChange={(e) => {
@@ -266,7 +265,7 @@ function TestPost({ account, connecting, onReconnect }: { account: SnsAccount; c
         minRows={3}
         error={problem !== null}
         helperText={problem ?? `${weight} / ${X_POST_MAX_WEIGHT}（半角は1、全角は2と数えます）`}
-        slotProps={{ inputLabel: { shrink: true }, formHelperText: { role: problem ? "alert" : undefined } }}
+        slotProps={{ formHelperText: { role: problem ? "alert" : undefined } }}
         sx={{ mt: 2, width: "100%", maxWidth: 680 }}
       />
       {/* 結果は、押したボタンのそばに出す */}

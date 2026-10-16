@@ -9,7 +9,6 @@ import DialogTitle from "@mui/material/DialogTitle";
 import InputAdornment from "@mui/material/InputAdornment";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,7 +16,7 @@ import { checkWikiKey, SITE_NAME_MAX, WIKI_KEY_MAX, wikiOrigin, type WikiSummary
 import { useState, type ReactNode } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
-import { Mono, Muted, RouterLink, Row, Section } from "../components/ui";
+import { Field, Mono, Muted, RouterLink, Row, Section } from "../components/ui";
 import { WikiIcon } from "../components/WikiIcon";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -212,7 +211,7 @@ function CreateDialog({ baseDomain, taken, onClose }: { baseDomain: string; take
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
+            <Field
               label="表示名"
               autoFocus
               value={name}
@@ -220,7 +219,6 @@ function CreateDialog({ baseDomain, taken, onClose }: { baseDomain: string; take
               placeholder="例：開発ノート"
               slotProps={{
                 htmlInput: { maxLength: SITE_NAME_MAX },
-                inputLabel: { shrink: true },
                 input: {
                   endAdornment: (
                     <InputAdornment position="end">
@@ -232,7 +230,7 @@ function CreateDialog({ baseDomain, taken, onClose }: { baseDomain: string; take
               sx={{ maxWidth: 360 }}
             />
             <Box>
-              <TextField
+              <Field
                 label="key（公開サイトのサブドメイン）"
                 value={key}
                 onChange={(e) => {
@@ -243,7 +241,6 @@ function CreateDialog({ baseDomain, taken, onClose }: { baseDomain: string; take
                 error={keyTaken}
                 slotProps={{
                   htmlInput: { maxLength: WIKI_KEY_MAX, autoCapitalize: "off", autoCorrect: "off", spellCheck: false, "aria-describedby": "wiki-key-rules" },
-                  inputLabel: { shrink: true },
                   input: { endAdornment: <InputAdornment position="end">.{baseDomain}</InputAdornment>, sx: { fontFamily: "monospace" } },
                 }}
                 sx={{ width: "100%", maxWidth: 440 }}

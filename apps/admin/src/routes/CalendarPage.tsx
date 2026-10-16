@@ -7,14 +7,13 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isoToJstLocal, jstDate, jstLocalToIso, type ScheduledAction } from "@wiki/shared";
 import { useMemo, useState, type MouseEvent } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { actionLabel } from "../components/PublishPanel";
-import { LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Field, LoadingRegion, Mono, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { focusAfterRemoval } from "../lib/focus";
 import { useScheduleToasts } from "../lib/scheduleActions";
@@ -306,7 +305,7 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
           <Muted sx={{ mb: 2 }}>
             「{shown?.pageTitle ?? shown?.pageId}」の{shown && actionLabel(shown)}の予約（いまは {shown && formatDateTime(shown.runAt)}）
           </Muted>
-          <TextField
+          <Field
             autoFocus
             fullWidth
             type="datetime-local"
@@ -315,7 +314,7 @@ function RescheduleDialog(props: { action: ScheduledAction | null; now: number; 
             onChange={(e) => setValue(e.target.value)}
             error={error !== null}
             helperText={error ?? "いまより先の日時を選べます。"}
-            slotProps={{ htmlInput: { min }, inputLabel: { shrink: true } }}
+            slotProps={{ htmlInput: { min } }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

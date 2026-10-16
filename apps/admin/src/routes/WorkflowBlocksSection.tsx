@@ -14,7 +14,6 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -40,7 +39,7 @@ import { ArrowDown, ArrowUp, GripVertical, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
-import { Muted, Row, RouterLink, Section, SkeletonRows } from "../components/ui";
+import { Field, Muted, RouterLink, Row, Section, SkeletonRows } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useSession } from "./Layout";
 
@@ -241,7 +240,7 @@ function SchedulePagePicker({ value, onChange }: { value: { id: string; title: s
       loading={results.isFetching}
       loadingText="検索しています…"
       noOptionsText="見つかるページがありません"
-      renderInput={(params) => <TextField {...params} label="対象のページ" placeholder="ページのタイトルで探す" slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }} />}
+      renderInput={(params) => <Field {...params} label="対象のページ" placeholder="ページのタイトルで探す" />}
     />
   );
 }
@@ -366,29 +365,27 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
               「タグが付いたとき」は、選んだタグがページに付くたびに動きます。「初めて公開されたとき」は、一度も公開したことのないページを、公開か限定公開にしたときだけ動きます（公開し直し・非公開にしたときは動きません）。管理画面・MCP・予約のどれから公開しても動きます。「決まった時刻になったとき」は、選んだ曜日の時刻（日本時間）が来たあとの最初の確認（5分おき）で、選んだページを対象に1回だけ動きます（同じブロックの実行は、1時間に5回までです）。タグがトリガーでないとき、Routine に渡す値のタグ名は、空になります。
             </HelpTip>
           </Row>
-          <TextField
+          <Field
             select
             fullWidth
-            size="small"
             label="きっかけ"
             value={triggerType}
             onChange={(e) => {
               setTriggerType(e.target.value as WorkflowTriggerType);
               save.reset();
             }}
-            slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+            slotProps={{ select: { native: true } }}
           >
             {TRIGGER_TYPES.map((t) => (
               <option key={t} value={t}>
                 {TRIGGER_KINDS[t].label}
               </option>
             ))}
-          </TextField>
+          </Field>
           {triggerType === "tag_attached" && (
-            <TextField
+            <Field
               select
               fullWidth
-              size="small"
               label="このタグ"
               value={tagId}
               disabled={noTags}
@@ -396,7 +393,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                 setTagId(e.target.value);
                 save.reset();
               }}
-              slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+              slotProps={{ select: { native: true } }}
               sx={{ mt: 1.5 }}
             >
               <option value="">選んでください</option>
@@ -405,7 +402,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                   {t.name}
                 </option>
               ))}
-            </TextField>
+            </Field>
           )}
 
           {triggerType === "schedule" && (
@@ -418,9 +415,8 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                   save.reset();
                 }}
               />
-              <TextField
+              <Field
                 type="time"
-                size="small"
                 label="時刻（日本時間）"
                 value={time}
                 onChange={(e) => {
@@ -476,9 +472,8 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                       <Typography sx={{ width: 20, pt: 0.75, textAlign: "right", color: "text.secondary" }} aria-hidden>
                         {i + 1}
                       </Typography>
-                      <TextField
+                      <Field
                         select
-                        size="small"
                         label={`${i + 1} 番目の種類`}
                         value={a.type}
                         onChange={(e) => {
@@ -486,7 +481,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                           // 「Routine を呼ぶ」に変えたとき、依頼が空なら初期値を入れる
                           change(a.key, { type, routineId: "", tagId: "", instruction: type === "call_routine" && !a.instruction ? DEFAULT_ROUTINE_INSTRUCTION : a.instruction });
                         }}
-                        slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                        slotProps={{ select: { native: true } }}
                         sx={{ width: 170 }}
                       >
                         {ACTION_TYPES.map((t) => (
@@ -494,15 +489,14 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                             {ACTION_KINDS[t].label}
                           </option>
                         ))}
-                      </TextField>
+                      </Field>
                       {a.type === "call_routine" ? (
-                        <TextField
+                        <Field
                           select
-                          size="small"
                           label={`${i + 1} 番目の Routine`}
                           value={a.routineId}
                           onChange={(e) => change(a.key, { routineId: e.target.value })}
-                          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                          slotProps={{ select: { native: true } }}
                           sx={{ flex: "1 1 160px", minWidth: 140 }}
                         >
                           <option value="">選んでください</option>
@@ -511,16 +505,15 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                               {r.name}
                             </option>
                           ))}
-                        </TextField>
+                        </Field>
                       ) : (
-                        <TextField
+                        <Field
                           select
-                          size="small"
                           label={`${i + 1} 番目の${a.type === "add_tag" ? "付ける" : "外す"}タグ`}
                           value={a.tagId}
                           disabled={noTags}
                           onChange={(e) => change(a.key, { tagId: e.target.value })}
-                          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+                          slotProps={{ select: { native: true } }}
                           sx={{ flex: "1 1 160px", minWidth: 140 }}
                         >
                           <option value="">選んでください</option>
@@ -529,7 +522,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                               {t.name}
                             </option>
                           ))}
-                        </TextField>
+                        </Field>
                       )}
                       <Row sx={{ flexWrap: "nowrap", gap: 0 }}>
                         <IconButton size="small" aria-label={`${i + 1} 番目のアクションを上へ`} disabled={i === 0} onClick={() => setActions((xs) => moveItem(xs, i, -1))}>
@@ -544,11 +537,10 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                       </Row>
                       {a.type === "call_routine" && (
                         <Box sx={{ flex: "1 1 100%", pl: 3.5, display: "flex", gap: 0.5, alignItems: "flex-start" }}>
-                          <TextField
+                          <Field
                             multiline
                             minRows={3}
                             fullWidth
-                            size="small"
                             label={`${i + 1} 番目の Routine への依頼`}
                             value={a.instruction}
                             onChange={(e) => change(a.key, { instruction: e.target.value })}

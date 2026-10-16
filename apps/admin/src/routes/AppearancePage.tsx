@@ -3,7 +3,6 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
@@ -32,7 +31,7 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
 import { ImageUploader } from "../components/ImageUploader";
 import type { ImageRule } from "../editor/imageFile";
-import { Muted, Row, SaveNotice, Section } from "../components/ui";
+import { Field, Muted, Row, SaveNotice, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis, useWiki } from "../lib/wiki";
 
@@ -165,15 +164,13 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <HelpHeading variant="subtitle1" component="h3" help="ヘッダー・タブのタイトル・RSS・フッターに出ます。wiki の表示名と同じものです。" sx={{ mb: 1 }}>
             サイト名
           </HelpHeading>
-          <TextField
-            size="small"
+          <Field
             fullWidth
-            label="サイト名"
             value={name}
             onChange={(e) => setName(e.target.value)}
             error={!nameOk}
             helperText={nameOk ? `1〜${SITE_NAME_MAX}文字` : `1〜${SITE_NAME_MAX}文字で入力してください`}
-            slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX } }}
+            slotProps={{ htmlInput: { maxLength: SITE_NAME_MAX, "aria-label": "サイト名" } }}
           />
         </Section>
 
