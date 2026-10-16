@@ -254,6 +254,11 @@ check(wikiIndex.indexOf("data-home-intro") < wikiIndex.indexOf("新着記事"), 
 check(wikiIndex.includes('<a href="/p/aaaaaaaaa1"'), "an internal link in the intro points to the public page");
 check(wikiIndex.includes("まだ公開していないページ") && !wikiIndex.includes("zzzzzzzzz9"), "a link to a page that is not public is plain text in the intro");
 check(!notesIndex.includes("data-home-intro"), "a wiki without an intro shows only the new posts");
+// ---- トップのグリッド：配置を保存した wiki は配置どおりに、保存していない wiki は今までの縦の並びのまま
+check(notesIndex.includes("data-home-grid") && !wikiIndex.includes("data-home-grid"), "only the wiki with a saved layout gets the grid");
+check(notesIndex.includes("grid-column: 1 / span 8; grid-row: 1 / span 1;") && notesIndex.includes("grid-column: 9 / span 4; grid-row: 1 / span 2;"), "the grid blocks sit where they were placed");
+check(notesIndex.indexOf("grid-column: 1 / span 8") < notesIndex.indexOf("grid-column: 9 / span 4"), "blocks are in layout order, which is the order they stack on a phone");
+check(!wikiIndex.includes("data-home-block"), "a wiki without a layout keeps the plain list");
 check(!wikiIndex.includes("階層から探す") && !notesIndex.includes("階層から探す"), "the top no longer links to the tree");
 check((await read("notes/sitemap.xml")).includes("<loc>http://notes.localhost:4321/p/bbbbbbbbb1</loc>"), "sitemap uses the wiki's origin");
 check((await read("notes/feed.xml")).includes("<link>http://notes.localhost:4321/p/bbbbbbbbb1/</link>"), "RSS uses the wiki's origin");
