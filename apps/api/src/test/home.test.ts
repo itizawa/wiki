@@ -32,8 +32,8 @@ describe("home", () => {
     const introMd = "# ようこそ\n\nこの wiki の紹介です。";
     const saved = await ctx.call("PUT", `${W}/home`, { introMd });
     expect(saved.status).toBe(200);
-    expect(saved.body).toEqual({ introMd });
-    expect((await wikiManifest(ctx.db)).home).toEqual({ introMd });
+    expect(saved.body).toEqual({ introMd, blocks: null });
+    expect((await wikiManifest(ctx.db)).home).toEqual({ introMd, blocks: null });
     expect(await events()).toHaveLength(1);
     expect(await audits()).toEqual([{ detail: {} }]);
 
@@ -44,9 +44,41 @@ describe("home", () => {
 
     // 空白だけは空として保存し、トップには何も出さない
     const cleared = await ctx.call("PUT", `${W}/home`, { introMd: "  \n " });
-    expect(cleared.body).toEqual({ introMd: "" });
-    expect((await wikiManifest(ctx.db)).home).toEqual({ introMd: "" });
+    expect(cleared.body).toEqual({ introMd: "", blocks: null });
+    expect((await wikiManifest(ctx.db)).home).toEqual({ introMd: "", blocks: null });
     expect(await events()).toHaveLength(2);
+  });
+
+  it("saves the grid layout in layout order, shows it in the manifest, and goes back to no layout with null", async () => {
+    ctx = await setup();
+    const latest = { id: "l1", kind: "latest", col: 7, row: 1, colSpan: 6, rowSpan: 2, limit: 5 };
+    const intro = { id: "i1", kind: "intro", col: 1, row: 1, colSpan: 6, rowSpan: 1, limit: null };
+    const saved = await ctx.call("PUT", `${W}/home`, { introMd: "紹介", blocks: [latest, intro] });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ introMd: "紹介", blocks: [intro, latest] });
+    expect((await wikiManifest(ctx.db)).home.blocks).toEqual([intro, latest]);
+    expect((await ctx.call("GET", `${W}/home`)).body).toEqual({ introMd: "紹介", blocks: [intro, latest] });
+    expect(await events()).toHaveLength(1);
+
+    // 同じ配置の保存では、ビルドし直さない
+    await ctx.call("PUT", `${W}/home`, { introMd: "紹介", blocks: [intro, latest] });
+    expect(await events()).toHaveLength(1);
+
+    const cleared = await ctx.call("PUT", `${W}/home`, { introMd: "紹介", blocks: null });
+    expect(cleared.body).toEqual({ introMd: "紹介", blocks: null });
+    expect(await events()).toHaveLength(2);
+  });
+
+  it("refuses a layout that is out of range, overlapping, over the count limit or has an unknown kind", async () => {
+    ctx = await setup();
+    const base = { id: "a", kind: "latest", col: 1, row: 1, colSpan: 6, rowSpan: 1, limit: null };
+    const put = (blocks: unknown) => ctx.call("PUT", `${W}/home`, { introMd: "", blocks });
+    expect((await put([{ ...base, col: 8 }])).status).toBe(400);
+    expect((await put([{ ...base, colSpan: 13 }])).status).toBe(400);
+    expect((await put([base, { ...base, id: "b", col: 6 }])).status).toBe(400);
+    expect((await put([{ ...base, kind: "html" }])).status).toBe(400);
+    expect((await put(Array.from({ length: 13 }, (_, i) => ({ ...base, id: `b${i}`, row: i + 1 })))).status).toBe(400);
+    expect((await put([base, { ...base, id: "b", col: 7 }])).status).toBe(200);
   });
 
   it("refuses an intro over the length limit", async () => {
@@ -66,8 +98,8 @@ describe("home", () => {
 
     expect((await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" })).status).toBe(201);
     expect((await ctx.call("PUT", "/admin/w/notes/home", { introMd: "ノート" })).status).toBe(200);
-    expect((await wikiManifest(ctx.db, "notes")).home).toEqual({ introMd: "ノート" });
-    expect((await wikiManifest(ctx.db)).home).toEqual({ introMd: "管理者" });
+    expect((await wikiManifest(ctx.db, "notes")).home).toEqual({ introMd: "ノート", blocks: null });
+    expect((await wikiManifest(ctx.db)).home).toEqual({ introMd: "管理者", blocks: null });
     // ほかの wiki の管理者は、この wiki の設定を開けない
     expect((await admin.call("PUT", "/admin/w/notes/home", { introMd: "x" })).status).toBe(404);
   });

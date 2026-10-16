@@ -5,6 +5,13 @@
     {
       "key": "notes",
       "name": "開発ノート",
+      "home": {
+        "introMd": "",
+        "blocks": [
+          { "id": "grid0latest0a", "kind": "latest", "col": 1, "row": 1, "colSpan": 8, "rowSpan": 1, "limit": 1 },
+          { "id": "grid0latest0b", "kind": "latest", "col": 9, "row": 1, "colSpan": 4, "rowSpan": 2, "limit": null }
+        ]
+      },
       "theme": {
         "preset": "owl",
         "logo": "/images/notes0logo0sample0000000.png",

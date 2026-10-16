@@ -15,7 +15,7 @@ export async function getStaticPaths() {
 
 const { wiki: manifest, publicPaths, origin, primaryTree, pagesById, linkPreviews, previewOf } = await siteData(Astro.params.wiki);
 // 管理画面の「トップページ」で書いた自由記述。内部リンクの解決は記事の本文と同じ
-const { introMd } = resolveHome(manifest.home);
+const { introMd, blocks } = resolveHome(manifest.home);
 const introHtml = introMd ? renderMarkdown(introMd, { publicPaths, origin, titleOf: (id) => pagesById.get(id)?.title, linkPreviews, previewOf }) : null;
 // 検索結果の説明。自由記述が空なら出さない（空の説明を出さない）
 const description = (introMd && excerpt(introMd)) || undefined;
@@ -28,23 +28,59 @@ const tree = items.length > 0 ? primaryTree : undefined;
 <Base wiki={manifest.key} title={manifest.name} canonical="/" nav="/" description={description} jsonLd={webSiteJsonLd({ name: manifest.name, origin })}>
   <div class={page.withNav}>
     <main>
-      {introHtml && <div class:list={[article.body, page.homeIntro]} data-home-intro set:html={introHtml} />}
-      <h1 class={page.visuallyHidden}>新着記事</h1>
-      {manifest.pages.length === 0 && <p class={page.muted}>まだ記事はありません。</p>}
-      <ul class={page.postList}>
-        {
-          manifest.pages.map((p) => (
-            <li>
-              <h2>
-                <a href={p.path}>{p.title}</a>
-              </h2>
-              <p>
-                <time datetime={p.firstPublishedAt}>{fmt.format(new Date(p.firstPublishedAt))}</time> ・ {excerpt(p.bodyMd)}
-              </p>
-            </li>
-          ))
-        }
-      </ul>
+      {
+        blocks ? (
+          // 管理画面で配置したグリッド。配置の順（上から、同じ行は左から）に並べてあり、狭い画面ではその順に 1 列で積む
+          <div class={page.homeGrid} data-home-grid>
+            <h1 class={page.visuallyHidden}>{manifest.name}</h1>
+            {blocks.filter((b) => b.kind !== "intro" || introHtml).map((b) => (
+              <section
+                class={page.homeBlock}
+                data-home-block={b.kind}
+                style={`grid-column: ${b.col} / span ${b.colSpan}; grid-row: ${b.row} / span ${b.rowSpan};`}
+              >
+                {b.kind === "intro" && introHtml && <div class={article.body} data-home-intro set:html={introHtml} />}
+                {b.kind === "latest" && (
+                  <>
+                    <h2 class={page.homeBlockTitle}>新着記事</h2>
+                    {manifest.pages.length === 0 && <p class={page.muted}>まだ記事はありません。</p>}
+                    <ul class={page.postList}>
+                      {manifest.pages.slice(0, b.limit ?? undefined).map((p) => (
+                        <li>
+                          <h3>
+                            <a href={p.path}>{p.title}</a>
+                          </h3>
+                          <p>
+                            <time datetime={p.firstPublishedAt}>{fmt.format(new Date(p.firstPublishedAt))}</time> ・ {excerpt(p.bodyMd)}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </section>
+            ))}
+          </div>
+        ) : (
+          <>
+            {introHtml && <div class:list={[article.body, page.homeIntro]} data-home-intro set:html={introHtml} />}
+            <h1 class={page.visuallyHidden}>新着記事</h1>
+            {manifest.pages.length === 0 && <p class={page.muted}>まだ記事はありません。</p>}
+            <ul class={page.postList}>
+              {manifest.pages.map((p) => (
+                <li>
+                  <h2>
+                    <a href={p.path}>{p.title}</a>
+                  </h2>
+                  <p>
+                    <time datetime={p.firstPublishedAt}>{fmt.format(new Date(p.firstPublishedAt))}</time> ・ {excerpt(p.bodyMd)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      }
     </main>
     <NavDrawer list={tree !== undefined}>
       {tree && <TreeNav client:idle items={items} />}
