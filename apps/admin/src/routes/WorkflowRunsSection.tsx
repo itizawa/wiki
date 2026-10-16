@@ -142,7 +142,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         error={runs.error}
         empty={
           <>
-            まだ実行はありません。ブロックのトリガーに選んだタグをページに付けると、ここに実行が出ます。{" "}
+            まだ実行はありません。ブロックのトリガー（タグが付く・初めて公開される・決まった時刻になる）が起きると、ここに実行が出ます。{" "}
             <Link component="button" type="button" onClick={() => document.getElementById(BLOCKS_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" })} sx={{ verticalAlign: "baseline" }}>
               ブロックの節へ
             </Link>
