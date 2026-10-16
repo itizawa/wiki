@@ -66,12 +66,13 @@ export default {
 };
 
 /**
- * 埋め込んでよい枠（iframe）の行き先。Google マップ（www.google.com）と、AdSense の広告の枠
+ * 埋め込んでよい枠（iframe）の行き先。Google マップ（www.google.com）と、YouTube の動画（www.youtube-nocookie.com）と、AdSense の広告の枠
  * （広告は googlesyndication.com・doubleclick.net の枠に入り、不正な表示の検出は adtrafficquality.google、同意の確認は fundingchoicesmessages.google.com の枠を使う）。
  * AdSense を設定していない wiki でも同じ値にする（Worker は wiki ごとの設定を持たない。広告のコードを読み込まなければ、これらの枠は作られない）
  */
 const FRAME_SRC = [
   "https://www.google.com",
+  "https://www.youtube-nocookie.com",
   "https://*.googlesyndication.com",
   "https://*.doubleclick.net",
   "https://*.adtrafficquality.google",

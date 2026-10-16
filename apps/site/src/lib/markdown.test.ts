@@ -292,6 +292,19 @@ describe("リンクカード（URL だけの段落）", () => {
     expect(renderMarkdown("https://www.google.com/maps/embed?pb=1", { publicPaths, linkPreviews: { "https://www.google.com/maps/embed?pb=1": { title: "x", description: null, siteName: null } } })).toContain("map-embed");
   });
 
+  it("YouTube の動画 URL だけの段落は、OGP の有無に関わらず nocookie の iframe になる。文章の中・ほかのホストは埋め込まない", () => {
+    for (const url of ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ", "https://www.youtube.com/shorts/dQw4w9WgXcQ"]) {
+      const html = renderMarkdown(url, { publicPaths });
+      expect(html).toContain('<figure class="video-embed"><iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
+      expect(html).toContain('title="YouTube の動画" loading="lazy"');
+    }
+    const withPreview = renderMarkdown("https://youtu.be/dQw4w9WgXcQ", { publicPaths, linkPreviews: { "https://youtu.be/dQw4w9WgXcQ": { title: "x", description: null, siteName: null } } });
+    expect(withPreview).toContain("video-embed");
+    expect(withPreview).not.toContain("link-card");
+    expect(renderMarkdown("見て https://youtu.be/dQw4w9WgXcQ", { publicPaths })).not.toContain("<iframe");
+    expect(renderMarkdown("https://vimeo.com/123456789", { publicPaths })).not.toContain("<iframe");
+  });
+
   it("内部リンクの URL だけの段落は、カードにしない", () => {
     const html = renderMarkdown("https://wiki.example.com/p/abcdefghij", {
       publicPaths,

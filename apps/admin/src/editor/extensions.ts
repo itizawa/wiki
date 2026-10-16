@@ -9,6 +9,7 @@ import { CalloutBlockquote } from "./callout";
 import { ChildrenList } from "./childrenList";
 import { RatingEmbed } from "./ratingEmbed";
 import { GoogleMap } from "./googleMap";
+import { Youtube } from "./youtube";
 import { LinkCard, type LinkCardOptions } from "./linkCard";
 import { PageMentions } from "./pageMentions";
 import { lowlight } from "./highlight";
@@ -35,6 +36,8 @@ export const createEditorExtensions = (linkCard?: Partial<LinkCardOptions>) => [
   MarkdownListItem,
   ...toggleExtensions,
   GoogleMap,
+  // 動画の URL を貼ったとき、LinkCard より先に動画にする（拡張の並び順で、貼り付けの処理が先に回る）
+  Youtube,
   // 外部 URL のカード。OGP を取る関数を渡さなければ、カードにしない（URL の行のまま）
   LinkCard.configure(linkCard ?? {}),
   PageMentions,

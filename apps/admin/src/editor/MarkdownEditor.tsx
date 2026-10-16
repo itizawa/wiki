@@ -1,4 +1,4 @@
-import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, MapPin, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
+import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, MapPin, Megaphone, Minus, Plus, Quote, Strikethrough, Table, CirclePlay } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -19,6 +19,8 @@ import { Placeholder } from "@tiptap/extensions";
 import { insertToggle } from "./toggle";
 import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
+import { YoutubeDialog } from "./YoutubeDialog";
+import { insertYoutube } from "./youtube";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
 import { LinkHoverPreview } from "./LinkHoverPreview";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -451,6 +453,7 @@ function InsertMenu({ editor }: { editor: Editor }) {
   const insert = (run: () => void) => () => close(run);
   const [imageOpen, setImageOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
   // 「挿入」の説明。FloatingMenu が隠れるとき、ボタンからは mouseleave が来ず、開いたまま画面の隅に残るので、
   // 文字を打つ・選択が動くたびに閉じる（開閉は自分で持つ）
   const [tipOpen, setTipOpen] = useState(false);
@@ -513,6 +516,12 @@ function InsertMenu({ editor }: { editor: Editor }) {
           </ListItemIcon>
           <ListItemText>Google マップ…</ListItemText>
         </MenuItem>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => setYoutubeOpen(true))}>
+          <ListItemIcon>
+            <CirclePlay size={18} />
+          </ListItemIcon>
+          <ListItemText>YouTube…</ListItemText>
+        </MenuItem>
         <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
             <Braces size={18} />
@@ -557,6 +566,17 @@ function InsertMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setMapOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <YoutubeDialog
+        open={youtubeOpen}
+        onSubmit={(url) => {
+          setYoutubeOpen(false);
+          insertYoutube(editor, url);
+        }}
+        onClose={() => {
+          setYoutubeOpen(false);
           editor.commands.focus();
         }}
       />

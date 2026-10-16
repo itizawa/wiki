@@ -1,4 +1,5 @@
 import { googleMapOfParagraph } from "./googleMap";
+import { youtubeOfParagraph } from "./youtube";
 import { matchChildren } from "./children";
 
 /** 一覧やRSS用の短い抜粋（Markdown記法を落とした先頭部分）。 */
@@ -9,7 +10,7 @@ export function excerpt(md: string, length = 120): string {
     .replace(/^([ \t]*!\[[^\]]*\]\([^)]*\)[ \t]*\n)(?:[ \t]*\n)*[ \t]*(?:画像|写真|出典)[ \t]*[:：].*$/gm, "$1")
     .replace(/^\s*>\s*\[![A-Za-z]+\]\s*$/gm, "")
     // 地図の URL だけの行（本文では地図になる）
-    .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) ? "" : line))
+    .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) || youtubeOfParagraph(line) ? "" : line))
     .replace(/^@children(?:[ \t].*)?$/gm, (line) => (matchChildren(line) ? "" : line))
     .replace(/^@rating[ \t]*$/gm, "")
     .replace(/^\+\+\+[ \t]*/gm, "")

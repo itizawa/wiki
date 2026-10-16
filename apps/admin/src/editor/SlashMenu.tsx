@@ -1,4 +1,4 @@
-import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Star, Table, MapPin } from "lucide-react";
+import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Star, Table, MapPin, CirclePlay } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
@@ -7,6 +7,8 @@ import { insertChildrenList } from "./childrenList";
 import { insertRatingEmbed } from "./ratingEmbed";
 import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
+import { YoutubeDialog } from "./YoutubeDialog";
+import { insertYoutube } from "./youtube";
 import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage } from "./LinkForm";
 import { createTrigger, TriggerMenu, useTriggerMatch, type FindTrigger } from "./trigger";
@@ -25,7 +27,7 @@ type Block = {
   /** ラベル以外に、絞り込みで当たる語（英語名やMarkdownの記法） */
   keywords: string[];
   icon: ReactNode;
-  run: (editor: Editor, ui: { openImageDialog: () => void; openMapDialog: () => void }) => void;
+  run: (editor: Editor, ui: { openImageDialog: () => void; openMapDialog: () => void; openYoutubeDialog: () => void }) => void;
 };
 
 const headingIcons = { 1: Heading1, 2: Heading2, 3: Heading3 } as const;
@@ -54,6 +56,7 @@ const blocks: Block[] = [
   { id: "table", label: "表", keywords: ["table", "hyou"], icon: <Table size={18} />, run: (e) => chain(e).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   { id: "image", label: "画像…", keywords: ["image", "img", "picture", "gazou"], icon: <Image size={18} />, run: (_e, ui) => ui.openImageDialog() },
   { id: "map", label: "Google マップ…", keywords: ["map", "google", "maps", "chizu", "地図"], icon: <MapPin size={18} />, run: (_e, ui) => ui.openMapDialog() },
+  { id: "youtube", label: "YouTube…", keywords: ["youtube", "video", "movie", "douga", "動画", "ユーチューブ"], icon: <CirclePlay size={18} />, run: (_e, ui) => ui.openYoutubeDialog() },
   {
     id: "children",
     label: "配下のページの一覧",
@@ -97,6 +100,7 @@ export function SlashMenu({ editor }: { editor: Editor }) {
   const ids = filterBlocks(match?.query ?? "");
   const [imageOpen, setImageOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
   return (
     <>
       <TriggerMenu
@@ -116,7 +120,7 @@ export function SlashMenu({ editor }: { editor: Editor }) {
         onChoose={(b, range) => {
           // 打ち込んだ「/…」を消してから、その行をブロックに変える
           editor.chain().focus().deleteRange(range).run();
-          b.run(editor, { openImageDialog: () => setImageOpen(true), openMapDialog: () => setMapOpen(true) });
+          b.run(editor, { openImageDialog: () => setImageOpen(true), openMapDialog: () => setMapOpen(true), openYoutubeDialog: () => setYoutubeOpen(true) });
         }}
       />
       <ImageDialog
@@ -138,6 +142,17 @@ export function SlashMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setMapOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <YoutubeDialog
+        open={youtubeOpen}
+        onSubmit={(url) => {
+          setYoutubeOpen(false);
+          insertYoutube(editor, url);
+        }}
+        onClose={() => {
+          setYoutubeOpen(false);
           editor.commands.focus();
         }}
       />

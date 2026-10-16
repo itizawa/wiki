@@ -68,6 +68,9 @@
 .body :global(figure.map-embed) { margin: 16px 0; }
 .body :global(figure.map-embed > iframe) { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: rgba(128, 128, 128, 0.12); }
 .body :global(figure.map-embed > figcaption) { margin-top: 6px; font-size: 0.85em; }
+.body :global(figure.video-embed) { margin: 16px 0; }
+.body :global(figure.video-embed > iframe) { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: rgba(128, 128, 128, 0.12); }
+.body :global(figure.video-embed > figcaption) { margin-top: 6px; font-size: 0.85em; }
 .body :global(details.toggle) { margin: 12px 0; }
 .body :global(details.toggle > summary) { cursor: pointer; font-weight: 600; padding: 2px 0; }
 .body :global(details.toggle > summary:hover) { color: var(--accent); }

@@ -150,7 +150,7 @@ describe("site worker", () => {
       expect(res.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
       // Google マップと、AdSense の広告の枠だけを埋め込める
       expect(res.headers.get("content-security-policy")).toContain(
-        "frame-src https://www.google.com https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://fundingchoicesmessages.google.com;",
+        "frame-src https://www.google.com https://www.youtube-nocookie.com https://*.googlesyndication.com https://*.doubleclick.net https://*.adtrafficquality.google https://fundingchoicesmessages.google.com;",
       );
       expect(res.headers.get("x-frame-options")).toBe("DENY");
       expect(res.headers.get("x-content-type-options")).toBe("nosniff");
