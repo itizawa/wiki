@@ -7,7 +7,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * API は書くだけで、消さない。消すのと、DB を見たあとで次の時刻を書き直すのは、ワーカー（apps/worker/src/tick.ts）。
  * 書き損ねても仕事は無くならない（ワーカーが1時間に1回は印に関係なく DB を見に行く）。
  */
-export type CronMarkKind = "drafts" | "scheduled" | "build" | "workflow";
+export type CronMarkKind = "drafts" | "scheduled" | "build" | "workflow" | "autoPublish";
 
 /** KV のキー。apps/worker/src/tick.ts の `CRON_MARK_KEYS` と同じ文字列にする */
 export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
@@ -19,6 +19,8 @@ export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
   build: "cron:build",
   /** 実行を待つワークフローの実行（再試行待ち・止まったまま）か、通知を待つ失敗がある。時刻は、積んだ時刻（次の Cron で見る） */
   workflow: "cron:workflow",
+  /** 「自動で公開」のページに、公開側に出していない新しい版がある。時刻は、印を書いた時刻（次の Cron で見る） */
+  autoPublish: "cron:auto-publish",
 };
 
 /** Workers KV のバインディングのうち、API が使う部分（@cloudflare/workers-types に頼らない） */

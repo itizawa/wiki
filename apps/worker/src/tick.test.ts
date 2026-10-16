@@ -11,7 +11,7 @@ const env: Env = {
 const TICK = "https://api.test/internal/tick";
 const HOOK = "https://hooks.test/deploy";
 const NOTIFY = "https://hooks.test/notify";
-const NO_NEXT = { drafts: null, scheduled: null, build: null, workflow: null };
+const NO_NEXT = { drafts: null, scheduled: null, build: null, workflow: null, autoPublish: null };
 const idle = {
   drafts: { promoted: [], skipped: 0, failed: [] },
   run: { done: [], retrying: [], failed: [] },
@@ -238,7 +238,7 @@ describe("tick with marks in KV", () => {
   it("calls the API when a mark is due, and rewrites the marks from what the API found in the DB", async () => {
     const kv = fakeKv({ drafts: minutes(-1), scheduled: minutes(60), build: minutes(-3) });
     const { impl, calls } = fakeFetch({
-      [TICK]: { ...idle, next: { drafts: minutes(4).toISOString(), scheduled: minutes(60).toISOString(), build: null, workflow: null } },
+      [TICK]: { ...idle, next: { drafts: minutes(4).toISOString(), scheduled: minutes(60).toISOString(), build: null, workflow: null, autoPublish: null } },
     });
     expect((await tick({ ...env, CRON_MARKS: kv.store }, impl, AT)).skipped).toBe(false);
     expect(calls.map((c) => c.url)).toEqual([TICK]);
@@ -324,7 +324,7 @@ describe("tick with marks in KV", () => {
     const hour = minutes(55);
     const failing = fakeFetch({}, [TICK]);
     await expect(tick({ ...env, CRON_MARKS: kv.store }, failing.impl, hour)).rejects.toThrow();
-    expect(kv.marks()).toEqual({ drafts: hour.toISOString(), build: hour.toISOString(), workflow: hour.toISOString(), scheduled: minutes(600).toISOString() });
+    expect(kv.marks()).toEqual({ drafts: hour.toISOString(), build: hour.toISOString(), workflow: hour.toISOString(), autoPublish: hour.toISOString(), scheduled: minutes(600).toISOString() });
 
     const { impl, calls } = fakeFetch({ [TICK]: idle });
     await tick({ ...env, CRON_MARKS: kv.store }, impl, minutes(60));

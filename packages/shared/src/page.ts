@@ -84,6 +84,8 @@ export type PageSummary = {
   visibility: Visibility;
   origin: "human" | "ai_draft";
   unlistedKey: string | null;
+  /** 公開中のページで、新しい版ができたら次の Cron で自動で公開するか（公開中でないあいだは、設定だけ残って何もしない） */
+  autoPublish: boolean;
   firstPublishedAt: string | null;
   updatedAt: string;
   /** 付いている管理用タグ（名前順）。公開サイトには出さない */

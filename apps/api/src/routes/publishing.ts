@@ -4,6 +4,7 @@ import {
   publishPageInput,
   rescheduleInput,
   scheduleActionInput,
+  setAutoPublishInput,
   unpublishPageInput,
   type ScheduleActionInput,
   type ScheduledAction,
@@ -90,6 +91,32 @@ export const pagePublishRoutes = new Hono<AppEnv>()
     const wikiId = c.get("wiki").id;
     const pageId = c.req.param("id");
     await db.transaction((tx) => unpublishAudited(tx, wikiId, pageId, input, auditActor(c)));
+    return c.json({ ok: true });
+  })
+  // 「新しい編集を自動で公開」の切り替え。オンにしたとき、公開側に出していない版があれば、次の Cron で出る
+  .put("/:id/auto-publish", async (c) => {
+    const { db } = c.get("deps");
+    const { enabled } = await parseJson(c, setAutoPublishInput);
+    const wikiId = c.get("wiki").id;
+    const pageId = c.req.param("id");
+    await db.transaction(async (tx) => {
+      const [page] = await tx
+        .select()
+        .from(pages)
+        .where(and(eq(pages.wikiId, wikiId), eq(pages.id, pageId), isNull(pages.deletedAt)))
+        .for("update");
+      if (!page) throw notFound(`page ${pageId}`);
+      if (page.autoPublish === enabled) return;
+      await tx.update(pages).set({ autoPublish: enabled }).where(eq(pages.id, pageId));
+      await writeAudit(tx, {
+        wikiId,
+        actor: auditActor(c),
+        action: "page_auto_publish_change",
+        target: { type: "page", id: pageId, label: page.title },
+        detail: { enabled },
+      });
+      if (enabled) markCronWork("autoPublish");
+    });
     return c.json({ ok: true });
   })
   .post("/:id/unlisted-key", async (c) => {

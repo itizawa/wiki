@@ -34,7 +34,7 @@ type BuildDecision =
  * 印の種類。値は `{"at":"<ISO の時刻>"}` で、「この時刻になったら、この種類の仕事があるかを DB に見に行く」の意味。
  * API は書くだけ（apps/api/src/cron/marks.ts）。消すのと、DB を見たあとの書き直しは、ここで行う。
  */
-export type CronMarkKind = "drafts" | "scheduled" | "build" | "workflow";
+export type CronMarkKind = "drafts" | "scheduled" | "build" | "workflow" | "autoPublish";
 
 /** KV のキー。apps/api/src/cron/marks.ts の `CRON_MARK_KEYS` と同じ文字列にする */
 export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
@@ -46,6 +46,8 @@ export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
   build: "cron:build",
   /** ワークフローの実行の再試行待ち・止まったまま・通知待ちの失敗がある */
   workflow: "cron:workflow",
+  /** 「自動で公開」のページに、公開側に出していない新しい版がある */
+  autoPublish: "cron:auto-publish",
 };
 const KINDS = Object.keys(CRON_MARK_KEYS) as CronMarkKind[];
 

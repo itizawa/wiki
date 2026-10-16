@@ -335,6 +335,7 @@ export const api = {
   publish: (id: string, input: { versionId: string; visibility: PublishVisibility; applyToDescendants?: boolean }) =>
     request<{ ok: true }>("POST", w(`/pages/${id}/publish`), input),
   unpublish: (id: string, input?: { applyToDescendants: boolean }) => request<{ ok: true }>("POST", w(`/pages/${id}/unpublish`), input),
+  setAutoPublish: (id: string, enabled: boolean) => request<{ ok: true }>("PUT", w(`/pages/${id}/auto-publish`), { enabled }),
   rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", w(`/pages/${id}/unlisted-key`)),
 
   listSchedule: (params: { from?: string; to?: string; pageId?: string; status?: string } = {}) => {
