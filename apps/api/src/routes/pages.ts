@@ -47,6 +47,7 @@ const toSummary = (p: PageRow, tags: PageTag[]): PageSummary => ({
   visibility: p.visibility,
   origin: p.origin,
   unlistedKey: p.unlistedKey,
+  autoPublish: p.autoPublish,
   firstPublishedAt: p.firstPublishedAt?.toISOString() ?? null,
   updatedAt: p.updatedAt.toISOString(),
   tags,

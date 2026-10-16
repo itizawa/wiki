@@ -15,6 +15,10 @@ export const publishPageInput = z.object({
 });
 export type PublishPageInput = z.input<typeof publishPageInput>;
 
+/** 「新しい編集を自動で公開する」の切り替え（ページごと） */
+export const setAutoPublishInput = z.object({ enabled: z.boolean() });
+export type SetAutoPublishInput = z.infer<typeof setAutoPublishInput>;
+
 /** 非公開化。本文は省略できる。 */
 export const unpublishPageInput = z.object({
   /** 配下の公開中・限定公開中のページもまとめて非公開にする */

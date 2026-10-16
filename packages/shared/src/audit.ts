@@ -43,6 +43,7 @@ export const AUDIT_ACTIONS = {
   page_unpublish: "publish",
   page_visibility_change: "publish",
   unlisted_key_rotate: "publish",
+  page_auto_publish_change: "publish",
   wiki_site_visibility: "publish",
   schedule_create: "publish",
   schedule_update: "publish",
@@ -129,7 +130,10 @@ export type AuditDetailMap = {
     from: { visibility: Visibility; versionId: string | null };
     /** 配下もまとめて同じ公開範囲にしたページの数 */
     descendants?: number;
+    /** 「自動で公開」の設定で、Cron が公開したもの（実行した主体はシステム） */
+    auto?: true;
   };
+  page_auto_publish_change: { enabled: boolean };
   page_unpublish: { from: Visibility; descendants?: number };
   page_visibility_change: { from: Visibility; to: Visibility; descendants?: number };
   unlisted_key_rotate: Record<string, never>;
@@ -314,7 +318,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       const republish = d.from.versionId !== null && d.from.visibility !== "private";
       const range = d.from.visibility === d.visibility ? VISIBILITY_LABELS[d.visibility] : `${VISIBILITY_LABELS[d.from.visibility]} → ${VISIBILITY_LABELS[d.visibility]}`;
       const below = d.descendants ? `、配下の ${d.descendants} ページも同じ公開範囲に` : "";
-      return [...quoted(t), { text: `を${republish ? "公開し直しました" : "公開しました"}（${range}${below}）` }];
+      const how = d.auto ? "自動で" : "";
+      return [...quoted(t), { text: `を${how}${republish ? "公開し直しました" : "公開しました"}（${range}${below}）` }];
     }
     case "page_unpublish": {
       const below = entry.detail.descendants ? `、配下の ${entry.detail.descendants} ページも` : "";
@@ -325,6 +330,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       const below = d.descendants ? `、配下の ${d.descendants} ページも` : "";
       return [...quoted(t), { text: `の公開範囲を変更しました（${VISIBILITY_LABELS[d.from]} → ${VISIBILITY_LABELS[d.to]}${below}）` }];
     }
+    case "page_auto_publish_change":
+      return [...quoted(t), { text: entry.detail.enabled ? "の「新しい編集を自動で公開」をオンにしました" : "の「新しい編集を自動で公開」をオフにしました" }];
     case "unlisted_key_rotate":
       return [...quoted(t), { text: "の限定公開 URL を再発行しました" }];
     case "schedule_create":

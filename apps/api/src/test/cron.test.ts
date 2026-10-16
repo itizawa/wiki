@@ -205,10 +205,11 @@ describe("marks for the cron worker", () => {
 describe("POST /internal/tick", () => {
   const NOTHING = {
     drafts: { promoted: [], skipped: 0, failed: [] },
+    autoPublish: { published: [], failed: [] },
     run: { done: [], retrying: [], failed: [] },
     workflow: { done: [], retrying: [], skipped: [], failed: [] },
     build: { trigger: false, reason: "no_changes" },
-    next: { drafts: null, scheduled: null, build: null, workflow: null },
+    next: { drafts: null, scheduled: null, build: null, workflow: null, autoPublish: null },
   };
 
   it("needs the token of the cron worker, and reports nothing left when there is nothing to do", async () => {

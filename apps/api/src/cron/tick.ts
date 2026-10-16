@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, min } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { pageDrafts, pages, scheduledActions, wikis } from "../db/schema";
 import { DRAFT_IDLE_MS, DRAFT_MAX_AGE_MS, promotableDraft, promoteDrafts, type PromoteDraftsResult } from "../pages/versions";
+import { hasAutoPublishable, runAutoPublish, type AutoPublishResult } from "../publishing/auto";
 import { requestBuild, type BuildDecision } from "../publishing/builds";
 import { runDueActions, type RunSummary } from "../publishing/scheduler";
 import { nextWorkflowAt, runDueWorkflowRuns, type WorkflowSummary } from "../workflows/retry";
@@ -12,6 +13,8 @@ export type TickResult = {
   /** 下書きを版にした結果。この段が失敗したら null */
   drafts: PromoteDraftsResult | null;
   run: RunSummary;
+  /** 「自動で公開」のページを公開した結果。この段が失敗したら null */
+  autoPublish: AutoPublishResult | null;
   /** ワークフローの取りこぼしを拾った結果（`opts.workflow` が無ければ、動かさず空） */
   workflow: WorkflowSummary;
   build: BuildDecision;
@@ -25,9 +28,10 @@ export type TickResult = {
 /**
  * 5分おきの Cron の1回分（ワーカーが `/internal/tick` で呼ぶ）。全 wiki のぶんをまとめて行う。
  * 1) 編集が一段落した下書きを版にする（失敗しても、予約の実行と公開ビルドは止めない）
- * 2) 期限の来た予約を実行する
- * 3) 取りこぼしたワークフローの実行（再試行待ち・止まったまま）を拾い、続きから動かす。失敗が確定したものを返す
- * 4) 公開イベントをデバウンスし、ビルドを起動するか決める（起動するのはワーカー）
+ * 2) 「自動で公開」のページの最新版を公開する（失敗しても、あとの段は止めない）
+ * 3) 期限の来た予約を実行する
+ * 4) 取りこぼしたワークフローの実行（再試行待ち・止まったまま）を拾い、続きから動かす。失敗が確定したものを返す
+ * 5) 公開イベントをデバウンスし、ビルドを起動するか決める（起動するのはワーカー）
  */
 export async function runTick(
   db: Db,
@@ -41,11 +45,19 @@ export async function runTick(
   } catch (err) {
     console.error("drafts promote failed", err);
   }
+  // 公開イベントを書くので、ビルドの判断（requestBuild）より前に行う
+  let autoPublish: AutoPublishResult | null = null;
+  try {
+    autoPublish = await runAutoPublish(db);
+  } catch (err) {
+    console.error("auto publish failed", err);
+  }
   const run = await runDueActions(db, now);
   const workflow: WorkflowSummary = opts.workflow ? await runDueWorkflowRuns(db, opts.workflow, now) : { done: [], retrying: [], skipped: [], failed: [] };
   const build = await requestBuild(db, { ...opts, now });
   return {
     drafts,
+    autoPublish,
     run,
     workflow,
     build,
@@ -54,6 +66,8 @@ export async function runTick(
       drafts: drafts ? await nextDraftAt(db) : now.toISOString(),
       scheduled: await nextScheduledAt(db),
       workflow: await nextWorkflowAt(db, now),
+      // 公開できずに残ったページ（親より広い公開範囲になるなど）は、次の回にもう一度試す
+      autoPublish: autoPublish && !(await hasAutoPublishable(db)) ? null : now.toISOString(),
       // デバウンス中と、起動を頼んだビルド（起動済みの知らせが来るまで）は、次の回にも見る
       build: build.trigger || build.reason === "debouncing" ? now.toISOString() : null,
     },

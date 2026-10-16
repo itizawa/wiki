@@ -86,6 +86,8 @@ export const pages = pgTable(
     /** unlisted時のみ。推測不能なランダム値（128bit以上） */
     unlistedKey: text("unlisted_key").unique(),
     origin: text("origin", { enum: ["human", "ai_draft"] }).notNull().default("human"),
+    /** 公開中のページで、新しい版ができたら Cron が最新版で公開し直す（apps/api/src/publishing/auto.ts） */
+    autoPublish: boolean("auto_publish").notNull().default(false),
     /** 内部管理用（公開側には出さない） */
     aiAssisted: boolean("ai_assisted").notNull().default(false),
     /** 記事の公開日（表示・RSS・並び順） */

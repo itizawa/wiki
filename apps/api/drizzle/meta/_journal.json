@@ -351,6 +351,13 @@
       "when": 1792069765650,
       "tag": "0049_page_audio",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792069765651,
+      "tag": "0050_page_auto_publish",
+      "breakpoints": true
     }
   ]
 }
