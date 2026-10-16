@@ -11,10 +11,11 @@ const env: Env = {
 const TICK = "https://api.test/internal/tick";
 const HOOK = "https://hooks.test/deploy";
 const NOTIFY = "https://hooks.test/notify";
-const NO_NEXT = { drafts: null, scheduled: null, build: null };
+const NO_NEXT = { drafts: null, scheduled: null, build: null, workflow: null, autoPublish: null };
 const idle = {
   drafts: { promoted: [], skipped: 0, failed: [] },
   run: { done: [], retrying: [], failed: [] },
+  workflow: { done: [], retrying: [], skipped: [], failed: [] },
   build: { trigger: false, reason: "no_changes" },
   next: NO_NEXT,
 };
@@ -100,6 +101,43 @@ describe("tick", () => {
     expect(calls.some((c) => c.url === HOOK)).toBe(false);
   });
 
+  it("notifies the workflow runs that failed for good, once, with the wiki name, the page title and the reason", async () => {
+    const { impl, calls } = fakeFetch({
+      [TICK]: { ...idle, workflow: { ...idle.workflow, failed: [{ id: "r1", error: "認証に失敗した", wikiName: "開発ノート", pageTitle: "はじめに" }] } },
+    });
+    ran(await tick(env, impl));
+    const notices = calls.filter((c) => c.url === NOTIFY).map((c) => JSON.parse(c.body!).text as string);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("ワークフローの実行に失敗しました");
+    expect(notices[0]).toContain("【開発ノート】「はじめに」: 認証に失敗した");
+    // 失敗の無い回は、通知しない
+    const quiet = fakeFetch({ [TICK]: idle });
+    ran(await tick(env, quiet.impl));
+    expect(quiet.calls.some((c) => c.url === NOTIFY)).toBe(false);
+  });
+
+  it("keeps going when the notification of a workflow failure does not go through", async () => {
+    const { impl, calls } = fakeFetch(
+      {
+        [TICK]: {
+          ...idle,
+          workflow: { ...idle.workflow, failed: [{ id: "r1", error: "boom", wikiName: "開発ノート", pageTitle: "はじめに" }] },
+          build: { trigger: true, buildId: "b", contentHash: "h", attempts: 1 },
+        },
+      },
+      [NOTIFY],
+    );
+    const r = ran(await tick(env, impl));
+    expect(r.deployed).toBe(true);
+    expect(calls.map((c) => c.url)).toContain("https://api.test/internal/builds/b/triggered");
+  });
+
+  it("works with an API that does not return the workflow yet", async () => {
+    const { workflow: _w, ...old } = idle;
+    const { impl } = fakeFetch({ [TICK]: { ...old, next: { drafts: null, scheduled: null, build: null } } });
+    expect(ran(await tick(env, impl)).workflow).toBeNull();
+  });
+
   it("passes on what the API did with the drafts (null when that step failed)", async () => {
     const promoted = fakeFetch({ [TICK]: { ...idle, drafts: { promoted: ["page1"], skipped: 1, failed: [] } } });
     expect(ran(await tick(env, promoted.impl)).drafts).toEqual({ promoted: ["page1"], skipped: 1, failed: [] });
@@ -136,6 +174,23 @@ describe("tick", () => {
 });
 
 describe("tick with marks in KV", () => {
+  it("calls the API when the workflow mark is due, clears it, and writes the next time back", async () => {
+    const kv = fakeKv({ workflow: AT });
+    const { impl, calls } = fakeFetch({ [TICK]: { ...idle, next: { ...NO_NEXT, workflow: minutes(10).toISOString() } } });
+    expect(ran(await tick({ ...env, CRON_MARKS: kv.store }, impl, AT)).skipped).toBe(false);
+    expect(calls.map((c) => c.url)).toEqual([TICK]);
+    expect(kv.deletes).toContain(CRON_MARK_KEYS.workflow);
+    expect(kv.marks().workflow).toBe(minutes(10).toISOString());
+    expect(CRON_MARK_KEYS.workflow).toBe("cron:workflow");
+  });
+
+  it("does not call the API for a workflow mark that is not due yet", async () => {
+    const kv = fakeKv({ workflow: minutes(30) });
+    const { impl, calls } = fakeFetch({ [TICK]: idle });
+    expect((await tick({ ...env, CRON_MARKS: kv.store }, impl, AT)).skipped).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
   it("calls the API every time when there is no KV binding (local development)", async () => {
     const { impl, calls } = fakeFetch({ [TICK]: idle });
     expect((await tick(env, impl, AT)).skipped).toBe(false);
@@ -183,7 +238,7 @@ describe("tick with marks in KV", () => {
   it("calls the API when a mark is due, and rewrites the marks from what the API found in the DB", async () => {
     const kv = fakeKv({ drafts: minutes(-1), scheduled: minutes(60), build: minutes(-3) });
     const { impl, calls } = fakeFetch({
-      [TICK]: { ...idle, next: { drafts: minutes(4).toISOString(), scheduled: minutes(60).toISOString(), build: null } },
+      [TICK]: { ...idle, next: { drafts: minutes(4).toISOString(), scheduled: minutes(60).toISOString(), build: null, workflow: null, autoPublish: null } },
     });
     expect((await tick({ ...env, CRON_MARKS: kv.store }, impl, AT)).skipped).toBe(false);
     expect(calls.map((c) => c.url)).toEqual([TICK]);
@@ -269,7 +324,7 @@ describe("tick with marks in KV", () => {
     const hour = minutes(55);
     const failing = fakeFetch({}, [TICK]);
     await expect(tick({ ...env, CRON_MARKS: kv.store }, failing.impl, hour)).rejects.toThrow();
-    expect(kv.marks()).toEqual({ drafts: hour.toISOString(), build: hour.toISOString(), scheduled: minutes(600).toISOString() });
+    expect(kv.marks()).toEqual({ drafts: hour.toISOString(), build: hour.toISOString(), workflow: hour.toISOString(), autoPublish: hour.toISOString(), scheduled: minutes(600).toISOString() });
 
     const { impl, calls } = fakeFetch({ [TICK]: idle });
     await tick({ ...env, CRON_MARKS: kv.store }, impl, minutes(60));

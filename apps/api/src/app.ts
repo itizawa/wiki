@@ -6,17 +6,24 @@ import { homeRoutes } from "./routes/home";
 import { collectCronMarks } from "./cron/marks";
 import type { AppEnv, Deps } from "./env";
 import { HttpError } from "./errors";
+import { audioSignedRoutes, pageAudioRoutes } from "./audio/routes";
 import { imageServeRoutes, imageUploadRoutes } from "./images/routes";
 import { mcpRoutes } from "./mcp/server";
 import { oauthAdminRoutes, oauthRoutes, wellKnownRoutes } from "./oauth/routes";
 import { analyticsRoutes } from "./routes/analytics";
+import { costRoutes } from "./routes/costs";
 import { editRequestRoutes, wikiEditRequestRoutes } from "./routes/editRequests";
 import { exportRoutes, internalRoutes } from "./routes/internal";
+import { linkPreviewRoutes } from "./routes/linkPreview";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
+import { publicRatingRoutes } from "./routes/ratings";
 import { snsRoutes, xCallbackRoutes } from "./routes/sns";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
+import { routineRoutes } from "./routes/routines";
+import { pageTagRoutes, tagRoutes } from "./routes/tags";
+import { routineChoiceRoutes, workflowRoutes } from "./routes/workflow";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
@@ -58,7 +65,8 @@ export function createApp(deps: Deps) {
   // 画像（/images）のようにキャッシュさせる応答には Set-Cookie を付けない
   for (const path of ["/auth/*", "/admin/*", "/invites/*"]) app.use(path, clearLegacyCookies);
   // 状態を変えるリクエストは管理画面のオリジンからのみ受け付ける（CSRF対策）。
-  // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外
+  // /internal・/oauth・/mcp はCookieを使わずトークン（またはPKCE）で認証するので対象外。
+  // /public はログインせずに使う経路（公開サイトの読者の評価）で、受けるオリジンは経路ごとに確かめる
   app.use("*", async (c, next) => {
     const path = c.req.path;
     const safe =
@@ -67,6 +75,7 @@ export function createApp(deps: Deps) {
       c.req.method === "OPTIONS" ||
       path.startsWith("/internal/") ||
       path.startsWith("/oauth/") ||
+      path.startsWith("/public/") ||
       path === "/mcp" ||
       path.startsWith("/mcp/");
     if (!safe && c.req.header("origin") !== deps.config.adminOrigin) {
@@ -81,12 +90,16 @@ export function createApp(deps: Deps) {
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
   app.route("/images", imageServeRoutes);
+  // MCP が返す、署名つきの音声の取り出し（ログインは要らないが、署名と期限を確かめる）
+  app.route("/audio", audioSignedRoutes);
   // 招待リンクを開いた人向け。メンバーでなくても使える
   app.route("/invites", inviteRoutes);
   // 外部のアプリ（MCP クライアント）：OAuth 2.1 の認可サーバーと、MCP サーバー
   app.route("/.well-known", wellKnownRoutes);
   app.route("/oauth", oauthRoutes);
   app.route("/mcp", mcpRoutes);
+  // 公開サイトの読者が使う（ログインは要らない）
+  app.route("/public/w/:wikiKey/pages/:pageId/rating", publicRatingRoutes);
 
   // ログインしていて、オーナーか、どれかの wiki のメンバーである人だけ。リクエストのたびに DB で確かめる
   const admin = new Hono<AppEnv>();
@@ -101,17 +114,25 @@ export function createApp(deps: Deps) {
   admin.route("/wikis", wikiRoutes);
   admin.route("/users", userRoutes);
   admin.route("/audit-logs", globalAuditRoutes);
+  admin.route("/costs", costRoutes);
+  admin.route("/routines", routineRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
   const wiki = new Hono<AppEnv>();
   wiki.route("/pages", pageRoutes);
+  wiki.route("/pages", pageAudioRoutes);
   wiki.route("/pages", pagePublishRoutes);
   wiki.route("/pages", editRequestRoutes);
   wiki.route("/edit-requests", wikiEditRequestRoutes);
   wiki.route("/schedule", scheduleRoutes);
   wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);
+  wiki.route("/link-preview", linkPreviewRoutes);
   wiki.route("/stars", starRoutes);
+  wiki.route("/tags", tagRoutes);
+  wiki.route("/workflow", workflowRoutes);
+  wiki.route("/routines", routineChoiceRoutes);
+  wiki.route("/pages", pageTagRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);
   wiki.route("/images", imageUploadRoutes);

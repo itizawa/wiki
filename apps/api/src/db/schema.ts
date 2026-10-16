@@ -48,6 +48,8 @@ export const wikis = pgTable("wikis", {
   searchConsoleVerification: text("search_console_verification"),
   /** GA4 のプロパティ ID（数字だけ）。「アクセス解析」が数字を読むのに使う。公開サイトには出さない */
   gaPropertyId: text("ga_property_id"),
+  /** Google AdSense のパブリッシャー ID（`ca-pub-` で始まる）。null なら公開サイトに AdSense のタグと ads.txt を出さない */
+  adsensePublisherId: text("adsense_publisher_id"),
   /** 公開サイトを出しているか。false なら、ページごとの公開範囲は変えずに、サイトだけをビルドから外す（アーカイブとは別） */
   sitePublic: boolean("site_public").notNull().default(true),
   /** nullなら使用中 */
@@ -75,6 +77,8 @@ export const pages = pgTable(
     title: text("title").notNull(),
     /** アイコン（絵文字1つ）。nullなら付けていない。版には入れない */
     icon: text("icon"),
+    /** カバー画像のパス（アップロードした画像 `/images/{name}` か、用意した画像 `/covers/{key}.svg`）。nullなら付けていない。版には入れない */
+    cover: text("cover"),
     headVersionId: uuid("head_version_id").notNull(),
     /** nullなら未公開 */
     publishedVersionId: uuid("published_version_id"),
@@ -82,6 +86,8 @@ export const pages = pgTable(
     /** unlisted時のみ。推測不能なランダム値（128bit以上） */
     unlistedKey: text("unlisted_key").unique(),
     origin: text("origin", { enum: ["human", "ai_draft"] }).notNull().default("human"),
+    /** 公開中のページで、新しい版ができたら Cron が最新版で公開し直す（apps/api/src/publishing/auto.ts） */
+    autoPublish: boolean("auto_publish").notNull().default(false),
     /** 内部管理用（公開側には出さない） */
     aiAssisted: boolean("ai_assisted").notNull().default(false),
     /** 記事の公開日（表示・RSS・並び順） */
@@ -367,6 +373,230 @@ export const pageStars = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.pageId] })],
 );
 
+/**
+ * ページの評価（星1〜5）。本文に `@rating` を書いたページに、公開サイトの読者がログインせずに付ける。1人（読者のブラウザが作る ID）につき1ページ1件で、付け直すと上書きする。
+ * 読者の ID はそのまま持たず、SHA-256 にして持つ。どの wiki のものかは、ページで決まる。
+ */
+export const pageRatings = pgTable(
+  "page_ratings",
+  {
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    raterHash: text("rater_hash").notNull(),
+    score: integer("score").notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.raterHash] }), check("page_ratings_score_check", sql`${t.score} between 1 and 5`)],
+);
+
+/**
+ * ページに添付した音声（動画のナレーションなど、公開前の素材）。本文には書かず、公開サイトにも出さない。
+ * 中身は別の R2 バケット（`AUDIO`）に、`{id}.{拡張子}` の名前で置く。ページを完全に削除したら、行も中身も消す。
+ */
+export const pageAudio = pgTable(
+  "page_audio",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** ファイル名（録音は日時から付けた名前） */
+    name: text("name").notNull(),
+    /** 中身から判定した形式（shared の AUDIO_TYPES） */
+    contentType: text("content_type").notNull(),
+    bytes: integer("bytes").notNull(),
+    /** 長さ（ミリ秒）。ブラウザが測れたときだけ */
+    durationMs: integer("duration_ms"),
+    createdAt: createdAt(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => users.id),
+  },
+  (t) => [index("page_audio_page_idx").on(t.pageId, t.createdAt)],
+);
+
+/** 管理用タグ。wiki ごとに管理者が作り、ページに付ける。公開サイトには出さない（ワークフローの起点やページの整理に使う） */
+export const wikiTags = pgTable(
+  "wiki_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    name: text("name").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("wiki_tags_wiki_name_unique").on(t.wikiId, t.name)],
+);
+
+/** ページに付いているタグ。ゴミ箱のページのぶんは残し、完全に削除したときに消す */
+export const pageTags = pgTable(
+  "page_tags",
+  {
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => wikiTags.id),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.pageId, t.tagId] }), index("page_tags_tag_idx").on(t.tagId)],
+);
+
+/**
+ * ワークフローが呼ぶ Claude Routine の登録（全体で1か所。オーナーだけが扱う）。
+ * トークンは `ROUTINE_TOKEN_KEY` で暗号化して持つ（`crypto/token.ts`。context は `routine:{id}`）。API の応答には返さない
+ */
+export const workflowRoutines = pgTable("workflow_routines", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  url: text("url").notNull(),
+  tokenEnc: text("token_enc").notNull(),
+  createdAt: createdAt(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
+/** ワークフロー：wiki ごとに名前を付けて複数持つ、ブロックの入れ物。消すと、そのブロックと実行の履歴も消える（cascade）。名前は wiki の中で一意 */
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    name: text("name").notNull(),
+    createdAt: createdAt(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (t) => [unique("workflows_wiki_name_unique").on(t.wikiId, t.name)],
+);
+
+/**
+ * ワークフローのブロック：ワークフローごとの「1つのトリガー ＋ アクションの並び」。ブロック同士は独立していて、順番は持たない（作った順）。
+ * トリガーの種類ごとの列は、いまは `trigger_tag_id`（タグが付いたとき）だけ。種類を足すときは、列を足して check を直す
+ */
+export const workflowBlocks = pgTable(
+  "workflow_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    triggerType: text("trigger_type").notNull(),
+    /** トリガーのタグ（`tag_attached` のときだけ。`page_first_published` では null） */
+    triggerTagId: uuid("trigger_tag_id").references(() => wikiTags.id),
+    /** 時刻で起動するときの、対象のページ（`schedule` のときだけ） */
+    triggerPageId: text("trigger_page_id").references(() => pages.id),
+    /** 時刻で起動する時刻（`HH:MM`、JST。`schedule` のときだけ） */
+    triggerTime: text("trigger_time"),
+    /** 時刻で起動する曜日（0 が日曜。`schedule` のときだけ。毎日なら 0〜6 すべて） */
+    triggerWeekdays: integer("trigger_weekdays").array(),
+    /** 時刻で起動した（または、トリガーを保存した）時刻。これより後の時刻が来ていたら起動する（二重に積まないための印） */
+    lastFiredAt: timestamp("last_fired_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (t) => [
+    index("workflow_blocks_wiki_idx").on(t.wikiId, t.createdAt),
+    index("workflow_blocks_workflow_idx").on(t.workflowId, t.createdAt),
+    index("workflow_blocks_trigger_tag_idx").on(t.triggerTagId),
+    check(
+      "workflow_blocks_trigger_type_check",
+      sql`(${t.triggerType} = 'tag_attached' and ${t.triggerTagId} is not null) or (${t.triggerType} = 'page_first_published' and ${t.triggerTagId} is null) or (${t.triggerType} = 'schedule' and ${t.triggerTagId} is null and ${t.triggerPageId} is not null and ${t.triggerTime} is not null and ${t.triggerWeekdays} is not null)`,
+    ),
+  ],
+);
+
+/** ブロックのアクション（`position` の昇順に実行）。種類ごとに必要な列だけが入る（check で縛る） */
+export const workflowActions = pgTable(
+  "workflow_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockId: uuid("block_id")
+      .notNull()
+      .references(() => workflowBlocks.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    type: text("type").notNull(),
+    routineId: uuid("routine_id").references(() => workflowRoutines.id),
+    tagId: uuid("tag_id").references(() => wikiTags.id),
+    /** 「Routine を呼ぶ」で Routine に渡す依頼文（call_routine のときだけ） */
+    instruction: text("instruction"),
+  },
+  (t) => [
+    unique("workflow_actions_block_position_unique").on(t.blockId, t.position),
+    index("workflow_actions_routine_idx").on(t.routineId),
+    index("workflow_actions_tag_idx").on(t.tagId),
+    check(
+      "workflow_actions_type_check",
+      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.instruction} is not null and ${t.tagId} is null) or (${t.type} in ('remove_tag', 'add_tag') and ${t.tagId} is not null and ${t.routineId} is null)`,
+    ),
+  ],
+);
+
+/**
+ * ワークフローの実行：タグが付いたときに、ブロックごとに1件積む。Routine へ渡す文にも `id` を入れ、二重実行の目印にする。
+ * ブロック・タグ・版は、消えても記録を残すので外部キーにしない（`block_id` だけ、消えたら null）。
+ * 状態：pending（待ち。再試行で戻すのもここ）／running（実行中。落ちるとここに残る）／succeeded／failed／skipped
+ */
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    /** 所属のワークフロー。ワークフローを消すと、履歴もいっしょに消える */
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    blockId: uuid("block_id").references(() => workflowBlocks.id, { onDelete: "set null" }),
+    pageId: text("page_id")
+      .notNull()
+      .references(() => pages.id),
+    /** トリガーのタグ（積んだ時点）。タグがトリガーでない実行（初めて公開されたとき）は null */
+    tagId: uuid("tag_id"),
+    /** 積んだトリガーの種類（`tag_attached` / `page_first_published` / `schedule`） */
+    triggerType: text("trigger_type").notNull().default("tag_attached"),
+    /** 積んだ時点の、ページの最新の保存済みの版。版が無かったときは null */
+    versionId: uuid("version_id"),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    /** `running` にした（実行を始めた）時刻。`running` のまま一定時間たった実行は、落ちたものとして Cron が拾う */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /** 失敗の確定を、ワーカーに返して通知を頼んだ時刻（1回だけ返すための印） */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("workflow_runs_status_idx").on(t.status, t.createdAt),
+    index("workflow_runs_wiki_idx").on(t.wikiId, t.createdAt),
+    index("workflow_runs_workflow_idx").on(t.workflowId, t.createdAt),
+    check("workflow_runs_status_check", sql`${t.status} in ('pending', 'running', 'succeeded', 'failed', 'skipped')`),
+  ],
+);
+
+/** 実行の中身：積んだ時点のアクションの写し（あとでブロックを直しても変わらない）。`result` にトークンは入れない */
+export const workflowRunActions = pgTable(
+  "workflow_run_actions",
+  {
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    type: text("type").notNull(),
+    routineId: uuid("routine_id"),
+    tagId: uuid("tag_id"),
+    /** 積んだ時点の依頼文の写し（call_routine のときだけ） */
+    instruction: text("instruction"),
+    status: text("status").notNull().default("pending"),
+    result: jsonb("result"),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.runId, t.position] }),
+    check("workflow_run_actions_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // 4.2 ツリー
 // 運用するのは、wiki ごとに primary ツリー1本だけ。複数ツリー前提のテーブル形は変えずに残している。
@@ -581,7 +811,7 @@ export const invites = pgTable(
 
 /**
  * wiki につないだ SNS のアカウント（いまは X だけ）。wiki と SNS の組に1つ。
- * トークンは `SNS_TOKEN_KEY` で暗号化して持つ（`sns/crypto.ts`）。同じアカウントを複数の wiki につないでもよい。
+ * トークンは `SNS_TOKEN_KEY` で暗号化して持つ（`crypto/token.ts`）。同じアカウントを複数の wiki につないでもよい。
  */
 export const wikiSnsAccounts = pgTable(
   "wiki_sns_accounts",
@@ -733,6 +963,21 @@ export const oauthTokens = pgTable(
  * Google へ問い合わせた結果の控え。wiki・種類・期間ごとに1行で、同じ期間は1時間のあいだ使い回す。
  * 問い合わせが失敗したときは `data` と `fetched_at` を残し、`error` と `attempted_at` だけを書き換える（前に取れたぶんを「◯時点の数字」として出す）。
  */
+/**
+ * 外部の URL の OGP（タイトル・説明・画像・サイト名）の取得結果。`GET /link-preview` と、公開時の保存が使う。
+ * 取れなかった URL も `ok = false` で残し、短い間は取り直さない（期限は linkPreview/service.ts）。
+ * 画像は URL だけを持ち、ファイルそのものは保存しない。
+ */
+export const linkPreviews = pgTable("link_previews", {
+  url: text("url").primaryKey(),
+  ok: boolean("ok").notNull(),
+  title: text("title"),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  siteName: text("site_name"),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+});
+
 export const analyticsSnapshots = pgTable(
   "analytics_snapshots",
   {
@@ -752,4 +997,25 @@ export const analyticsSnapshots = pgTable(
     error: text("error"),
   },
   (t) => [primaryKey({ columns: [t.wikiId, t.kind, t.days] }), check("analytics_snapshots_kind_check", sql`${t.kind} in ('ga', 'search_console')`)],
+);
+
+/**
+ * 運用コスト（使用量）の控え。サービスと月（UTC の `YYYY-MM`）ごとに1行。
+ * 取得に失敗しても、前に取れた usage は残す（画面は「◯時点の数字」として出す）。月ごとに1行なので増え方は小さく、消す仕組みは無い
+ */
+export const costSnapshots = pgTable(
+  "cost_snapshots",
+  {
+    service: text("service").notNull(),
+    period: text("period").notNull(),
+    /** 取れた使用量（`CostUsage`）。1回も取れていなければ null */
+    usage: jsonb("usage"),
+    /** usage を取った日時 */
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** 最後に取りにいった日時（失敗したときも入る） */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull(),
+    /** 最後の取得が失敗した理由（`CostFailure`）。成功したら null */
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.service, t.period] })],
 );

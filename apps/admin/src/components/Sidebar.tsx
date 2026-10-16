@@ -1,4 +1,4 @@
-import { Calendar, ChartColumn, Check, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2 } from "lucide-react";
+import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Workflow } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import {
   DndContext,
@@ -136,6 +136,8 @@ export function Sidebar(props: {
   /** Google アカウントの画像の URL。無ければ null（表示名の頭文字を出す） */
   pictureUrl: string | null;
   onCollapse?: () => void;
+  /** 重ねて一時的に開いているとき、「常に開く」に切り替える */
+  onPin?: () => void;
   onNavigate?: () => void;
   /** コマンドメニュー（⌘K）を開く */
   onOpenCommands: () => void;
@@ -143,6 +145,7 @@ export function Sidebar(props: {
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
 
@@ -197,6 +200,13 @@ export function Sidebar(props: {
             </IconButton>
           </Tooltip>
         )}
+        {props.onPin && (
+          <Tooltip title="サイドバーを常に開く (⌘.)">
+            <IconButton size="small" aria-label="サイドバーを常に開く" onClick={props.onPin}>
+              <Pin size={18} />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
 
       <Box ref={setScrollEl} sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 1, pb: 2 }}>
@@ -204,6 +214,9 @@ export function Sidebar(props: {
           検索
         </NavItem>
         <NavItem to="/w/$wikiKey" exact icon={<House size={18} />} onClick={props.onNavigate}>
+          ダッシュボード
+        </NavItem>
+        <NavItem to="/w/$wikiKey/pages" icon={<FileText size={18} />} onClick={props.onNavigate}>
           すべてのページ
         </NavItem>
         <EditRequestsNavItem onClick={props.onNavigate} />
@@ -214,13 +227,20 @@ export function Sidebar(props: {
         <NavItem to="/w/$wikiKey/analytics" icon={<ChartColumn size={18} />} onClick={props.onNavigate}>
           アクセス解析
         </NavItem>
+        {/* テンプレートの一覧と、ゴミ箱に入れたページの一覧。どちらも wiki のオブジェクトの一覧なので、入口を常に出す。下の階層（テンプレートの編集）でも選ばれた見た目になる */}
         <NavItem to="/w/$wikiKey/templates" icon={<LayoutTemplate size={18} />} onClick={props.onNavigate}>
           テンプレート
         </NavItem>
         <NavItem to="/w/$wikiKey/trash" icon={<Trash2 size={18} />} onClick={props.onNavigate}>
           ゴミ箱
         </NavItem>
-        {/* この wiki の設定（一般・外観・トップページ・連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
+        {/* ブロックと実行の履歴。設定とは独立した機能なので、設定とは別の項目にする。管理者だけ */}
+        {role === "admin" && (
+          <NavItem to="/w/$wikiKey/workflows" icon={<Workflow size={18} />} onClick={props.onNavigate}>
+            ワークフロー
+          </NavItem>
+        )}
+        {/* この wiki の設定（一般・外観・トップページ・Google 連携・メンバー・監査ログのタブ）。どのタブを開いていても選ばれた見た目にする */}
         <NavItem to="/w/$wikiKey/settings" icon={<SlidersHorizontal size={18} />} onClick={props.onNavigate}>
           設定
         </NavItem>
@@ -508,7 +528,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             "&:hover": { bgcolor: "action.hover" },
           }}
         >
-          <WikiIcon wiki={wiki} />
+          <WikiIcon wiki={wiki} preferFavicon />
           <Box sx={{ flex: 1, minWidth: 0, lineHeight: 1.25 }}>
             <Box component="strong" sx={{ ...ellipsis, display: "block", fontWeight: 600 }}>
               {wiki.name}
@@ -532,7 +552,7 @@ function WikiSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             onClick={close}
             sx={{ gap: 1.5, minHeight: 52, py: 0.75 }}
           >
-            <WikiIcon wiki={w} size={36} />
+            <WikiIcon wiki={w} size={36} preferFavicon />
             <ListItemText
               primary={w.name}
               secondary={w.key}
@@ -688,7 +708,7 @@ function StarredRow({ page, menuOpen, onOpenMenu, onNavigate }: { page: RowMenuP
           underline="none"
           sx={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", gap: 0.75, color: "inherit" }}
         >
-          <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />
+          {page.icon ? <RowEmoji icon={page.icon} /> : <Box component={Star} size={18} fill="currentColor" sx={{ flexShrink: 0, color: "warning.main" }} />}
           <EllipsisText>{page.title}</EllipsisText>
         </RouterLink>
         {/* 「…」を押しても、行のドラッグ（並べ替え）が始まらないようにする */}
@@ -899,6 +919,7 @@ function DocumentTree(props: {
 
   const treeSx = [props.busy && { opacity: 0.6, pointerEvents: "none" }];
   const draggingNode = dragging ? tree.nodes.find((n) => n.nodeId === dragging) : undefined;
+  const draggingIcon = draggingNode ? data.pages[draggingNode.pageId]?.icon : null;
 
   return (
     <DndContext
@@ -924,6 +945,7 @@ function DocumentTree(props: {
       <DragOverlay>
         {draggingNode && (
           <Paper variant="outlined" sx={{ px: 1, py: 0.5, fontSize: "0.9rem", borderColor: "primary.main", boxShadow: 3 }}>
+            {draggingIcon && <RowEmoji icon={draggingIcon} sx={{ mr: 0.75 }} />}
             {data.pages[draggingNode.pageId]?.title ?? draggingNode.pageId}
           </Paper>
         )}
@@ -992,6 +1014,15 @@ function useTreeItemProps(ctx: TreeContext, node: TreeNode) {
     return page ? treeItemLabel(page.title, (page.visibility ?? "private") as Visibility) : node.pageId;
   });
   return { "data-node-id": node.nodeId, tabIndex: tabStop ? 0 : -1, "aria-label": label, sx: treeItemSx };
+}
+
+/** 行のタイトルの左に出す、ページに設定した絵文字。飾りなので読み上げない。幅は縮めない（タイトルの省略は `EllipsisText` が受け持つ） */
+function RowEmoji({ icon, sx }: { icon: string; sx?: SxProps<Theme> }) {
+  return (
+    <Box component="span" aria-hidden="true" sx={[{ flexShrink: 0, lineHeight: 1, fontSize: "1rem" }, ...(Array.isArray(sx) ? sx : [sx])]}>
+      {icon}
+    </Box>
+  );
 }
 
 /**
@@ -1149,7 +1180,7 @@ const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNo
   const title = page?.title ?? node.pageId;
   const visibility = (page?.visibility ?? "private") as Visibility;
 
-  // 行のアイコンは出さない（どのページも同じで見分ける手がかりにならず、タイトルの幅を狭めるため）
+  // 行のアイコンは、絵文字を設定したページだけタイトルの左に出す（どのページにも同じ印を付けても見分ける手がかりにならず、タイトルの幅を狭めるだけのため）
   // 行の高さいっぱいを押せるようにする（文字の高さだけだと、行の上下の余白を押しても開かない）
   const labelSx = { ...ellipsis, alignSelf: "stretch", display: "flex", alignItems: "center", pl: 0.25, color: "inherit", textDecoration: "none" };
 
@@ -1187,6 +1218,7 @@ const TreeRowBar = memo(function TreeRowBar({ node, depth, ctx }: { node: TreeNo
         <Box component={ChevronRight} size={18} sx={{ transition: moves ? "transform 120ms" : "none", transform: isOpen ? "rotate(90deg)" : "none" }} />
       </IconButton>
       <RouterLink {...pageLink(node.pageId)} draggable={false} tabIndex={-1} onClick={ctx.onNavigate} underline="none" sx={labelSx}>
+        {page?.icon && <RowEmoji icon={page.icon} sx={{ mr: 0.5 }} />}
         <EllipsisText>{title}</EllipsisText>
         <VisibilityMark visibility={visibility} />
       </RouterLink>

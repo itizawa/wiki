@@ -5,6 +5,13 @@
     {
       "key": "notes",
       "name": "開発ノート",
+      "home": {
+        "introMd": "",
+        "blocks": [
+          { "id": "grid0latest0a", "kind": "latest", "col": 1, "row": 1, "colSpan": 8, "rowSpan": 1, "limit": 1 },
+          { "id": "grid0latest0b", "kind": "latest", "col": 9, "row": 1, "colSpan": 4, "rowSpan": 2, "limit": null }
+        ]
+      },
       "theme": {
         "preset": "owl",
         "logo": "/images/notes0logo0sample0000000.png",
@@ -14,6 +21,7 @@
       },
       "gaMeasurementId": null,
       "searchConsoleVerification": null,
+      "adsensePublisherId": null,
       "contentHash": "sample-notes",
       "pages": [
         {
@@ -21,6 +29,7 @@
           "path": "/p/bbbbbbbbb1",
           "title": "ノートの記事",
           "icon": null,
+          "cover": null,
           "bodyMd": "2つめの wiki の記事です。合言葉：のーとのあいことば",
           "firstPublishedAt": "2026-10-06T00:00:00.000Z",
           "revisedAt": "2026-10-06T00:00:00.000Z",
@@ -33,6 +42,7 @@
           "path": "/u/N0tesUnl1stedKeyAbCdEf/",
           "title": "ノートの限定公開",
           "icon": null,
+          "cover": null,
           "bodyMd": "ノートの限定公開メモ。秘密のキーワード：のーとのひみつ",
           "revisedAt": "2026-10-07T00:00:00.000Z"
         }
@@ -63,6 +73,7 @@
       },
       "gaMeasurementId": "G-SAMPLE1234",
       "searchConsoleVerification": "sampleVerification_0123-abc",
+      "adsensePublisherId": "ca-pub-1234567890123456",
       "contentHash": "sample-wiki",
       "pages": [
         {
@@ -70,7 +81,8 @@
           "path": "/p/aaaaaaaaa1",
           "title": "はじめに",
           "icon": "👋",
-          "bodyMd": "# ようこそ\n\nこのwikiの使い方です。[設計メモ](/p/aaaaaaaaa2-old-slug) と [非公開のページ](/p/zzzzzzzzz9) を参照。\n\n- 検索はページ上部から\n- RSSもあります\n\n別の wiki の [ノートの記事](/p/bbbbbbbbb1) と、URL で書いた [ノートの記事](http://notes.localhost:4321/p/bbbbbbbbb1)。",
+          "cover": "/covers/forest.svg",
+          "bodyMd": "# ようこそ\n\nこのwikiの使い方です。[設計メモ](/p/aaaaaaaaa2-old-slug) と [非公開のページ](/p/zzzzzzzzz9) を参照。\n\n- 検索はページ上部から\n- RSSもあります\n\n@rating\n\n別の wiki の [ノートの記事](/p/bbbbbbbbb1) と、URL で書いた [ノートの記事](http://notes.localhost:4321/p/bbbbbbbbb1)。",
           "firstPublishedAt": "2026-10-01T00:00:00.000Z",
           "revisedAt": "2026-10-05T00:00:00.000Z",
           "monetization": null
@@ -80,7 +92,8 @@
           "path": "/p/aaaaaaaaa2",
           "title": "設計メモ",
           "icon": null,
-          "bodyMd": "構造はコミットで管理します。おすすめの本は [こちら](https://example.com/book)。\n\n+++ コミットとは？\n\nツリーの並び替えや移動を、1回ごとに記録したものです。合言葉：とぐるのなかみ\n\n+++",
+          "cover": null,
+          "bodyMd": "![構成図](/images/ogp0body0sample000000000.png)\n\n構造はコミットで管理します。おすすめの本は [こちら](https://example.com/book)。\n\n+++ コミットとは？\n\nツリーの並び替えや移動を、1回ごとに記録したものです。合言葉：とぐるのなかみ\n\n+++",
           "firstPublishedAt": "2026-10-08T00:00:00.000Z",
           "revisedAt": "2026-10-08T00:00:00.000Z",
           "monetization": {
@@ -94,6 +107,7 @@
           "path": "/u/Unl1stedKeyAbCdEfGhIjK/",
           "title": "限定公開のメモ",
           "icon": "🔒",
+          "cover": "/covers/ocean.svg",
           "bodyMd": "URLを知っている人だけが読めます。秘密のキーワード：ひみつのあいことば",
           "revisedAt": "2026-10-07T00:00:00.000Z"
         }

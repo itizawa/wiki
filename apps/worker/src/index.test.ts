@@ -6,6 +6,7 @@ import type { Env } from "./tick";
 
 const env: Env = { API_ORIGIN: "https://api.test", CRON_TOKEN: "t", SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy" };
 const PRUNE_URL = "https://api.test/internal/versions/prune";
+const COSTS_URL = "https://api.test/internal/costs/collect";
 
 function fakeFetch(responses: Record<string, unknown>, failing: string[] = []) {
   const calls: { url: string; method?: string; auth?: string | null }[] = [];
@@ -28,10 +29,21 @@ const tickResponses = {
 };
 
 describe("scheduled", () => {
-  it("only prunes versions on the daily cron", async () => {
-    const { impl, calls } = fakeFetch({ [PRUNE_URL]: { deleted: 3 } });
+  it("only prunes versions and collects costs on the daily cron", async () => {
+    const { impl, calls } = fakeFetch({ [PRUNE_URL]: { deleted: 3 }, [COSTS_URL]: { results: [{ service: "neon", ok: true }] } });
     await handleScheduled(PRUNE_CRON, env, impl);
-    expect(calls).toEqual([{ url: PRUNE_URL, method: "POST", auth: "Bearer t" }]);
+    expect(calls).toEqual([
+      { url: PRUNE_URL, method: "POST", auth: "Bearer t" },
+      { url: COSTS_URL, method: "POST", auth: "Bearer t" },
+    ]);
+  });
+
+  it("still collects costs when pruning fails, and does not throw when collecting fails", async () => {
+    const pruneFails = fakeFetch({}, [PRUNE_URL]);
+    await handleScheduled(PRUNE_CRON, env, pruneFails.impl);
+    expect(pruneFails.calls.map((c) => c.url)).toEqual([PRUNE_URL, COSTS_URL]);
+    const costsFail = fakeFetch({}, [COSTS_URL]);
+    await expect(handleScheduled(PRUNE_CRON, env, costsFail.impl)).resolves.toBeUndefined();
   });
 
   it("does not prune on the 5-minute cron, and asks the API for the usual run", async () => {
@@ -52,7 +64,7 @@ describe("scheduled", () => {
   it("does not throw when pruning fails (it is tried again the next day)", async () => {
     const { impl, calls } = fakeFetch({}, [PRUNE_URL]);
     await expect(handleScheduled(PRUNE_CRON, env, impl)).resolves.toBeUndefined();
-    expect(calls.map((c) => c.url)).toEqual([PRUNE_URL]);
+    expect(calls.map((c) => c.url)).toEqual([PRUNE_URL, COSTS_URL]);
   });
 
   it("binds the same KV namespace as the API (a binding on the worker alone would delay the work by up to an hour)", () => {
@@ -67,7 +79,7 @@ describe("scheduled", () => {
 
   it("asks for the image cleanup only on Sundays (UTC), once a week", async () => {
     const asked: Record<string, unknown> = {};
-    const result = { deleted: 0, oauth: { tokens: 4, codes: 1 }, builds: { events: 2, builds: 1 }, images: null };
+    const result = { deleted: 0, oauth: { tokens: 4, codes: 1 }, builds: { events: 2, builds: 1 }, workflowRuns: 3, images: null };
     for (let day = 4; day <= 11; day++) {
       const at = new Date(Date.UTC(2026, 9, day, 18, 0));
       const impl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -91,8 +103,8 @@ describe("scheduled", () => {
 
   it("decides the day of the image cleanup by the scheduled time, not by when the worker woke up", async () => {
     const asked: unknown[] = [];
-    const impl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      asked.push(JSON.parse(String(init?.body)).images);
+    const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === PRUNE_URL) asked.push(JSON.parse(String(init?.body)).images);
       return new Response(JSON.stringify({ deleted: 0 }), { status: 200 });
     }) as typeof fetch;
     // 2099-01-04 は日曜、01-05 は月曜

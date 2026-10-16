@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { iconUrlProblem, nameProblem } from "../components/WikiIdentityForm";
-import { keyChecks } from "./WikisPage";
+import { nameProblem } from "../components/WikiIdentityForm";
+import { actionsRowSx, keyChecks, siteUrlSx } from "./WikisPage";
 
 const unmet = (key: string, taken: string[] = []) => keyChecks(key, taken).filter((c) => !c.ok).length;
 
@@ -20,25 +20,22 @@ describe("wiki の key の確認", () => {
   });
 });
 
-describe("wiki の画像の URL の入力", () => {
-  it("空なら画像なしとして通し、http(s) 以外と長すぎる URL は理由を返す", () => {
-    expect(iconUrlProblem("")).toBeNull();
-    expect(iconUrlProblem("  ")).toBeNull();
-    expect(iconUrlProblem("https://example.com/a.png")).toBeNull();
-    // アップロードした画像のパスは通す。それ以外の相対パスは通さない
-    expect(iconUrlProblem("/images/0123456789abcdefghijklmn.png")).toBeNull();
-    expect(iconUrlProblem("/images/a.png")).toMatch(/http/);
-    expect(iconUrlProblem("/relative.png")).toMatch(/http/);
-    expect(iconUrlProblem("javascript:alert(1)")).toMatch(/http/);
-    expect(iconUrlProblem("example.com/a.png")).toMatch(/http/);
-    expect(iconUrlProblem(`https://example.com/${"a".repeat(2048)}`)).toMatch(/長すぎます/);
-  });
-});
-
 describe("nameProblem", () => {
   it("空や空白だけなら理由を返し、入っていれば null", () => {
     expect(nameProblem("")).toBe("表示名を入れてください");
     expect(nameProblem("  ")).toBe("表示名を入れてください");
     expect(nameProblem("社内 wiki")).toBeNull();
+  });
+});
+
+describe("wiki 一覧の操作の行", () => {
+  it("狭い幅（xs〜md 未満）では折り返し、広い幅では1行に並べる", () => {
+    expect(actionsRowSx.flexWrap.xs).toBe("wrap");
+    expect(actionsRowSx.flexWrap.md).toBe("nowrap");
+  });
+
+  it("公開 URL は、長くても枠からはみ出さず、途中で折り返せる", () => {
+    expect(siteUrlSx.overflowWrap).toBe("anywhere");
+    expect(siteUrlSx.minWidth).toBe(0);
   });
 });

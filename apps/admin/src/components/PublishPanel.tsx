@@ -6,10 +6,12 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import { confirmDialog } from "./ConfirmDialog";
+import { HelpTip } from "./HelpTip";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -163,7 +165,11 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
               {published && page.visibility === "public" && <StatusChip status="public" label="公開中" />}
               {published && page.visibility === "unlisted" && <StatusChip status="unlisted" label="限定公開中" />}
               {published && page.publishedVersionId !== page.headVersionId && (
-                <Muted>公開版より新しい編集があります。反映するにはもう一度公開してください。</Muted>
+                <Muted>
+                  {page.autoPublish
+                    ? "公開版より新しい編集があります。次の自動の公開（5分おき）で反映されます。"
+                    : "公開版より新しい編集があります。反映するにはもう一度公開してください。"}
+                </Muted>
               )}
               {published && url && (
                 <Typography variant="body2" sx={{ wordBreak: "break-all" }}>
@@ -226,6 +232,36 @@ export function PublishPanel({ page, dirty, ensureVersion }: { page: PageDetail;
               <Typography variant="body2" color="warning.main">
                 配下に「{visibilityLabel[visibility]}」より広い公開範囲のページが {impact.wider} 件あるため、このままでは変えられません。「配下のすべてのページも同じ公開範囲にする」を選んでください。
               </Typography>
+            )}
+            {published && (
+              <Stack spacing={0.5}>
+                <Row sx={{ gap: 0 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={page.autoPublish}
+                        disabled={action.isPending}
+                        onChange={(e) => {
+                          // 制御された入力は、このあと元の値に戻るので、いまの値を先に取っておく
+                          const enabled = e.target.checked;
+                          action.mutate(() => api.setAutoPublish(page.id, enabled));
+                        }}
+                      />
+                    }
+                    label="新しい編集を自動で公開する"
+                    sx={{ mr: 0 }}
+                  />
+                  <HelpTip about="自動で公開">
+                    オンにすると、このページに新しい版ができるたび、5分おきの自動の処理が最新版で公開し直します。公開範囲は変わりません。非公開のあいだは何もしません。
+                  </HelpTip>
+                </Row>
+                {page.autoPublish && (
+                  <Muted>
+                    編集が版になったあと、5分おきの処理で公開側に反映されます（サイトへの反映はさらにビルドのあと）。
+                    {page.publishedVersionId !== page.headVersionId && "いまある新しい編集も、次の処理で公開されます。"}
+                  </Muted>
+                )}
+              </Stack>
             )}
             {published && (
               <Row>

@@ -326,10 +326,10 @@ describe("archiving a wiki", () => {
   });
 });
 
-describe("wiki settings (Google Analytics and Search Console)", () => {
+describe("wiki settings (Google Analytics, Search Console and AdSense)", () => {
   const GA = "G-TEST123456";
   const VERIFICATION = "abc_DEF-123456";
-  const UNSET = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null };
+  const UNSET = { gaMeasurementId: null, searchConsoleVerification: null, gaPropertyId: null, adsensePublisherId: null };
   const events = async () => (await ctx.client.query(`select 1 from publish_events where kind = 'wiki_settings'`)).rows.length;
 
   it("starts unset, and saves, trims and removes the values per wiki", async () => {
@@ -339,7 +339,7 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
 
     const saved = await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: ` ${GA} `, searchConsoleVerification: `${VERIFICATION}\n` });
     expect(saved.status).toBe(200);
-    expect(saved.body).toEqual({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION, gaPropertyId: null });
+    expect(saved.body).toEqual({ ...UNSET, gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
     expect((await ctx.call("GET", `${N}/settings`)).body).toEqual(saved.body);
     // wiki の一覧にも載る。ほかの wiki の設定は変わらない
     const list = (await ctx.call("GET", "/admin/wikis")).body.wikis;
@@ -350,7 +350,7 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
 
     // 片方だけを送ると、もう片方は残る。null と空の文字列は、外すものとして受ける
-    expect((await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: null })).body).toEqual({ gaMeasurementId: null, searchConsoleVerification: VERIFICATION, gaPropertyId: null });
+    expect((await ctx.call("PATCH", `${N}/settings`, { gaMeasurementId: null })).body).toEqual({ ...UNSET, searchConsoleVerification: VERIFICATION });
     expect((await ctx.call("PATCH", `${N}/settings`, { searchConsoleVerification: "" })).body).toEqual(UNSET);
   });
 
@@ -379,7 +379,7 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
     // 片方が正しくても、もう片方が正しくなければ、どちらも変えない
     expect((await ctx.call("PATCH", `${W}/settings`, { gaMeasurementId: "G-OTHER12345", searchConsoleVerification: "a b" })).status).toBe(400);
     expect((await ctx.call("PATCH", `${W}/settings`, {})).status).toBe(400);
-    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION, gaPropertyId: null });
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual({ ...UNSET, gaMeasurementId: GA, searchConsoleVerification: VERIFICATION });
     expect(await wikiManifest(ctx.db)).toEqual(expect.objectContaining({ gaMeasurementId: GA, searchConsoleVerification: VERIFICATION }));
   });
 
@@ -436,6 +436,42 @@ describe("wiki settings (Google Analytics and Search Console)", () => {
 
     const admin = await ctx.addUser("notes-admin@example.com", { notes: "admin" });
     expect((await admin.call("PATCH", `${N}/settings`, { gaPropertyId: PROPERTY })).status).toBe(403);
+  });
+
+  it("keeps the AdSense publisher id per wiki, puts it into its own manifest, and rebuilds the site only when it changes", async () => {
+    ctx = await setup();
+    await createNotes();
+    const PUB = "ca-pub-1234567890123456";
+
+    const saved = await ctx.call("PATCH", `${N}/settings`, { adsensePublisherId: ` ${PUB} ` });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toEqual({ ...UNSET, adsensePublisherId: PUB });
+    expect((await ctx.call("GET", `${W}/settings`)).body).toEqual(UNSET);
+    expect(await events()).toBe(1);
+    expect(await wikiManifest(ctx.db, "notes")).toEqual(expect.objectContaining({ adsensePublisherId: PUB }));
+    const first = await wikiManifest(ctx.db);
+    expect(first.adsensePublisherId).toBeNull();
+    expect(JSON.stringify(first)).not.toContain(PUB);
+
+    // 同じ値で保存し直しても、ビルドし直さない
+    await ctx.call("PATCH", `${N}/settings`, { adsensePublisherId: PUB });
+    expect(await events()).toBe(1);
+
+    // ca-pub- と数字のほかは通さない（pub- だけのものは、管理画面がそろえてから送る）
+    const bad = ["pub-1234567890123456", "ca-pub-123", `ca-pub-${"1".repeat(21)}`, "CA-PUB-1234567890123456", "ca-pub-12345678901234ab", 'ca-pub-1234567890"><script>alert(1)</script>', "<script>alert(1)</script>", 1234567890];
+    for (const adsensePublisherId of bad) {
+      expect((await ctx.call("PATCH", `${N}/settings`, { adsensePublisherId })).status, String(adsensePublisherId)).toBe(400);
+    }
+    expect((await ctx.call("GET", `${N}/settings`)).body.adsensePublisherId).toBe(PUB);
+
+    // 外すと、次のビルドでタグと ads.txt が消える
+    expect((await ctx.call("PATCH", `${N}/settings`, { adsensePublisherId: "" })).body).toEqual(UNSET);
+    expect(await events()).toBe(2);
+    expect((await wikiManifest(ctx.db, "notes")).adsensePublisherId).toBeNull();
+
+    // オーナーのほかは変えられない
+    const admin = await ctx.addUser("notes-admin@example.com", { notes: "admin" });
+    expect((await admin.call("PATCH", `${N}/settings`, { adsensePublisherId: PUB })).status).toBe(403);
   });
 
   it("cannot be read or changed while the wiki is archived, and keeps the values when it is restored", async () => {

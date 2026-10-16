@@ -29,6 +29,7 @@ export function InvitePage({ token }: { token: string }) {
     return (
       <Frame title="招待リンクを使えません">
         <Alert severity="error">この招待リンクは見つかりません。URL が途中で切れていないか確かめてください。</Alert>
+        <AskForNewLink />
       </Frame>
     );
   }
@@ -38,7 +39,7 @@ export function InvitePage({ token }: { token: string }) {
     return (
       <Frame title="招待リンクを使えません">
         <Alert severity="error">{missing ? "この招待リンクは見つかりません。URL が途中で切れていないか確かめてください。" : errorMessage(info.error)}</Alert>
-        {missing && <Muted>管理者に新しいリンクを頼んでください。</Muted>}
+        <AskForNewLink />
       </Frame>
     );
   }
@@ -84,7 +85,7 @@ function InviteBody({ token, info }: { token: string; info: InviteInfo }) {
       <Frame title="招待リンクを使えません">
         {wikiName}
         <Alert severity="warning">{UNUSABLE[info.status]}</Alert>
-        <Muted>管理者に新しいリンクを頼んでください。</Muted>
+        <AskForNewLink />
       </Frame>
     );
   }
@@ -116,6 +117,16 @@ function InviteBody({ token, info }: { token: string; info: InviteInfo }) {
         </>
       )}
     </Frame>
+  );
+}
+
+/** 使えない招待リンクの画面の出口。次にすること（頼む）と、行き先（トップ）を並べる。 */
+function AskForNewLink() {
+  return (
+    <>
+      <Muted>招待した人に、新しい招待リンクを頼んでください。</Muted>
+      <RouterLink to="/">管理画面のトップへ</RouterLink>
+    </>
   );
 }
 

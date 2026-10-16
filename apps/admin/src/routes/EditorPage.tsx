@@ -8,7 +8,7 @@ import { useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink, useBlocker, useNavigate } from "@tanstack/react-router";
-import { PAGE_TITLE_MAX, type AppliedEditRequests, type PageDetail, type PageDraft } from "@wiki/shared";
+import { PAGE_TITLE_MAX, textStats, type AppliedEditRequests, type PageDetail, type PageDraft } from "@wiki/shared";
 import { GitPullRequestArrow } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +17,8 @@ import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { caretOnLastLine, enterBodyFromTitle } from "../editor/titleBridge";
 import { OutlineButton, OutlineSide, useOutline } from "../editor/Outline";
 import { api, ApiError, currentWikiKey, errorMessage } from "../lib/api";
+import { usePageTabIcon } from "../lib/tabIcon";
+import { useWikis } from "./Layout";
 import { editRequestsLink, mergeAppliedEdits, useOpenEditRequestCount } from "../lib/editRequests";
 import type { EnsureVersion } from "../components/PublishPanel";
 import { forgetRemovedPage, useDeletePage, wasPageRemoved } from "../lib/deletePage";
@@ -25,17 +27,20 @@ import { formatDateTime } from "../lib/format";
 import { ancestorTitles } from "../lib/ancestorTitles";
 import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { takeJustCreated } from "../lib/newPage";
-import { textStats } from "../lib/stats";
 import { confirmDialog } from "../components/ConfirmDialog";
+import { PageAudioSection } from "../components/PageAudio";
+import { PageCover, PageCoverPicker, useSetCover } from "../components/PageCover";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
-import { PublishMenu } from "../components/PublishMenu";
+import { PageTagChips } from "../components/PageTagPicker";
+import { PublishBadge, PublishMenu } from "../components/PublishMenu";
 import { SaveStatus, saveState } from "../components/SaveStatus";
 import { StarButton } from "../components/StarButton";
 import { VersionHistory } from "../components/VersionHistory";
 import { Muted, RouterLink, SkeletonEditor } from "../components/ui";
 import { TITLE_TOO_LONG, titleCounter } from "../lib/titleLimit";
 import { TemplatePicker } from "./TemplatePicker";
+import { useScreenTitle } from "../lib/documentTitle";
 
 type Draft = { title: string; bodyMd: string };
 
@@ -63,8 +68,14 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   const navigate = useNavigate();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
   // 自動保存した下書きは、開くたびにサーバーから読む（前に開いたときのキャッシュは使わない）
+  const wikis = useWikis();
+  const wikiFaviconUrl = wikis.data?.wikis.find((w) => w.key === currentWikiKey())?.faviconUrl;
   const savedDraft = useQuery({ queryKey: ["draft", pageId], queryFn: () => api.getDraft(pageId), gcTime: 0 });
   const [draft, setDraft] = useState<Draft | null>(null);
+  // タブのアイコンを、このページの絵文字かタイトルの1文字目にする（入力中のタイトルにも追従する）
+  usePageTabIcon(wikiFaviconUrl, draft && page.data ? { title: draft.title, icon: page.data.icon } : null);
+  // タブの題も、このページのタイトル（入力中のものに追従。空なら「無題」）にする
+  useScreenTitle(draft && page.data ? draft.title : null);
   const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
   // 版を作るときは、直前の下書きの保存で分かった head をすぐ使う（state の反映を待たない）
   const baseRef = useRef<string | null>(null);
@@ -83,6 +94,10 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   // アイコン（絵文字）を選ぶ画面。タイトルのそばのボタンと「…」メニューのどちらから開いても、タイトルの下に出す
   const titleRow = useRef<HTMLDivElement>(null);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  // カバー画像。選ぶ画面は、カバー（付いていなければ「カバーを追加」）の下に出す
+  const coverRow = useRef<HTMLDivElement>(null);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+  const removeCover = useSetCover(pageId);
   const headings = useOutline(editor);
   // 狭い画面（md 未満。WikiLayout が上の帯を置く幅）では、この画面の帯を置かず、操作を上の帯に出して1段にする
   const barBelow = useMediaQuery(useTheme().breakpoints.down("md"));
@@ -117,6 +132,9 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
     setBase(headVersionId);
     void qc.invalidateQueries({ queryKey: ["page", pageId] });
     refreshAfterNewVersion();
+  }, () => {
+    // 下書きを保存したら、サイドバーの行のタイトルも自分の下書きのものに取り直す
+    void qc.invalidateQueries({ queryKey: ["structure"] });
   });
 
   // 初回読み込み時だけサーバーの内容で編集を始める（以降はローカルの編集を優先）。
@@ -278,7 +296,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
         <Alert severity="error" sx={{ m: 3 }}>
           このページは見つかりません。ゴミ箱に入れられたか、URL が違います。
           <Box sx={{ mt: 1 }}>
-            <RouterLink to="/w/$wikiKey" params={{ wikiKey: currentWikiKey() }}>
+            <RouterLink to="/w/$wikiKey/pages" params={{ wikiKey: currentWikiKey() }}>
               すべてのページへ
             </RouterLink>
           </Box>
@@ -294,6 +312,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
   if (!page.data || !draft) return <SkeletonEditor />;
   const p = page.data;
   const counter = titleCounter(draft.title.length);
+  const outlineTitle = draft.title.trim() || UNTITLED;
 
   const pageMenu = (
     <PageMenu
@@ -312,6 +331,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       ensureVersion={ensureVersion}
       editor={editor}
       headings={headings}
+      onJumpTitle={focusTitleEnd}
     />
   );
 
@@ -337,7 +357,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
       )}
       {editor && headings.length > 0 && (
         <Box sx={{ display: "flex", [SIDE_OUTLINE]: { display: "none" } }}>
-          <OutlineButton editor={editor} headings={headings} />
+          <OutlineButton editor={editor} headings={headings} title={outlineTitle} onJumpTitle={focusTitleEnd} />
         </Box>
       )}
       <PublishMenu page={p} dirty={dirty} ensureVersion={ensureVersion} />
@@ -356,7 +376,7 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
           // 狭い画面（md 未満）では、この画面の帯を置かず、上の帯（サイドバーを開くボタンと wiki 名）の右端に出す。パンくずは出さない（タイトルは本文の上で見える）
           <NarrowBarActions>
             {saveStatus}
-            {!narrow && actions}
+            {narrow ? <PublishBadge page={p} dirty={dirty} ensureVersion={ensureVersion} /> : actions}
             {pageMenu}
           </NarrowBarActions>
         ) : (
@@ -440,6 +460,17 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
                 />
               )
             )}
+            {/* カバー画像は版に入らず、選んだ・外したらすぐに反映する */}
+            <Box ref={coverRow}>
+              <PageCover
+                cover={p.cover}
+                onPick={() => setCoverPickerOpen(true)}
+                onRemove={() => removeCover.mutate(null)}
+                removing={removeCover.isPending}
+                error={removeCover.error ? `カバーを外せませんでした：${errorMessage(removeCover.error)}` : null}
+              />
+            </Box>
+            <PageCoverPicker pageId={pageId} cover={p.cover} anchorEl={coverRow.current} open={coverPickerOpen} onClose={() => setCoverPickerOpen(false)} />
             {/* 下書きは保存されるが、タイトルが空のあいだは版にならない。押す前から分かるよう、タイトルのすぐ上に出しておく */}
             {draft.title.trim() === "" && !titleRequired && <Muted sx={{ mb: 0.5 }}>タイトルを入れると版履歴に残ります</Muted>}
             {/* アイコンは、タイトルと本文の左端を揃えたまま出す（広い画面では左の余白、狭い画面ではタイトルの上） */}
@@ -488,6 +519,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
                 {counter.kind === "over" && " 本文は、このまま保存されます。"}
               </Typography>
             )}
+            {/* 付いている管理用タグ。付け外しは「…」メニューの「タグ…」から */}
+            <PageTagChips tags={p.tags} />
             <PageIconPicker pageId={pageId} icon={p.icon} anchorEl={titleRow.current} open={iconPickerOpen} onClose={() => setIconPickerOpen(false)} />
             {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
             {draft.bodyMd.trim() === "" && (
@@ -496,13 +529,14 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
               />
             )}
             <MarkdownEditor value={draft.bodyMd} onChange={(bodyMd) => setDraft((d) => (d ? { ...d, bodyMd } : d))} onEditor={setEditor} onLeaveTop={focusTitleEnd} />
+            {/* 動画のナレーションなど、公開前の音声の素材。本文には書かず、公開サイトにも出さない */}
+            <PageAudioSection pageId={pageId} bodyMd={draft.bodyMd} />
           </Box>
           {/* 広い画面では、目次を本文の右に置いて、スクロール中も見えるようにする */}
-          {editor && headings.length > 0 && (
-            <Box sx={{ display: "none", flex: "0 0 200px", pt: 4, [SIDE_OUTLINE]: { display: "block" } }}>
-              <OutlineSide editor={editor} headings={headings} />
-            </Box>
-          )}
+          {/* 見出しが無いときも列は空けておく（見出しを書き足すたびに、本文が左右にずれないように） */}
+          <Box sx={{ display: "none", flex: "0 0 200px", pt: 4, [SIDE_OUTLINE]: { display: "block" } }}>
+            {editor && headings.length > 0 && <OutlineSide editor={editor} headings={headings} title={outlineTitle} onJumpTitle={focusTitleEnd} />}
+          </Box>
         </Box>
         <EditingStats bodyMd={draft.bodyMd} />
       </Box>

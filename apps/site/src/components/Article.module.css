@@ -1,6 +1,9 @@
-.article h1 { line-height: 1.4; margin: 0 0 4px; }
+.article h1 { line-height: 1.4; margin: 0 0 4px; scroll-margin-top: 16px; }
 /* ページのアイコン（絵文字）。タイトルとの間を少し空ける。プレゼンモードのタイトルのスライドでも同じ */
 .icon { margin-right: 0.25em; }
+/* カバー画像。高さを固定して、読み込みで本文が下へずれないようにする（切り抜きは中央） */
+.cover { display: block; width: 100%; height: 200px; object-fit: cover; object-position: center; border-radius: 8px; margin: 0 0 20px; }
+@media (min-width: 720px) { .cover { height: 240px; } }
 .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .adNotice { font-size: 0.8rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; }
 /* プレゼンモード。画面いっぱいに重ねる（モーダルの dialog なので、張り付くヘッダーよりも手前に出る）。
@@ -52,6 +55,22 @@
 .body :global(.callout[data-callout="warning"]) { --callout: var(--warn); }
 .body :global(.callout[data-callout="caution"]) { --callout: var(--danger); }
 /* トグル（+++）。見出しの行を押すと開閉する */
+.body :global(ul.children-list), .body :global(ul.children-list ul) { padding-left: 1.4em; }
+.body :global(ul.children-list) { margin: 12px 0; }
+.body :global(a.page-mention) { font-weight: 700; }
+.body :global(a.page-mention)::before { content: "@"; }
+.body :global(p.link-card) { margin: 12px 0; }
+.body :global(p.link-card > a) { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border: 1px solid var(--border, rgba(128, 128, 128, 0.45)); border-radius: 8px; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.body :global(p.link-card > a:hover) { background: rgba(128, 128, 128, 0.08); }
+.body :global(.link-card-site) { font-size: 0.8em; opacity: 0.75; }
+.body :global(.link-card-title) { font-weight: 700; line-height: 1.4; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(128, 128, 128, 0.5); }
+.body :global(.link-card-description) { font-size: 0.9em; opacity: 0.8; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.body :global(figure.map-embed) { margin: 16px 0; }
+.body :global(figure.map-embed > iframe) { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: rgba(128, 128, 128, 0.12); }
+.body :global(figure.map-embed > figcaption) { margin-top: 6px; font-size: 0.85em; }
+.body :global(figure.video-embed) { margin: 16px 0; }
+.body :global(figure.video-embed > iframe) { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: rgba(128, 128, 128, 0.12); }
+.body :global(figure.video-embed > figcaption) { margin-top: 6px; font-size: 0.85em; }
 .body :global(details.toggle) { margin: 12px 0; }
 .body :global(details.toggle > summary) { cursor: pointer; font-weight: 600; padding: 2px 0; }
 .body :global(details.toggle > summary:hover) { color: var(--accent); }
@@ -75,6 +94,8 @@
 }
 .body :global([data-code-tools] button:hover) { border-color: var(--muted); }
 .body :global([data-code-tools] button[aria-pressed="true"]) { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* 項目になっているリンク（文中ではなく、項目がリンクだけのもの）。押せる高さを 24px 以上にする（WCAG 2.5.8）。文中のリンクは変えない */
+.body :global(li > a:only-child) { display: inline-block; padding-block: 2px; }
 .body :global(img) { max-width: 100%; }
 /* 画像の拡大表示（スクリプトが足す要素なので data 属性で当てる）。画像を包むボタンは、見た目を画像だけにする */
 .body :global([data-image-zoom-open]) {
@@ -146,5 +167,5 @@
 .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: 16px; }
 /* 狭い画面では上にヘッダーが張り付く（Base.module.css）ので、その高さぶん空ける */
 @media (max-width: 800px) {
-  .body :global(:is(h1, h2, h3, h4, h5, h6)) { scroll-margin-top: calc(var(--header-height) + 16px); }
+  .body :global(:is(h1, h2, h3, h4, h5, h6)), .article h1 { scroll-margin-top: calc(var(--header-height) + 16px); }
 }

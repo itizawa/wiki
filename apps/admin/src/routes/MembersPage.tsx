@@ -130,6 +130,7 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
     {
       key: "role",
       header: "ロール",
+      narrow: "stack",
       render: (m) => {
         // メンバーの管理者が0人になる操作は止める（オーナーは数えない）
         const lastAdmin = m.role === "admin" && admins <= 1;
@@ -156,10 +157,11 @@ function Members({ isAdmin }: { isAdmin: boolean }) {
         );
       },
     },
-    { key: "createdAt", header: "参加した日", sx: { whiteSpace: "nowrap" }, render: (m) => formatDateTime(m.createdAt) },
+    { key: "createdAt", header: "参加した日", narrow: "hide", sx: { whiteSpace: "nowrap" }, render: (m) => formatDateTime(m.createdAt) },
     {
       key: "actions",
       header: "操作",
+      narrow: "stack",
       width: "max-content",
       render: (m) => {
         const self = m.userId === session.id;
@@ -242,8 +244,8 @@ function Invites() {
 
   const inviteColumns: DataListColumn<Invite>[] = [
     { key: "role", header: "ロール", render: (i) => WIKI_ROLE_LABELS[i.role] },
-    { key: "createdBy", header: "発行した人", width: "minmax(160px, 1fr)", render: (i) => i.createdBy.name ?? i.createdBy.email },
-    { key: "expiresAt", header: "期限", sx: { whiteSpace: "nowrap" }, render: (i) => formatDateTime(i.expiresAt) },
+    { key: "createdBy", header: "発行した人", narrow: "hide", width: "minmax(160px, 1fr)", render: (i) => i.createdBy.name ?? i.createdBy.email },
+    { key: "expiresAt", header: "期限", narrow: "hide", sx: { whiteSpace: "nowrap" }, render: (i) => formatDateTime(i.expiresAt) },
     {
       key: "status",
       header: "状態",
@@ -257,6 +259,7 @@ function Invites() {
     {
       key: "actions",
       header: "操作",
+      narrow: "stack",
       width: "max-content",
       render: (i) =>
         i.status === "active" && (

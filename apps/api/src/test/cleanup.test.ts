@@ -345,6 +345,7 @@ describe("cleaning up unreferenced images", () => {
       trashed: image(60),
       archivedWiki: image(60),
       archivedWikiIcon: image(60),
+      pageCover: image(60, "image/webp"),
     };
 
     // いまの版と、前の版
@@ -364,6 +365,8 @@ describe("cleaning up unreferenced images", () => {
     const theme = { ...green, logo: `/images/${names.logo}`, favicon: `/images/${names.favicon}` };
     expect((await ctx.call("PUT", `${W}/appearance`, { name: "wiki", theme })).status).toBe(200);
     expect((await ctx.call("PATCH", "/admin/wikis/wiki", { iconUrl: `/images/${names.wikiIcon}` })).status).toBe(200);
+    // ページのカバー画像（本文には出てこない）
+    expect((await ctx.call("PUT", `${W}/pages/${page.id}/cover`, { cover: `/images/${names.pageCover}` })).status).toBe(200);
     // ゴミ箱のページ（元に戻せるので、版が残っている）
     const trashed = await newPage("ゴミ箱", md(names.trashed));
     expect((await ctx.call("DELETE", `${W}/pages/${trashed.id}`)).status).toBe(200);
@@ -374,7 +377,7 @@ describe("cleaning up unreferenced images", () => {
 
     expect(await referencedImageNames(ctx.db)).toEqual(new Set(Object.values(names)));
     const orphan = image(60);
-    expect(await cleanupImages(ctx.db, store())).toEqual({ listed: 15, truncated: false, unreferenced: 1, deleted: 1 });
+    expect(await cleanupImages(ctx.db, store())).toEqual({ listed: 16, truncated: false, unreferenced: 1, deleted: 1 });
     expect(has(orphan)).toBe(false);
     for (const [where, name] of Object.entries(names)) expect(has(name), where).toBe(true);
   });
@@ -513,7 +516,9 @@ describe("POST /internal/versions/prune", () => {
       deleted: 0,
       oauth: { tokens: 1, codes: 0 },
       builds: { events: 0, builds: 0 },
+      workflowRuns: 0,
       images: null,
+      audio: { listed: 0, truncated: false, orphaned: 0, deleted: 0 },
     });
     expect(has(orphan)).toBe(true);
 

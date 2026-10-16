@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { WikiHome } from "./home";
+import type { LinkCardData } from "./linkCard";
 import type { WikiTheme } from "./theme";
 
 /** 公開操作で選べる公開範囲（private は「非公開化」で扱う）。 */
@@ -13,6 +14,10 @@ export const publishPageInput = z.object({
   applyToDescendants: z.boolean().default(false),
 });
 export type PublishPageInput = z.input<typeof publishPageInput>;
+
+/** 「新しい編集を自動で公開する」の切り替え（ページごと） */
+export const setAutoPublishInput = z.object({ enabled: z.boolean() });
+export type SetAutoPublishInput = z.infer<typeof setAutoPublishInput>;
 
 /** 非公開化。本文は省略できる。 */
 export const unpublishPageInput = z.object({
@@ -78,6 +83,8 @@ export type ManifestPage = {
   title: string;
   /** アイコン（絵文字1つ）。付けていなければ null */
   icon: string | null;
+  /** カバー画像のパス（`/images/{name}` か `/covers/{key}.svg`）。付けていなければ null。OGP の画像にも使える */
+  cover: string | null;
   bodyMd: string;
   firstPublishedAt: string;
   /** 公開版の作成日時（改訂日） */
@@ -91,6 +98,7 @@ export type ManifestUnlistedPage = {
   path: string;
   title: string;
   icon: string | null;
+  cover: string | null;
   bodyMd: string;
   revisedAt: string;
 };
@@ -122,6 +130,8 @@ export type WikiManifest = {
   gaMeasurementId: string | null;
   /** Google サーチコンソールの確認用の値。null なら確認用の meta を出さない */
   searchConsoleVerification: string | null;
+  /** Google AdSense のパブリッシャー ID（`ca-pub-XXXX`）。null なら AdSense のタグと ads.txt を出さない */
+  adsensePublisherId: string | null;
   /**
    * この wiki の公開内容のハッシュ。公開サイトの出力に出るものだけから作る（apps/api/src/publishing/manifest.ts）。
    * 前のビルドと同じなら、この wiki の出力は変わらない
@@ -130,6 +140,11 @@ export type WikiManifest = {
   pages: ManifestPage[];
   unlisted: ManifestUnlistedPage[];
   trees: ManifestTree[];
+  /**
+   * 本文の「URL だけの段落」（リンクカードにする外部 URL）の OGP。API が取って保存した値（link_previews）で、ビルドは外へ取りにいかない。
+   * 取れていない URL は含めない（その URL は、ふつうのリンクで出す）。contentHash には入れない
+   */
+  linkPreviews?: Record<string, LinkCardData>;
   /** 公開後に削除された記事の id（410） */
   gone: string[];
 };

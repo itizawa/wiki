@@ -1,0 +1,16 @@
+{
+  "name": "@wiki/video",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "video": "node src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

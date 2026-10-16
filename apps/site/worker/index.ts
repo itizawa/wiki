@@ -4,6 +4,11 @@ export type Env = {
   ASSETS: { fetch(input: Request | URL): Promise<Response> };
   /** アップロードした画像（R2。管理画面の Worker と同じバケット） */
   IMAGES?: { get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null> };
+  /**
+   * 管理画面と API の Worker（wiki-admin）へのサービスバインディング。読者の評価（`/api/ratings/{pageId}`）を渡す。
+   * 無ければ（手元の `wrangler dev` など）評価の経路は 404 で、ページの評価の欄は出ない
+   */
+  API?: { fetch(input: Request): Promise<Response> };
   /** 公開サイトのドメインの共通部分。wiki は `{key}.{SITE_BASE_DOMAIN}` で公開する */
   SITE_BASE_DOMAIN?: string;
   /** Host で決まらないとき（プレビューの *.workers.dev、手元の開発）に表示する wiki。既定は最初の wiki */
@@ -13,10 +18,10 @@ export type Env = {
 const FIRST_WIKI = "wiki";
 const WIKI_COOKIE = "wiki";
 /**
- * どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon）。ビルド結果の直下にある。
+ * どの wiki にも共通のファイル（Astro のスクリプトとスタイル、favicon、ページのカバー画像として用意した `/covers/{key}.svg`）。ビルド結果の直下にある。
  * `/_astro/*` は Worker を通らずに返る（wrangler.toml の run_worker_first）ので、ふつうはここに来ない。無いファイルの 404 も静的アセットの側が返す
  */
-const SHARED = /^\/(_astro\/|favicon\.svg$)/;
+const SHARED = /^\/(_astro\/|covers\/[a-z]+\.svg$|favicon\.svg$)/;
 /**
  * 名前にハッシュが入るもの（中身が変われば名前も変わる）。wiki のディレクトリを除いたパスで見る。
  * Pagefind の索引の断片と、ツリーナビの全体（`/nav.{hash}.json`。src/lib/manifest.ts の navFile）
@@ -30,6 +35,9 @@ const TREE_INDEX = /^\/t\/[^/]+\/?$/;
 /** 廃止したツリー経由の記事のページ（/t/main/{nodeId}）。nodeId はページの id と同じ */
 const TREE_PAGE = /^\/t\/[^/]+\/([0-9a-z]{10})\/?$/;
 
+/** 読者の評価（ページごと）。API の `/public/w/{key}/pages/{id}/rating` へ渡す */
+const RATING = /^\/api\/ratings\/([0-9a-z]{10})$/;
+
 const notFound = () => new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
 
 /**
@@ -42,6 +50,7 @@ const notFound = () => new Response("Not Found", { status: 404, headers: { "cont
  * - 廃止したツリー経由の記事（`/t/{treeKey}/{nodeId}`）→ `/p/{nodeId}` へ 301（ツリーは1本なので、記事のページのサイドバーと同じものだった）
  * - slug つきの旧URL（`/p/{id}-{slug}`）→ `/p/{id}` へ 301、公開後に削除された記事 → 410（wiki ごとの page-routes.json）
  * - `/images/{name}`：アップロードした画像。エッジのキャッシュにあれば、R2 を読まずに返す
+ * - `/api/ratings/{pageId}`：読者の評価。API の Worker へ渡す（同じオリジンで受けるので、CORS が要らない）
  */
 type Ctx = { waitUntil(promise: Promise<unknown>): void };
 
@@ -57,11 +66,25 @@ export default {
 };
 
 /**
+ * 埋め込んでよい枠（iframe）の行き先。Google マップ（www.google.com）と、YouTube の動画（www.youtube-nocookie.com）と、AdSense の広告の枠
+ * （広告は googlesyndication.com・doubleclick.net の枠に入り、不正な表示の検出は adtrafficquality.google、同意の確認は fundingchoicesmessages.google.com の枠を使う）。
+ * AdSense を設定していない wiki でも同じ値にする（Worker は wiki ごとの設定を持たない。広告のコードを読み込まなければ、これらの枠は作られない）
+ */
+const FRAME_SRC = [
+  "https://www.google.com",
+  "https://www.youtube-nocookie.com",
+  "https://*.googlesyndication.com",
+  "https://*.doubleclick.net",
+  "https://*.adtrafficquality.google",
+  "https://fundingchoicesmessages.google.com",
+].join(" ");
+
+/**
  * どの応答にも付けるヘッダー。応答が自分で付けたもの（限定公開の no-referrer、画像の CSP など）は上書きしない。
  * スクリプトは Astro がページに埋め込むことがあるので、CSP では枠に入れさせないことと、base・object だけを絞る。
  */
 const SECURITY_HEADERS = {
-  "content-security-policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+  "content-security-policy": `frame-ancestors 'none'; frame-src ${FRAME_SRC}; base-uri 'self'; object-src 'none'`,
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
@@ -78,6 +101,8 @@ function withSecurityHeaders(res: Response): Response {
 async function serve(request: Request, url: URL, env: Env, target: string, ctx: Ctx | undefined): Promise<Response> {
   if (SHARED.test(url.pathname)) return env.ASSETS.fetch(request);
   if (url.pathname.startsWith("/images/")) return image(request, url, env, ctx);
+  const rating = RATING.exec(url.pathname);
+  if (rating) return forwardRating(request, url, env, target, rating[1]!);
 
   if (TREE_INDEX.test(url.pathname)) return Response.redirect(new URL("/", url).href, 301);
   const treePage = TREE_PAGE.exec(url.pathname);
@@ -177,6 +202,25 @@ async function image(request: Request, url: URL, env: Env, ctx: Ctx | undefined)
   // 入れ終わるのは応答を返したあと。失敗しても応答は返す
   if (cache && ctx) ctx.waitUntil(cache.put(cacheKey, res.clone()).catch(() => undefined));
   return res;
+}
+
+/**
+ * 読者の評価を、API の Worker へサービスバインディングで渡す。wiki は Host で決めたものを経路に入れる（読者には選ばせない）。
+ * 渡すのは本文と、API が見るヘッダー（オリジン・接続元・本文の形式）だけ。Cookie は渡さない。
+ */
+async function forwardRating(request: Request, url: URL, env: Env, wiki: string, pageId: string): Promise<Response> {
+  if (!env.API) return notFound();
+  if (request.method !== "GET" && request.method !== "PUT") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, PUT" } });
+  }
+  const headers = new Headers();
+  for (const name of ["origin", "content-type", "cf-connecting-ip"]) {
+    const value = request.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  const target = new URL(`https://wiki-admin/api/public/w/${wiki}/pages/${pageId}/rating`);
+  target.search = url.search;
+  return env.API.fetch(new Request(target, { method: request.method, headers, body: request.method === "PUT" ? await request.arrayBuffer() : undefined }));
 }
 
 /** エッジのキャッシュ。Workers のランタイムにだけある */

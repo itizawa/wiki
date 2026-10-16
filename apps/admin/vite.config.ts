@@ -15,6 +15,8 @@ const proxy = {
   },
   // アップロードした画像。本文には /images/{name} と書くので、そのパスのまま API へ渡す
   "/images": { target: apiTarget },
+  // MCP が受け取る、署名つきの音声の URL
+  "/audio": { target: apiTarget },
   // 外部のアプリ（MCP クライアント）が呼ぶ経路。本番と同じく、プレフィックス無しで同じオリジンに出す
   "/oauth": { target: apiTarget, changeOrigin: false },
   "/.well-known/oauth-": { target: apiTarget, changeOrigin: false },
@@ -76,6 +78,7 @@ export default defineConfig({
           /^\/export\//,
           /^\/internal\//,
           /^\/images\//,
+          /^\/audio\//,
           /^\/health$/,
           /^\/oauth\//,
           /^\/\.well-known\//,

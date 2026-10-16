@@ -1,0 +1,2 @@
+ALTER TABLE "workflow_actions" DROP CONSTRAINT "workflow_actions_type_check";--> statement-breakpoint
+ALTER TABLE "workflow_actions" ADD CONSTRAINT "workflow_actions_type_check" CHECK (("workflow_actions"."type" = 'call_routine' and "workflow_actions"."routine_id" is not null and "workflow_actions"."tag_id" is null) or ("workflow_actions"."type" in ('remove_tag', 'add_tag') and "workflow_actions"."tag_id" is not null and "workflow_actions"."routine_id" is null));

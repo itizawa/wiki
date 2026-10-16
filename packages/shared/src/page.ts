@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { pageCoverSchema } from "./cover";
 import { pageIconSchema } from "./emoji";
+import type { PageTag } from "./tag";
 
 /** ページのタイトルの長さの上限（文字数）。API の検証と、管理画面の入力欄の表示で同じ値を使う */
 export const PAGE_TITLE_MAX = 200;
@@ -22,6 +24,8 @@ export const createPageInput = z
     templateId: z.string().uuid().optional(),
     /** アイコン（絵文字1つ）。省略または null なら付けない */
     icon: pageIconSchema.nullable().optional(),
+    /** カバー画像（`/images/{name}` か用意した画像）。省略または null なら付けない */
+    cover: pageCoverSchema.nullable().optional(),
   })
   .refine((v) => v.title !== undefined || v.templateId !== undefined, { message: "title is required", path: ["title"] });
 export type CreatePageInput = z.infer<typeof createPageInput>;
@@ -73,13 +77,19 @@ export type PageSummary = {
   title: string;
   /** アイコン（絵文字1つ）。付けていなければ null。版には入らず、変えるとすぐに反映される */
   icon: string | null;
+  /** カバー画像のパス（`/images/{name}` か `/covers/{key}.svg`）。付けていなければ null。版には入らず、変えるとすぐに反映される */
+  cover: string | null;
   headVersionId: string;
   publishedVersionId: string | null;
   visibility: Visibility;
   origin: "human" | "ai_draft";
   unlistedKey: string | null;
+  /** 公開中のページで、新しい版ができたら次の Cron で自動で公開するか（公開中でないあいだは、設定だけ残って何もしない） */
+  autoPublish: boolean;
   firstPublishedAt: string | null;
   updatedAt: string;
+  /** 付いている管理用タグ（名前順）。公開サイトには出さない */
+  tags: PageTag[];
 };
 
 export type PageVersion = {

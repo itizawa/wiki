@@ -32,6 +32,18 @@ describe("本文のMarkdown往復", () => {
     ["トグル", "+++ よくある質問\n\n答えです\n\n+++"],
     ["トグル（中に見出しとリスト）", "+++ 詳しく\n\n## 見出し\n\n- a\n- b\n\n+++\n\n後ろの段落"],
     ["入れ子のトグル", "+++ 外\n\n+++ 内\n\n中身\n\n+++\n\n+++"],
+    ["Google マップ（URL だけの段落）", "前の文\n\nhttps://www.google.com/maps/embed?pb=!1m18!1m12\n\n後の文"],
+    ["Google マップ（短縮 URL）", "https://maps.app.goo.gl/abc123"],
+    ["配下のページの一覧", "前の文\n\n@children\n\n後の文"],
+    ["配下のページの一覧（depth と sort）", "@children depth=2 sort=title"],
+    ["コードブロックの中の @children", "```\n@children\n```"],
+    ["分からない引数の @children は、ふつうの文字", "@children filter=a"],
+    ["評価の欄", "効果\n\n@rating\n\n使い方"],
+    ["コードブロックの中の @rating", "```\n@rating\n```"],
+    ["引数の付いた @rating は、ふつうの文字", "@rating 5"],
+    ["音声", "前\n\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n\n後"],
+    ["コードブロックの中の @audio", "```\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n```"],
+    ["ID でない @audio は、ふつうの文字", "@audio abc"],
     ["閉じていない +++ は、ふつうの文字", "+++ 見出しだけ"],
   ])("%s はそのまま残る", (_name, md) => {
     expect(roundTrip(md).trim()).toBe(md);
@@ -51,6 +63,79 @@ describe("本文のMarkdown往復", () => {
       const reparsed = manager.parse(manager.serialize(doc));
       expect(reparsed.content?.[0]?.content?.[0]?.content?.map((n) => n.type)).toEqual(["paragraph", block.type]);
     }
+  });
+
+  it("地図の URL だけの段落は地図の部品になり、文章の中の URL・別ドメインは段落のまま", () => {
+    const types = (md: string) => manager.parse(md).content?.map((n) => n.type);
+    expect(types("https://www.google.com/maps/embed?pb=1")).toEqual(["googleMap"]);
+    expect(types("ここ https://www.google.com/maps/embed?pb=1")).toEqual(["paragraph"]);
+    expect(types("https://www.google.com/maps/embed?pb=1\n続きの文")).toEqual(["paragraph"]);
+    // 地図ではない URL だけの段落は、リンクカードの部品になる
+    expect(types("https://example.com/maps/embed?pb=1")).toEqual(["linkCard"]);
+    expect(types("<https://www.google.com/maps/embed?pb=1>")).toEqual(["googleMap"]);
+  });
+
+  it("動画の URL だけの段落は動画の部品になる（リンクカードにはならない）。文章の中・YouTube 以外は変わらない。往復しても同じ", () => {
+    const types = (md: string) => manager.parse(md).content?.map((n) => n.type);
+    expect(types("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(["youtube"]);
+    expect(types("https://youtu.be/dQw4w9WgXcQ")).toEqual(["youtube"]);
+    expect(types("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toEqual(["youtube"]);
+    expect(types("前\n\nhttps://youtu.be/dQw4w9WgXcQ\n\n後")).toEqual(["paragraph", "youtube", "paragraph"]);
+    expect(types("ここ https://youtu.be/dQw4w9WgXcQ")).toEqual(["paragraph"]);
+    expect(types("https://www.youtube.com/@channel")).toEqual(["linkCard"]);
+    expect(types("https://vimeo.com/123456789")).toEqual(["linkCard"]);
+    expect(roundTrip("前\n\nhttps://youtu.be/dQw4w9WgXcQ\n\n後")).toBe("前\n\nhttps://youtu.be/dQw4w9WgXcQ\n\n後");
+  });
+
+  it("外部の URL だけの段落はカードの部品になり、文章の中・続きの行・[文字](URL)・内部リンクは段落のまま。往復しても同じ", () => {
+    const types = (md: string) => manager.parse(md).content?.map((n) => n.type);
+    expect(types("https://example.com/post")).toEqual(["linkCard"]);
+    expect(types("<https://example.com/post>")).toEqual(["linkCard"]);
+    expect(types("前\n\nhttps://example.com/post\n\n後")).toEqual(["paragraph", "linkCard", "paragraph"]);
+    expect(types("ここ https://example.com/post")).toEqual(["paragraph"]);
+    expect(types("https://example.com/post\n続きの文")).toEqual(["paragraph"]);
+    expect(types("[文字](https://example.com/post)")).toEqual(["paragraph"]);
+    expect(types("/p/abcdefghij")).toEqual(["paragraph"]);
+    expect(types("https://www.google.com/maps/embed?pb=1")).toEqual(["googleMap"]);
+    expect(roundTrip("前\n\nhttps://example.com/post\n\n後")).toBe("前\n\nhttps://example.com/post\n\n後");
+  });
+
+  it("「リンクに戻した」段落（URL を文字にしたリンク）は、カードに戻らない", () => {
+    const doc = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "https://example.com/post", marks: [{ type: "link", attrs: { href: "https://example.com/post" } }] }] }] };
+    const md = manager.serialize(doc);
+    expect(manager.parse(md).content?.map((n) => n.type)).toEqual(["paragraph"]);
+  });
+
+  it("@children は一覧の部品になり、コードブロックの中・文中は部品にならない", () => {
+    const first = (md: string) => manager.parse(md).content?.[0];
+    expect(first("@children depth=3 sort=title")).toMatchObject({ type: "childrenList", attrs: { depth: 3, sort: "title" } });
+    expect(first("```\n@children\n```")?.type).toBe("codeBlock");
+    expect(first("文 @children")?.type).toBe("paragraph");
+  });
+
+  it("編集中の地図は、埋め込める URL なら iframe で展開し、短縮 URL はカードのまま", () => {
+    const render = (url: string) => {
+      const schema = getSchema(editorExtensions);
+      const node = schema.nodes.googleMap!.create({ url });
+      return schema.nodes.googleMap!.spec.toDOM!(node) as unknown;
+    };
+    expect(JSON.stringify(render("https://www.google.com/maps/embed?pb=1"))).toContain('"iframe"');
+    expect(JSON.stringify(render("https://maps.app.goo.gl/abc"))).not.toContain('"iframe"');
+  });
+
+  it("@rating は評価の欄の部品になり、文中は部品にならない", () => {
+    const first = (md: string) => manager.parse(md).content?.[0];
+    expect(first("@rating")?.type).toBe("ratingEmbed");
+    expect(first("文 @rating")?.type).toBe("paragraph");
+  });
+
+  it("@audio {ID} は音声の部品になり、ID を持つ。文中・ID でない行は部品にならない", () => {
+    const id = "0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41";
+    const first = manager.parse(`@audio ${id}`).content?.[0];
+    expect(first?.type).toBe("pageAudio");
+    expect(first?.attrs?.id).toBe(id);
+    expect(manager.parse(`文 @audio ${id}`).content?.[0]?.type).toBe("paragraph");
+    expect(manager.parse("@audio abc").content?.[0]?.type).toBe("paragraph");
   });
 
   it("トグルは、見出しと中身を持つ部品として読む", () => {

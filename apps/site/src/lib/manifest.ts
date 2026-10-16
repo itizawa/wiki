@@ -2,6 +2,7 @@ import { wikiOrigin, type ManifestPage, type ManifestTree, type PublicManifest, 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { excerpt, type LinkHoverPreview, type RenderOptions } from "./markdown";
 import { initialNavItems, type NavData, type NavItem } from "./nav";
 import { ancestors, navItems } from "./tree";
 
@@ -32,6 +33,10 @@ export type SiteData = {
   /** 公開ページの id → 正規パス（本文中の内部リンクの解決に使う） */
   publicPaths: Map<string, string>;
   primaryTree: ManifestTree | undefined;
+  /** 外部の URL → OGP（API が保存した値）。URL だけの段落をカードにする。古いマニフェストには無い */
+  linkPreviews: NonNullable<WikiManifest["linkPreviews"]>;
+  /** 公開ページの id → 内部リンクのホバーのプレビュー（タイトル・アイコン・抜粋）。公開されていないページは undefined */
+  previewOf: NonNullable<RenderOptions["previewOf"]>;
 };
 
 /** ツリー（ページの階層）の一覧ページの呼び名。ツリーは1本なので、名前は固定にしている。 */
@@ -53,11 +58,22 @@ export function siteData(wikiKey: string): Promise<SiteData> {
 async function loadSiteData(wikiKey: string): Promise<SiteData> {
   const wiki = (await allWikis()).find((w) => w.key === wikiKey);
   if (!wiki) throw new Error(`wiki ${wikiKey} is not in the manifest`);
+  const pagesById = new Map(wiki.pages.map((p) => [p.id, p]));
+  const previews = new Map<string, LinkHoverPreview>();
+  const previewOf = (id: string) => {
+    const page = pagesById.get(id);
+    if (!page) return undefined;
+    let preview = previews.get(id);
+    if (!preview) previews.set(id, (preview = { title: page.title, icon: page.icon, text: excerpt(page.bodyMd, 140) }));
+    return preview;
+  };
   return {
     wiki,
     origin: wikiOrigin(wiki.key, SITE_BASE_DOMAIN),
-    pagesById: new Map(wiki.pages.map((p) => [p.id, p])),
+    pagesById,
+    previewOf,
     publicPaths: new Map(wiki.pages.map((p) => [p.id, p.path])),
+    linkPreviews: wiki.linkPreviews ?? {},
     primaryTree: wiki.trees.find((t) => t.isPrimary) ?? wiki.trees[0],
   };
 }

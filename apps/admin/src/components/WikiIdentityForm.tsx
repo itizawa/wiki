@@ -6,7 +6,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation } from "@tanstack/react-query";
-import { isWikiIconUrl, SITE_NAME_MAX, WIKI_ICON_URL_MAX, type WikiSummary } from "@wiki/shared";
+import { SITE_NAME_MAX, type WikiSummary } from "@wiki/shared";
 import { useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
 import { useRefreshWikis } from "../lib/wiki";
@@ -18,15 +18,6 @@ import { WikiIcon } from "./WikiIcon";
 /** 表示名の欄の確かめ。空だと保存できない。 */
 export function nameProblem(value: string): string | null {
   return value.trim() === "" ? "表示名を入れてください" : null;
-}
-
-/** 画像の URL の欄の確かめ。空なら「画像なし」。 */
-export function iconUrlProblem(value: string): string | null {
-  const v = value.trim();
-  if (v === "") return null;
-  if (v.length > WIKI_ICON_URL_MAX) return `URL が長すぎます（${WIKI_ICON_URL_MAX}文字まで）`;
-  if (!isWikiIconUrl(v)) return "http:// か https:// で始まる URL を入れてください";
-  return null;
 }
 
 type IdentityTarget = Pick<WikiSummary, "key" | "name" | "iconUrl">;
@@ -43,7 +34,6 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
   const [nameTouched, setNameTouched] = useState(false);
   const [uploading, setUploading] = useState(false);
   const nextIcon = iconUrl.trim() === "" ? null : iconUrl.trim();
-  const problem = iconUrlProblem(iconUrl);
   const changed = name.trim() !== wiki.name || nextIcon !== wiki.iconUrl;
   const save = useMutation({
     mutationFn: () => api.updateWiki(wiki.key, { name: name.trim(), iconUrl: nextIcon }),
@@ -53,7 +43,7 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
     },
   });
   const nameError = nameTouched ? nameProblem(name) : null;
-  const canSave = nameProblem(name) === null && problem === null && changed && !uploading && !save.isPending;
+  const canSave = nameProblem(name) === null && changed && !uploading && !save.isPending;
 
   const fields: ReactNode = (
     <Stack spacing={2.5}>
@@ -86,37 +76,17 @@ export function useWikiIdentityForm(wiki: IdentityTarget, opts: { onSaved?: (bef
         </Box>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minHeight: 40 }}>
           <Muted>見え方</Muted>
-          {/* 入力中の URL で、実際に出る形を見せる（読み込めなければ頭文字になる） */}
-          <WikiIcon key={nextIcon ?? ""} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={28} />
-          <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: problem ? null : nextIcon }} size={40} />
+          {/* 選んだ画像で、実際に出る形を見せる（読み込めなければ頭文字になる） */}
+          <WikiIcon key={nextIcon ?? ""} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: nextIcon }} size={28} />
+          <WikiIcon key={`l${nextIcon ?? ""}`} wiki={{ key: wiki.key, name: name.trim() || wiki.name, iconUrl: nextIcon }} size={40} />
           {iconUrl !== "" && (
             <Button variant="text" onClick={() => setIconUrl("")} sx={{ ml: "auto" }}>
-              画像を外す
+              画像を消す
             </Button>
           )}
         </Box>
         <ImageUploader wikiKey={wiki.key} onUploaded={setIconUrl} onUploadingChange={setUploading} />
-        <TextField
-          label="画像の URL"
-          value={iconUrl}
-          onChange={(e) => setIconUrl(e.target.value)}
-          fullWidth
-          placeholder="https://example.com/icon.png"
-          error={problem !== null}
-          // 条件（だれでも見られること）は、選ぶ前から出しておく
-          helperText={problem ?? "アップロードした画像は、URL を知っていればだれでも見られます。"}
-          slotProps={{
-            htmlInput: { maxLength: WIKI_ICON_URL_MAX, inputMode: "url", spellCheck: false },
-            inputLabel: { shrink: true },
-            input: {
-              endAdornment: (
-                <InputAdornment position="end">
-                  <HelpTip about="画像の URL">アップロードすると自動で入ります。ほかのサイトで公開されている画像の URL を入れることもできます。空にすると頭文字に戻ります。</HelpTip>
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
+        <Muted sx={{ fontSize: "0.8rem" }}>アップロードした画像は、URL を知っていればだれでも見られます。消すと頭文字に戻ります。</Muted>
       </Stack>
       {save.error && <Alert severity="error">{errorMessage(save.error)}</Alert>}
     </Stack>

@@ -3,6 +3,7 @@ import Button from "@mui/material/Button";
 import Snackbar from "@mui/material/Snackbar";
 import Stack from "@mui/material/Stack";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { UPDATE_PROMPT_BUTTON_MIN_HEIGHT, updatePromptZIndex } from "./updatePromptStyle";
 
 /** 開いたままの画面で、新しい版が出ていないかを確かめる間隔。 */
 const UPDATE_CHECK_MS = 60 * 60 * 1000;
@@ -36,15 +37,15 @@ export function UpdatePrompt() {
   };
 
   return (
-    <Snackbar open={needRefresh} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+    <Snackbar open={needRefresh} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} sx={{ zIndex: updatePromptZIndex }}>
       {/* ボタンは文の下に並べる（横に置くと、スマホの幅ではボタンの文字が折り返す） */}
       <Alert severity="info" variant="filled" icon={false}>
         新しい版があります。更新すると、画面を読み込み直します。
         <Stack direction="row" spacing={1} sx={{ mt: 1, justifyContent: "flex-end" }}>
-          <Button color="inherit" onClick={() => setNeedRefresh(false)}>
+          <Button color="inherit" sx={{ minHeight: UPDATE_PROMPT_BUTTON_MIN_HEIGHT }} onClick={() => setNeedRefresh(false)}>
             あとで
           </Button>
-          <Button color="inherit" variant="outlined" onClick={update}>
+          <Button color="inherit" variant="outlined" sx={{ minHeight: UPDATE_PROMPT_BUTTON_MIN_HEIGHT }} onClick={update}>
             更新する
           </Button>
         </Stack>

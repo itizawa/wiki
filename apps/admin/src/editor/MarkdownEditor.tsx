@@ -1,4 +1,4 @@
-import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, Megaphone, Minus, Plus, Quote, Strikethrough, Table } from "lucide-react";
+import { Bold, Braces, ChevronRight, Code, GripVertical, Image, Italic, Link, List, ListChecks, ListOrdered, MapPin, Megaphone, Minus, Plus, Quote, Strikethrough, Table, CirclePlay, Mic, FileAudio } from "lucide-react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
@@ -17,7 +17,15 @@ import { Tooltip } from "../components/Tooltip";
 import { FindBar } from "./FindBar";
 import { Placeholder } from "@tiptap/extensions";
 import { insertToggle } from "./toggle";
+import { GoogleMapDialog } from "./GoogleMapDialog";
+import { insertGoogleMap } from "./googleMap";
+import { YoutubeDialog } from "./YoutubeDialog";
+import { insertYoutube } from "./youtube";
+import { AudioDialog } from "./AudioDialog";
+import { insertPageAudio } from "./pageAudio";
+import { useParams } from "@tanstack/react-router";
 import { ImageDialog, insertImage, LinkForm } from "./LinkForm";
+import { LinkHoverPreview } from "./LinkHoverPreview";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CalloutMenu, calloutSx } from "./CalloutMenu";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -29,7 +37,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MENU_MAX_WIDTH, monoFont, TOUCH } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { setBlockDragging } from "./blockMove";
-import { editorExtensions } from "./extensions";
+import { createEditorExtensions } from "./extensions";
+import { watchPageTitles } from "./pageMentions";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { highlightSx } from "./highlight";
 import { OUTLINE_SCROLL_MARGIN } from "./Outline";
 import { EmojiMenu, emojiTrigger } from "./EmojiMenu";
@@ -37,7 +48,7 @@ import { mentionTrigger, PageMention } from "./PageMention";
 import { SlashMenu, slashTrigger } from "./SlashMenu";
 import { TitleBridge } from "./titleBridge";
 
-const extensions = [...editorExtensions, slashTrigger.extension, mentionTrigger.extension, emojiTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
+const triggers = [slashTrigger.extension, mentionTrigger.extension, emojiTrigger.extension, Placeholder.configure({ placeholder: "本文を書く…「/」でブロックを挿入" })];
 
 /**
  * 本文の見た目（見出し・リスト・引用・コールアウト・コード・トグル・表・画像）。
@@ -95,6 +106,54 @@ export const editorContentSx = {
   "& [data-type='details'] > div": { flex: 1, minWidth: 0 },
   "& [data-type='details'] summary": { display: "block", fontWeight: 600, listStyle: "none" },
   "& [data-type='detailsContent'] > :first-of-type": { mt: 0.5 },
+  // 内部リンクは、太字の「@タイトル」で出す（見た目だけ。本文の Markdown には @ も ** も書かない）
+  "& .page-mention": { fontWeight: 700, "&::before": { content: '"@"' } },
+  // 外部 URL のカード（左に文字、右に小さな画像。画像が無い・読めないときは、右の欄を詰める）
+  "& .link-card": { position: "relative", my: 1.5 },
+  "& .link-card-main": {
+    display: "flex",
+    alignItems: "stretch",
+    gap: 1.5,
+    minHeight: 72,
+    border: "1px solid",
+    borderColor: "divider",
+    borderRadius: 1,
+    overflow: "hidden",
+    color: "text.primary",
+    textDecoration: "none",
+    cursor: "pointer",
+    "&:hover": { bgcolor: "action.hover" },
+    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+  },
+  "& .link-card-body": { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 0.25, p: 1.5, overflowWrap: "anywhere" },
+  "& .link-card-site": { fontSize: "0.75rem", color: "text.secondary" },
+  "& .link-card-title": { fontWeight: 700, lineHeight: 1.4 },
+  "& .link-card-description": { fontSize: "0.85rem", color: "text.secondary", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" },
+  "& .link-card-image": { flexShrink: 0, width: 112, objectFit: "cover", borderRadius: 0, "@media (max-width: 480px)": { width: 72 } },
+  // 取っている間と、取れなかったときは、枠の無い URL の行（ふつうのリンクと同じ見た目）
+  "& .link-card:is([data-state='loading'], [data-state='failed']) .link-card-main": { minHeight: 0, border: 0, borderRadius: 0, "&:hover": { bgcolor: "transparent" } },
+  "& .link-card:is([data-state='loading'], [data-state='failed']) .link-card-body": { p: 0 },
+  "& .link-card:is([data-state='loading'], [data-state='failed']) .link-card-site": { display: "none" },
+  "& .link-card:is([data-state='loading'], [data-state='failed']) .link-card-title": { fontWeight: 400, color: "primary.main", textDecoration: "underline" },
+  "& .link-card[data-state='loading'] .link-card-title::after": { content: '" 読み込み中…"', color: "text.secondary", textDecoration: "none", display: "inline-block", ml: 1, fontSize: "0.85rem" },
+  // カードを選んだとき（クリック・矢印キー）と、操作にフォーカスがあるときに、操作を出す
+  "& .link-card-actions": { display: "none", gap: 1, mt: 0.5 },
+  "& .link-card.ProseMirror-selectednode .link-card-actions, & .link-card:focus-within .link-card-actions": { display: "flex" },
+  "& .link-card.ProseMirror-selectednode .link-card-main": { outline: "2px solid", outlineColor: "primary.main" },
+  "& .link-card-action": {
+    font: "inherit",
+    fontSize: "0.8rem",
+    color: "text.primary",
+    bgcolor: "background.paper",
+    border: "1px solid",
+    borderColor: "divider",
+    borderRadius: 1,
+    px: 1,
+    py: 0.5,
+    minHeight: 32,
+    cursor: "pointer",
+    "&:hover": { bgcolor: "action.hover" },
+  },
   "& hr": { border: 0, borderTop: "1px solid", borderColor: "divider", my: 3 },
   "& img": { maxWidth: "100%", borderRadius: 1 },
   "& table": { borderCollapse: "collapse", my: 1.5, width: "100%", tableLayout: "fixed" },
@@ -123,8 +182,14 @@ export function MarkdownEditor(props: {
 
   // 画像のアップロードに失敗したときの知らせ（貼り付け・ドロップは本文の外に結果を出す場所が無いので、ここに出す）
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const qc = useQueryClient();
   const [allExtensions] = useState(() => [
-    ...extensions,
+    ...createEditorExtensions({
+      // 同じ URL を何度も貼っても、API は呼び直さない（API 側にも保存があるので、ここは画面の中だけの短いキャッシュ）
+      fetchPreview: (url) => qc.fetchQuery({ queryKey: ["link-preview", url], queryFn: async () => (await api.linkPreview(url)).preview, staleTime: 10 * 60_000 }),
+      fetchPageTitle: async (id) => (await qc.fetchQuery({ queryKey: ["page", id], queryFn: () => api.getPage(id), staleTime: 30_000 })).title,
+    }),
+    ...triggers,
     ImageUpload.configure({ onError: setUploadError }),
     TitleBridge.configure({
       onLeaveTop: () => {
@@ -144,6 +209,12 @@ export function MarkdownEditor(props: {
     },
   });
 
+  // 内部リンクを「@タイトル」の見た目にするため、リンク先のページのタイトルを引く
+  useEffect(
+    () => watchPageTitles(editor, async (id) => (await qc.fetchQuery({ queryKey: ["page", id], queryFn: () => api.getPage(id), staleTime: 30_000 })).title),
+    [editor, qc],
+  );
+
   const onEditor = props.onEditor;
   useEffect(() => {
     onEditor?.(editor);
@@ -161,6 +232,7 @@ export function MarkdownEditor(props: {
       <FindBar editor={editor} />
       <SelectionMenu editor={editor} />
       <ImageMenu editor={editor} />
+      <LinkHoverPreview editor={editor} />
       <CalloutMenu editor={editor} />
       <InsertMenu editor={editor} />
       <PageMention editor={editor} />
@@ -383,6 +455,16 @@ function InsertMenu({ editor }: { editor: Editor }) {
   };
   const insert = (run: () => void) => () => close(run);
   const [imageOpen, setImageOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
+  // 音声は、ページの本文でだけ入れられる（テンプレートなど、ページに紐づかない本文では出さない）
+  const { pageId } = useParams({ strict: false }) as { pageId?: string };
+  const [audioMode, setAudioMode] = useState<"record" | "file" | null>(null);
+  const [lastAudioMode, setLastAudioMode] = useState<"record" | "file">("record");
+  const openAudio = (mode: "record" | "file") => () => {
+    setLastAudioMode(mode);
+    setAudioMode(mode);
+  };
   // 「挿入」の説明。FloatingMenu が隠れるとき、ボタンからは mouseleave が来ず、開いたまま画面の隅に残るので、
   // 文字を打つ・選択が動くたびに閉じる（開閉は自分で持つ）
   const [tipOpen, setTipOpen] = useState(false);
@@ -439,6 +521,34 @@ function InsertMenu({ editor }: { editor: Editor }) {
           </ListItemIcon>
           <ListItemText>画像…</ListItemText>
         </MenuItem>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => setMapOpen(true))}>
+          <ListItemIcon>
+            <MapPin size={18} />
+          </ListItemIcon>
+          <ListItemText>Google マップ…</ListItemText>
+        </MenuItem>
+        <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => setYoutubeOpen(true))}>
+          <ListItemIcon>
+            <CirclePlay size={18} />
+          </ListItemIcon>
+          <ListItemText>YouTube…</ListItemText>
+        </MenuItem>
+        {pageId && (
+          <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(openAudio("record"))}>
+            <ListItemIcon>
+              <Mic size={18} />
+            </ListItemIcon>
+            <ListItemText>録音…</ListItemText>
+          </MenuItem>
+        )}
+        {pageId && (
+          <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(openAudio("file"))}>
+            <ListItemIcon>
+              <FileAudio size={18} />
+            </ListItemIcon>
+            <ListItemText>音声を添付…</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem sx={{ whiteSpace: "normal" }} onClick={insert(() => chain().toggleCodeBlock().run())}>
           <ListItemIcon>
             <Braces size={18} />
@@ -472,6 +582,41 @@ function InsertMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setImageOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <GoogleMapDialog
+        open={mapOpen}
+        onSubmit={(url) => {
+          setMapOpen(false);
+          insertGoogleMap(editor, url);
+        }}
+        onClose={() => {
+          setMapOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <YoutubeDialog
+        open={youtubeOpen}
+        onSubmit={(url) => {
+          setYoutubeOpen(false);
+          insertYoutube(editor, url);
+        }}
+        onClose={() => {
+          setYoutubeOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <AudioDialog
+        open={audioMode !== null}
+        mode={audioMode ?? lastAudioMode}
+        pageId={pageId}
+        onUploaded={(audio) => {
+          setAudioMode(null);
+          insertPageAudio(editor, audio.id);
+        }}
+        onClose={() => {
+          setAudioMode(null);
           editor.commands.focus();
         }}
       />

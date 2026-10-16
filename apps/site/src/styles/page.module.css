@@ -44,6 +44,10 @@
 }
 /* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「ページ一覧を開く」で開く。NavDrawer.astro）。
    閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
+@media (pointer: coarse), (max-width: 800px) {
+  .sideLinks a { min-height: 44px; }
+  .drawerClose, .sidebarClose { width: 44px; height: 44px; }
+}
 @media (max-width: 800px) {
   .withNav > aside {
     position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
@@ -66,12 +70,40 @@
 
 .breadcrumbs { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
 .breadcrumbs a { color: var(--muted); }
+@media (pointer: coarse), (max-width: 800px) {
+  /* 押せる範囲を 44px にし、隣のリンクとは余白で離す */
+  .breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; column-gap: 2px; }
+  .breadcrumbs a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding-inline: 8px; }
+}
 
 .postList { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; }
-.postList h2 { font-size: 1.15rem; margin: 0; }
+.postList h2, .postList h3 { font-size: 1.15rem; margin: 0; }
+@media (pointer: coarse), (max-width: 800px) {
+  .postList h2 a, .postList h3 a { display: block; padding-block: 6px; }
+  .postList { gap: 12px; }
+}
 .postList p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
 
 /* トップの自由記述（管理画面の「トップページ」）。新着記事との間を空け、線で区切る */
 .homeIntro { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
 .homeIntro > :first-child { margin-top: 0; }
 .homeIntro > :last-child { margin-bottom: 0; }
+
+/* トップのグリッド（管理画面で配置したとき）。12 列で、ブロックの位置と大きさは style の grid-column / grid-row で決める。
+   狭い画面では 1 列にし、DOM の順（配置の順）に積む。grid-column / grid-row は style 属性なので、!important で打ち消す */
+.homeGrid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+/* 行の間は、ブロックの下の余白で取る（空の行に隙間が出ない） */
+.homeBlock { min-width: 0; padding-bottom: 32px; }
+.homeBlock > :first-child { margin-top: 0; }
+.homeBlock > :last-child { margin-bottom: 0; }
+.homeBlockTitle { font-size: 1.05rem; margin: 0 0 12px; color: var(--muted); }
+@media (max-width: 800px) {
+  .homeGrid { grid-template-columns: minmax(0, 1fr); }
+  .homeBlock { padding-bottom: 24px; grid-column: 1 / -1 !important; grid-row: auto !important; }
+}
+
+/* 404 の「トップへ」「検索」 */
+@media (pointer: coarse), (max-width: 800px) {
+  .notFoundLinks { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; }
+  .notFoundLinks a { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 8px; }
+}

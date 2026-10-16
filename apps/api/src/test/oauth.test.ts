@@ -368,7 +368,7 @@ describe("MCP", () => {
     expect(init.body.result.protocolVersion).toBe("2025-06-18");
     const list = await mcp(tokens.access_token, "tools/list");
     const names = list.body.result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(["list_wikis", "search_pages", "get_page", "get_tree"]);
+    expect(names).toEqual(["list_wikis", "search_pages", "get_page", "get_tree", "list_page_audio", "list_tags"]);
 
     const denied = await callTool(tokens.access_token, "create_page", { wiki: "wiki", title: "x" });
     expect(denied.isError).toBe(true);

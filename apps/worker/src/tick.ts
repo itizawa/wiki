@@ -24,6 +24,7 @@ export type Env = {
 };
 
 type RunSummary = { done: string[]; retrying: string[]; failed: { id: string; error: string; wikiName: string }[] };
+type WorkflowSummary = { done: string[]; retrying: string[]; skipped: string[]; failed: { id: string; error: string; wikiName: string; pageTitle: string }[] };
 type PromoteDraftsResult = { promoted: string[]; skipped: number; failed: { pageId: string; error: string }[] };
 type BuildDecision =
   | { trigger: true; buildId: string; contentHash: string; attempts: number }
@@ -33,7 +34,7 @@ type BuildDecision =
  * 印の種類。値は `{"at":"<ISO の時刻>"}` で、「この時刻になったら、この種類の仕事があるかを DB に見に行く」の意味。
  * API は書くだけ（apps/api/src/cron/marks.ts）。消すのと、DB を見たあとの書き直しは、ここで行う。
  */
-export type CronMarkKind = "drafts" | "scheduled" | "build";
+export type CronMarkKind = "drafts" | "scheduled" | "build" | "workflow" | "autoPublish";
 
 /** KV のキー。apps/api/src/cron/marks.ts の `CRON_MARK_KEYS` と同じ文字列にする */
 export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
@@ -43,6 +44,10 @@ export const CRON_MARK_KEYS: Record<CronMarkKind, string> = {
   scheduled: "cron:scheduled",
   /** 公開サイトのビルド待ちがある（デバウンス中と、起動できていないビルドを含む） */
   build: "cron:build",
+  /** ワークフローの実行の再試行待ち・止まったまま・通知待ちの失敗がある */
+  workflow: "cron:workflow",
+  /** 「自動で公開」のページに、公開側に出していない新しい版がある */
+  autoPublish: "cron:auto-publish",
 };
 const KINDS = Object.keys(CRON_MARK_KEYS) as CronMarkKind[];
 
@@ -58,6 +63,8 @@ export const CRON_RECHECK_KEY = "cron:recheck";
 type ApiTick = {
   drafts: PromoteDraftsResult | null;
   run: RunSummary;
+  /** ワークフローの実行の結果（古い API の応答には無い） */
+  workflow?: WorkflowSummary;
   build: BuildDecision;
   /** 種類ごとの、次に DB を見に行く時刻（ISO）。残りが無ければ null */
   next: Record<CronMarkKind, string | null>;
@@ -74,6 +81,7 @@ export type TickResult =
       /** 下書きを版にした結果。この段が失敗したら null */
       drafts: PromoteDraftsResult | null;
       run: RunSummary;
+      workflow: WorkflowSummary | null;
       build: BuildDecision;
       deployed: boolean;
     };
@@ -92,7 +100,7 @@ export const isHourlyCheck = (scheduledAt: Date) => scheduledAt.getUTCMinutes() 
  *    API を呼ばずに終わる（API を呼ぶと DB が起きる。編集の無い時間帯に、サーバーレスの DB を止めておくため）
  * 1) API の `/internal/tick` を呼ぶ。API が、下書きを版にする → 期限の来た予約を実行する → ビルドを起動するか決める、を行う
  * 2) 応答の `next`（DB から求めた、次に見に行く時刻）で印を書き直す
- * 3) 予約の最終失敗があれば通知
+ * 3) ワークフローの実行の失敗の確定と、予約の最終失敗があれば通知
  * 4) ビルドを頼まれたら、公開サイトのデプロイフックを呼ぶ
  * 5) フックを呼べたら、そのビルドを起動済みにする。呼べなかったビルドは、次の回に API がもう一度返す
  *
@@ -170,6 +178,12 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
   }
 
   const { drafts, run, build } = result;
+  // ワークフローの失敗の通知は、うまくいかなくても実行の記録は変えず、あとの処理も止めない（API は、返した時点で通知済みにしている）
+  const workflowFailed = result.workflow?.failed ?? [];
+  if (workflowFailed.length > 0) {
+    const lines = workflowFailed.map((f) => `• 【${f.wikiName}】「${f.pageTitle}」: ${f.error}`).join("\n");
+    await notify(`ワークフローの実行に失敗しました（${workflowFailed.length}件）\n${lines}`).catch((err) => console.error("workflow failure was not notified", err));
+  }
   if (run.failed.length > 0) {
     const lines = run.failed.map((f) => `• 【${f.wikiName}】${f.id}: ${f.error}`).join("\n");
     await notify(`予約の実行に失敗しました（${run.failed.length}件、再試行済み）\n${lines}`);
@@ -194,7 +208,7 @@ export async function tick(env: Env, fetchImpl: typeof fetch = fetch, scheduledA
     deployed = true;
     await call(`/internal/builds/${build.buildId}/triggered`);
   }
-  return { skipped: false, drafts, run, build, deployed };
+  return { skipped: false, drafts, run, workflow: result.workflow ?? null, build, deployed };
 }
 
 /** 印を読む（種類 → 時刻。印が無ければ null）。KV が失敗したら全体を null にする */

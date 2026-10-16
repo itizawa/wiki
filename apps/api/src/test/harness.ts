@@ -17,8 +17,11 @@ import { bootstrapStructure } from "../structure/repo";
 import { users, wikiMembers, wikis } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
+import { memoryAudioStore, type AudioStore } from "../audio/store";
 import { memoryImageStore, type ImageStore } from "../images/store";
 import type { RateLimiter, RateLimiters } from "../rate-limit";
+import type { CostSource } from "../costs/neon";
+import type { LinkFetch } from "../linkPreview/fetch";
 
 /** setup が作るオーナー（すべての wiki に管理者として入れる）。call はこの人として呼ぶ */
 export const ADMIN = "admin@example.com";
@@ -33,11 +36,26 @@ export const testConfig: AppConfig = {
   exportToken: "export-token",
   cronToken: "cron-token",
   googleServiceAccount: null,
+  neon: null,
   x: null,
+  routineTokenKey: null,
 };
 
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
 export const W = `/admin/w/${DEFAULT_WIKI_KEY}`;
+
+/** その wiki の最初のワークフローの ID（無ければ「テスト」という名前で作る）。ブロックを作る・履歴を見るテストが使う */
+export async function defaultWorkflowId(
+  call: (method: string, path: string, body?: unknown) => Promise<{ status: number; body: any }>,
+  base = W,
+): Promise<string> {
+  const list = await call("GET", `${base}/workflow`);
+  const first = list.body.workflows?.[0];
+  if (first) return first.id as string;
+  const made = await call("POST", `${base}/workflow`, { name: "テスト" });
+  if (made.status !== 201) throw new Error(`could not create a workflow: ${made.status}`);
+  return made.body.id as string;
+}
 
 /** 1つの wiki の公開内容（既定は最初の wiki）。 */
 export async function wikiManifest(db: Db, key = DEFAULT_WIKI_KEY) {
@@ -74,9 +92,13 @@ export async function setup(
     x?: XClient;
     config?: Partial<AppConfig>;
     images?: ImageStore | null;
+    audio?: AudioStore | null;
     reporting?: GoogleReporting | null;
     rateLimits?: RateLimiters;
+    linkFetch?: LinkFetch;
     cronMarks?: CronMarkStore | null;
+    costSources?: CostSource[];
+    routineFetch?: typeof fetch;
   } = {},
 ) {
   const client = new PGlite({ loadDataDir: await migratedDataDir(), extensions: pgliteExtensions });
@@ -84,15 +106,23 @@ export async function setup(
   await bootstrapStructure(db);
   const config = { ...testConfig, ...opts.config };
   const images = opts.images === undefined ? memoryImageStore() : opts.images;
+  const audio = opts.audio === undefined ? memoryAudioStore() : opts.audio;
+  // 応答のあとに続ける処理（ワークフローの実行）を集める。テストは `settle()` で終わるのを待つ
+  const deferred: Promise<unknown>[] = [];
   const app = createApp({
     db,
+    defer: (promise) => void deferred.push(promise),
     config,
     google: opts.google ?? null,
     x: opts.x ?? null,
     images,
+    audio,
     reporting: opts.reporting ?? null,
     rateLimits: opts.rateLimits ?? null,
+    linkFetch: opts.linkFetch ?? null,
     cronMarks: opts.cronMarks ?? null,
+    costSources: opts.costSources ?? null,
+    routineFetch: opts.routineFetch ?? null,
   });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 
@@ -134,7 +164,12 @@ export async function setup(
     return { user: user!, call: await callAs(user!.id) };
   }
 
-  return { app, db, client, config, images, call, callAs, addUser, owner: owner!, close: () => client.close() };
+  /** 応答のあとに続けた処理が、すべて終わるのを待つ */
+  async function settle() {
+    while (deferred.length > 0) await Promise.allSettled(deferred.splice(0));
+  }
+
+  return { app, db, client, config, images, audio, call, callAs, addUser, settle, owner: owner!, close: () => client.close() };
 }
 
 /** Workers の Rate Limiting のバインディングの代わり。鍵ごとに limit 回まで通す（窓は進まない）。calls は数えた鍵 */

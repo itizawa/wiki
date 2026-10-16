@@ -41,7 +41,7 @@ import {
   searchConsoleIsEmpty,
   searchConsoleUrl,
   secondsUntil,
-  SERVICE_ACCOUNT_SECRET,
+  SERVICE_ACCOUNT_HELP,
   targetName,
   type AnalyticsTarget,
 } from "../lib/analytics";
@@ -49,6 +49,7 @@ import { api, errorMessage } from "../lib/api";
 import { formatDateTime, formatDay } from "../lib/format";
 import { pageLink, screenLink, useWiki } from "../lib/wiki";
 import { ExternalSite } from "./SettingsPage";
+import { useScreenTitle } from "../lib/documentTitle";
 
 const textSx = { maxWidth: 680 } as const;
 const numberSx = { fontVariantNumeric: "tabular-nums" } as const;
@@ -56,6 +57,7 @@ const count = (n: number) => n.toLocaleString("ja-JP");
 
 /** `/w/{key}/analytics`：Google Analytics とサーチコンソールの数字と、連携の状態。細かい分析は Google の画面で行う。 */
 export function AnalyticsPage({ days, onDaysChange }: { days: AnalyticsDays; onDaysChange: (days: AnalyticsDays) => void }) {
+  useScreenTitle("アクセス解析");
   const { wiki } = useWiki();
   const qc = useQueryClient();
   const analytics = useQuery({ queryKey: ["analytics", days], queryFn: () => api.analytics(days), staleTime: 60_000 });
@@ -181,7 +183,7 @@ function AnalyticsSkeleton() {
 
 const stepsSx = { m: 0, mt: 1.5, pl: 2.75, fontSize: "0.9rem", "& > li": { mb: 0.75 }, ...textSx } as const;
 
-/** 「設定」の「連携」タブ（GA・サーチコンソール）へのリンク */
+/** 「設定」の「Google 連携」タブ（GA・サーチコンソール）へのリンク */
 function SettingsLink({ children = "「設定」を開く" }: { children?: ReactNode }) {
   return (
     <RouterLink {...screenLink("/w/$wikiKey/settings/integrations")} underline="always">
@@ -215,8 +217,9 @@ function NotConnected({ data }: { data: WikiAnalytics }) {
         <>
           <Muted sx={textSx}>
             {data.serviceAccount === "invalid"
-              ? `Google の数字を読むための鍵（${SERVICE_ACCOUNT_SECRET}）が登録されていますが、鍵として読めません。Google Cloud でダウンロードした JSON を、そのまま登録し直してください（下の 3）。`
+              ? "Google の数字を読むための鍵が登録されていますが、鍵として読めません。Google Cloud でダウンロードした JSON を、そのまま登録し直してください（下の 3）。"
               : "この管理画面には、Google の数字を読むための鍵（サービスアカウント）が、まだ登録されていません。次の順で、使えるようになります。ほかの画面は、今までどおり使えます。"}
+            <HelpTip about="鍵の登録">{SERVICE_ACCOUNT_HELP}</HelpTip>
           </Muted>
           <Box component="ol" sx={stepsSx}>
             <li>
@@ -224,7 +227,7 @@ function NotConnected({ data }: { data: WikiAnalytics }) {
             </li>
             <li>同じプロジェクトでサービスアカウントを作り、鍵（JSON）を作ってダウンロードします。</li>
             <li>
-              GitHub のリポジトリのシークレット <Mono>{SERVICE_ACCOUNT_SECRET}</Mono> に、JSON の中身をそのまま登録し、Actions の「Deploy」を実行します。
+              JSON の中身を、そのままサーバーの設定に登録し、Actions の「Deploy」を実行します（登録先の名前は、上の「i」にあります）。
             </li>
             <li>
               この wiki の <SettingsLink /> で、GA のプロパティ ID を入れ、サービスアカウントを GA とサーチコンソールに足します。

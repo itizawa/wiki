@@ -1,9 +1,12 @@
 ---
-import { NO_DECORATION_CSS_VARS, resolveTheme, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
+import { NO_DECORATION_CSS_VARS, pageFaviconHref, resolveTheme, themeBackdrop, themeCssVars, themeDecorationCssVars, themePresetFor, themeVariant } from "@wiki/shared";
+import { adsensePublisherId, adsenseScriptSrc } from "../lib/adsense";
 import { googleTags } from "../lib/googleTags";
+import { serializeJsonLd, type JsonLd } from "../lib/jsonLd";
 import { siteData } from "../lib/manifest";
 import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
-import { Ellipsis, Menu, Presentation } from "lucide-react";
+import { Menu } from "lucide-react";
+import SiteMenu from "../components/SiteMenu";
 import "../styles/global.css";
 import s from "./Base.module.css";
 
@@ -16,7 +19,7 @@ interface Props {
   canonical?: string;
   /** 限定公開ページ */
   noindex?: boolean;
-  /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す */
+  /** 404 のページ。検索には出さない（noindex）が、Google のタグは出す（AdSense は出さない） */
   notFound?: boolean;
   /**
    * ツリーナビ（NavDrawer）を置いたページだけ渡す、トップのパス（`/`）。
@@ -24,9 +27,21 @@ interface Props {
    * 狭い画面ではヘッダーに「ページ一覧を開く」を出す（スクリプトが動かなければ、このパスへのリンクのまま）
    */
   nav?: string;
+  /** 記事のページだけ渡す、ページの絵文字（無ければ null）。ファビコンを、その絵文字かタイトルの1文字目にする（wiki でファビコン画像を設定していれば画像が優先） */
+  icon?: string | null;
+  /** 記事のページかどうか（ファビコンをページごとにする） */
+  article?: boolean;
+  /** OGP の画像のパス（カバー画像か本文の最初の画像）。無ければ wiki のロゴ、それも無ければ画像を出さない */
+  ogImage?: string | null;
+  /** 初めて公開した日時（ISO 8601）。`article:published_time` */
+  publishedAt?: string;
+  /** 最後に改訂した日時（ISO 8601）。`article:modified_time` */
+  modifiedAt?: string;
+  /** 構造化データ（JSON-LD）。`<script type="application/ld+json">` にする。限定公開と 404 には出さない */
+  jsonLd?: JsonLd | JsonLd[];
 }
 
-const { wiki, title, description, canonical, noindex = false, notFound = false, nav } = Astro.props;
+const { wiki, title, description, canonical, noindex = false, notFound = false, nav, icon = null, article = false, ogImage = null, publishedAt, modifiedAt, jsonLd } = Astro.props;
 const site = await siteData(wiki);
 const SITE_NAME = site.wiki.name;
 // 形式を確かめた色とパスだけを使う（マニフェストに無い・正しくない項目は既定に戻る）
@@ -40,14 +55,28 @@ const dark = themeVariant(preset, "dark");
 // 背景画像と飾りの変数。テーマにも wiki の画像にも無いモードは、もう一方のモードの画像を打ち消す（どちらにも無ければ、何も出さない）
 const lightDecoration = themeDecorationCssVars(light, light.mode === "light" ? theme.backgroundLight : theme.backgroundDark);
 const darkDecoration = themeDecorationCssVars(dark, dark.mode === "light" ? theme.backgroundLight : theme.backgroundDark) || (lightDecoration ? NO_DECORATION_CSS_VARS : "");
+// 本文と一緒にスクロールさせる背景（手書きノート風の方眼）か。どちらのモードの背景も、そうなっているときだけ（wiki の画像を入れたモードは固定）
+const lightBackdrop = themeBackdrop(light, light.mode === "light" ? theme.backgroundLight : theme.backgroundDark);
+const darkBackdrop = themeBackdrop(dark, dark.mode === "light" ? theme.backgroundLight : theme.backgroundDark);
+const backdropScrolls = Boolean(lightBackdrop?.scrolls && (!darkBackdrop || darkBackdrop.scrolls));
 const withDecoration = (colors: string, decoration: string) => (decoration ? `${colors};${decoration}` : colors);
 const themeCss = `html:root{${withDecoration(themeCssVars(light.colors), lightDecoration)}}@media (prefers-color-scheme: dark){html:root{${withDecoration(themeCssVars(dark.colors), darkDecoration)}}}`;
 // 背景画像と飾りの要素は、どちらかのモードに画像があるときだけ置く
 const hasBackdrop = Boolean(lightDecoration || darkDecoration);
 const canonicalUrl = canonical ? new URL(canonical, site.origin).href : undefined;
+// ページごとのファビコン（SVG）。画像を設定している wiki と、タイトルも絵文字も無いときは使わない
+const pageFavicon = article && !theme.favicon ? pageFaviconHref(title, icon) : null;
 const fullTitle = title === SITE_NAME ? title : `${title} | ${SITE_NAME}`;
+// OGP（SNS やチャットに貼ったときのカード）。限定公開と 404 には出さない（robots を noindex にする条件と同じ）
+// 画像は絶対 URL にする。ページの画像があれば大きいカード、ロゴだけなら小さいカード、画像が無ければ画像なし
+const ogp = !noindex && !notFound;
+const ogImageSrc = ogImage ?? theme.logo;
+const ogImageUrl = ogImageSrc ? new URL(ogImageSrc, site.origin).href : undefined;
+const twitterCard = ogImage ? "summary_large_image" : "summary";
 // wiki ごとの設定（Google Analytics・サーチコンソール）。限定公開のページには出さない
 const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = googleTags(site.wiki, { noindex, notFound });
+// AdSense（自動広告）。限定公開のページと 404 には出さない
+const adsenseId = adsensePublisherId(site.wiki, { noindex, notFound });
 ---
 
 <!doctype html>
@@ -56,7 +85,9 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {
-      theme.favicon ? (
+      pageFavicon ? (
+        <link rel="icon" type="image/svg+xml" href={pageFavicon} />
+      ) : theme.favicon ? (
         <link rel="icon" type={theme.favicon.endsWith(".webp") ? "image/webp" : "image/png"} href={theme.favicon} />
       ) : (
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -78,6 +109,23 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
     <title>{fullTitle}</title>
     {description && <meta name="description" content={description} />}
     {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    {
+      ogp && (
+        <>
+          <meta property="og:type" content={article ? "article" : "website"} />
+          <meta property="og:title" content={title} />
+          {description && <meta property="og:description" content={description} />}
+          {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+          <meta property="og:site_name" content={SITE_NAME} />
+          <meta property="og:locale" content="ja_JP" />
+          {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+          {article && publishedAt && <meta property="article:published_time" content={publishedAt} />}
+          {article && modifiedAt && <meta property="article:modified_time" content={modifiedAt} />}
+          <meta name="twitter:card" content={twitterCard} />
+        </>
+      )
+    }
+    {ogp && jsonLd && <script is:inline type="application/ld+json" set:html={serializeJsonLd(jsonLd)} />}
     {
       noindex ? (
         <>
@@ -115,6 +163,14 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
         </script>
       )
     }
+    {
+      adsenseId && (
+        <>
+          <meta name="google-adsense-account" content={adsenseId} />
+          <script is:inline async src={adsenseScriptSrc(adsenseId)} crossorigin="anonymous" />
+        </>
+      )
+    }
   </head>
   <body class={nav ? s.hasNav : undefined}>
     <header class={s.header} data-site-header>
@@ -128,30 +184,28 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
       <a class={s.brand} href="/">
         {theme.logo ? <img class={s.logo} src={theme.logo} alt={SITE_NAME} height="32" /> : SITE_NAME}
       </a>
-      {/* プレゼンモード。popover なので、スクリプトが動かなくても開閉できる（外を押す・Esc で閉じる）。出す項目が無いページでは、CSS が出さない。検索と RSS はサイドバー（NavDrawer.astro） */}
-      <div class={s.menuWrap}>
-        <button type="button" class={s.menuButton} popovertarget="site-menu" aria-label="メニュー" title="メニュー">
-          <Ellipsis size={20} aria-hidden="true" />
-        </button>
-        <div id="site-menu" class={s.menu} popover data-pagefind-ignore>
-          {/* スクリプト（Article.astro）が、スライドが2枚以上になる記事でだけ見えるようにする。動かなければ出ない */}
-          <button type="button" hidden data-presentation-open popovertarget="site-menu" popovertargetaction="hide">
-            <Presentation size={16} aria-hidden="true" />
-            プレゼンモードで表示
-          </button>
-        </div>
+      {/* 右端の「…」メニュー（共有・URLをコピー・プレゼンモード）。検索と RSS はサイドバー（NavDrawer.astro） */}
+      <div class={s.menuWrap} data-pagefind-ignore>
+        <SiteMenu client:load />
       </div>
     </header>
     <div class={s.body}>
       <slot />
+    </div>
+    {/* リンクのプレビュー。本文のリンク（data-preview-title つき）にカーソルを載せる・フォーカスすると、下のスクリプトが中身を入れて出す。スクリプトが動かなければ出ない（リンクはそのまま使える） */}
+    <div id="link-preview" class={s.linkPreview} popover="manual" role="tooltip" data-pagefind-ignore>
+      <span class={s.previewSite} data-preview-site></span>
+      <strong class={s.previewTitle}><span data-preview-icon aria-hidden="true"></span><span data-preview-title></span></strong>
+      <span class={s.previewText} data-preview-text></span>
     </div>
     <footer class={s.footer}>© {SITE_NAME}</footer>
     {
       hasBackdrop && (
         <>
           {/* 背景画像と飾り。本文のあとに置き、後ろに固定する。押せず、読み上げず、印刷には出さない（global.css） */}
-          <div class="theme-backdrop" aria-hidden="true" />
+          <div class="theme-backdrop" data-scrolls={backdropScrolls ? "" : undefined} aria-hidden="true" />
           <div class="theme-ornament" aria-hidden="true" />
+          <div class="theme-motion" aria-hidden="true" />
         </>
       )
     }
@@ -159,17 +213,78 @@ const { gaMeasurementId, searchConsoleVerification, skipUnlistedPaths } = google
 {/* </html> のあとに書くと、Astro 7 はそのまま </html> のあとに出力する（5 では </body> の前へ動かしていた）ので、<body> の中に置く */}
 <script>
   import { nextHeaderVisibility } from "../lib/headerVisibility";
+  import { MENU_BUTTON_ATTR } from "../lib/presentable";
+  import { HOVER_DELAY_MS, previewPosition } from "../lib/linkPreviewPosition";
 
   // プレゼンモードを閉じたら、開いたメニューのボタンへフォーカスを戻す（メニューは閉じていて、押したボタンには戻せない）
   document.addEventListener(
     "close",
     (e) => {
       if (e.target instanceof HTMLElement && e.target.hasAttribute("data-presentation")) {
-        document.querySelector<HTMLElement>("[popovertarget=site-menu]")?.focus({ preventScroll: true });
+        document.querySelector<HTMLElement>(`[${MENU_BUTTON_ATTR}]`)?.focus({ preventScroll: true });
       }
     },
     true,
   );
+
+  // リンクのプレビュー。ホバーは HOVER_DELAY_MS 待って出す。キーボードのフォーカス（:focus-visible）はすぐ出す。
+  // マウスで押したあとのフォーカスでは出さず、タッチ端末（ホバーできない端末）では出さない。Esc・外す・スクロールで閉じる
+  const card = document.getElementById("link-preview");
+  if (card && typeof card.showPopover === "function") {
+    const LINK = "a[data-preview-title]";
+    const canHover = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const part = (name: string) => card.querySelector<HTMLElement>(`[data-preview-${name}]`)!;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let current: HTMLAnchorElement | null = null;
+    const hide = () => {
+      clearTimeout(timer);
+      if (current) current.removeAttribute("aria-describedby");
+      current = null;
+      if (card.matches(":popover-open")) card.hidePopover();
+    };
+    const show = (link: HTMLAnchorElement, point?: { x: number; y: number }) => {
+      hide();
+      const set = (name: string, v: string | undefined) => {
+        part(name).textContent = v ?? "";
+        part(name).hidden = !v;
+      };
+      set("site", link.dataset.previewSite);
+      set("icon", link.dataset.previewIcon);
+      set("title", link.dataset.previewTitle);
+      set("text", link.dataset.previewText);
+      card.showPopover();
+      current = link;
+      link.setAttribute("aria-describedby", card.id);
+      // 複数行にまたがるリンクは、カーソルのある行（フォーカスなら最初の行）の下に置く
+      const rects = [...link.getClientRects()];
+      const rect = (point && rects.find((r) => point.y >= r.top && point.y <= r.bottom)) || rects[0] || link.getBoundingClientRect();
+      const { left, top } = previewPosition(rect, { width: card.offsetWidth, height: card.offsetHeight }, { width: document.documentElement.clientWidth, height: window.innerHeight });
+      card.style.left = `${left}px`;
+      card.style.top = `${top}px`;
+    };
+    const linkOf = (e: Event) => (e.target instanceof Element ? (e.target.closest(LINK) as HTMLAnchorElement | null) : null);
+    document.addEventListener("mouseover", (e) => {
+      const link = linkOf(e);
+      if (!link || link === current || !canHover()) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => show(link, { x: e.clientX, y: e.clientY }), HOVER_DELAY_MS);
+    });
+    document.addEventListener("mouseout", (e) => {
+      const link = linkOf(e);
+      if (link && !link.contains(e.relatedTarget as Node | null)) hide();
+    });
+    document.addEventListener("focusin", (e) => {
+      const link = linkOf(e);
+      if (link && link.matches(":focus-visible")) show(link);
+    });
+    document.addEventListener("focusout", (e) => {
+      if (linkOf(e)) hide();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hide();
+    });
+    window.addEventListener("scroll", hide, { passive: true });
+  }
 
   // 狭い画面で張り付くヘッダーを、下スクロールで隠し、上スクロールで戻す。
   // 張り付けるのも隠すのも CSS（Base.module.css）で、ここでは data-hidden を付け外しするだけ

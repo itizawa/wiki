@@ -71,25 +71,38 @@ export function pageLink(pageId: string) {
   return { to: "/w/$wikiKey/pages/$pageId", params: { wikiKey: currentWikiKey(), pageId } } as const;
 }
 
+/** 開いている wiki の「すべてのページ」を、そのタグが付いたページだけに絞って開くリンク。 */
+export function tagPagesLink(tagId: string) {
+  return { to: "/w/$wikiKey/pages", params: { wikiKey: currentWikiKey() }, search: { tag: tagId } } as const;
+}
+
 /** 開いている wiki のテンプレートの編集画面へのリンク。 */
 export function templateLink(templateId: string) {
   return { to: "/w/$wikiKey/templates/$templateId", params: { wikiKey: currentWikiKey(), templateId } } as const;
 }
 
-/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・ゴミ箱・設定とそのタブ）へのリンク。 */
+/** 開いている wiki のワークフローの詳細（ブロックと実行の履歴）へのリンク。 */
+export function workflowLink(workflowId: string) {
+  return { to: "/w/$wikiKey/workflows/$workflowId", params: { wikiKey: currentWikiKey(), workflowId } } as const;
+}
+
+/** 開いている wiki の画面（一覧・検索・カレンダー・アクセス解析・テンプレート・ワークフロー・ゴミ箱・設定とそのタブ）へのリンク。 */
 export type WikiScreen =
   | "/w/$wikiKey"
+  | "/w/$wikiKey/pages"
   | "/w/$wikiKey/requests"
   | "/w/$wikiKey/search"
   | "/w/$wikiKey/calendar"
   | "/w/$wikiKey/analytics"
   | "/w/$wikiKey/templates"
+  | "/w/$wikiKey/workflows"
   | "/w/$wikiKey/trash"
   | "/w/$wikiKey/settings"
   | "/w/$wikiKey/settings/appearance"
   | "/w/$wikiKey/settings/home"
   | "/w/$wikiKey/settings/integrations"
   | "/w/$wikiKey/settings/sns"
+  | "/w/$wikiKey/settings/tags"
   | "/w/$wikiKey/settings/members"
   | "/w/$wikiKey/settings/audit";
 export function screenLink<T extends WikiScreen>(to: T) {

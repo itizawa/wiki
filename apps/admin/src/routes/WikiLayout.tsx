@@ -9,7 +9,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
-import { createContext, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CommandMenu } from "../components/CommandMenu";
 import { ConfirmHost } from "../components/ConfirmDialog";
@@ -21,9 +21,10 @@ import { Tooltip } from "../components/Tooltip";
 import { Muted, RouterLink, Section } from "../components/ui";
 import { errorMessage, setApiWiki } from "../lib/api";
 import { useMigrateLegacyStars, useStarsError } from "../lib/stars";
+import { hasOpenOverlay, PEEK_CLOSE_DELAY_MS, PEEK_OPEN_DELAY_MS, shouldHoldPeek } from "../lib/sidebarPeek";
 import { usePersistentState } from "../lib/storage";
 import { useTabIcon } from "../lib/tabIcon";
-import { useThemeBackdrop } from "../components/ThemeBackdrop";
+import { scrollingBackdropSx, useThemeBackdrop } from "../components/ThemeBackdrop";
 import { useAdminThemeFor, useAdminThemePreset } from "../lib/adminTheme";
 import { rememberWiki, useWiki, WikiContext } from "../lib/wiki";
 import { TOUCH } from "../theme";
@@ -100,6 +101,111 @@ export function WikiLayout({ wikiKey }: { wikiKey: string }) {
   );
 }
 
+/**
+ * 閉じたサイドバーを、左端にマウスを乗せたときだけ本文に重ねて出す（本文の幅は動かさない）。
+ * 開いた状態は覚えている `open` とは別に持つ。マウスで操作する端末の広い画面だけで働く。
+ * 閉じるのは、マウスが出て少し待ったあと。ドラッグ中・メニューが開いている間・フォーカスがサイドバーの中にある間は閉じない。
+ */
+function useSidebarPeek(enabled: boolean) {
+  const [peek, setPeek] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const inside = useRef(false);
+  const pressed = useRef(false);
+
+  const clear = () => {
+    clearTimeout(timer.current);
+    timer.current = undefined;
+  };
+  const scheduleClose = () => {
+    clear();
+    timer.current = setTimeout(() => {
+      timer.current = undefined;
+      const hold = shouldHoldPeek({
+        pointerInside: inside.current,
+        pressed: pressed.current,
+        overlayOpen: hasOpenOverlay(),
+        // キーボードで入れたフォーカスだけを数える（マウスで押したボタンに残ったフォーカスで、開きっぱなしにならないように）
+        focusInside: !!document.activeElement && !!ref.current?.contains(document.activeElement) && document.activeElement.matches(":focus-visible"),
+      });
+      // 閉じない理由があるときは、そのまま待つ。理由が無くなったあとの操作（マウスの移動・フォーカスが外れる）で、また数える
+      if (!hold) setPeek(false);
+    }, PEEK_CLOSE_DELAY_MS);
+  };
+
+  useEffect(() => {
+    if (!enabled) {
+      clear();
+      setPeek(false);
+    }
+    return clear;
+  }, [enabled]);
+
+  // 出している間だけ、サイドバーの外での操作を見る（メニューを閉じたあとの、マウスの動きなど）
+  useEffect(() => {
+    if (!peek) return;
+    const onMove = (e: PointerEvent) => {
+      // React のイベントは、画面の末尾に置いたメニューの背景の上でも「サイドバーの中」とみなす。実際の DOM で見直す
+      inside.current = e.target instanceof Node && !!ref.current?.contains(e.target);
+      if (!inside.current && timer.current === undefined) scheduleClose();
+    };
+    const onDown = () => {
+      pressed.current = true;
+    };
+    const onUp = () => {
+      pressed.current = false;
+      if (!inside.current) scheduleClose();
+    };
+    const onFocusOut = () => {
+      if (!inside.current) scheduleClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !hasOpenOverlay()) {
+        clear();
+        setPeek(false);
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("pointerup", onUp, true);
+    document.addEventListener("pointercancel", onUp, true);
+    document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("pointerup", onUp, true);
+      document.removeEventListener("pointercancel", onUp, true);
+      document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("keydown", onKey);
+      pressed.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peek]);
+
+  return {
+    peek,
+    ref,
+    close: () => {
+      clear();
+      setPeek(false);
+    },
+    handlers: {
+      onPointerEnter: (e: { pointerType: string }) => {
+        if (!enabled || e.pointerType !== "mouse") return;
+        inside.current = true;
+        clear();
+        if (!peek) timer.current = setTimeout(() => setPeek(true), PEEK_OPEN_DELAY_MS);
+      },
+      onPointerLeave: () => {
+        inside.current = false;
+        if (peek) scheduleClose();
+        else clear();
+      },
+    },
+  };
+}
+
 function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: string | null; pictureUrl: string | null; onLogout: () => void }) {
   const { wiki } = useWiki();
   const backdrop = useThemeBackdrop(useAdminThemePreset());
@@ -107,6 +213,10 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
   const wide = useMediaQuery((t) => t.breakpoints.up("md"));
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [open, setOpenState] = usePersistentState("wiki.sidebar.open", true);
+  // 閉じているとき、左端にマウスを乗せると重ねて出す（指で操作する端末・狭い画面は今までどおり）
+  const canHover = useMediaQuery("(hover: hover) and (pointer: fine)");
+  const sidebarPeek = useSidebarPeek(wide && canHover && !open);
+  const peek = sidebarPeek.peek && !open;
   // 幅を動かすのは開閉のときだけ（つまみで幅を変えている間も動かすと、つまみに遅れて付いてくる）
   const [toggling, setToggling] = useState(false);
   const setOpen = (next: boolean) => {
@@ -158,10 +268,13 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
       {wide ? (
         // 開閉は、幅を動かして出し入れする（どこが開いてどこが閉じたかを目で追えるように）。本文側も一緒に動く
         <Box
+          ref={sidebarPeek.ref}
+          {...sidebarPeek.handlers}
           sx={{
             position: "relative",
             flexShrink: 0,
-            overflow: "hidden",
+            overflow: peek ? "visible" : "hidden",
+            zIndex: peek ? (t) => t.zIndex.appBar : "auto",
             // 画面を移るときのフェードから外す（theme.ts）
             viewTransitionName: "admin-sidebar",
             // 右の境界線（1px）のぶんを足す
@@ -172,12 +285,38 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
             ...noMotion,
           }}
         >
-          {/* 閉じている間は、見えない中身にフォーカスが入らないようにする */}
-          <Box inert={!open} sx={{ height: "100%", opacity: open ? 1 : 0, visibility: open ? "visible" : "hidden", transition: `opacity ${MOTION_MS}ms ease, visibility ${MOTION_MS}ms`, ...noMotion }}>
-            <Sidebar email={email} name={name} pictureUrl={pictureUrl} onCollapse={() => setOpen(false)} onOpenCommands={() => setCommandOpen(true)} onLogout={onLogout} />
+          {/* 閉じている間は、見えない中身にフォーカスが入らないようにする。重ねて出している間は、本文の上に置く（列の幅は変えない） */}
+          <Box
+            inert={!open && !peek}
+            sx={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: "calc(var(--sidebar-width) + 1px)",
+              borderRight: 1,
+              borderColor: peek ? "divider" : "transparent",
+              bgcolor: "background.default",
+              boxShadow: peek ? 8 : "none",
+              opacity: open || peek ? 1 : 0,
+              visibility: open || peek ? "visible" : "hidden",
+              transition: `opacity ${MOTION_MS}ms ease, visibility ${MOTION_MS}ms, box-shadow ${MOTION_MS}ms ease`,
+              ...noMotion,
+            }}
+          >
+            <Sidebar
+              email={email}
+              name={name}
+              pictureUrl={pictureUrl}
+              onCollapse={peek ? undefined : () => setOpen(false)}
+              onPin={peek ? () => setOpen(true) : undefined}
+              onNavigate={peek ? sidebarPeek.close : undefined}
+              onOpenCommands={() => setCommandOpen(true)}
+              onLogout={onLogout}
+            />
           </Box>
           <Box
-            inert={open}
+            inert={open || peek}
             sx={{
               position: "absolute",
               top: 10,
@@ -209,7 +348,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
           <Typography variant="body2" noWrap sx={{ minWidth: 0, fontWeight: 600 }}>
             {wiki.name}
           </Typography>
-          <Box ref={setBarSlot} sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }} />
+          <Box ref={setBarSlot} sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5, flexShrink: 1, minWidth: 0 }} />
         </Box>
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す。「視差効果を減らす」が有効なら、滑らせずにすぐ出し入れする */}
@@ -236,7 +375,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
       <ConfirmHost />
       <ToastHost />
       <StarsHost />
-      <Box {...mainProps} sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...mainSx }}>
+      <Box {...mainProps} sx={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto", ...mainSx, ...scrollingBackdropSx(backdrop) }}>
         <NarrowBarSlot.Provider value={barSlot}>
           <Outlet />
         </NarrowBarSlot.Provider>

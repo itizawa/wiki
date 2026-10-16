@@ -7,6 +7,7 @@ import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
 import { Home, mainProps, mainSx, Root, SkipLink } from "./routes/Layout";
 import { lazyScreen, ScreenSkeleton } from "./routes/lazyScreen";
+import { DashboardPage } from "./routes/DashboardPage";
 import { ConnectionsPage } from "./routes/ConnectionsPage";
 import { ConsentPage } from "./routes/ConsentPage";
 import { EditRequestListPage } from "./routes/EditRequestListPage";
@@ -15,13 +16,19 @@ import { GlobalAdminLayout } from "./routes/GlobalAdminLayout";
 import { InvitePage } from "./routes/InvitePage";
 import { MembersPage } from "./routes/MembersPage";
 import { NotFoundPage } from "./routes/NotFoundPage";
+import { CostsPage } from "./routes/CostsPage";
+import { RoutinesPage } from "./routes/RoutinesPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
+import { validatePagesSearch } from "./lib/pagesSearch";
 import { FIRST_WIKI } from "./lib/wiki";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { SnsSettingsPage } from "./routes/SnsSettingsPage";
+import { WorkflowDetailPage } from "./routes/WorkflowDetailPage";
+import { WorkflowsPage } from "./routes/WorkflowsPage";
+import { TagSettingsPage } from "./routes/TagSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
 import { WikisPage } from "./routes/WikisPage";
@@ -73,6 +80,10 @@ const wikisRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "
 const ownersRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/owners", component: OwnersPage });
 // すべての wiki と全体にかかわる監査ログ（オーナーだけ）
 const auditAllRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/audit", component: () => <AuditLogPage scope="all" /> });
+// 運用コスト（サービスごとの使用量。オーナーだけ）
+const costsRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/costs", component: CostsPage });
+// Routine（ワークフローが呼ぶ Claude Routine の登録。オーナーだけ）
+const routinesRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/routines", component: RoutinesPage });
 // 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
 // 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
@@ -97,7 +108,10 @@ const wikiRoute = createRoute({
     return <WikiLayout key={wikiKey} wikiKey={wikiKey} />;
   },
 });
-const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(PagesPage) });
+// wiki のトップ：最近更新したページ・下書き・予約公開・閲覧数の要約。全ページの一覧は /pages
+const dashboardRoute = createRoute({ getParentRoute: () => wikiRoute, path: "/", component: padded(DashboardPage) });
+// ?tag={タグの ID}：そのタグが付いたページだけの一覧。再読み込みや URL の共有で同じ絞り込みが開く
+const pagesRoute = createRoute({ getParentRoute: () => wikiRoute, path: "pages", validateSearch: validatePagesSearch, component: padded(PagesPage) });
 const editorRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "pages/$pageId",
@@ -177,6 +191,16 @@ const templateEditorRoute = createRoute({
     return <TemplateEditorPage key={templateId} templateId={templateId} />;
   },
 });
+// ワークフロー。設定とは独立した画面で、サイドバーから開く。管理者だけ。一覧と、1つのワークフロー（ブロックと実行の履歴）の詳細
+const workflowsRoute = createRoute({ getParentRoute: () => wikiRoute, path: "workflows", component: padded(WorkflowsPage) });
+const workflowDetailRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "workflows/$workflowId",
+  component: padded(function WorkflowDetail() {
+    const { workflowId } = workflowDetailRoute.useParams();
+    return <WorkflowDetailPage key={workflowId} workflowId={workflowId} />;
+  }),
+});
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 
 // wiki ごとの設定。見出しとタブ（WikiSettingsLayout）の下に、タブごとの画面を出す。タブごとに URL を分ける
@@ -204,6 +228,8 @@ const snsRoute = createRoute({
     return <SnsSettingsPage result={x} onResultRead={clear} />;
   },
 });
+// タグ管理（管理用タグ）。管理者だけ
+const tagsRoute = createRoute({ getParentRoute: () => settingsRoute, path: "tags", component: TagSettingsPage });
 // メンバー。一覧はだれでも、変えるのは管理者だけ
 const membersRoute = createRoute({ getParentRoute: () => settingsRoute, path: "members", component: MembersPage });
 // この wiki の監査ログ（管理者だけ）
@@ -218,6 +244,15 @@ const legacySettingsScreen = (path: "members" | "audit" | "appearance" | "home")
       throw redirect({ to: `/w/$wikiKey/settings/${path}`, params: { wikiKey: params.wikiKey }, replace: true });
     },
   });
+
+// ワークフローが設定のタブだった頃の URL。ブックマークや共有したリンクを切らさないよう、独立した画面へ移す
+const legacyWorkflowsRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "settings/workflows",
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/w/$wikiKey/workflows", params: { wikiKey: params.wikiKey }, replace: true });
+  },
+});
 
 // wiki が1つだった頃の URL。その頃の内容は最初の wiki（key = wiki）にあるので、そこへ移す
 const legacyEditorRoute = createRoute({
@@ -239,11 +274,12 @@ const legacyScreen = (path: "/calendar", to: `/w/$wikiKey${typeof path}`) =>
 const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
-  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute]),
+  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute, routinesRoute, costsRoute]),
   inviteRoute,
   consentRoute,
   connectionsRoute,
   wikiRoute.addChildren([
+    dashboardRoute,
     pagesRoute,
     editorRoute,
     editRequestsRoute,
@@ -254,11 +290,14 @@ const routeTree = rootRoute.addChildren([
     templatesRoute,
     templateEditorRoute,
     trashRoute,
-    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, membersRoute, auditRoute]),
+    workflowsRoute,
+    workflowDetailRoute,
+    settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, tagsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),
     legacySettingsScreen("appearance"),
     legacySettingsScreen("home"),
+    legacyWorkflowsRoute,
   ]),
   legacyEditorRoute,
   legacyScreen("/calendar", "/w/$wikiKey/calendar"),

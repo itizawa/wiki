@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { markCronWork } from "../cron/marks";
 import type { Db } from "../db/client";
 import { pageDrafts, pageLinks, pages, pageSearch, pageVersions, wikis } from "../db/schema";
 
@@ -104,6 +105,8 @@ export async function createVersion(
     .where(eq(pages.id, page.id));
   await syncPageSearch(tx, page.id, content);
   await replaceLinks(tx, page.wikiId, page.id, content.bodyMd);
+  // 「自動で公開」の公開中のページは、次の Cron で、この版を公開側に出す
+  if (page.autoPublish && page.publishedVersionId !== null && page.visibility !== "private") markCronWork("autoPublish");
   return { versionId: version!.id, created: true };
 }
 

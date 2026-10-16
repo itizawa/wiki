@@ -24,6 +24,7 @@ export function useDraftAutosave(
   baseVersionId: string | null,
   paused: boolean,
   onHeadMoved: (headVersionId: string) => void,
+  onSaved?: () => void,
 ) {
   // サーバーに置いてある内容（下書き、無ければ head）。これと違えば、まだ保存していない
   const synced = useRef<DraftContent | null>(null);
@@ -36,6 +37,8 @@ export function useDraftAutosave(
   latest.current = { content, baseVersionId };
   const headMoved = useRef(onHeadMoved);
   headMoved.current = onHeadMoved;
+  const saved = useRef(onSaved);
+  saved.current = onSaved;
 
   const markSynced = useCallback((c: DraftContent, at: string | null = null) => {
     synced.current = c;
@@ -58,6 +61,7 @@ export function useDraftAutosave(
         const res = await api.saveDraft(pageId, { baseVersionId, ...payload });
         markSynced(payload, res.draft?.updatedAt ?? null);
         if (res.headVersionId !== baseVersionId) headMoved.current(res.headVersionId);
+        saved.current?.();
         return true;
       } catch (e) {
         setError(e);

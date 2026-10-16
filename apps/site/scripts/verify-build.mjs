@@ -2,6 +2,7 @@
 // - 限定公開ページが検索・サイトマップ・RSS・ナビに漏れていないこと
 // - ある wiki の内容（非公開・限定公開を含む）が、別の wiki の出力に混ざっていないこと
 // - Google のタグ（Analytics・サーチコンソール）が、設定した wiki の公開ページにだけ入り、限定公開のページに入っていないこと
+// - AdSense のタグと ads.txt が、設定した wiki の公開ページにだけ入り、限定公開のページと 404 に入っていないこと
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -35,15 +36,23 @@ check(!(await exists("wiki/t")), "pages are not re-displayed under /t/ (the tree
 check(await exists(`wiki/u/${key}/index.html`), "unlisted page is generated under /u/{key}/");
 check(await exists("wiki/404.html"), "each wiki has its own 404 page");
 const top = (await readdir(dist)).sort();
-check(top.join() === ["_astro", "_headers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
+check(top.join() === ["_astro", "_headers", "covers", "favicon.svg", "notes", "wiki"].join(), `the output holds only the shared assets and one directory per wiki (got ${top.join(", ")})`);
 
 // ページのアイコン（絵文字）：タイトルとツリーのナビには出し、<title> には入れない
 const iconPage = await read("wiki/p/aaaaaaaaa1.html");
 check(/<h1[^>]*>\s*<span[^>]*aria-hidden="true"[^>]*>👋<\/span>\s*はじめに\s*<\/h1>/.test(iconPage), "a page's icon is shown before its title");
+// ページのカバー画像：タイトルの上に、alt なし・幅と高さつきで出す。付けていないページには出さない。用意した画像のファイルも出力にある
+check(/<img[^>]*class="[^"]*cover[^"]*"[^>]*src="\/covers\/forest\.svg"[^>]*alt=""[^>]*width="1600"[^>]*height="400"[^>]*loading="eager"/.test(iconPage) && iconPage.indexOf('src="/covers/forest.svg"') < iconPage.indexOf("<h1"), "a page's cover is shown above its title (empty alt, fixed size, eager)");
+check(!(await read("wiki/p/aaaaaaaaa2.html")).includes("/covers/"), "a page without a cover shows none");
+check(await exists("covers/forest.svg"), "the provided cover images are shared assets at the root of the output");
 const noIconPage = await read("wiki/p/aaaaaaaaa2.html");
 check(/<a href="\/p\/aaaaaaaaa1"><span[^>]*aria-hidden="true"[^>]*>👋<\/span>はじめに<\/a>/.test(noIconPage), "the tree nav shows a page's icon before its title");
 check(!/<h1[^>]*>\s*<span/.test(noIconPage), "a page without an icon has nothing before its title");
 check(!/<title>[^<]*👋/.test(iconPage), "the icon is not part of <title>");
+check(
+  iconPage.includes("data-rating-embed") && iconPage.includes("RatingEmbeds") && !iconPage.includes("@rating") && !noIconPage.includes("RatingEmbeds"),
+  "a page with @rating gets the rating slot and its island; a page without it gets neither",
+);
 check(noIconPage.includes('rel="canonical" href="http://wiki.localhost:4321/p/aaaaaaaaa2"'), "a page has canonical to /p/ on the wiki's origin");
 
 check(
@@ -181,6 +190,21 @@ check(
   "the 404 page does not load the Google tag when the URL is under /u/",
 );
 
+// AdSense：設定のある wiki（サンプルでは wiki）の公開ページ・一覧・検索に入れる。限定公開のページと 404 には出さない
+const adsenseId = "ca-pub-1234567890123456";
+const adsenseMeta = `<meta name="google-adsense-account" content="${adsenseId}">`;
+const adsenseSrc = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseId}" crossorigin="anonymous"></script>`;
+for (const [path, html] of Object.entries(withTags)) {
+  check(html.includes(adsenseMeta) && html.includes(adsenseSrc), `${path} has the AdSense account meta and the auto ads code`);
+}
+const adsenseWords = ["adsbygoogle", "google-adsense-account", "googlesyndication", adsenseId];
+const adsenseInUnlisted = adsenseWords.filter((w) => unlisted.includes(w));
+check(adsenseInUnlisted.length === 0, `an unlisted page has no AdSense code${adsenseInUnlisted.length ? ` (${adsenseInUnlisted.join(", ")})` : ""}`);
+const adsenseIn404 = adsenseWords.filter((w) => notFoundPage.includes(w));
+check(adsenseIn404.length === 0, `the 404 page has no AdSense code (no ads on error pages)${adsenseIn404.length ? ` (${adsenseIn404.join(", ")})` : ""}`);
+check((await exists("wiki/ads.txt")) && (await read("wiki/ads.txt")) === "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0\n", "ads.txt lists the wiki's publisher id (pub- without ca-)");
+check(!(await exists("notes/ads.txt")), "a wiki without a publisher id has no ads.txt");
+
 const routes = JSON.parse(await read("wiki/page-routes.json"));
 check(routes.canonical.aaaaaaaaa2 === "/p/aaaaaaaaa2", "page-routes.json maps ids to /p/{id}");
 check(routes.gone.includes("ggggggggg1"), "page-routes.json lists gone pages");
@@ -207,7 +231,7 @@ const sharedPaths = [
 ];
 const sharedFiles = await Promise.all(sharedPaths.map(async (path) => ({ path: path.slice(dist.length), text: await readFile(path, "utf8") })));
 const perWikiWords = [
-  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc"],
+  ...["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", "限定公開のメモ", "G-SAMPLE1234", "sampleVerification_0123-abc", "1234567890123456"],
   ...["bbbbbbbbb1", "hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート", "#00716b", "notes0logo0sample0000000"],
 ];
 const inShared = leaks(sharedFiles, perWikiWords);
@@ -230,6 +254,11 @@ check(wikiIndex.indexOf("data-home-intro") < wikiIndex.indexOf("新着記事"), 
 check(wikiIndex.includes('<a href="/p/aaaaaaaaa1"'), "an internal link in the intro points to the public page");
 check(wikiIndex.includes("まだ公開していないページ") && !wikiIndex.includes("zzzzzzzzz9"), "a link to a page that is not public is plain text in the intro");
 check(!notesIndex.includes("data-home-intro"), "a wiki without an intro shows only the new posts");
+// ---- トップのグリッド：配置を保存した wiki は配置どおりに、保存していない wiki は今までの縦の並びのまま
+check(notesIndex.includes("data-home-grid") && !wikiIndex.includes("data-home-grid"), "only the wiki with a saved layout gets the grid");
+check(notesIndex.includes("grid-column: 1 / span 8; grid-row: 1 / span 1;") && notesIndex.includes("grid-column: 9 / span 4; grid-row: 1 / span 2;"), "the grid blocks sit where they were placed");
+check(notesIndex.indexOf("grid-column: 1 / span 8") < notesIndex.indexOf("grid-column: 9 / span 4"), "blocks are in layout order, which is the order they stack on a phone");
+check(!wikiIndex.includes("data-home-block"), "a wiki without a layout keeps the plain list");
 check(!wikiIndex.includes("階層から探す") && !notesIndex.includes("階層から探す"), "the top no longer links to the tree");
 check((await read("notes/sitemap.xml")).includes("<loc>http://notes.localhost:4321/p/bbbbbbbbb1</loc>"), "sitemap uses the wiki's origin");
 check((await read("notes/feed.xml")).includes("<link>http://notes.localhost:4321/p/bbbbbbbbb1/</link>"), "RSS uses the wiki's origin");
@@ -237,14 +266,14 @@ check((await read("notes/robots.txt")).includes("Sitemap: http://notes.localhost
 check((await read("notes/p/bbbbbbbbb1.html")).includes('rel="canonical" href="http://notes.localhost:4321/p/bbbbbbbbb1"'), "canonical uses the wiki's origin");
 
 // ---- wiki どうしの漏れ：id・限定公開の key・本文・タイトル・削除済みの id が、別の wiki の出力に無いこと
-const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", gaId, verification];
+const ofWiki = ["aaaaaaaaa1", "aaaaaaaaa2", "ggggggggg1", key, "ひみつのあいことば", "設計メモ", "サンプル wiki", gaId, verification, "1234567890123456"];
 const ofNotes = ["hhhhhhhhh1", "N0tesUnl1stedKeyAbCdEf", "のーとのあいことば", "のーとのひみつ", "ノートの限定公開", "開発ノート"];
 const inWiki = leaks(await readAll("wiki"), ofNotes);
 const inNotes = leaks(await readAll("notes"), ofWiki);
 check(inWiki.length === 0, `nothing of the notes wiki appears in the first wiki's output${inWiki.length ? ` (${inWiki.join(", ")})` : ""}`);
 check(inNotes.length === 0, `nothing of the first wiki appears in the notes wiki's output${inNotes.length ? ` (${inNotes.join(", ")})` : ""}`);
 // 未設定の wiki（サンプルでは notes）には、どのページにも Google のタグが無い
-const googleInNotes = leaks(await readAll("notes"), ["googletagmanager", "google-site-verification", "gtag", "dataLayer"]);
+const googleInNotes = leaks(await readAll("notes"), ["googletagmanager", "google-site-verification", "gtag", "dataLayer", "adsbygoogle", "google-adsense-account"]);
 check(googleInNotes.length === 0, `a wiki without the settings has no Google tag and no verification meta${googleInNotes.length ? ` (${googleInNotes.join(", ")})` : ""}`);
 check((await exists("notes/p/bbbbbbbbb1.html")) && !(await exists("wiki/p/bbbbbbbbb1.html")), "a page is generated only in its own wiki");
 check(JSON.parse(await read("notes/page-routes.json")).gone.join() === "hhhhhhhhh1", "each wiki has its own page-routes.json");
@@ -270,6 +299,30 @@ check(wikiIndex.includes(lightVars + darkVars), "a wiki without a theme gets the
 check(wikiIndex.includes('href="/favicon.svg"') && !wikiIndex.includes("<img class="), "a wiki without a theme keeps the default favicon and the text site name");
 const themeLeaks = leaks(await readAll("wiki"), ["notes0logo0sample0000000", "notes0favicon0sample0000"]);
 check(themeLeaks.length === 0, `the notes wiki's theme does not appear in the first wiki's output${themeLeaks.length ? ` (${themeLeaks.join(", ")})` : ""}`);
+
+// OGP：公開ページとトップにだけ出し、画像は絶対 URL。カバー（用意した SVG）は使わず、本文の最初の画像、無ければロゴ、どちらも無ければ画像なし
+const ogMeta = (html, name) => new RegExp(`<meta (?:property|name)="${name}" content="([^"]*)"`).exec(html)?.[1];
+const bodyImagePage = await read("wiki/p/aaaaaaaaa2.html");
+check(ogMeta(bodyImagePage, "og:image") === "http://wiki.localhost:4321/images/ogp0body0sample000000000.png" && ogMeta(bodyImagePage, "twitter:card") === "summary_large_image", "og:image is the body's first image as an absolute URL (large card)");
+check(ogMeta(iconPage, "og:image") === undefined && ogMeta(iconPage, "twitter:card") === "summary", "a page with only a provided SVG cover and no logo has no og:image (summary card)");
+check(ogMeta(iconPage, "og:type") === "article" && ogMeta(iconPage, "og:title") === "はじめに" && ogMeta(iconPage, "og:url") === "http://wiki.localhost:4321/p/aaaaaaaaa1" && Boolean(ogMeta(iconPage, "og:description")) && ogMeta(iconPage, "article:published_time") === "2026-10-01T00:00:00.000Z" && ogMeta(iconPage, "article:modified_time") === "2026-10-05T00:00:00.000Z", "a public page has og:type article, title, description, url and article times");
+check(ogMeta(await read("wiki/index.html"), "og:type") === "website", "the top page has og:type website");
+check(ogMeta(notesIndex, "og:image") === "http://notes.localhost:4321/images/notes0logo0sample0000000.png", "a wiki's logo is the og:image when the page has no image");
+check(!(await read("wiki/404.html")).includes("og:") && !(await read(`wiki/u/${key}/index.html`)).includes("og:"), "the 404 page and unlisted pages have no OGP");
+
+// 構造化データ（JSON-LD）：公開ページに Article、ツリーのページに BreadcrumbList、トップに WebSite。限定公開と 404 には出さない
+const jsonLdOf = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => [JSON.parse(m[1])].flat());
+const typesOf = (html) => jsonLdOf(html).map((j) => j["@type"]).join();
+const articleLd = jsonLdOf(iconPage).find((j) => j["@type"] === "Article");
+check(typesOf(iconPage) === "Article,BreadcrumbList" && articleLd?.headline === "はじめに" && articleLd.mainEntityOfPage["@id"] === "http://wiki.localhost:4321/p/aaaaaaaaa1" && articleLd.datePublished === "2026-10-01T00:00:00.000Z" && articleLd.dateModified === "2026-10-05T00:00:00.000Z" && articleLd.publisher.name === "サンプル wiki", "a page in the tree has Article and BreadcrumbList");
+const crumbsLd = jsonLdOf(noIconPage).find((j) => j["@type"] === "BreadcrumbList");
+check(crumbsLd?.itemListElement.map((i) => `${i.position}:${i.name}:${i.item}`).join() === "1:サンプル wiki:http://wiki.localhost:4321/,2:はじめに:http://wiki.localhost:4321/p/aaaaaaaaa1,3:設計メモ:http://wiki.localhost:4321/p/aaaaaaaaa2", "the BreadcrumbList follows the tree: the top, the ancestors, then the page");
+const siteLd = jsonLdOf(await read("wiki/index.html"));
+check(siteLd.length === 1 && siteLd[0]["@type"] === "WebSite" && siteLd[0].name === "サンプル wiki" && siteLd[0].url === "http://wiki.localhost:4321/", "the top has WebSite with the name and url");
+check(!(await read("wiki/404.html")).includes("ld+json") && !unlisted.includes("ld+json"), "the 404 page and unlisted pages have no JSON-LD");
+// トップの description：自由記述（introMd）の抜粋。自由記述の無い wiki には出さない
+check(/<meta name="description" content="[^"]*この wiki の紹介文です/.test(await read("wiki/index.html")), "the top has a description from the intro text");
+check(!/<meta name="description"/.test(notesIndex), "a top without an intro text has no description");
 
 if (failures > 0) {
   console.error(`${failures} check(s) failed`);

@@ -15,7 +15,7 @@ directory = "../admin/dist"
 not_found_handling = "single-page-application"
 # API の経路はアセットより先に Worker へ渡す（OAuth のコールバックは画面遷移なので、指定しないと index.html が返る）
 # /oauth/* /.well-known/* /mcp は MCP クライアント（外部のアプリ）が呼ぶ。同意の画面（/consent）は管理画面の側
-run_worker_first = ["/api/*", "/export/*", "/internal/*", "/images/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
+run_worker_first = ["/api/*", "/export/*", "/internal/*", "/images/*", "/audio/*", "/health", "/oauth/*", "/.well-known/*", "/mcp"]
 
 # DB（PostgreSQL）へは Hyperdrive 経由でつなぐ
 [[hyperdrive]]
@@ -26,6 +26,13 @@ id = "24df08d8191143e5aae33847792525cc"
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "wiki-images"
+
+# ページに添付した音声（動画のナレーションなど、公開前の素材）。画像とは別のバケットで、公開の配信経路は無い。
+# 取り出せるのは、管理画面にログインした人と、MCP の list_page_audio が返す署名つきの URL（1時間だけ有効、`/audio/{id}`）だけ。
+# バケットは先に作る（README「デプロイ → 初回の準備」。`npx wrangler r2 bucket create wiki-audio`）
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "wiki-audio"
 
 # Cron ワーカー（wiki-worker）への「やることがある」の印（Workers KV）。API が書き、ワーカーが読む。
 # 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
@@ -58,6 +65,18 @@ name = "MCP_LIMITER"
 namespace_id = "6103"
 simple = { limit = 300, period = 60 }
 
+# 外部の URL の OGP を取る /admin/w/{key}/link-preview（ログインしている人ごとに）：60 秒で 30 回まで。取りにいくのは外部のサイトなので、少なめにしている
+[[ratelimits]]
+name = "LINK_PREVIEW_LIMITER"
+namespace_id = "6104"
+simple = { limit = 30, period = 60 }
+
+# 公開サイトの読者がページに評価を付ける PUT /public/w/{key}/pages/{id}/rating：60 秒で 20 回まで
+[[ratelimits]]
+name = "RATING_LIMITER"
+namespace_id = "6105"
+simple = { limit = 20, period = 60 }
+
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする
 NODE_ENV = "production"
@@ -76,6 +95,9 @@ enabled = true
 # EXPORT_TOKEN          /export/public 用トークン（wiki-site のビルドの環境変数 EXPORT_TOKEN と同じ値）
 # CRON_TOKEN            /internal/* 用トークン（wiki-worker の CRON_TOKEN と同じ値。EXPORT_TOKEN とは別の値にする）
 # GOOGLE_SERVICE_ACCOUNT_JSON  任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読むサービスアカウントの鍵（JSON そのまま）。無ければその機能だけが「未設定」になる
+# NEON_API_KEY        任意。「コスト」が Neon の使用量を読む API キー。NEON_ORG_ID（組織 ID）とそろわなければ、その機能だけが「未設定」になる
+# NEON_ORG_ID
 # X_CLIENT_ID          任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 クライアント。3つそろわなければその機能だけが「未設定」になる
 # X_CLIENT_SECRET
+# ROUTINE_TOKEN_KEY    任意。「全体の管理」の Routine のトークンを暗号化して DB に持つための鍵（32文字以上。SNS_TOKEN_KEY とは別の値）。変えると、登録済みの Routine のトークンは使えなくなる（入れ直す）
 # SNS_TOKEN_KEY         任意。SNS のトークンを暗号化して DB に持つための鍵（32文字以上）。変えると、つないであるアカウントは使えなくなる

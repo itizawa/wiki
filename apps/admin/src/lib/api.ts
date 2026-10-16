@@ -1,6 +1,7 @@
 import type {
   AcceptEditRequestResult,
   AnalyticsDays,
+  CostsReport,
   AppliedEditRequests,
   CreatedEditRequest,
   CreateEditRequestInput,
@@ -16,9 +17,11 @@ import type {
   AuditLogPage,
   Invite,
   InviteInfo,
+  LinkPreview,
   Me,
   Member,
   PageDetail,
+  PageAudio,
   PageDraft,
   SavePageDraftResult,
   PageTemplate,
@@ -41,12 +44,28 @@ import type {
   WikiAppearance,
   WikiHome,
   WikiRole,
+  CreateRoutineInput,
+  RoutineList,
+  RoutineSummary,
+  RoutineTestResult,
   SnsPostResult,
+  UpdateRoutineInput,
   SnsStatus,
+  PageTagList,
+  RoutineChoiceList,
+  TagList,
+  Workflow,
+  WorkflowBlock,
+  WorkflowBlockInput,
+  WorkflowBlockList,
+  WorkflowIndex,
+  WorkflowRunPage,
+  WorkflowRunStatus,
   WikiSettings,
+  WikiTag,
   WikiSummary,
 } from "@wiki/shared";
-import { IMAGE_LIMIT_LABEL, PAGE_TITLE_MAX } from "@wiki/shared";
+import { AUDIO_LIMIT_LABEL, IMAGE_LIMIT_LABEL, PAGE_TITLE_MAX } from "@wiki/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -129,6 +148,8 @@ export type StructureResponse = {
     {
       id: string;
       title: string;
+      /** 設定した絵文字。無ければ null */
+      icon: string | null;
       visibility: string;
       publishedVersionId: string | null;
       /** 限定公開の URL に入るキー。限定公開にしたことが無ければ null */
@@ -159,6 +180,9 @@ export const api = {
   inviteInfo: (token: string) => request<InviteInfo>("POST", "/invites/inspect", { token }),
   acceptInvite: (token: string) => request<{ wikiKey: string; alreadyMember: boolean }>("POST", "/invites/accept", { token }),
 
+  /** 「コスト」：サービスごとの今月・前月の使用量（オーナーだけ） */
+  costs: () => request<CostsReport>("GET", "/admin/costs"),
+
   listUsers: () => request<{ users: UserSummary[] }>("GET", "/admin/users"),
   setOwner: (userId: string, isOwner: boolean) => request<{ users: UserSummary[] }>("PUT", `/admin/users/${userId}/owner`, { isOwner }),
 
@@ -178,12 +202,14 @@ export const api = {
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   /** ページの一覧を、続きから取る（「すべてのページ」の一覧）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
-  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number }) => {
+  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number; unpublished?: boolean; tag?: string }) => {
     return request<{ pages: PageSummary[]; nextCursor: string | null }>(
       "GET",
-      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor })}`),
+      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor, published: input.unpublished ? "false" : undefined, tag: input.tag })}`),
     );
   },
+  /** 外部の URL の OGP（API が代わりに取る）。取れなければ `preview: null`。取りにいけない URL（http・内部 IP など）は 400 */
+  linkPreview: (url: string) => request<{ preview: LinkPreview | null }>("GET", w(`/link-preview?url=${encodeURIComponent(url)}`)),
   /** タイトルと本文の検索。語が無ければ、最近更新したページ */
   search: (q: string) => request<{ results: SearchResult[] }>("GET", w(`/search?q=${encodeURIComponent(q)}`)),
   /** templateId を渡すと、そのテンプレート（変数を置き換えたもの）で本文を始める。title を省くとテンプレートのタイトルになる */
@@ -194,6 +220,8 @@ export const api = {
     request<PageDetail>("PUT", w(`/pages/${id}`), input),
   /** アイコン（絵文字1つ）を付ける・変える・外す（null）。版は作らず、すぐに反映される */
   setPageIcon: (id: string, icon: string | null) => request<PageDetail>("PUT", w(`/pages/${id}/icon`), { icon }),
+  /** カバー画像（`/images/{name}` か用意した画像）を付ける・変える・外す（null）。版は作らず、すぐに反映される */
+  setPageCover: (id: string, cover: string | null) => request<PageDetail>("PUT", w(`/pages/${id}/cover`), { cover }),
   getDraft: (id: string) => request<{ draft: PageDraft | null }>("GET", w(`/pages/${id}/draft`)),
   saveDraft: (id: string, input: { baseVersionId: string; title: string; bodyMd: string }) =>
     request<SavePageDraftResult>("PUT", w(`/pages/${id}/draft`), input),
@@ -203,6 +231,24 @@ export const api = {
    * wiki の外の画面（wiki の管理）から使うときは、どの wiki の経路で送るかを key で渡す
    */
   uploadImage: (file: Blob, key: string = wikiKey) => upload(`/admin/w/${encodeURIComponent(key)}/images`, file),
+  /** ページに添付した音声の一覧（古い順） */
+  listPageAudio: (pageId: string) => request<{ audio: PageAudio[] }>("GET", w(`/pages/${pageId}/audio`)),
+  /** 音声を添付する。中身はそのまま送る（形式は API が中身で判定する）。durationMs：ブラウザが測れた長さ */
+  uploadPageAudio: async (pageId: string, file: Blob, meta: { name: string; durationMs: number | null }): Promise<PageAudio> => {
+    const q = query({ name: meta.name, durationMs: meta.durationMs === null ? null : String(meta.durationMs) });
+    const res = await fetch(`/api${w(`/pages/${pageId}/audio`)}${q}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw apiError(res, data);
+    return data as PageAudio;
+  },
+  deletePageAudio: (pageId: string, id: string) => request<{ ok: true }>("DELETE", w(`/pages/${pageId}/audio/${id}`)),
+  /** 音声を再生する URL（管理画面にログインしている Cookie で取り出す） */
+  pageAudioUrl: (pageId: string, id: string) => `/api${w(`/pages/${pageId}/audio/${id}`)}`,
   /** ゴミ箱に入れる（配下のページもいっしょに入る） */
   deletePage: (id: string) => request<{ ok: true; trashedPages: number }>("DELETE", w(`/pages/${id}`)),
   /** ゴミ箱の一覧。削除で選んだページごとに1行、新しい順 */
@@ -262,6 +308,15 @@ export const api = {
   disconnectX: () => request<SnsStatus>("POST", w("/sns/x/disconnect")),
   testPostX: (text: string) => request<SnsPostResult>("POST", w("/sns/x/test-post"), { text }),
 
+  /** 「全体の管理」の「Routine」：ワークフローが呼ぶ Claude Routine の登録（オーナーだけ）。トークンは返ってこない */
+  listRoutines: () => request<RoutineList>("GET", "/admin/routines"),
+  createRoutine: (input: CreateRoutineInput) => request<RoutineSummary>("POST", "/admin/routines", input),
+  /** token は入れたときだけ置き換わる */
+  updateRoutine: (id: string, input: UpdateRoutineInput) => request<RoutineSummary>("PATCH", `/admin/routines/${id}`, input),
+  deleteRoutine: (id: string) => request<null>("DELETE", `/admin/routines/${id}`),
+  /** 決まりの文で1回呼ぶ（Routine の回数を1回使う）。呼べなかったときも、理由が結果に入って返る */
+  testRoutine: (id: string) => request<RoutineTestResult>("POST", `/admin/routines/${id}/test`),
+
   /** 「アクセス解析」：Google Analytics とサーチコンソールの数字と、連携の状態。同じ期間は、API が1時間のあいだ使い回す */
   analytics: (days: AnalyticsDays) => request<WikiAnalytics>("GET", w(`/analytics?days=${days}`)),
   /** Google から取り直す（1分おきまで） */
@@ -280,6 +335,7 @@ export const api = {
   publish: (id: string, input: { versionId: string; visibility: PublishVisibility; applyToDescendants?: boolean }) =>
     request<{ ok: true }>("POST", w(`/pages/${id}/publish`), input),
   unpublish: (id: string, input?: { applyToDescendants: boolean }) => request<{ ok: true }>("POST", w(`/pages/${id}/unpublish`), input),
+  setAutoPublish: (id: string, enabled: boolean) => request<{ ok: true }>("PUT", w(`/pages/${id}/auto-publish`), { enabled }),
   rotateUnlistedKey: (id: string) => request<{ unlistedKey: string }>("POST", w(`/pages/${id}/unlisted-key`)),
 
   listSchedule: (params: { from?: string; to?: string; pageId?: string; status?: string } = {}) => {
@@ -322,6 +378,32 @@ export const api = {
   /** 背景画像をアップロードし、パス（`/images/{name}`）を返す。PNG・JPEG・WebP の 2MB まで */
   uploadBackgroundImage: (file: Blob) => upload(w("/appearance/background-images"), file),
 
+  /** 管理用タグ。一覧は wiki のメンバーなら読める。作る・名前を変える・消すのは管理者だけ */
+  listTags: () => request<TagList>("GET", w("/tags")),
+  createTag: (name: string) => request<WikiTag>("POST", w("/tags"), { name }),
+  renameTag: (id: string, name: string) => request<WikiTag>("PATCH", w(`/tags/${id}`), { name }),
+  deleteTag: (id: string) => request<null>("DELETE", w(`/tags/${id}`)),
+  /** ページへのタグの付け外し（編集者以上）。すでにそうなっていても成功し、そのページのいまのタグを返す */
+  attachTag: (pageId: string, tagId: string) => request<PageTagList>("PUT", w(`/pages/${pageId}/tags/${tagId}`)),
+  detachTag: (pageId: string, tagId: string) => request<PageTagList>("DELETE", w(`/pages/${pageId}/tags/${tagId}`)),
+
+  /** ワークフロー（wiki ごとに名前つきで複数）。読むのは wiki のメンバーなら誰でも、作る・名前を変える・消すのは管理者だけ。消すと、ブロックと実行の履歴もいっしょに消える */
+  listWorkflows: () => request<WorkflowIndex>("GET", w("/workflow")),
+  getWorkflow: (id: string) => request<Workflow>("GET", w(`/workflow/${id}`)),
+  createWorkflow: (name: string) => request<Workflow>("POST", w("/workflow"), { name }),
+  renameWorkflow: (id: string, name: string) => request<Workflow>("PATCH", w(`/workflow/${id}`), { name }),
+  deleteWorkflow: (id: string) => request<null>("DELETE", w(`/workflow/${id}`)),
+  /** ワークフローの下のブロック */
+  getWorkflowBlocks: (workflowId: string) => request<WorkflowBlockList>("GET", w(`/workflow/${workflowId}/blocks`)),
+  createWorkflowBlock: (workflowId: string, input: WorkflowBlockInput) => request<WorkflowBlock>("POST", w(`/workflow/${workflowId}/blocks`), input),
+  replaceWorkflowBlock: (workflowId: string, id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/${workflowId}/blocks/${id}`), input),
+  deleteWorkflowBlock: (workflowId: string, id: string) => request<null>("DELETE", w(`/workflow/${workflowId}/blocks/${id}`)),
+  /** そのワークフローの実行の履歴（新しい順。管理者だけ）。`cursor` で続きを取る */
+  listWorkflowRuns: (workflowId: string, input: { status?: WorkflowRunStatus; limit: number; cursor?: string }) =>
+    request<WorkflowRunPage>("GET", w(`/workflow/${workflowId}/runs${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`)),
+  /** ブロックで選ぶための、登録済み Routine の ID と名前（管理者だけ） */
+  listRoutineChoices: () => request<RoutineChoiceList>("GET", w("/routines")),
+
   structure: () => request<StructureResponse>("GET", w("/structure")),
   changeStructure: (input: { ops: StructureOpInput[] }) => request<void>("POST", w("/structure/ops"), input),
 };
@@ -361,6 +443,8 @@ const MESSAGES: Record<string, string> = {
   line_out_of_range: "提案の指している行が、本文の外にあります。最新の版に合わせてから、もう一度送信してください。",
   not_rejected: "却下した提案だけを、未対応に戻せます。最新の状態を読み込みました。",
   images_not_configured: "画像の置き場所が設定されていないため、アップロードできません。",
+  audio_not_configured: "音声の置き場所が設定されていないため、アップロードできません。",
+  too_many_audio: "1つのページに添付できる音声の数の上限です。いらない音声を削除してから、もう一度上げてください。",
   has_children: "子があるため外せません。先に子を移動してください。",
   run_at_in_past: "過去の日時は指定できません。",
   not_scheduled: "実行中または実行済みのため変更できません。",
@@ -380,6 +464,12 @@ const MESSAGES: Record<string, string> = {
   x_reauth_required: "X との連携が切れています（X の側で連携を外したか、許可の期限が切れました）。「X と連携し直す」から、もう一度許可してください。",
   x_rate_limited: "X のポストの回数の上限に達しました。時間をおいて、もう一度お試しください。",
   x_payment_required: "X の API の利用残高が足りません。X の開発者ポータルでクレジットを購入してから、もう一度お試しください。",
+  tag_exists: "この名前のタグは、すでにあります。別の名前にしてください（大文字と小文字は区別されます）。",
+  routine_not_configured: "この管理画面には、Routine のトークンを暗号化する鍵（ROUTINE_TOKEN_KEY）がまだ登録されていないため、Routine を登録・実行できません。",
+  routine_exists: "この名前の Routine は、すでに登録されています。別の名前にしてください。",
+  routine_token_unreadable: "登録してあるトークンを読み出せません（暗号化の鍵が変わった可能性があります）。「編集」からトークンを入れ直してください。",
+  unknown_tag: "選んだタグが、この wiki に見つかりません。タグを消されたかもしれません。開き直して、選び直してください。",
+  unknown_routine: "選んだ Routine が、登録されていません。消されたかもしれません。開き直して、選び直してください。",
   x_unavailable: "X に届きませんでした。時間をおいて、もう一度お試しください。",
 };
 
@@ -392,11 +482,18 @@ const DETAIL_MESSAGES: Record<string, (err: ApiError) => string> = {
     return `${who}がこの箇所を編集中のため、採用できません。編集が版になるのを待つか、本人に確かめてください。`;
   },
   image_too_large: (err) => `画像が大きすぎます。${imageLimit(err)}です。`,
+  audio_too_large: () => `音声が大きすぎます。${AUDIO_LIMIT_LABEL}です。`,
+  unsupported_audio_type: () => `この形式の音声は上げられません。${AUDIO_LIMIT_LABEL}です。`,
   unsupported_image_type: (err) => `この形式の画像はアップロードできません。${imageLimit(err)}です。`,
   x_rejected: (err) => {
     const detail = (err.details as { detail?: unknown } | undefined)?.detail;
     const reason = typeof detail === "string" && detail ? `（X からの説明：${detail}）` : "";
     return `X がこのポストを受け付けませんでした${reason}。同じ文面を続けてポストすると断られます。文面を変えて、もう一度お試しください。`;
+  },
+  routine_in_use: (err) => {
+    const d = err.details as { blocks?: number; wikis?: { key: string; name: string; blocks: number }[] } | undefined;
+    const where = (d?.wikis ?? []).map((x) => `${x.name}（${x.blocks} ブロック）`).join("、");
+    return `ワークフローのブロックが使っているため、削除できません。${where ? `使っている wiki：${where}。` : ""}先に、各 wiki の「ワークフロー」で、ブロックのアクションから外してください。`;
   },
   exceeds_parent: (err) => {
     const d = err.details as { parentTitle?: string; parentVisibility?: keyof typeof VISIBILITY_LABEL } | undefined;

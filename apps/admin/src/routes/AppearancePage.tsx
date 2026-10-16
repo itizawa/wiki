@@ -40,6 +40,7 @@ const visuallyHidden = { position: "absolute", width: "1px", height: "1px", over
 
 /** 本文の幅がこれ以上なら、フォームとプレビューを2列にする（px） */
 const TWO_COLUMN_MIN = 800;
+const WIDE = `@container (min-width: ${TWO_COLUMN_MIN}px)`;
 
 const MODE_LABEL: Record<ThemeMode, string> = { light: "ライト", dark: "ダーク" };
 
@@ -143,23 +144,24 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
 
   return (
     // 2列にする区切りは、画面の幅ではなく本文の幅で決める（サイドバーがあると、同じ画面幅でも本文は狭い）。
-    // 1列のときは、プレビューをテーマの欄のすぐ下（保存より上）に置き、色を選びながら見られるようにする。
+    // 1列のときは、縦に並べる（順番は `order`）。プレビューはテーマの欄のすぐ下に置き、
+    // 保存の帯は画面の下に付けて（sticky）、どこまでスクロールしても「保存する」が見えるようにする。
     <Box sx={{ containerType: "inline-size" }}>
       <Box
         sx={{
-          display: "grid",
+          display: "flex",
+          flexDirection: "column",
           gap: 1.5,
-          alignItems: "start",
-          gridTemplateColumns: "minmax(0, 1fr)",
-          gridTemplateAreas: '"name" "theme" "preview" "background" "logo" "save"',
           [`@container (min-width: ${TWO_COLUMN_MIN}px)`]: {
+            display: "grid",
+            alignItems: "start",
             gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
             gridTemplateRows: "repeat(5, auto) 1fr",
             gridTemplateAreas: '"name preview" "theme preview" "background preview" "logo preview" "save preview" ". preview"',
           },
         }}
       >
-        <Section sx={{ gridArea: "name" }}>
+        <Section sx={{ gridArea: "name", order: 0, [WIDE]: { order: "initial" } }}>
           <HelpHeading variant="subtitle1" component="h3" help="ヘッダー・タブのタイトル・RSS・フッターに出ます。wiki の表示名と同じものです。" sx={{ mb: 1 }}>
             サイト名
           </HelpHeading>
@@ -175,7 +177,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           />
         </Section>
 
-        <Section sx={{ gridArea: "theme" }}>
+        <Section sx={{ gridArea: "theme", order: 1, [WIDE]: { order: "initial" } }}>
           <HelpHeading
             variant="subtitle1"
             component="h3"
@@ -187,7 +189,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           <ThemeField value={theme.preset} onChange={(preset) => setTheme((t) => ({ ...t, preset }))} />
         </Section>
 
-        <Section sx={{ gridArea: "background" }}>
+        <Section sx={{ gridArea: "background", order: 3, [WIDE]: { order: "initial" } }}>
           <HelpHeading
             variant="subtitle1"
             component="h3"
@@ -208,7 +210,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           </Stack>
         </Section>
 
-        <Section sx={{ gridArea: "logo" }}>
+        <Section sx={{ gridArea: "logo", order: 4, [WIDE]: { order: "initial" } }}>
           <Typography variant="subtitle1" component="h3" gutterBottom>
             ロゴとファビコン
           </Typography>
@@ -231,7 +233,18 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           </Stack>
         </Section>
 
-        <Section sx={{ gridArea: "save" }}>
+        <Section
+          sx={{
+            gridArea: "save",
+            order: 5,
+            // 1列のときは、画面の下に付ける。テーマを選んだあとも、押せるようになった「保存する」が見える
+            position: "sticky",
+            bottom: 0,
+            zIndex: 2,
+            boxShadow: 3,
+            [WIDE]: { order: "initial", position: "static", boxShadow: "none" },
+          }}
+        >
           {/* 結果は、押した保存ボタンの上に出す（一般・連携・トップページと同じ場所） */}
           {save.error && (
             <Alert severity="error" sx={{ mb: 1 }}>
@@ -251,7 +264,7 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
           </Row>
         </Section>
 
-        <Section sx={{ gridArea: "preview", position: "sticky", top: 16, [`@container (max-width: ${TWO_COLUMN_MIN - 1}px)`]: { position: "static" } }}>
+        <Section sx={{ gridArea: "preview", order: 2, [WIDE]: { order: "initial", position: "sticky", top: 16 } }}>
           <HelpHeading variant="subtitle1" component="h3" help="保存するまでは、ここだけが変わります。公開サイトは、保存してから数分で変わります。" sx={{ mb: 1 }}>
             プレビュー
           </HelpHeading>
@@ -266,21 +279,73 @@ function AppearanceForm({ saved }: { saved: WikiAppearance }) {
   );
 }
 
+/** 背景画像か飾りを持つテーマか */
+function hasDecoration(preset: ThemePreset): boolean {
+  return themeModes(preset).some((m) => preset[m]!.background || preset[m]!.ornament || preset[m]!.motion);
+}
+
+/** テーマの見本を分けて並べる単位。テーマが増えても、色だけで選びたい人と、飾りつきから選びたい人が探しやすいように */
+const THEME_GROUPS = [
+  { label: "色だけ", decorated: false },
+  { label: "背景・飾りつき", decorated: true },
+] as const;
+
 /** テーマの選択：テーマを、見本のカード（ライト版・ダーク版それぞれの背景・文字・リンクの色）で並べる。選んでいるものは、枠・印・文字で示す。 */
 function ThemeField({ value, onChange }: { value: string; onChange: (key: string) => void }) {
   const name = useId();
   const selectedKey = themePresetFor(value).key;
+  const selected = themePresetFor(value);
+  const selectedModes = themeModes(selected);
   return (
+    <>
+      {/* 1列のとき、選んでいるテーマの見本を欄の上に固定する。一覧が長くても、選んだ結果が見える（読み上げは、一覧の「選択中」で足りる） */}
+      <Box
+        aria-hidden
+        sx={{
+          display: "block",
+          position: "sticky",
+          top: 0,
+          zIndex: 1,
+          bgcolor: "background.paper",
+          pb: 1,
+          mb: 1,
+          borderBottom: 1,
+          borderColor: "divider",
+          [WIDE]: { display: "none" },
+        }}
+      >
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 0.5 }}>
+          選択中：{selected.name}
+        </Typography>
+        <Box sx={{ display: "flex", border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>
+          {selectedModes.map((mode) => (
+            <ThemeSample key={mode} variant={themeVariant(selected, mode)} label={selectedModes.length > 1 ? MODE_LABEL[mode] : null} />
+          ))}
+        </Box>
+      </Box>
     <Box component="fieldset" sx={{ m: 0, p: 0, border: 0, minWidth: 0 }}>
       <Typography component="legend" sx={visuallyHidden}>
         テーマ
       </Typography>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 1 }}>
-        {THEME_PRESETS.map((p) => (
-          <ThemeCard key={p.key} preset={p} groupName={name} selected={p.key === selectedKey} onSelect={() => onChange(p.key)} />
-        ))}
-      </Box>
+      <Stack spacing={2}>
+        {THEME_GROUPS.map((g) => {
+          const presets = THEME_PRESETS.filter((p) => hasDecoration(p) === g.decorated);
+          return (
+            <Box key={g.label}>
+              <Typography variant="subtitle2" component="h4" sx={{ mb: 0.75 }}>
+                {g.label}
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 1 }}>
+                {presets.map((p) => (
+                  <ThemeCard key={p.key} preset={p} groupName={name} selected={p.key === selectedKey} onSelect={() => onChange(p.key)} />
+                ))}
+              </Box>
+            </Box>
+          );
+        })}
+      </Stack>
     </Box>
+    </>
   );
 }
 

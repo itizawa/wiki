@@ -1,7 +1,7 @@
-import type { ManifestTree } from "@wiki/shared";
+import type { ChildrenItem, ManifestTree } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { initiallyOpen, initialNavItems, type NavItem } from "./nav";
-import { ancestors, navItems } from "./tree";
+import { ancestors, childrenItems, navItems } from "./tree";
 
 const node = (nodeId: string, parentNodeId: string | null, position: string) => ({ nodeId, pageId: nodeId, parentNodeId, position });
 // a ─ a1 ─ a1x ─ a1x1
@@ -62,5 +62,30 @@ describe("initialNavItems", () => {
     const before = JSON.stringify(full);
     initial("a1x");
     expect(JSON.stringify(full)).toBe(before);
+  });
+});
+
+describe("childrenItems", () => {
+  const pages = new Map(["a", "a1", "a1x", "a1x1", "a2", "a2x", "b"].map((id) => [id, { title: id.toUpperCase(), path: `/p/${id}` }]));
+  const shape = (items: ChildrenItem[]): unknown => items.map((i) => (i.children.length ? [i.title, shape(i.children)] : i.title));
+
+  it("既定は、直下の子だけをツリーの並びで返す", () => {
+    expect(shape(childrenItems(tree, "a", { depth: 1, sort: "tree" }, pages))).toEqual(["A1", "A2"]);
+  });
+  it("depth で階層を増やす", () => {
+    expect(shape(childrenItems(tree, "a", { depth: 2, sort: "tree" }, pages))).toEqual([["A1", ["A1X"]], ["A2", ["A2X"]]]);
+  });
+  it("sort=title はタイトル順", () => {
+    const renamed = new Map([...pages].map(([id, p]) => [id, { ...p, title: id === "a1" ? "Z" : p.title }]));
+    expect(shape(childrenItems(tree, "a", { depth: 1, sort: "title" }, renamed))).toEqual(["A2", "Z"]);
+  });
+  it("公開されていない（pages に無い）ページは出さない", () => {
+    const hidden = new Map(pages);
+    hidden.delete("a1");
+    expect(shape(childrenItems(tree, "a", { depth: 1, sort: "tree" }, hidden))).toEqual(["A2"]);
+  });
+  it("ツリーに無いページ・子の無いページは空", () => {
+    expect(childrenItems(tree, "nope", { depth: 1, sort: "tree" }, pages)).toEqual([]);
+    expect(childrenItems(tree, "a2x", { depth: 1, sort: "tree" }, pages)).toEqual([]);
   });
 });

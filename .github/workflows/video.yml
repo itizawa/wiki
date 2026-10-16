@@ -1,0 +1,118 @@
+# 台本・録音・画像から動画を組み立て、YouTube に限定公開で投稿する（apps/video/README.md）。
+# Claude Routine「動画を作る」が、workflow_dispatch で始める。1本あたり数分〜十数分の Actions を使う。
+name: Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      runId:
+        description: ワークフローの実行の ID（同じ値では二重に投稿しない）
+        required: true
+      wikiKey:
+        description: wiki のキー
+        required: true
+      articlePageId:
+        description: 記事のページの ID
+        required: true
+      scriptPageId:
+        description: 台本のページの ID
+        required: true
+      title:
+        description: 動画のタイトル
+        required: true
+      description:
+        description: 動画の説明文
+        required: false
+      script:
+        description: 台本（Markdown。見出しで場面が変わる）
+        required: true
+      audioUrl:
+        description: 録音の取り出し URL（list_page_audio の署名つきの URL。発行から1時間で切れる）
+        required: true
+      imageUrls:
+        description: 記事の画像の URL（JSON の配列か、1行に1つ。https だけ）
+        required: false
+      thumbnailUrl:
+        description: サムネイルにする画像の URL（無ければタイトルの文字だけの画像）
+        required: false
+
+# 同じ runId の実行は、重ねずに順に動かす（あとの実行は、前の実行の投稿済みの印を見て投稿しない）
+concurrency:
+  group: video-${{ inputs.runId }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # 入力は、シェルに埋め込まず、JSON にして環境変数で渡す（台本・タイトルの中の文字を、コマンドとして読ませない）
+      JOB_JSON: ${{ toJSON(inputs) }}
+      VIDEO_WORKDIR: ${{ github.workspace }}/.video-work
+      ROUTINE_RECORD_URL: ${{ secrets.ROUTINE_RECORD_URL }}
+      ROUTINE_RECORD_TOKEN: ${{ secrets.ROUTINE_RECORD_TOKEN }}
+      ROUTINE_FAILURE_URL: ${{ secrets.ROUTINE_FAILURE_URL }}
+      ROUTINE_FAILURE_TOKEN: ${{ secrets.ROUTINE_FAILURE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      # 依存のインストールは要らない（Node が TypeScript をそのまま動かす。Node 22.18 以上）
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # 投稿済みの印。同じ runId で投稿に成功していれば、ここで見つかる（組み立ても投稿もしない）
+      - id: posted
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.VIDEO_WORKDIR }}/posted.json
+          key: video-posted-${{ inputs.runId }}
+
+      - name: Install ffmpeg and fonts
+        if: steps.posted.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+      - uses: actions/setup-python@v6
+        if: steps.posted.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.12"
+      - name: Install faster-whisper
+        if: steps.posted.outputs.cache-hit != 'true'
+        run: pip install faster-whisper==1.1.1
+      # 書き起こしのモデル（small は約 500MB）。毎回取らないようにする
+      - uses: actions/cache@v6
+        if: steps.posted.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-small-v1
+
+      - name: Build video
+        if: steps.posted.outputs.cache-hit != 'true'
+        run: node apps/video/src/cli.ts build
+
+      - name: Upload to YouTube
+        if: steps.posted.outputs.cache-hit != 'true'
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: node apps/video/src/cli.ts upload
+
+      # 投稿できたら、すぐ印を残す。このあとの記録が失敗して実行し直しても、同じ runId では二重に上げない
+      - name: Remember that this run is posted
+        if: steps.posted.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.VIDEO_WORKDIR }}/posted.json
+          key: video-posted-${{ inputs.runId }}
+
+      - name: Record on the pages (Routine)
+        run: node apps/video/src/cli.ts record
+
+      # 組み立て・投稿・記録のどれかが失敗したら、台本のページに「動画失敗」を付ける Routine を呼ぶ
+      - name: Mark the script as failed (Routine)
+        if: failure()
+        run: node apps/video/src/cli.ts fail

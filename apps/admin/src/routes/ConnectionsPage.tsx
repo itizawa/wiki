@@ -12,6 +12,7 @@ import { HelpHeading } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { useScreenTitle } from "../lib/documentTitle";
 
 const SHORT_LABEL: Record<string, string> = {
   "wiki.read": "読む",
@@ -20,6 +21,7 @@ const SHORT_LABEL: Record<string, string> = {
   "wiki.publish": "公開・予約",
   "wiki.delete": "削除",
   "wiki.suggest": "編集リクエスト",
+  "wiki.admin": "wiki の設定",
 };
 
 /** 「許可しているアプリ」の行の高さ（読み込み中の行も、この高さで出す）。 */
@@ -27,6 +29,7 @@ const GRANT_ROW_HEIGHT = 54;
 
 /** `/connections`：外部のアプリ（MCP クライアント）のつなぎ方と、自分が与えた許可の一覧・取り消し */
 export function ConnectionsPage() {
+  useScreenTitle("外部アプリ連携");
   const qc = useQueryClient();
   const grants = useQuery({ queryKey: ["oauth-grants"], queryFn: api.listGrants });
   const revoke = useMutation({

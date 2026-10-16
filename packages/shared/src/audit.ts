@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Visibility } from "./page";
 import type { PublishVisibility } from "./publish";
 import { WIKI_ROLE_LABELS, type WikiRole } from "./users";
+import { ROUTINE_FAILURE_MESSAGES, type RoutineFailureReason } from "./routine";
 import { SNS_PROVIDER_LABELS, type SnsProvider } from "./sns";
 
 /**
@@ -42,6 +43,7 @@ export const AUDIT_ACTIONS = {
   page_unpublish: "publish",
   page_visibility_change: "publish",
   unlisted_key_rotate: "publish",
+  page_auto_publish_change: "publish",
   wiki_site_visibility: "publish",
   schedule_create: "publish",
   schedule_update: "publish",
@@ -52,12 +54,30 @@ export const AUDIT_ACTIONS = {
   page_delete: "page",
   page_restore: "page",
   page_purge: "page",
+  page_tag_add: "page",
+  page_tag_remove: "page",
+  page_audio_upload: "page",
+  page_audio_delete: "page",
+  workflow_run_fail: "page",
 
   wiki_update: "settings",
   wiki_home_update: "settings",
   sns_connect: "settings",
   sns_disconnect: "settings",
   sns_test_post: "settings",
+  tag_create: "settings",
+  tag_rename: "settings",
+  tag_delete: "settings",
+  routine_create: "settings",
+  routine_update: "settings",
+  routine_delete: "settings",
+  routine_test: "settings",
+  workflow_create: "settings",
+  workflow_rename: "settings",
+  workflow_delete: "settings",
+  workflow_block_create: "settings",
+  workflow_block_update: "settings",
+  workflow_block_delete: "settings",
 
   wiki_create: "wiki",
   wiki_archive: "wiki",
@@ -74,7 +94,7 @@ export function actionsIn(category: AuditCategory): AuditAction[] {
 export const AUDIT_ACTOR_TYPES = ["user", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki"] as const;
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine", "workflow", "workflow_block"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** 予約を入れたのは誰か（予約の実行に残す）。 */
@@ -110,7 +130,10 @@ export type AuditDetailMap = {
     from: { visibility: Visibility; versionId: string | null };
     /** 配下もまとめて同じ公開範囲にしたページの数 */
     descendants?: number;
+    /** 「自動で公開」の設定で、Cron が公開したもの（実行した主体はシステム） */
+    auto?: true;
   };
+  page_auto_publish_change: { enabled: boolean };
   page_unpublish: { from: Visibility; descendants?: number };
   page_visibility_change: { from: Visibility; to: Visibility; descendants?: number };
   unlisted_key_rotate: Record<string, never>;
@@ -127,6 +150,14 @@ export type AuditDetailMap = {
   /** ゴミ箱から完全に削除した（元に戻せない） */
   page_purge: { descendants?: number };
 
+  /** ページにタグを付けた・外した（タグの名前は、その時点のもの） */
+  page_tag_add: { tagId: string; tagName: string };
+  /** runId：ワークフローの実行が外したとき、その実行の ID */
+  page_tag_remove: { tagId: string; tagName: string; runId?: string };
+  /** ページに音声を添付した・外した（ファイル名は、その時点のもの。中身は残さない） */
+  page_audio_upload: { name: string; bytes: number };
+  page_audio_delete: { name: string };
+
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
   wiki_home_update: Record<string, never>;
@@ -137,6 +168,28 @@ export type AuditDetailMap = {
   sns_disconnect: { provider: SnsProvider; username: string };
   /** 管理画面からテスト投稿をした（文面は残さない） */
   sns_test_post: { provider: SnsProvider; username: string; postId: string };
+
+  /** 管理用タグを作った・名前を変えた・消した。消したときの pages は、外れたページの数 */
+  /** ワークフローの実行が、失敗で確定した（再試行の上限・再試行できない失敗）。対象はページ。理由は500文字まで。トークンと相手の応答の本文は入れない */
+  workflow_run_fail: { runId: string; blockId: string | null; actionType: string; error: string };
+
+  tag_create: Record<string, never>;
+  tag_rename: { from: string; to: string };
+  tag_delete: { pages: number; blocks?: number };
+  /** ワークフローの作成・名前の変更・削除。対象名はワークフローの名前。消したときは、いっしょに消えたブロックと実行の履歴の数を残す */
+  workflow_create: Record<string, never>;
+  workflow_rename: { from: string; to: string };
+  workflow_delete: { blocks: number; runs: number };
+  /** ワークフローのブロックの作成・変更・削除。対象名はトリガーの文、detail は入れたアクションの数。タグの削除に伴う削除は reason を付ける */
+  workflow_block_create: { actions: number };
+  workflow_block_update: { actions: number };
+  workflow_block_delete: { reason?: "tag_deleted" };
+
+  /** Routine（全体）を登録した・変えた・消した・テスト実行した。トークンの値は入れない（変えたかどうかだけ）。テスト実行の失敗は、理由だけ残す */
+  routine_create: Record<string, never>;
+  routine_update: { name?: { from: string; to: string }; url?: boolean; token?: boolean };
+  routine_delete: Record<string, never>;
+  routine_test: { ok: true } | { ok: false; reason: RoutineFailureReason };
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -265,7 +318,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       const republish = d.from.versionId !== null && d.from.visibility !== "private";
       const range = d.from.visibility === d.visibility ? VISIBILITY_LABELS[d.visibility] : `${VISIBILITY_LABELS[d.from.visibility]} → ${VISIBILITY_LABELS[d.visibility]}`;
       const below = d.descendants ? `、配下の ${d.descendants} ページも同じ公開範囲に` : "";
-      return [...quoted(t), { text: `を${republish ? "公開し直しました" : "公開しました"}（${range}${below}）` }];
+      const how = d.auto ? "自動で" : "";
+      return [...quoted(t), { text: `を${how}${republish ? "公開し直しました" : "公開しました"}（${range}${below}）` }];
     }
     case "page_unpublish": {
       const below = entry.detail.descendants ? `、配下の ${entry.detail.descendants} ページも` : "";
@@ -276,6 +330,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       const below = d.descendants ? `、配下の ${d.descendants} ページも` : "";
       return [...quoted(t), { text: `の公開範囲を変更しました（${VISIBILITY_LABELS[d.from]} → ${VISIBILITY_LABELS[d.to]}${below}）` }];
     }
+    case "page_auto_publish_change":
+      return [...quoted(t), { text: entry.detail.enabled ? "の「新しい編集を自動で公開」をオンにしました" : "の「新しい編集を自動で公開」をオフにしました" }];
     case "unlisted_key_rotate":
       return [...quoted(t), { text: "の限定公開 URL を再発行しました" }];
     case "schedule_create":
@@ -299,6 +355,15 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
     case "page_purge":
       return [...quoted(t), { text: `をゴミ箱から完全に削除しました${withDescendants(entry.detail.descendants)}` }];
 
+    case "page_tag_add":
+      return [...quoted(t), { text: `にタグ「${entry.detail.tagName}」を付けました` }];
+    case "page_tag_remove":
+      return [...quoted(t), { text: `からタグ「${entry.detail.tagName}」を外しました` }];
+    case "page_audio_upload":
+      return [...quoted(t), { text: `に音声「${entry.detail.name}」を添付しました` }];
+    case "page_audio_delete":
+      return [...quoted(t), { text: `から音声「${entry.detail.name}」を削除しました` }];
+
     case "wiki_update": {
       const parts: string[] = [];
       if (entry.detail.name) parts.push(`名前を変更しました（${entry.detail.name.from} → ${entry.detail.name.to}）`);
@@ -315,6 +380,56 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）の連携を解除しました`);
     case "sns_test_post":
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）にテスト投稿をしました`);
+
+    case "workflow_run_fail": {
+      const kind = entry.detail.actionType === "call_routine" ? "Routine を呼ぶ" : entry.detail.actionType === "remove_tag" ? "タグを外す" : entry.detail.actionType === "add_tag" ? "タグを付ける" : entry.detail.actionType;
+      return [...quoted(t), { text: `のワークフローの実行に失敗しました（${kind}：${entry.detail.error}）` }];
+    }
+
+    case "tag_create":
+      return [{ text: "タグ " }, ...quoted(t), { text: " を作成しました" }];
+    case "tag_rename":
+      return [{ text: "タグの名前を変更しました（" }, ...named(entry.detail.from), { text: ` → ${entry.detail.to}）` }];
+    case "tag_delete":
+      return [
+        { text: "タグ " },
+        ...quoted(t),
+        {
+          text: ` を削除しました${entry.detail.pages ? `（${entry.detail.pages} ページから外れました）` : ""}${entry.detail.blocks ? `（ワークフローのブロック ${entry.detail.blocks} 件も削除しました）` : ""}`,
+        },
+      ];
+
+    case "workflow_create":
+      return [{ text: "ワークフロー " }, ...quoted(t), { text: " を作成しました" }];
+    case "workflow_rename":
+      return [{ text: "ワークフローの名前を変更しました（" }, ...named(entry.detail.from), { text: ` → ${entry.detail.to}）` }];
+    case "workflow_delete":
+      return [{ text: "ワークフロー " }, ...quoted(t), { text: ` を削除しました（ブロック ${entry.detail.blocks} 件と、実行の履歴 ${entry.detail.runs} 件も削除）` }];
+    case "workflow_block_create":
+      return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を作成しました（アクション ${entry.detail.actions} 件）` }];
+    case "workflow_block_update":
+      return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を変更しました（アクション ${entry.detail.actions} 件）` }];
+    case "workflow_block_delete":
+      return [{ text: "ワークフローのブロック " }, ...quoted(t), { text: ` を削除しました${entry.detail.reason === "tag_deleted" ? "（トリガーのタグを削除したため）" : ""}` }];
+
+    case "routine_create":
+      return [{ text: "Routine " }, ...quoted(t), { text: " を登録しました" }];
+    case "routine_update": {
+      const d = entry.detail;
+      const parts: string[] = [];
+      if (d.name) parts.push(`名前を変更しました（${d.name.from} → ${d.name.to}）`);
+      if (d.url) parts.push("URL を変更しました");
+      if (d.token) parts.push("トークンを入れ替えました");
+      return [{ text: "Routine " }, ...quoted(t), { text: ` を変更しました${parts.length ? `（${parts.join("、")}）` : ""}` }];
+    }
+    case "routine_delete":
+      return [{ text: "Routine " }, ...quoted(t), { text: " を削除しました" }];
+    case "routine_test":
+      return [
+        { text: "Routine " },
+        ...quoted(t),
+        { text: entry.detail.ok ? " をテスト実行しました（成功）" : ` をテスト実行しました（失敗：${ROUTINE_FAILURE_MESSAGES[entry.detail.reason]}）` },
+      ];
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];

@@ -16,12 +16,14 @@ import { formatDateTime } from "../lib/format";
 import { useComposition, useSearchTerm } from "../lib/searchTerm";
 import { pageLink } from "../lib/wiki";
 import { visibilityLabel } from "./PagesPage";
+import { useScreenTitle } from "../lib/documentTitle";
 
 /**
  * 検索の画面。タイトルと本文を探し、本文に一致したときは前後の文も出す。
  * 検索の語は URL（?q=）に持つので、結果の画面を再読み込み・共有できる。
  */
 export function SearchPage(props: { q: string; onChange: (q: string) => void }) {
+  useScreenTitle("検索");
   const [input, setInput] = useState(props.q);
   // 戻る・進むで URL が変わったら、入力欄も合わせる
   useEffect(() => setInput(props.q), [props.q]);
@@ -63,6 +65,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
     {
       key: "visibility",
       header: "状態",
+      narrow: "stack",
       width: "120px",
       sx: { alignItems: "flex-start" },
       render: (r) => <StatusChip status={r.visibility} label={visibilityLabel[r.visibility]} />,
@@ -70,6 +73,7 @@ export function SearchPage(props: { q: string; onChange: (q: string) => void }) 
     {
       key: "updatedAt",
       header: "更新日時",
+      narrow: "hide",
       width: "160px",
       sx: { alignItems: "flex-start", whiteSpace: "nowrap" },
       render: (r) => <Muted component="span">{formatDateTime(r.updatedAt)}</Muted>,

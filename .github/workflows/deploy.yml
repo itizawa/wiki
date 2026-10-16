@@ -19,7 +19,8 @@ concurrency:
 
 jobs:
   # テストは PR で済ませているので、ここでは型チェックとビルドだけを確かめる。
-  # ここでビルドした管理画面は、成果物 admin-dist として deploy のジョブへ渡る
+  # ここでビルドした管理画面は、成果物 admin-dist として deploy のジョブへ渡る。
+  # 同じものを、管理画面を変えていない PR の E2E が使えるよう、キャッシュ admin-dist-<sha> にも残す（E2E はここでは走らせない）
   check:
     uses: ./.github/workflows/ci.yml
     with:
@@ -73,11 +74,17 @@ jobs:
           X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
           X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
           SNS_TOKEN_KEY: ${{ secrets.SNS_TOKEN_KEY }}
+          # 任意。「全体の管理」の Routine のトークンを暗号化する鍵（32文字以上）。SNS_TOKEN_KEY とは別の値にする。未登録なら渡さず、その機能だけが「未設定」になる
+          ROUTINE_TOKEN_KEY: ${{ secrets.ROUTINE_TOKEN_KEY }}
+          # 任意。「コスト」用の Neon の API キーと組織 ID。未登録なら渡さず、その機能だけが「未設定」になる
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ secrets.NEON_ORG_ID }}
         run: |
           test -f ../admin/dist/index.html
           node ../../scripts/write-secrets.mjs "$RUNNER_TEMP/api-secrets.json" \
             SESSION_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET EXPORT_TOKEN CRON_TOKEN "GOOGLE_SERVICE_ACCOUNT_JSON?" \
-            "X_CLIENT_ID?" "X_CLIENT_SECRET?" "SNS_TOKEN_KEY?"
+            "X_CLIENT_ID?" "X_CLIENT_SECRET?" "SNS_TOKEN_KEY?" "ROUTINE_TOKEN_KEY?" \
+            "NEON_API_KEY?" "NEON_ORG_ID?"
           pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/api-secrets.json"
 
       - name: Deploy cron worker

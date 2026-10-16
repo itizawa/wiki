@@ -106,6 +106,8 @@ export function PageIconPicker(props: { pageId: string; icon: string | null; anc
       // 編集中の内容や版には触れず、アイコンだけを入れ替える
       qc.setQueryData<PageDetail>(["page", pageId], (old) => (old ? { ...old, icon: page.icon } : old));
       void qc.invalidateQueries({ queryKey: ["pages"] });
+      // サイドバーのツリー・スターの行にも絵文字を出すので、取り直す
+      void qc.invalidateQueries({ queryKey: ["structure"] });
       onClose();
     },
   });

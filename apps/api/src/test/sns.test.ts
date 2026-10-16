@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { issueSession, SESSION_COOKIE, X_OAUTH_COOKIE } from "../auth/session";
 import { loadConfig } from "../config";
 import { wikiSnsAccounts } from "../db/schema";
-import { decryptToken, encryptToken } from "../sns/crypto";
+import { decryptToken, encryptToken } from "../crypto/token";
 import { codeChallengeOf, createXClient } from "../sns/x-client";
 import { setup, testConfig, W } from "./harness";
 

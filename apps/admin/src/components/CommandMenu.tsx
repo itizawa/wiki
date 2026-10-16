@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeftRight, Calendar, ChartColumn, ClipboardList, Copy, Download, FileText, House, Keyboard, LayoutTemplate, LogOut, Palette, PanelLeft, PanelsTopLeft, Plug, Plus, Presentation, Replace, Save, Search, Share2, SlidersHorizontal, Trash2, Users, Workflow } from "lucide-react";
 import { GitPullRequestArrow } from "lucide-react";
 import Box from "@mui/material/Box";
 import Dialog from "@mui/material/Dialog";
@@ -106,7 +106,8 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
         void navigate({ ...screenLink("/w/$wikiKey/search"), search: q ? { q } : {} });
       },
     },
-    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "home", "list"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    { id: "dashboard", label: "「ダッシュボード」を開く", keywords: ["dashboard", "home", "top"], icon: <House size={18} />, run: go("/w/$wikiKey") },
+    { id: "pages", label: "「すべてのページ」を開く", keywords: ["pages", "list"], icon: <FileText size={18} />, run: go("/w/$wikiKey/pages") },
     {
       id: "requests",
       label: "「編集リクエスト」を開く",
@@ -140,6 +141,10 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     ...(role === "admin"
       ? [{ id: "sns", label: "「SNS」を開く", keywords: ["sns", "x", "twitter", "post", "renkei"], icon: <Share2 size={18} />, run: go("/w/$wikiKey/settings/sns") }]
       : []),
+    // ワークフローも管理者だけ
+    ...(role === "admin"
+      ? [{ id: "workflows", label: "「ワークフロー」を開く", keywords: ["workflow", "workflows", "block", "automation", "waakufuroo"], icon: <Workflow size={18} />, run: go("/w/$wikiKey/workflows") }]
+      : []),
     { id: "trash", label: "「ゴミ箱」を開く", keywords: ["trash", "deleted", "restore", "gomibako"], icon: <Trash2 size={18} />, run: go("/w/$wikiKey/trash") },
     {
       id: "settings",
@@ -151,7 +156,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
     // 連携（GA・サーチコンソール）は、設定の中のタブを直接開ける
     {
       id: "integrations",
-      label: "「連携」を開く",
+      label: "「Google 連携」を開く",
       keywords: ["integrations", "analytics", "ga", "google", "search console", "renkei"],
       icon: <Plug size={18} />,
       run: go("/w/$wikiKey/settings/integrations"),

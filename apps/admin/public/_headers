@@ -2,7 +2,7 @@
 # - 枠に入れさせない：公開サイト（{key}.hatchery-works.com）は同じサイトなので、SameSite=Lax の Cookie が枠の中でも送られる
 # - スタイルは MUI（emotion）が <style> を差し込むので 'unsafe-inline' が要る。画像は本文に外部の URL も書ける
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self'; frame-src https://www.google.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: same-origin

@@ -4,7 +4,8 @@ export type StoredImage = { name: string; uploaded: Date };
 /** アップロードした画像の置き場所。本番は Cloudflare R2、手元の開発はディレクトリ、テストはメモリ。 */
 export type ImageStore = {
   put(name: string, body: Uint8Array, contentType: string): Promise<void>;
-  get(name: string): Promise<{ body: ReadableStream | Uint8Array; contentType: string } | null>;
+  /** `range` を渡すと、その範囲（先頭から数えた位置と長さ）だけを返す（音声の Range リクエスト用） */
+  get(name: string, range?: { offset: number; length: number }): Promise<{ body: ReadableStream | Uint8Array; contentType: string } | null>;
   /**
    * 置いてある画像を、名前の順に `limit` 件まで返す。続きがあれば `cursor` が入り、それを渡すと続きを返す。
    * 参照されていない画像の掃除（`images/cleanup.ts`）が使う
@@ -20,7 +21,7 @@ export const R2_PAGE_SIZE = 1000;
 /** R2 のバインディングのうち、ここで使う部分（@cloudflare/workers-types に頼らない） */
 export type R2BucketLike = {
   put(key: string, value: Uint8Array, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
-  get(key: string): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>;
+  get(key: string, options?: { range?: { offset: number; length: number } }): Promise<{ body: ReadableStream; httpMetadata?: { contentType?: string } } | null>;
   list(options?: { limit?: number; cursor?: string }): Promise<{ objects: { key: string; uploaded: Date }[]; truncated: boolean; cursor?: string }>;
   delete(keys: string | string[]): Promise<void>;
 };
@@ -30,8 +31,8 @@ export function r2ImageStore(bucket: R2BucketLike): ImageStore {
     async put(name, body, contentType) {
       await bucket.put(name, body, { httpMetadata: { contentType } });
     },
-    async get(name) {
-      const obj = await bucket.get(name);
+    async get(name, range) {
+      const obj = await bucket.get(name, range ? { range } : undefined);
       return obj ? { body: obj.body, contentType: obj.httpMetadata?.contentType ?? "application/octet-stream" } : null;
     },
     async list({ limit, cursor }) {
@@ -56,8 +57,9 @@ export function memoryImageStore(): ImageStore & { files: Map<string, MemoryImag
     async put(name, body, contentType) {
       files.set(name, { body, contentType, uploaded: new Date() });
     },
-    async get(name) {
-      return files.get(name) ?? null;
+    async get(name, range) {
+      const file = files.get(name);
+      return file && range ? { ...file, body: file.body.slice(range.offset, range.offset + range.length) } : (file ?? null);
     },
     // 続きの印は、前の回の最後の名前
     async list({ limit, cursor }) {

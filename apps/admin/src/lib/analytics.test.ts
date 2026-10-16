@@ -20,7 +20,7 @@ describe("失敗の理由", () => {
     expect(failureText("permission_denied", "search_console").fix).toContain("ユーザーと権限");
     expect(failureText("api_disabled", "ga").what).toContain("Google Analytics Data API");
     expect(failureText("api_disabled", "search_console").what).toContain("Google Search Console API");
-    expect(failureText("auth", "ga").fix).toContain("GOOGLE_SERVICE_ACCOUNT_JSON");
+    expect(failureText("auth", "ga").fix).toContain("オーナーに頼んでください");
     for (const reason of ["quota", "timeout", "unavailable", "unknown", "not_found"] as const) {
       const { what, fix } = failureText(reason, "ga");
       expect(what.length, reason).toBeGreaterThan(5);
@@ -34,6 +34,7 @@ describe("失敗の理由", () => {
     expect(checkResultText({ ok: false, reason: "permission_denied" }, "search_console")).toBe(`${what}${fix}`);
     expect(checkResultText({ ok: false, reason: "property_unset" }, "ga")).toContain("プロパティ ID が保存されていません");
     expect(checkResultText({ ok: false, reason: "service_account_unset" }, "ga")).toContain("登録されていない");
+    expect(checkResultText({ ok: false, reason: "service_account_invalid" }, "ga")).not.toContain("GOOGLE_SERVICE_ACCOUNT_JSON");
   });
 });
 

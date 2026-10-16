@@ -246,6 +246,125 @@
       "when": 1791777000000,
       "tag": "0034_remove_structure_history",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791840924963,
+      "tag": "0035_link_previews",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791843407961,
+      "tag": "0036_cost_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791843500000,
+      "tag": "0037_page_cover",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791909666262,
+      "tag": "0038_page_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791910510551,
+      "tag": "0039_workflow_routines",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791911968156,
+      "tag": "0040_workflow_blocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791912874593,
+      "tag": "0041_workflow_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791913485325,
+      "tag": "0042_workflow_retry",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792015983601,
+      "tag": "0043_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792022149627,
+      "tag": "0044_wiki_adsense",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792064729256,
+      "tag": "0045_page_ratings",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792064729257,
+      "tag": "0046_workflow_add_tag",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792064729258,
+      "tag": "0047_workflow_routine_instruction",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792064729259,
+      "tag": "0048_workflow_first_published_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792069765650,
+      "tag": "0049_page_audio",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792069765651,
+      "tag": "0050_page_auto_publish",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792161075284,
+      "tag": "0051_workflow_schedule_trigger",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { ComposeMode } from "../components/compose/ComposeMode";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { EditRequestItemCard, requesterLabel, type ItemNotice } from "../components/EditRequestItemCard";
+import { HelpHeading } from "../components/HelpTip";
 import { ReviewBody, type ReviewSlot } from "../components/ReviewBody";
 import { LoadingRegion, Muted, RouterLink, Section, SkeletonLines } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
@@ -20,6 +21,7 @@ import { formatDateTime } from "../lib/format";
 import { invalidateAfterNewVersion } from "../lib/invalidateAfterNewVersion";
 import { pageLink } from "../lib/wiki";
 import { TOUCH } from "../theme";
+import { useScreenTitle } from "../lib/documentTitle";
 
 type Decision = { kind: "accept" | "reject" | "resolve" | "reopen"; itemId: string } | { kind: "acceptAll"; requestId: string } | { kind: "withdraw"; requestId: string };
 type Range = { startLine: number; endLine: number };
@@ -45,6 +47,7 @@ type AllResult = { applied: number; skipped: number } | { withdrawn: number };
 export function EditRequestsPage({ pageId }: { pageId: string }) {
   const qc = useQueryClient();
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId) });
+  useScreenTitle(page.data ? `編集リクエスト - ${page.data.title}` : null);
   const list = useQuery({ queryKey: editRequestKeys.list(pageId), queryFn: () => api.listEditRequests(pageId) });
   // 自分が出したリクエストにだけ、「取り下げる」を出す
   const me = useQuery({ queryKey: ["me"], queryFn: api.me }).data;
@@ -216,15 +219,21 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
           <ArrowLeft size={16} aria-hidden />
           編集画面に戻る
         </RouterLink>
-        <Typography component="h1" variant="subtitle1" sx={{ fontWeight: 700 }}>
+        <HelpHeading
+          component="h1"
+          variant="subtitle1"
+          textSx={{ fontWeight: 700 }}
+          help="最新の版の本文に、提案と指摘を、指している箇所のすぐ下に出しています。提案を採用すると、その箇所を置き換えた新しい版ができます。公開中の内容は、公開し直すまで変わりません。指摘は、直し方を示さない気づきです。片付いたら、解決済みにします。"
+        >
           編集リクエスト
-        </Typography>
+        </HelpHeading>
         <Box sx={{ ml: "auto", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1.5 }}>
           {openCount !== undefined && (
             <Chip size="small" variant={openCount > 0 ? "filled" : "outlined"} color={openCount > 0 ? "primary" : "default"} label={`未対応 ${openCount} 件`} />
           )}
           {/* 本文が読めてから出す（出すモードは、最新の版の本文に提案を書く） */}
-          {data && page.data && !loadError && (
+          {/* 0件のときは、空の状態の中のボタンだけにする（同じボタンを2つ並べない） */}
+          {data && page.data && !loadError && data.requests.length > 0 && (
             <Button variant="outlined" size="small" startIcon={<PenLine size={16} aria-hidden />} onClick={compose} sx={{ whiteSpace: "nowrap", [TOUCH]: { minHeight: 40 } }}>
               編集リクエストを出す
             </Button>
@@ -259,10 +268,6 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
           </LoadingRegion>
         ) : (
           <Stack spacing={3}>
-            <Muted>
-              最新の版の本文に、提案と指摘を、指している箇所のすぐ下に出しています。提案を採用すると、その箇所を置き換えた新しい版ができます。公開中の内容は、公開し直すまで変わりません。指摘は、直し方を示さない気づきです。片付いたら、解決済みにします。
-            </Muted>
-
             {sent !== null && (
               <Alert severity="success" onClose={() => setSent(null)}>
                 編集リクエストを送信しました（{sent}）。下の本文の、指している箇所に並んでいます。
@@ -271,13 +276,16 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
 
             {data.requests.length === 0 ? (
               <Section>
-                <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
+                <HelpHeading
+                  variant="subtitle1"
+                  component="h2"
+                  textSx={{ fontWeight: 600 }}
+                  help="編集リクエストは、本文の箇所ごとに「こう直す」を提案し、1件ずつ採用・却下を決める仕組みです。直し方を示せないときは、指摘だけを書けます。この wiki のメンバーと、外部のアプリ（MCP）でつないだ AI が出せます。出されると、下の本文の、指している箇所のすぐ下に並びます。"
+                  about="編集リクエスト"
+                >
                   このページへの編集リクエストは、まだありません
-                </Typography>
-                <Muted sx={{ mt: 0.5 }}>
-                  編集リクエストは、本文の箇所ごとに「こう直す」を提案し、1件ずつ採用・却下を決める仕組みです。直し方を示せないときは、指摘だけを書けます。この wiki
-                  のメンバーと、外部のアプリ（MCP）でつないだ AI が出せます。出されると、下の本文の、指している箇所のすぐ下に並びます。
-                </Muted>
+                </HelpHeading>
+                <Muted sx={{ mt: 0.5 }}>本文の箇所ごとの提案や指摘を出すと、ここに並びます。</Muted>
                 <Box sx={{ mt: 1.5, display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 2, rowGap: 1 }}>
                   <Button variant="contained" size="small" startIcon={<PenLine size={16} aria-hidden />} onClick={compose} sx={{ [TOUCH]: { minHeight: 40 } }}>
                     編集リクエストを出す
@@ -336,10 +344,16 @@ export function EditRequestsPage({ pageId }: { pageId: string }) {
 
             {view.done.length > 0 && (
               <Stack component="section" spacing={1} aria-labelledby="done-title">
-                <Typography id="done-title" variant="subtitle1" component="h2" sx={{ fontWeight: 600 }}>
+                <HelpHeading
+                  id="done-title"
+                  variant="subtitle1"
+                  component="h2"
+                  textSx={{ fontWeight: 600 }}
+                  about="対応済みの項目"
+                  help="採用・却下・解決済み・取り下げが済んだ提案と指摘です。押すと開き、中身と返信を読めます。却下した提案と、解決済みの指摘は、未対応に戻せます。"
+                >
                   対応済みの項目（{view.done.length} 件）
-                </Typography>
-                <Muted>採用・却下・解決済み・取り下げが済んだ提案と指摘です。押すと開き、中身と返信を読めます。却下した提案と、解決済みの指摘は、未対応に戻せます。</Muted>
+                </HelpHeading>
                 {(allDone ? view.done : view.done.slice(0, DONE_SHOWN)).map(({ request, item }) => (
                   <Box key={item.id}>{card(request, item, "done")}</Box>
                 ))}

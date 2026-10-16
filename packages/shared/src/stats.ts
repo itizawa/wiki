@@ -1,4 +1,4 @@
-import { CALLOUT_TYPES } from "@wiki/shared";
+import { CALLOUT_TYPES } from "./callout";
 
 /** コールアウトの印だけの行（`> [!NOTE]`）。画面には種類の名前として出るので、本文の文字には数えない。 */
 const CALLOUT_MARKER_LINE = new RegExp(`^\\s*>\\s*\\[!(?:${CALLOUT_TYPES.join("|")})\\]\\s*$`, "gim");

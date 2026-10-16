@@ -1,3 +1,5 @@
 .backlinks { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 0.9rem; }
 .backlinks h2 { margin: 0 0 4px; font-size: 0.9rem; color: var(--muted); }
 .backlinks ul { margin: 0; padding-left: 1.25em; }
+/* 被リンクの一覧。リンクの押せる高さを 24px 以上にする（WCAG 2.5.8） */
+.backlinks li a { display: inline-block; padding-block: 2px; }

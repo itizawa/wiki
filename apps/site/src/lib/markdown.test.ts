@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, headingId, renderArticle, renderMarkdown } from "./markdown";
+import { excerpt, firstImagePath, headingId, ogImagePath, renderArticle, renderMarkdown } from "./markdown";
 
 const publicPaths = new Map([["abcdefghij", "/p/abcdefghij"]]);
 
@@ -98,6 +98,16 @@ describe("excerpt", () => {
   it("strips markdown", () => {
     expect(excerpt("# 見出し\n\n本文の[リンク](/x)です。")).toBe("見出し 本文のリンクです。");
   });
+
+  it("drops the credit line right under an image", () => {
+    const md = "![福袋](https://example.com/a.jpg)\n\n画像: [公式サイト](https://example.com/)より\n\n**予約は10月22日から。**";
+    expect(excerpt(md)).toBe("予約は10月22日から。");
+    expect(excerpt("![福袋](/images/a.webp)\n出典：公式サイト\n\n本文")).toBe("本文");
+  });
+
+  it("keeps a credit-like line that is not under an image", () => {
+    expect(excerpt("本文\n\n画像: 公式サイトより")).toBe("本文 画像: 公式サイトより");
+  });
 });
 
 describe("callouts", () => {
@@ -153,5 +163,238 @@ describe("excerpt のMarkdown記号", () => {
 describe("excerpt with toggles", () => {
   it("keeps the toggle's summary and body but drops the +++ markers", () => {
     expect(excerpt("+++ 見出し\n\n本文\n\n+++")).toBe("見出し 本文");
+  });
+});
+
+describe("Google マップの埋め込み", () => {
+  const EMBED = "https://www.google.com/maps/embed?pb=!1m18!1m12&hl=ja";
+  const opts = { publicPaths };
+
+  it("地図の URL だけの段落は、iframe と「Google マップで開く」リンクにする", () => {
+    const html = renderMarkdown(EMBED, opts);
+    expect(html).toContain(`<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12&amp;hl=ja" title="Google マップ" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin"></iframe>`);
+    expect(html).toContain(">Google マップで開く</a>");
+  });
+
+  it("場所の URL は、埋め込み用の URL に直して出す", () => {
+    const html = renderMarkdown("https://www.google.com/maps/place/Tokyo+Tower/@35.6586,139.7454,17z", opts);
+    expect(html).toContain('<iframe src="https://www.google.com/maps?q=Tokyo+Tower&amp;z=17&amp;output=embed"');
+  });
+
+  it("<...> で囲んだ URL も地図にする", () => {
+    expect(renderMarkdown(`<${EMBED}>`, opts)).toContain("<iframe");
+  });
+
+  it("短縮 URL は埋め込めないので、これまでどおりのリンク", () => {
+    const html = renderMarkdown("https://maps.app.goo.gl/abc123", opts);
+    expect(html).not.toContain("<iframe");
+    expect(html).toContain('<a href="https://maps.app.goo.gl/abc123"');
+  });
+
+  it("文章の中の URL、別ドメイン、javascript:、生の iframe は、地図にならない", () => {
+    for (const md of [
+      `ここです ${EMBED}`,
+      "https://example.com/maps/embed?pb=1",
+      "[地図](javascript:alert(1))",
+      `<iframe src="${EMBED}"></iframe>`,
+      `${EMBED}\n続きの文`,
+    ]) {
+      const html = renderMarkdown(md, opts);
+      expect(html).not.toContain("<iframe");
+    }
+    expect(renderMarkdown(`<iframe src="${EMBED}"></iframe>`, opts)).toContain("&lt;iframe");
+  });
+
+  it("抜粋では、地図の URL だけの行を落とす", () => {
+    expect(excerpt(`前の文\n\n${EMBED}\n\n後の文`)).toBe("前の文 後の文");
+    expect(excerpt("ここ https://www.google.com/maps/embed?pb=1 です")).toContain("https://www.google.com");
+  });
+});
+
+describe("@children（配下のページの一覧）", () => {
+  const opts = { publicPaths: new Map() };
+  const items = [
+    { title: "子A", path: "/p/aaaaaaaaaa", children: [{ title: "孫<A>", path: "/p/cccccccccc", children: [] }] },
+    { title: "子B", path: "/p/bbbbbbbbbb", children: [] },
+  ];
+
+  it("渡された項目を入れ子の <ul> にし、検索の索引には入れない", () => {
+    const calls: unknown[] = [];
+    const html = renderMarkdown("前\n\n@children depth=2 sort=title\n\n後", {
+      ...opts,
+      childrenOf: (o) => (calls.push(o), items),
+    });
+    expect(calls).toEqual([{ depth: 2, sort: "title" }]);
+    expect(html).toContain(
+      '<ul class="children-list" data-pagefind-ignore><li><a href="/p/aaaaaaaaaa">子A</a><ul><li><a href="/p/cccccccccc">孫&lt;A&gt;</a></li></ul></li><li><a href="/p/bbbbbbbbbb">子B</a></li></ul>',
+    );
+    expect(html).toContain("<p>前</p>");
+    expect(html).toContain("<p>後</p>");
+  });
+  it("配下に公開ページが無いとき、ツリーを渡されていないときは何も出さない", () => {
+    expect(renderMarkdown("@children", { ...opts, childrenOf: () => [] })).toBe("");
+    expect(renderMarkdown("@children", opts)).toBe("");
+  });
+  it("コードブロックの中・分からない引数・文中の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@children\n```\n\n@children filter=x\n\n文 @children", { ...opts, childrenOf: () => items });
+    expect(html).not.toContain("children-list");
+    expect(html).toContain("@children\n</code>");
+    expect(html).toContain("<p>@children filter=x</p>");
+  });
+  it("抜粋では、記法の行を落とす", () => {
+    expect(excerpt("前の文\n\n@children depth=2\n\n後の文")).toBe("前の文 後の文");
+  });
+});
+
+describe("@rating（評価の欄）", () => {
+  const opts = { publicPaths: new Map() };
+  it("記法の行を、評価の欄を入れる空の枠にし、検索の索引には入れない", () => {
+    const html = renderMarkdown("効果\n\n@rating\n\n使い方", opts);
+    expect(html).toContain('<div class="rating-embed" data-rating-embed data-pagefind-ignore></div>');
+    expect(html).toContain("<p>効果</p>");
+    expect(html).toContain("<p>使い方</p>");
+  });
+  it("コードブロックの中・引数つき・文中の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@rating\n```\n\n@rating 5\n\n文 @rating", opts);
+    expect(html).not.toContain("rating-embed");
+    expect(html).toContain("<p>@rating 5</p>");
+  });
+  it("抜粋では、記法の行を落とす", () => {
+    expect(excerpt("前の文\n\n@rating\n\n後の文")).toBe("前の文 後の文");
+    expect(excerpt("前の文\n\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n\n後の文")).toBe("前の文 後の文");
+  });
+});
+
+describe("リンクカード（URL だけの段落）", () => {
+  const linkPreviews = { "https://example.com/post": { title: "記事 <b>", description: "説明", siteName: "サイト" } };
+
+  it("OGP がある外部 URL だけの段落は、ただの <a> のカードにする（画像は出さない）", () => {
+    const html = renderMarkdown("前\n\nhttps://example.com/post\n\n後", { publicPaths, linkPreviews });
+    expect(html).toContain('<p class="link-card"><a href="https://example.com/post" target="_blank" rel="noopener">');
+    expect(html).toContain('<span class="link-card-title">記事 &lt;b&gt;</span>');
+    expect(html).toContain('<span class="link-card-site">サイト</span>');
+    expect(html).toContain('<span class="link-card-description">説明</span>');
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<script");
+  });
+
+  it("収益化の記事は rel に sponsored を付ける。サイト名が無ければ host、説明が無ければ出さない", () => {
+    const html = renderMarkdown("https://example.com/post", { publicPaths, sponsored: true, linkPreviews: { "https://example.com/post": { title: "t", description: null, siteName: null } } });
+    expect(html).toContain('rel="sponsored noopener"');
+    expect(html).toContain('<span class="link-card-site">example.com</span>');
+    expect(html).not.toContain("link-card-description");
+  });
+
+  it("OGP が無い（取れなかった）URL・文章の途中・[文字](URL)・マップの URL は、これまでどおりリンク", () => {
+    expect(renderMarkdown("https://nope.example/", { publicPaths, linkPreviews })).toContain('<a href="https://nope.example/" rel="noopener">');
+    expect(renderMarkdown("見て https://example.com/post です", { publicPaths, linkPreviews })).not.toContain("link-card");
+    expect(renderMarkdown("[文字](https://example.com/post)", { publicPaths, linkPreviews })).not.toContain("link-card");
+    expect(renderMarkdown("https://example.com/post\nつづき", { publicPaths, linkPreviews })).not.toContain("link-card");
+    expect(renderMarkdown("https://www.google.com/maps/embed?pb=1", { publicPaths, linkPreviews: { "https://www.google.com/maps/embed?pb=1": { title: "x", description: null, siteName: null } } })).toContain("map-embed");
+  });
+
+  it("YouTube の動画 URL だけの段落は、OGP の有無に関わらず nocookie の iframe になる。文章の中・ほかのホストは埋め込まない", () => {
+    for (const url of ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ", "https://www.youtube.com/shorts/dQw4w9WgXcQ"]) {
+      const html = renderMarkdown(url, { publicPaths });
+      expect(html).toContain('<figure class="video-embed"><iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
+      expect(html).toContain('title="YouTube の動画" loading="lazy"');
+    }
+    const withPreview = renderMarkdown("https://youtu.be/dQw4w9WgXcQ", { publicPaths, linkPreviews: { "https://youtu.be/dQw4w9WgXcQ": { title: "x", description: null, siteName: null } } });
+    expect(withPreview).toContain("video-embed");
+    expect(withPreview).not.toContain("link-card");
+    expect(renderMarkdown("見て https://youtu.be/dQw4w9WgXcQ", { publicPaths })).not.toContain("<iframe");
+    expect(renderMarkdown("https://vimeo.com/123456789", { publicPaths })).not.toContain("<iframe");
+  });
+
+  it("内部リンクの URL だけの段落は、カードにしない", () => {
+    const html = renderMarkdown("https://wiki.example.com/p/abcdefghij", {
+      publicPaths,
+      origin: "https://wiki.example.com",
+      linkPreviews: { "https://wiki.example.com/p/abcdefghij": { title: "x", description: null, siteName: null } },
+    });
+    expect(html).not.toContain("link-card");
+    expect(html).toContain('<a href="/p/abcdefghij">');
+  });
+});
+
+describe("内部リンクの「@タイトル」", () => {
+  const titleOf = (id: string) => (id === "abcdefghij" ? "手順書" : undefined);
+
+  it("文字がタイトルそのままの公開ページへのリンクに page-mention を付ける（文字は変えない）", () => {
+    expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths, titleOf })).toContain('<a class="page-mention" href="/p/abcdefghij">手順書</a>');
+    expect(renderMarkdown("[ 手順書 ](/p/abcdefghij)", { publicPaths, titleOf })).toContain("page-mention");
+  });
+
+  it("文字を変えたリンク・タイトルを渡さないときは、ふつうのリンク", () => {
+    expect(renderMarkdown("[詳しくはこちら](/p/abcdefghij)", { publicPaths, titleOf })).toContain('<a href="/p/abcdefghij">詳しくはこちら</a>');
+    expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths })).not.toContain("page-mention");
+  });
+
+  it("非公開のページは文字だけで、@ の印も付けない。Markdown に @ と ** は書かない", () => {
+    const html = renderMarkdown("[旧題](/p/zzzzzzzzzz)", { publicPaths, titleOf: () => "旧題" });
+    expect(html).toContain("旧題");
+    expect(html).not.toContain("page-mention");
+    expect(html).not.toContain("<a");
+    expect(renderMarkdown("[手順書](/p/abcdefghij)", { publicPaths, titleOf })).not.toMatch(/@|<strong/);
+  });
+});
+
+describe("リンクのホバープレビューの data 属性", () => {
+  const previewOf = (id: string) => (id === "abcdefghij" ? { title: "手順 <書>", icon: "📘", text: "冒頭の抜粋" } : undefined);
+  const linkPreviews = { "https://example.com/post": { title: "記事", description: "説明", siteName: null } };
+  it("公開ページへの内部リンクに、タイトル・アイコン・抜粋を付ける（エスケープする）", () => {
+    const html = renderMarkdown("[ここ](/p/abcdefghij)", { publicPaths, previewOf });
+    expect(html).toContain('data-preview-title="手順 &lt;書&gt;" data-preview-icon="📘" data-preview-text="冒頭の抜粋"');
+  });
+  it("非公開のページは、プレビューを付けず文字だけのまま", () => {
+    const html = renderMarkdown("[ここ](/p/zzzzzzzzzz)", { publicPaths, previewOf });
+    expect(html).not.toContain("<a");
+    expect(html).not.toContain("data-preview");
+  });
+  it("保存した OGP がある外部リンクに付ける。サイト名が無ければホスト名", () => {
+    const html = renderMarkdown("見て [記事](https://example.com/post) と [別](https://other.example/)", { publicPaths, linkPreviews });
+    expect(html).toContain('rel="noopener" data-preview-title="記事" data-preview-text="説明" data-preview-site="example.com"');
+    expect(html.match(/data-preview-title/g)).toHaveLength(1);
+  });
+  it("OGP が取れていない外部リンク・previewOf が無いときは、これまでどおり", () => {
+    expect(renderMarkdown("[ここ](/p/abcdefghij)", { publicPaths })).not.toContain("data-preview");
+    expect(renderMarkdown("[x](https://nope.example/)", { publicPaths, linkPreviews })).toBe('<p><a href="https://nope.example/" rel="noopener">x</a></p>\n');
+  });
+});
+
+describe("OGP image", () => {
+  const a = "/images/aaaaaaaaaaaaaaaaaaaaaaaa.png";
+  const b = "/images/bbbbbbbbbbbbbbbbbbbbbbbb.webp";
+
+  it("takes the first uploaded image of the body", () => {
+    expect(firstImagePath(`本文\n\n![図](${a})\n\n![別](${b} "題")`)).toBe(a);
+  });
+
+  it("ignores code blocks, external images and non-image paths", () => {
+    expect(firstImagePath("```\n![x](" + a + ")\n```\n\n![y](https://example.com/a.png)\n\n![z](/images/short.png)")).toBeNull();
+    expect(firstImagePath("画像なし")).toBeNull();
+    expect(firstImagePath("```\n![x](" + a + ")\n```\n![y](" + b + ")")).toBe(b);
+  });
+
+  it("prefers the cover, skips provided SVG covers, and falls back to the body", () => {
+    expect(ogImagePath(b, `![](${a})`)).toBe(b);
+    expect(ogImagePath("/covers/forest.svg", `![](${a})`)).toBe(a);
+    expect(ogImagePath(null, `![](${a})`)).toBe(a);
+    expect(ogImagePath("/covers/forest.svg", "画像なし")).toBeNull();
+    expect(ogImagePath(undefined, "")).toBeNull();
+  });
+});
+
+describe("@audio（本文に置いた音声の印）", () => {
+  const id = "0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41";
+  const opts = { publicPaths: new Map<string, string>() };
+  it("公開サイトには何も出さない（行の文字も出さない）", () => {
+    expect(renderMarkdown(`前\n\n@audio ${id}\n\n後`, opts)).toBe("<p>前</p>\n<p>後</p>\n");
+    expect(renderMarkdown(`@audio ${id}`, opts)).toBe("");
+  });
+  it("コードブロックの中・ID でない行・文の途中は、ふつうの文字のまま", () => {
+    expect(renderMarkdown("```\n@audio " + id + "\n```", opts)).toContain(`@audio ${id}`);
+    expect(renderMarkdown("@audio abc", opts)).toContain("@audio abc");
+    expect(renderMarkdown(`文 @audio ${id}`, opts)).toContain("@audio");
   });
 });

@@ -1,9 +1,9 @@
 import { commitStructureInput } from "@wiki/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import { pages } from "../db/schema";
+import { pageDrafts, pages } from "../db/schema";
 import type { AppEnv } from "../env";
-import { changeStructure, getPrimaryTree, loadStructure } from "../structure/repo";
+import { changeStructure, getPrimaryTree, loadPrimaryStructure } from "../structure/repo";
 import { parseJson } from "../validation";
 
 export const structureRoutes = new Hono<AppEnv>()
@@ -11,9 +11,7 @@ export const structureRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const { db } = c.get("deps");
     const wikiId = c.get("wiki").id;
-    const state = await loadStructure(db, wikiId);
-    const tree = await getPrimaryTree(db, wikiId);
-    const nodes = state.trees[tree.id]?.nodes ?? [];
+    const { tree, nodes } = await loadPrimaryStructure(db, wikiId);
     const pageIds = nodes.map((n) => n.pageId);
     const pageRows =
       pageIds.length === 0
@@ -22,6 +20,7 @@ export const structureRoutes = new Hono<AppEnv>()
             .select({
               id: pages.id,
               title: pages.title,
+              icon: pages.icon,
               visibility: pages.visibility,
               publishedVersionId: pages.publishedVersionId,
               unlistedKey: pages.unlistedKey,
@@ -29,10 +28,20 @@ export const structureRoutes = new Hono<AppEnv>()
             })
             .from(pages)
             .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, pageIds)));
+    // 自分の下書きのタイトルを、版になる前から行に出す（下書きはワーカーが版にするまで pages.title に入らない）。
+    // 下書きは人ごとなので、ほかの人には head のタイトルのまま
+    const draftRows =
+      pageIds.length === 0
+        ? []
+        : await db
+            .select({ pageId: pageDrafts.pageId, title: pageDrafts.title })
+            .from(pageDrafts)
+            .where(and(eq(pageDrafts.userId, c.get("user").id), inArray(pageDrafts.pageId, pageIds)));
+    const draftTitles = new Map(draftRows.map((d) => [d.pageId, d.title]));
     return c.json({
       // ツリーは1本。レスポンスの形は配列のまま保っている
       trees: [{ ...tree, nodes }],
-      pages: Object.fromEntries(pageRows.map((p) => [p.id, { ...p, updatedAt: p.updatedAt.toISOString() }])),
+      pages: Object.fromEntries(pageRows.map((p) => [p.id, { ...p, title: draftTitles.get(p.id) ?? p.title, updatedAt: p.updatedAt.toISOString() }])),
     });
   })
   .post("/ops", async (c) => {
