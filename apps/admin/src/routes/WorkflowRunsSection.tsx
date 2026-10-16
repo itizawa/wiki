@@ -7,8 +7,10 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Link from "@mui/material/Link";
+import Autocomplete from "@mui/material/Autocomplete";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   isWorkflowRunActive,
   WORKFLOW_RUN_STATUS_LABELS,
@@ -72,12 +74,40 @@ function StatusBadge({ status }: { status: WorkflowRunStatus }) {
   return <Chip size="small" color={view.color} variant={status === "failed" ? "filled" : "outlined"} icon={view.icon} label={WORKFLOW_RUN_STATUS_LABELS[status]} />;
 }
 
+type PageOption = { id: string; title: string };
+
+/** 履歴を絞るページを選ぶ欄。打った語で検索し、語が無いときは最近更新したページを出す。選びを外すと、全部の実行に戻る */
+function RunsPageFilter({ value, onChange }: { value: PageOption | null; onChange: (page: PageOption | null) => void }) {
+  const [input, setInput] = useState("");
+  const results = useQuery({ queryKey: ["workflow-runs-filter-pages", input], queryFn: () => api.search(input.trim()), placeholderData: (prev) => prev });
+  const options = (results.data?.results ?? []).map((r) => ({ id: r.id, title: r.title }));
+  return (
+    <Autocomplete
+      size="small"
+      sx={{ maxWidth: 360, mb: 1.5 }}
+      options={value && !options.some((o) => o.id === value.id) ? [value, ...options] : options}
+      value={value}
+      getOptionLabel={(o) => o.title || "（無題）"}
+      isOptionEqualToValue={(a, b) => a.id === b.id}
+      filterOptions={(xs) => xs}
+      onChange={(_, p) => onChange(p)}
+      onInputChange={(_, v, reason) => reason === "input" && setInput(v)}
+      loading={results.isFetching}
+      loadingText="検索しています…"
+      noOptionsText="見つかるページがありません"
+      clearText="絞り込みを外す"
+      renderInput={(params) => <TextField {...params} placeholder="ページで絞り込む（タイトルで探す）" slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps.htmlInput, "aria-label": "実行の履歴をページで絞り込む" } }} />}
+    />
+  );
+}
+
 /** 「実行の履歴」の節：ワークフローの実行を新しい順に出す。失敗の理由と、Routine のセッションへたどれる。 */
 export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
   const [opened, setOpened] = useState<string | null>(null);
+  const [pageFilter, setPageFilter] = useState<PageOption | null>(null);
   const runs = useInfiniteQuery({
-    queryKey: ["workflow-runs", workflowId],
-    queryFn: ({ pageParam }) => api.listWorkflowRuns(workflowId, { limit: PAGE_SIZE, cursor: pageParam }),
+    queryKey: ["workflow-runs", workflowId, pageFilter?.id ?? null],
+    queryFn: ({ pageParam }) => api.listWorkflowRuns(workflowId, { pageId: pageFilter?.id, limit: PAGE_SIZE, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchInterval: (q) => refetchIntervalFor(q.state.data?.pages),
@@ -133,6 +163,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
       >
         実行の履歴
       </HelpHeading>
+      <RunsPageFilter value={pageFilter} onChange={setPageFilter} />
       <DataList
         label="実行の履歴"
         columns={columns}
@@ -141,12 +172,16 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         rowLink={(r) => (r.page.available ? pageLink(r.page.id) : undefined)}
         error={runs.error}
         empty={
+          pageFilter ? (
+            <>「{pageFilter.title || "無題"}」の実行はありません。絞り込みを外すと、ほかのページの実行も見られます。</>
+          ) : (
           <>
             まだ実行はありません。ブロックのトリガー（タグが付く・初めて公開される・決まった時刻になる）が起きると、ここに実行が出ます。{" "}
             <Link component="button" type="button" onClick={() => document.getElementById(BLOCKS_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" })} sx={{ verticalAlign: "baseline" }}>
               ブロックの節へ
             </Link>
           </>
+          )
         }
         rowHeight={ROW_HEIGHT}
         skeletonRows={3}
