@@ -484,6 +484,14 @@ export const workflowBlocks = pgTable(
     triggerType: text("trigger_type").notNull(),
     /** トリガーのタグ（`tag_attached` のときだけ。`page_first_published` では null） */
     triggerTagId: uuid("trigger_tag_id").references(() => wikiTags.id),
+    /** 時刻で起動するときの、対象のページ（`schedule` のときだけ） */
+    triggerPageId: text("trigger_page_id").references(() => pages.id),
+    /** 時刻で起動する時刻（`HH:MM`、JST。`schedule` のときだけ） */
+    triggerTime: text("trigger_time"),
+    /** 時刻で起動する曜日（0 が日曜。`schedule` のときだけ。毎日なら 0〜6 すべて） */
+    triggerWeekdays: integer("trigger_weekdays").array(),
+    /** 時刻で起動した（または、トリガーを保存した）時刻。これより後の時刻が来ていたら起動する（二重に積まないための印） */
+    lastFiredAt: timestamp("last_fired_at", { withTimezone: true }),
     createdAt: createdAt(),
     createdBy: uuid("created_by").references(() => users.id),
   },
@@ -493,7 +501,7 @@ export const workflowBlocks = pgTable(
     index("workflow_blocks_trigger_tag_idx").on(t.triggerTagId),
     check(
       "workflow_blocks_trigger_type_check",
-      sql`(${t.triggerType} = 'tag_attached' and ${t.triggerTagId} is not null) or (${t.triggerType} = 'page_first_published' and ${t.triggerTagId} is null)`,
+      sql`(${t.triggerType} = 'tag_attached' and ${t.triggerTagId} is not null) or (${t.triggerType} = 'page_first_published' and ${t.triggerTagId} is null) or (${t.triggerType} = 'schedule' and ${t.triggerTagId} is null and ${t.triggerPageId} is not null and ${t.triggerTime} is not null and ${t.triggerWeekdays} is not null)`,
     ),
   ],
 );
@@ -544,6 +552,8 @@ export const workflowRuns = pgTable(
       .references(() => pages.id),
     /** トリガーのタグ（積んだ時点）。タグがトリガーでない実行（初めて公開されたとき）は null */
     tagId: uuid("tag_id"),
+    /** 積んだトリガーの種類（`tag_attached` / `page_first_published` / `schedule`） */
+    triggerType: text("trigger_type").notNull().default("tag_attached"),
     /** 積んだ時点の、ページの最新の保存済みの版。版が無かったときは null */
     versionId: uuid("version_id"),
     status: text("status").notNull().default("pending"),

@@ -1,7 +1,13 @@
 import { closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import Autocomplete from "@mui/material/Autocomplete";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormGroup from "@mui/material/FormGroup";
+import FormLabel from "@mui/material/FormLabel";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -20,6 +26,7 @@ import {
   describeTrigger,
   TRIGGER_KINDS,
   TRIGGER_TYPES,
+  WEEKDAY_LABELS,
   type WorkflowTriggerType,
   describeTriggerCondition,
   workflowDraftProblem,
@@ -43,10 +50,19 @@ export const BLOCKS_SECTION_ID = "workflow-blocks";
 const blocksKey = (workflowId: string) => ["workflow", workflowId, "blocks"];
 const ROUTINES_KEY = ["routine-choices"];
 
+/** 時刻で起動するときの、入力欄の初期値（毎日 9 時） */
+const DEFAULT_SCHEDULE_TIME = "09:00";
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+
 /** 編集の入力 → API に送る形（選び終えていることは、呼ぶ前に `workflowDraftProblem` で確かめてある） */
 export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
   return {
-    trigger: draft.triggerType === "tag_attached" ? { type: "tag_attached", tagId: draft.tagId } : { type: "page_first_published" },
+    trigger:
+      draft.triggerType === "tag_attached"
+        ? { type: "tag_attached", tagId: draft.tagId }
+        : draft.triggerType === "schedule"
+          ? { type: "schedule", pageId: draft.pageId, time: draft.time, weekdays: [...draft.weekdays].sort((a, b) => a - b) }
+          : { type: "page_first_published" },
     actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId, instruction: a.instruction.trim() } : { type: a.type, tagId: a.tagId })),
   };
 }
@@ -55,6 +71,9 @@ export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
   return {
     triggerType: block.trigger.type,
     tagId: block.trigger.type === "tag_attached" ? block.trigger.tagId : "",
+    pageId: block.trigger.type === "schedule" ? block.trigger.pageId : "",
+    time: block.trigger.type === "schedule" ? block.trigger.time : DEFAULT_SCHEDULE_TIME,
+    weekdays: block.trigger.type === "schedule" ? block.trigger.weekdays : ALL_WEEKDAYS,
     actions: block.actions.map((a) => ({
       type: a.type,
       routineId: a.type === "call_routine" ? a.routineId : "",
@@ -204,6 +223,29 @@ function BlockCard({ block, busy, onEdit, onDelete }: { block: WorkflowBlock; bu
   );
 }
 
+/** 時刻で起動するときの、対象のページを選ぶ欄。打った語で検索し、語が無いときは最近更新したページを出す */
+function SchedulePagePicker({ value, onChange }: { value: { id: string; title: string } | null; onChange: (page: { id: string; title: string } | null) => void }) {
+  const [input, setInput] = useState("");
+  const results = useQuery({ queryKey: ["workflow-schedule-pages", input], queryFn: () => api.search(input.trim()), placeholderData: (prev) => prev });
+  const options = (results.data?.results ?? []).map((r) => ({ id: r.id, title: r.title }));
+  return (
+    <Autocomplete
+      size="small"
+      options={value && !options.some((o) => o.id === value.id) ? [value, ...options] : options}
+      value={value}
+      getOptionLabel={(o) => o.title || "（無題）"}
+      isOptionEqualToValue={(a, b) => a.id === b.id}
+      filterOptions={(xs) => xs}
+      onChange={(_, p) => onChange(p)}
+      onInputChange={(_, v, reason) => reason === "input" && setInput(v)}
+      loading={results.isFetching}
+      loadingText="検索しています…"
+      noOptionsText="見つかるページがありません"
+      renderInput={(params) => <TextField {...params} label="対象のページ" placeholder="ページのタイトルで探す" slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }} />}
+    />
+  );
+}
+
 /** つまみ（GripVertical）だけを掴めるようにして、行の中の選択欄は今までどおり操作できるようにする */
 function SortableItem({ id, children }: { id: number; children: (handle: ReactNode) => ReactNode }) {
   const sortable = useSortable({ id });
@@ -241,9 +283,13 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
   const routines = useQuery({ queryKey: ROUTINES_KEY, queryFn: api.listRoutineChoices });
   const nextKey = useRef(0);
   const withKey = (a: WorkflowDraft["actions"][number]): DraftAction => ({ ...a, key: nextKey.current++ });
-  const initial: WorkflowDraft = block ? blockToDraft(block) : { triggerType: "tag_attached", tagId: "", actions: [] };
+  const initial: WorkflowDraft = block ? blockToDraft(block) : { triggerType: "tag_attached", tagId: "", pageId: "", time: DEFAULT_SCHEDULE_TIME, weekdays: ALL_WEEKDAYS, actions: [] };
   const [triggerType, setTriggerType] = useState<WorkflowTriggerType>(initial.triggerType);
   const [tagId, setTagId] = useState(initial.tagId);
+  const [pageId, setPageId] = useState(initial.pageId);
+  const [pageTitle, setPageTitle] = useState(block?.trigger.type === "schedule" ? block.trigger.pageTitle : "");
+  const [time, setTime] = useState(initial.time);
+  const [weekdays, setWeekdays] = useState(initial.weekdays);
   const [actions, setActions] = useState<DraftAction[]>(() => initial.actions.map(withKey));
 
   const sensors = useSensors(
@@ -270,7 +316,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
     },
   });
 
-  const draft: WorkflowDraft = { triggerType, tagId, actions };
+  const draft: WorkflowDraft = { triggerType, tagId, pageId, time, weekdays, actions };
   const problem = workflowDraftProblem(draft);
   const change = (key: number, patch: Partial<DraftAction>) => {
     setActions((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
@@ -317,7 +363,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
               トリガー
             </Typography>
             <HelpTip about="トリガーの種類">
-              「タグが付いたとき」は、選んだタグがページに付くたびに動きます。「初めて公開されたとき」は、一度も公開したことのないページを、公開か限定公開にしたときだけ動きます（公開し直し・非公開にしたときは動きません）。管理画面・MCP・予約のどれから公開しても動きます。Routine に渡す値のタグ名は、空になります。
+              「タグが付いたとき」は、選んだタグがページに付くたびに動きます。「初めて公開されたとき」は、一度も公開したことのないページを、公開か限定公開にしたときだけ動きます（公開し直し・非公開にしたときは動きません）。管理画面・MCP・予約のどれから公開しても動きます。「決まった時刻になったとき」は、選んだ曜日の時刻（日本時間）が来たあとの最初の確認（5分おき）で、選んだページを対象に1回だけ動きます（同じブロックの実行は、1時間に5回までです）。タグがトリガーでないとき、Routine に渡す値のタグ名は、空になります。
             </HelpTip>
           </Row>
           <TextField
@@ -360,6 +406,55 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
                 </option>
               ))}
             </TextField>
+          )}
+
+          {triggerType === "schedule" && (
+            <Box sx={{ mt: 1.5, display: "grid", gap: 1.5 }}>
+              <SchedulePagePicker
+                value={pageId ? { id: pageId, title: pageTitle } : null}
+                onChange={(p) => {
+                  setPageId(p?.id ?? "");
+                  setPageTitle(p?.title ?? "");
+                  save.reset();
+                }}
+              />
+              <TextField
+                type="time"
+                size="small"
+                label="時刻（日本時間）"
+                value={time}
+                onChange={(e) => {
+                  setTime(e.target.value);
+                  save.reset();
+                }}
+                helperText="5分おきに確認するので、数分遅れて動くことがあります。"
+                slotProps={{ inputLabel: { shrink: true } }}
+                sx={{ maxWidth: 240 }}
+              />
+              <FormControl component="fieldset" variant="standard">
+                <FormLabel component="legend" sx={{ fontSize: 12 }}>
+                  曜日
+                </FormLabel>
+                <FormGroup row>
+                  {WEEKDAY_LABELS.map((label, day) => (
+                    <FormControlLabel
+                      key={day}
+                      label={label}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={weekdays.includes(day)}
+                          onChange={(e) => {
+                            setWeekdays((ds) => (e.target.checked ? [...ds, day] : ds.filter((d) => d !== day)));
+                            save.reset();
+                          }}
+                        />
+                      }
+                    />
+                  ))}
+                </FormGroup>
+              </FormControl>
+            </Box>
           )}
 
           <Row sx={{ mt: 2.5, mb: 1, gap: 0.5 }}>

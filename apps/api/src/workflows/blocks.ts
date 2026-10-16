@@ -10,11 +10,13 @@ import {
   type WorkflowTriggerInput,
   type WorkflowTriggerType,
 } from "@wiki/shared";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { type AuditActor, actorUserId, writeAudit } from "../audit/service";
 import type { Db } from "../db/client";
-import { wikis, wikiTags, workflowActions, workflowBlocks, workflowRoutines } from "../db/schema";
+import { pages, wikis, wikiTags, workflowActions, workflowBlocks, workflowRoutines } from "../db/schema";
+import { markCronWork } from "../cron/marks";
 import { HttpError, notFound } from "../errors";
+import { nextSlot } from "./schedule";
 
 /**
  * ワークフローのブロック（ワークフローごと）。変えるものは、呼ぶ側のトランザクション（tx）の中で呼ぶ。
@@ -57,7 +59,8 @@ const ACTION_COLUMNS: {
   },
 };
 
-type TriggerColumns = { triggerTagId: string | null };
+type TriggerColumns = Pick<typeof workflowBlocks.$inferInsert, "triggerTagId" | "triggerPageId" | "triggerTime" | "triggerWeekdays">;
+const NO_COLUMNS: TriggerColumns = { triggerTagId: null, triggerPageId: null, triggerTime: null, triggerWeekdays: null };
 
 /** トリガーの種類ごと */
 const TRIGGER_COLUMNS: {
@@ -68,32 +71,59 @@ const TRIGGER_COLUMNS: {
   };
 } = {
   tag_attached: {
-    toColumns: (t) => ({ triggerTagId: t.tagId }),
+    toColumns: (t) => ({ ...NO_COLUMNS, triggerTagId: t.tagId }),
     check: (ctx, t) => {
       if (!ctx.tags.has(t.tagId)) throw badRef("unknown_tag", `tag ${t.tagId} is not in this wiki`);
     },
     toTrigger: (row, ctx) => ({ type: "tag_attached", tagId: row.triggerTagId!, tagName: ctx.tags.get(row.triggerTagId!) ?? "" }),
   },
   page_first_published: {
-    toColumns: () => ({ triggerTagId: null }),
+    toColumns: () => NO_COLUMNS,
     check: () => {},
     toTrigger: () => ({ type: "page_first_published" }),
   },
+  schedule: {
+    toColumns: (t) => ({ ...NO_COLUMNS, triggerPageId: t.pageId, triggerTime: t.time, triggerWeekdays: [...t.weekdays].sort((a, b) => a - b) }),
+    // 対象のページは、この wiki にあって、ゴミ箱に入っていないこと（`checkInput` が調べて `ctx.pages` に入れる）
+    check: (ctx, t) => {
+      if (!ctx.pages.has(t.pageId)) throw badRef("unknown_page", `page ${t.pageId} is not in this wiki`);
+    },
+    toTrigger: (row, ctx) => ({
+      type: "schedule",
+      pageId: row.triggerPageId!,
+      pageTitle: ctx.pages.get(row.triggerPageId!) ?? "",
+      time: row.triggerTime!,
+      weekdays: row.triggerWeekdays ?? [],
+    }),
+  },
 };
 
-type Refs = { tags: Map<string, string>; routines: Map<string, string> };
+type Refs = { tags: Map<string, string>; routines: Map<string, string>; /** ページの ID → タイトル（時刻で起動するブロックの対象のページだけ） */ pages: Map<string, string> };
 type Names = Refs;
 
 const badRef = (code: string, message: string) => new HttpError(400, code, message);
 
 /** その wiki のタグと、登録済みの Routine（ID → 名前）。参照の確かめと、名前の表示に使う */
-async function loadNames(db: Db, wikiId: string): Promise<Names> {
-  const [tags, routines] = await Promise.all([
+async function loadNames(db: Db, wikiId: string, pageIds: string[] = [], opts: { liveOnly?: boolean } = {}): Promise<Names> {
+  const [tags, routines, pageRows] = await Promise.all([
     db.select({ id: wikiTags.id, name: wikiTags.name }).from(wikiTags).where(eq(wikiTags.wikiId, wikiId)),
     db.select({ id: workflowRoutines.id, name: workflowRoutines.name }).from(workflowRoutines),
+    pageIds.length > 0
+      ? db
+          .select({ id: pages.id, title: pages.title })
+          .from(pages)
+          .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, pageIds), ...(opts.liveOnly ? [isNull(pages.deletedAt), isNull(pages.purgedAt)] : [])))
+      : [],
   ]);
-  return { tags: new Map(tags.map((t) => [t.id, t.name])), routines: new Map(routines.map((r) => [r.id, r.name])) };
+  return {
+    tags: new Map(tags.map((t) => [t.id, t.name])),
+    routines: new Map(routines.map((r) => [r.id, r.name])),
+    pages: new Map(pageRows.map((p) => [p.id, p.title])),
+  };
 }
+
+/** 時刻で起動するブロックの、対象のページの ID */
+const schedulePageIds = (rows: (typeof workflowBlocks.$inferSelect)[]) => rows.flatMap((r) => (r.triggerPageId ? [r.triggerPageId] : []));
 
 function toBlock(row: typeof workflowBlocks.$inferSelect, actions: ActionRow[], names: Names): WorkflowBlock {
   return {
@@ -118,7 +148,7 @@ async function loadBlocks(db: Db, wikiId: string, workflowId: string, blockId?: 
     .from(workflowActions)
     .where(inArray(workflowActions.blockId, rows.map((r) => r.id)))
     .orderBy(asc(workflowActions.position));
-  const names = await loadNames(db, wikiId);
+  const names = await loadNames(db, wikiId, schedulePageIds(rows));
   return rows.map((r) =>
     toBlock(
       r,
@@ -151,7 +181,7 @@ async function findBlock(tx: Db, wikiId: string, workflowId: string, id: string)
 
 /** 入力の参照先を確かめ、名前つきで返す（保存の前に呼ぶ） */
 async function checkInput(tx: Db, wikiId: string, input: WorkflowBlockInput): Promise<Names> {
-  const names = await loadNames(tx, wikiId);
+  const names = await loadNames(tx, wikiId, input.trigger.type === "schedule" ? [input.trigger.pageId] : [], { liveOnly: true });
   (TRIGGER_COLUMNS[input.trigger.type].check as (c: Refs, t: WorkflowTriggerInput) => void)(names, input.trigger);
   for (const a of input.actions) (ACTION_COLUMNS[a.type].check as (c: Refs, a: WorkflowActionInput) => void)(names, a);
   return names;
@@ -165,14 +195,29 @@ const actionValues = (blockId: string, actions: WorkflowActionInput[]) =>
     ...(ACTION_COLUMNS[a.type].toColumns as (a: WorkflowActionInput) => ActionColumns)(a),
   }));
 
-const triggerLabel = (input: WorkflowBlockInput, names: Names) =>
-  describeTrigger(input.trigger.type === "tag_attached" ? { type: "tag_attached", tagId: input.trigger.tagId, tagName: names.tags.get(input.trigger.tagId) ?? "" } : { type: "page_first_published" });
+const triggerLabel = (input: WorkflowBlockInput, names: Names) => {
+  const t = input.trigger;
+  return describeTrigger(
+    t.type === "tag_attached"
+      ? { type: "tag_attached", tagId: t.tagId, tagName: names.tags.get(t.tagId) ?? "" }
+      : t.type === "schedule"
+        ? { type: "schedule", pageId: t.pageId, pageTitle: names.pages.get(t.pageId) ?? "", time: t.time, weekdays: t.weekdays }
+        : { type: "page_first_published" },
+  );
+};
 
 /** 監査ログの detail：アクションの数と、「Routine を呼ぶ」の依頼文（何を頼んだかを残す） */
 const auditDetail = (input: WorkflowBlockInput) => {
   const instructions = input.actions.flatMap((a) => (a.type === "call_routine" ? [a.instruction] : []));
   return { actions: input.actions.length, ...(instructions.length > 0 && { instructions }) };
 };
+
+/** 時刻で起動するブロックを保存したら、次の起動の時刻を Cron の印（`workflow`）に知らせる（印の無いまま、1時間に1回の確認まで待たせない） */
+function markScheduleDue(trigger: WorkflowTriggerInput): void {
+  if (trigger.type !== "schedule") return;
+  const at = nextSlot(trigger, new Date());
+  if (at) markCronWork("workflow", at);
+}
 
 const blockTarget = (id: string, label: string) => ({ type: "workflow_block" as const, id, label });
 
@@ -185,10 +230,13 @@ export async function createBlock(tx: Db, wikiId: string, workflowId: string, in
       workflowId,
       triggerType: input.trigger.type,
       ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => TriggerColumns)(input.trigger),
+      // 時刻で起動するなら、保存より前の時刻には起動しない（作った日の、すぎた時刻で起動しない）
+      lastFiredAt: input.trigger.type === "schedule" ? new Date() : null,
       createdBy: actorUserId(actor),
     })
     .returning();
   await tx.insert(workflowActions).values(actionValues(row!.id, input.actions));
+  markScheduleDue(input.trigger);
   await writeAudit(tx, {
     wikiId,
     actor,
@@ -201,17 +249,27 @@ export async function createBlock(tx: Db, wikiId: string, workflowId: string, in
 
 /** トリガーとアクションの並びを、まるごと置き換える */
 export async function replaceBlock(tx: Db, wikiId: string, workflowId: string, id: string, input: WorkflowBlockInput, actor: AuditActor): Promise<WorkflowBlock> {
-  await findBlock(tx, wikiId, workflowId, id);
+  const before = await findBlock(tx, wikiId, workflowId, id);
   const names = await checkInput(tx, wikiId, input);
+  const columns = (TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => TriggerColumns)(input.trigger);
+  // 時刻・曜日・ページが変わったときだけ、起動の基準を保存した時刻に置き直す（アクションだけを直したときは、来ている時刻を見落とさない）
+  const sameSchedule =
+    input.trigger.type === "schedule" &&
+    before.triggerType === "schedule" &&
+    before.triggerPageId === columns.triggerPageId &&
+    before.triggerTime === columns.triggerTime &&
+    JSON.stringify(before.triggerWeekdays) === JSON.stringify(columns.triggerWeekdays);
   await tx
     .update(workflowBlocks)
     .set({
       triggerType: input.trigger.type,
-      ...(TRIGGER_COLUMNS[input.trigger.type].toColumns as (t: WorkflowTriggerInput) => TriggerColumns)(input.trigger),
+      ...columns,
+      ...(sameSchedule ? {} : { lastFiredAt: input.trigger.type === "schedule" ? new Date() : null }),
     })
     .where(eq(workflowBlocks.id, id));
   await tx.delete(workflowActions).where(eq(workflowActions.blockId, id));
   await tx.insert(workflowActions).values(actionValues(id, input.actions));
+  markScheduleDue(input.trigger);
   await writeAudit(tx, {
     wikiId,
     actor,
@@ -224,7 +282,7 @@ export async function replaceBlock(tx: Db, wikiId: string, workflowId: string, i
 
 export async function deleteBlock(tx: Db, wikiId: string, workflowId: string, id: string, actor: AuditActor): Promise<void> {
   const row = await findBlock(tx, wikiId, workflowId, id);
-  const names = await loadNames(tx, wikiId);
+  const names = await loadNames(tx, wikiId, schedulePageIds([row]));
   const label = describeTrigger(TRIGGER_COLUMNS[row.triggerType as WorkflowTriggerType].toTrigger(row, names));
   await tx.delete(workflowBlocks).where(eq(workflowBlocks.id, id));
   await writeAudit(tx, { wikiId, actor, action: "workflow_block_delete", target: blockTarget(id, label), detail: {} });
@@ -235,7 +293,11 @@ export async function deleteBlock(tx: Db, wikiId: string, workflowId: string, id
  * 消したブロックの数を返す（タグの削除の監査ログに残す）。
  */
 export async function removeTagFromWorkflows(tx: Db, wikiId: string, tagId: string, actor: AuditActor): Promise<number> {
-  const names = await loadNames(tx, wikiId);
+  const scheduled = await tx
+    .select({ pageId: workflowBlocks.triggerPageId })
+    .from(workflowBlocks)
+    .where(and(eq(workflowBlocks.wikiId, wikiId), eq(workflowBlocks.triggerType, "schedule")));
+  const names = await loadNames(tx, wikiId, scheduled.flatMap((r) => (r.pageId ? [r.pageId] : [])));
   const labelOf = (row: typeof workflowBlocks.$inferSelect) => describeTrigger(TRIGGER_COLUMNS[row.triggerType as WorkflowTriggerType].toTrigger(row, names));
   let deleted = 0;
 

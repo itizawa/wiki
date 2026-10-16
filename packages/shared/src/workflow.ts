@@ -39,7 +39,26 @@ export const tagAttachedTrigger = z.object({ type: z.literal("tag_attached"), ta
 /** ページが初めて公開されたとき（一度も公開したことの無いページを、公開か限定公開にしたとき）。選ぶものは無い */
 export const pageFirstPublishedTrigger = z.object({ type: z.literal("page_first_published") });
 
-export const workflowTriggerSchema = z.discriminatedUnion("type", [tagAttachedTrigger, pageFirstPublishedTrigger]);
+/** 時刻の書き方（`HH:MM`、24時間。JST） */
+export const SCHEDULE_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** 曜日の名前。添字は `Date#getUTCDay` と同じ（0 が日曜） */
+export const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+
+/**
+ * 時刻で起動する。`weekdays` の曜日の `time`（JST）になったあとの最初の Cron で、`pageId` のページを対象に1回だけ動く。
+ * 毎日なら7つの曜日すべて。Cron は5分おきなので、数分遅れて動くことがある（分より細かい指定はできない）
+ */
+export const scheduleTrigger = z.object({
+  type: z.literal("schedule"),
+  pageId: z.string().min(1),
+  time: z.string().regex(SCHEDULE_TIME_PATTERN, "時刻は 09:00 のように入れてください"),
+  weekdays: z
+    .array(z.number().int().min(0).max(6))
+    .min(1, "曜日を1つ以上選んでください")
+    .refine((days) => new Set(days).size === days.length, "曜日が重なっています"),
+});
+
+export const workflowTriggerSchema = z.discriminatedUnion("type", [tagAttachedTrigger, pageFirstPublishedTrigger, scheduleTrigger]);
 export type WorkflowTriggerInput = z.infer<typeof workflowTriggerSchema>;
 
 // ---- アクション ----
@@ -68,6 +87,7 @@ export type WorkflowActionType = WorkflowActionInput["type"];
 export const TRIGGER_KINDS: Record<WorkflowTriggerType, { label: string }> = {
   tag_attached: { label: "タグが付いたとき" },
   page_first_published: { label: "初めて公開されたとき" },
+  schedule: { label: "決まった時刻になったとき" },
 };
 export const ACTION_KINDS: Record<WorkflowActionType, { label: string }> = {
   call_routine: { label: "Routine を呼ぶ" },
@@ -87,7 +107,10 @@ export const workflowBlockInput = z.object({
 export type WorkflowBlockInput = z.infer<typeof workflowBlockInput>;
 
 /** 画面に出す形：入力に、名前（タグ名・Routine 名）を足したもの */
-export type WorkflowTrigger = { type: "tag_attached"; tagId: string; tagName: string } | { type: "page_first_published" };
+export type WorkflowTrigger =
+  | { type: "tag_attached"; tagId: string; tagName: string }
+  | { type: "page_first_published" }
+  | { type: "schedule"; pageId: string; pageTitle: string; time: string; weekdays: number[] };
 export type WorkflowAction =
   | { type: "call_routine"; routineId: string; routineName: string; instruction: string }
   | { type: "remove_tag"; tagId: string; tagName: string }
@@ -102,6 +125,12 @@ export type WorkflowBlockList = { blocks: WorkflowBlock[] };
 export type RoutineChoice = { id: string; name: string };
 export type RoutineChoiceList = { routines: RoutineChoice[] };
 
+/** 曜日の選びを言う。7つ全部なら「毎日」、そうでなければ「月・水・金」 */
+export function describeWeekdays(weekdays: number[]): string {
+  const days = [...new Set(weekdays)].sort((a, b) => a - b);
+  return days.length === 7 ? "毎日" : `毎週${days.map((d) => WEEKDAY_LABELS[d]).join("・")}`;
+}
+
 /** トリガーを一文で言う（監査ログの対象名・一覧のカード）。「タグ「校正待ち」が付いたとき」 */
 export function describeTrigger(t: WorkflowTrigger): string {
   switch (t.type) {
@@ -109,6 +138,8 @@ export function describeTrigger(t: WorkflowTrigger): string {
       return `タグ「${t.tagName}」が付いたとき`;
     case "page_first_published":
       return "ページが初めて公開されたとき";
+    case "schedule":
+      return `${describeWeekdays(t.weekdays)} ${t.time} になったとき`;
   }
 }
 
@@ -119,6 +150,8 @@ export function describeTriggerCondition(t: WorkflowTrigger): string {
       return `タグ「${t.tagName}」が付いたら`;
     case "page_first_published":
       return "ページが初めて公開されたら";
+    case "schedule":
+      return `${describeWeekdays(t.weekdays)} ${t.time} になったら（対象：「${t.pageTitle}」）`;
   }
 }
 
@@ -137,12 +170,22 @@ export function describeAction(a: WorkflowAction): string {
 export type WorkflowDraft = {
   triggerType: WorkflowTriggerType;
   tagId: string;
+  /** 時刻で起動するときの、対象のページ（`schedule` のとき） */
+  pageId: string;
+  /** 時刻（`HH:MM`）と曜日（`WEEKDAY_LABELS` の添字） */
+  time: string;
+  weekdays: number[];
   actions: { type: WorkflowActionType; routineId: string; tagId: string; instruction: string }[];
 };
 
 /** 入力の誤りを、保存ボタンを押す前に出す文にする。誤りが無ければ null */
 export function workflowDraftProblem(draft: WorkflowDraft): string | null {
   if (draft.triggerType === "tag_attached" && !draft.tagId) return "トリガーのタグを選んでください。";
+  if (draft.triggerType === "schedule") {
+    if (!draft.pageId) return "対象のページを選んでください。";
+    if (!SCHEDULE_TIME_PATTERN.test(draft.time)) return "時刻を入れてください。";
+    if (draft.weekdays.length === 0) return "曜日を1つ以上選んでください。";
+  }
   if (draft.actions.length === 0) return "アクションを1つ以上入れてください。";
   if (draft.actions.length > WORKFLOW_ACTIONS_MAX) return `アクションは${WORKFLOW_ACTIONS_MAX}件までです。`;
   for (const [i, a] of draft.actions.entries()) {
@@ -205,7 +248,7 @@ export type WorkflowRunEntry = {
   page: { id: string; title: string; available: boolean };
   /** トリガーのタグ名（消えていれば「削除されたタグ」）。タグがトリガーでない実行（初めて公開されたとき）は null */
   tagName: string | null;
-  /** トリガーの種類（画面で、タグ名の代わりに「初めての公開」と出す） */
+  /** トリガーの種類（画面で、タグ名の代わりに「初めての公開」「時刻」と出す） */
   triggerType: WorkflowTriggerType;
   /** ブロックの要約。「Routine「校正」を呼ぶ → タグ「校正待ち」を外す」 */
   summary: string;
