@@ -14,8 +14,10 @@ import {
   publishVisibilitySchema,
   renameTagInput,
   ROUTINE_INSTRUCTION_MAX,
+  resolveHome,
   savePageInput,
   sniffImageType,
+  updateHomeInput,
   WORKFLOW_ACTIONS_MAX,
   workflowBlockInput,
   workflowInput,
@@ -56,7 +58,7 @@ import { createWorkflow, deleteWorkflow, findWorkflow, listWorkflows, renameWork
 import { attachTagAndEnqueue } from "../workflows/enqueue";
 import { runAfterResponse, type RunDeps } from "../workflows/run";
 import { roleIn, rolesByWiki } from "../users/service";
-import { createWiki, findOpenWiki, listWikis } from "../wikis/service";
+import { createWiki, findOpenWiki, listWikis, updateHome } from "../wikis/service";
 
 /**
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
@@ -1271,6 +1273,56 @@ export const TOOLS = [
         await deleteBlock(tx, wiki.id, workflow.id, input.blockId, agentActor(agent));
       });
       return { deleted: input.blockId };
+    },
+  }),
+  tool({
+    name: "get_home",
+    description:
+      "公開サイトのトップ（/）の設定を読む（その wiki の管理者だけ）。introMd（自由記述の Markdown）と、グリッドに置いたブロック blocks（置いていなければ null）を返す。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey }),
+    inputSchema: schema(WIKI_PROP, ["wiki"]),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      return resolveHome(wiki.home);
+    },
+  }),
+  tool({
+    name: "update_home",
+    description:
+      "公開サイトのトップ（/）の設定を保存する（その wiki の管理者だけ）。introMd と blocks の全体を置き換える。保存するとすぐ公開サイトをビルドし直すので、公開してよい内容だけを渡す。" +
+      "blocks は 12 列のマス目に置くブロックの並びで、null か省略なら置かない（自由記述の下に新着記事を縦に並べた今までの見た目）。" +
+      "ブロックは id、kind（intro＝自由記述で 1 つだけ／latest＝新着記事）、col・row・colSpan・rowSpan（1 始まり。12 列、24 行まで）、limit（latest の件数。1〜50、null で全件。intro は null）を持つ。" +
+      "最大 12 個で、重なる配置は 400（invalid_input）。まず get_home で今の設定を読んでから渡す。",
+    scope: "wiki.admin",
+    input: z.object({ wiki: wikiKey }).merge(updateHomeInput),
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        introMd: str("自由記述（Markdown。1 万文字まで）。空文字なら何も出さない"),
+        blocks: {
+          type: ["array", "null"],
+          description: "グリッドに置くブロック。null か省略で、置かない",
+          maxItems: 12,
+          items: schema(
+            {
+              id: str("ブロックの名前（40 文字まで。ブロック間で重ならない）"),
+              kind: str("intro か latest", { enum: ["intro", "latest"] }),
+              col: { type: "integer", minimum: 1, maximum: 12, description: "左端の列" },
+              row: { type: "integer", minimum: 1, maximum: 24, description: "上端の行" },
+              colSpan: { type: "integer", minimum: 1, maximum: 12, description: "幅（列の数）" },
+              rowSpan: { type: "integer", minimum: 1, maximum: 24, description: "高さ（行の数）" },
+              limit: { type: ["integer", "null"], minimum: 1, maximum: 50, description: "latest の件数。null で全件" },
+            },
+            ["id", "kind", "col", "row", "colSpan", "rowSpan", "limit"],
+          ),
+        },
+      },
+      ["wiki", "introMd"],
+    ),
+    async run({ db, agent }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      return updateHome(db, wiki.id, { introMd: input.introMd, blocks: input.blocks }, agentActor(agent));
     },
   }),
 
