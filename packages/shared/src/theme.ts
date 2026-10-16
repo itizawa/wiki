@@ -49,6 +49,8 @@ export type ThemeBackground = Overlay & {
   /** tile は `tileSize`px の正方形を敷き詰める。cover は画面いっぱいに広げる */
   repeat: "tile" | "cover";
   tileSize?: number;
+  /** true なら、画面に固定せず、本文と一緒にスクロールさせる（ノートの罫線・方眼のように、文字と動きをそろえたいもの） */
+  scrolls?: boolean;
 };
 
 /** 画面の隅に固定で置く飾り。押せず、読み上げず、狭い幅では出さない */
@@ -252,7 +254,7 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
     name: "手書きノート風",
     light: {
       colors: { bg: "#fbf7ea", paper: "#fffdf5", text: "#2b2a33", muted: "#645f50", border: "#e3dcc4", accent: "#1d4f9c", mark: "#ffeb99", ok: "#1d7a44", warn: "#9a6412", danger: "#b82e2e" },
-      background: { svg: NOTEBOOK_SVG, repeat: "tile", tileSize: 32, ink: "#6ea0d8", alpha: 0.3 },
+      background: { svg: NOTEBOOK_SVG, repeat: "tile", tileSize: 32, ink: "#6ea0d8", alpha: 0.3, scrolls: true },
     },
   },
   {
@@ -435,7 +437,8 @@ function svgUrl(svg: string): string {
 }
 
 /** 背景として敷くものの CSS の値 */
-export type ThemeBackdrop = { image: string; size: string; repeat: string };
+/** `scrolls` が true のときは、画面に固定せず、本文と一緒にスクロールさせる */
+export type ThemeBackdrop = { image: string; size: string; repeat: string; scrolls: boolean };
 
 /**
  * そのテーマの背景。wiki が自分で入れた画像（`custom`）があれば、テーマの画像の代わりに、背景色のベールを重ねて画面いっぱいに出す。
@@ -444,12 +447,12 @@ export type ThemeBackdrop = { image: string; size: string; repeat: string };
 export function themeBackdrop(preset: ThemeVariant, custom: string | null): ThemeBackdrop | null {
   if (custom && isBackgroundImagePath(custom)) {
     const veil = `color-mix(in srgb, ${preset.colors.bg} ${CUSTOM_BACKGROUND_VEIL * 100}%, transparent)`;
-    return { image: `linear-gradient(${veil}, ${veil}), url("${custom}")`, size: "cover", repeat: "no-repeat" };
+    return { image: `linear-gradient(${veil}, ${veil}), url("${custom}")`, size: "cover", repeat: "no-repeat", scrolls: false };
   }
   const bg = preset.background;
   if (!bg) return null;
   const tile = `${bg.tileSize ?? 64}px ${bg.tileSize ?? 64}px`;
-  return { image: svgUrl(bg.svg), size: bg.repeat === "tile" ? tile : "cover", repeat: bg.repeat === "tile" ? "repeat" : "no-repeat" };
+  return { image: svgUrl(bg.svg), size: bg.repeat === "tile" ? tile : "cover", repeat: bg.repeat === "tile" ? "repeat" : "no-repeat", scrolls: bg.scrolls === true };
 }
 
 /** 飾りの CSS の値。無ければ null */

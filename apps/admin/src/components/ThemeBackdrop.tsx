@@ -11,7 +11,24 @@ export function useThemeBackdrop(preset: string) {
 }
 
 /**
+ * 本文と一緒にスクロールさせる背景（手書きノート風の方眼）の sx。本文のスクロール領域に付ける。固定で敷く背景のテーマでは空
+ * `local`：背景がスクロール領域の中身に付き、文字と一緒に動く。原点は中身の左上にして、方眼が本文の上端から始まるようにする
+ */
+export function scrollingBackdropSx(backdrop: ReturnType<typeof useThemeBackdrop>) {
+  if (!backdrop?.scrolls) return {};
+  return {
+    backgroundImage: backdrop.image,
+    backgroundSize: backdrop.size,
+    backgroundRepeat: backdrop.repeat,
+    backgroundAttachment: "local",
+    backgroundPosition: "0 0",
+    "@media print": { backgroundImage: "none" },
+  };
+}
+
+/**
  * wiki の外観で選んだテーマの背景画像（方眼・水玉・星など）を、画面全体の後ろに固定で敷く。公開サイトの `.theme-backdrop` と同じ画像。
+ * ただし本文と一緒に動かす背景（手書きノート風の方眼）は、ここでは敷かない（`scrollingBackdropSx`）。
  * 押せず、読み上げず、印刷には出さない。画面の面（サイドバー・カード）は不透明なので、画像が見えるのは何も置いていない余白だけ。
  * 飾り（フクロウ）と、wiki が自分で入れた背景画像は、管理画面には出さない
  */
@@ -21,7 +38,7 @@ export function ThemeBackdrop({ preset }: { preset: string }) {
   if (!backdrop && !motion) return null;
   return (
     <>
-      {backdrop && (
+      {backdrop && !backdrop.scrolls && (
         <Box
           aria-hidden
           sx={{

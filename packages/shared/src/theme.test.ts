@@ -140,6 +140,16 @@ describe("background image and ornament CSS", () => {
     expect(themeDecorationCssVars(preset("owl", "dark"), null)).toMatch(/--bg-image:none;.*--ornament-image:url\("data:image\/svg\+xml,.+"\);--ornament-size:88px$/);
   });
 
+  it("scrolls only the notebook theme's grid with the text; every other background, and an uploaded image, stays fixed", () => {
+    expect(themeBackdrop(preset("notebook", "light"), null)?.scrolls).toBe(true);
+    const others = THEME_PRESETS.filter((p) => p.key !== "notebook")
+      .flatMap((p) => [p.light, p.dark])
+      .filter((v) => v?.background);
+    expect(others.length).toBeGreaterThan(0);
+    for (const v of others) expect(v!.background!.scrolls).toBeFalsy();
+    expect(themeBackdrop(preset("notebook", "light"), "/images/abcdefghijklmnopqrstuvwx.jpg")?.scrolls).toBe(false);
+  });
+
   it("moves only the space theme: the rocket's variables are added for it and nothing else changes", () => {
     const space = themeDecorationCssVars(preset("space", "dark"), null);
     expect(space).toMatch(/--motion-image:url\("data:image\/svg\+xml,.+"\);--motion-width:96px;--motion-height:64px;--motion-duration:24s;--motion-top:75%$/);
