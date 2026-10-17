@@ -36,20 +36,18 @@ import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createLink, useNavigate, useParams } from "@tanstack/react-router";
+import { createLink, useParams } from "@tanstack/react-router";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { childrenByParent, type StructureOpInput, type TreeNode, type Visibility } from "@wiki/shared";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import { api, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
-import { invalidatePageLists } from "../lib/invalidatePageLists";
-import { markJustCreated } from "../lib/newPage";
+import { useCreatePage } from "../lib/createPage";
 import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
 import { createSelectStore, useSelect, type SelectStore } from "../lib/selectStore";
 import { dropTargetOf, flattenVisible, resolveDrop, ROOT_END_DROP_ID, rowDropAt, rowDropId, treeKeyAction, type FlatRow } from "../lib/tree";
-import { UNTITLED_TITLE } from "../lib/untitled";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { confirmDialog } from "./ConfirmDialog";
 import { PageRowMenu, PageRowMenuButton, type RowMenuPage, type RowMenuTarget } from "./PageRowMenu";
@@ -144,7 +142,6 @@ export function Sidebar(props: {
   onLogout: () => void;
 }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const { role } = useWiki();
   const structure = useQuery({ queryKey: ["structure"], queryFn: api.structure });
   const tree = structure.data?.trees[0];
@@ -159,17 +156,7 @@ export function Sidebar(props: {
   });
 
   // 親ページの指定があればその下、無ければ最上位の末尾に作る
-  const create = useMutation({
-    mutationFn: (parentPageId: string | null) => api.createPage({ title: UNTITLED_TITLE, parentPageId }),
-    onSettled: () => {
-      invalidatePageLists(qc);
-    },
-    onSuccess: async (page) => {
-      markJustCreated(page.id);
-      await navigate(pageLink(page.id));
-      props.onNavigate?.();
-    },
-  });
+  const create = useCreatePage({ onCreated: props.onNavigate });
 
   const error = commit.error ?? create.error ?? structure.error;
 
@@ -256,7 +243,7 @@ export function Sidebar(props: {
             </Typography>
             <Tooltip title="最上位に新しいページ">
               <span className="section-action">
-                <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate(null)}>
+                <IconButton size="small" aria-label="最上位に新しいページ" disabled={!tree || create.isPending} onClick={() => create.mutate({ parentPageId: null })}>
                   <Plus size={18} />
                 </IconButton>
               </span>
@@ -272,7 +259,7 @@ export function Sidebar(props: {
                 commit.reset();
                 commit.mutate(ops);
               }}
-              onCreatePage={(parentNodeId) => create.mutate(parentNodeId)}
+              onCreatePage={(parentNodeId) => create.mutate({ parentPageId: parentNodeId })}
               openMenuKey={openMenuKey}
               onOpenMenu={openMenu}
               onNavigate={props.onNavigate}

@@ -9,7 +9,7 @@ import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import MenuList from "@mui/material/MenuList";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "../lib/api";
@@ -18,9 +18,7 @@ import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { openFindBar } from "../editor/findBarState";
 import { usePageActions } from "../lib/pageActions";
 import { useCreateFromTemplate } from "../lib/createFromTemplate";
-import { invalidatePageLists } from "../lib/invalidatePageLists";
-import { markJustCreated } from "../lib/newPage";
-import { UNTITLED_TITLE } from "../lib/untitled";
+import { useCreatePage } from "../lib/createPage";
 import { openShortcutGuide } from "./ShortcutGuide";
 import { Muted } from "./ui";
 
@@ -40,7 +38,6 @@ export function filterCommands<T extends Pick<Command, "label" | "keywords">>(co
 /** ⌘K（Ctrl+K）で開くコマンドメニュー。ページを探して開く、画面を移る、よく使う操作をキーボードだけで行う。 */
 export function CommandMenu(props: { open: boolean; onClose: () => void; onToggleSidebar?: () => void; onLogout: () => void }) {
   const { open, onClose } = props;
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -53,15 +50,7 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
   const { composing, compositionProps } = useComposition();
   const term = useSearchTerm(q, composing);
   const pages = useQuery({ queryKey: ["search", term], queryFn: () => api.search(term), enabled: open, placeholderData: keepPreviousData });
-  const create = useMutation({
-    mutationFn: () => api.createPage({ title: q || UNTITLED_TITLE }),
-    onSuccess: async (page) => {
-      invalidatePageLists(qc);
-      onClose();
-      markJustCreated(page.id);
-      await navigate(pageLink(page.id));
-    },
-  });
+  const create = useCreatePage({ onCreated: onClose });
 
   const templates = useQuery({ queryKey: ["templates"], queryFn: api.listTemplates, enabled: open });
   const fromTemplate = useCreateFromTemplate();
@@ -82,7 +71,8 @@ export function CommandMenu(props: { open: boolean; onClose: () => void; onToggl
       label: q ? `「${q}」という名前で新しいページを作る` : "新しいページを作る",
       keywords: ["new", "create", "page", "tsukuru"],
       icon: <Plus size={18} />,
-      run: () => !create.isPending && create.mutate(),
+      // 打った文字があれば、それをタイトルにする（空なら「無題」）
+      run: () => !create.isPending && create.mutate({ title: q }),
     },
     // テンプレートの名前でも探せる。タイトルはテンプレートのもの（変数を置き換えたもの）になる
     ...(templates.data?.templates ?? []).map((t) => ({

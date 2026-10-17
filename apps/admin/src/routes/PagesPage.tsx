@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -13,6 +14,7 @@ import { ListToolbar, appliedFiltersText, filterValues, removeFilter, useUrlFilt
 import { StarButton } from "../components/StarButton";
 import { Muted, RouterLink, Row, Section, StatusChip, tagChipSx } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
+import { useCreatePage } from "../lib/createPage";
 import type { PagesSearch } from "../lib/pagesSearch";
 import { pageLink } from "../lib/wiki";
 import { formatDateTime } from "../lib/format";
@@ -49,6 +51,7 @@ export function PagesPage() {
     toUrl: (next) => filterValues(next, "tag")?.join(","),
     onUrlChange: (next) => void navigate({ to: ".", search: next ? { tag: next } : {}, replace: true }),
   });
+  const create = useCreatePage();
   const [sort, setSort] = useState<SortValue>({ key: "updatedAt", direction: "desc" });
   const order = sort.direction;
   const tags = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
@@ -151,11 +154,21 @@ export function PagesPage() {
   return (
     <Stack spacing={1.5}>
       <Section>
-        <Row sx={{ mb: 1 }}>
-          <Typography variant="h6" component="h2" sx={{ flex: "1 1 auto" }}>
-            ページ
+        {/* テンプレートの一覧と同じ見出しの行。作る操作は一覧のそばの右に置く（狭い幅でも、見出しと同じ行に収める）。
+            作る処理はサイドバーの「最上位に新しいページ」と同じ（最上位の末尾に作り、エディタを開く）。どのロールでも作れる */}
+        <Row sx={{ mb: 1, flexWrap: "nowrap" }}>
+          <Typography variant="h6" component="h2" sx={{ flex: "1 1 auto", minWidth: 0 }}>
+            すべてのページ
           </Typography>
+          <Button variant="contained" startIcon={<Plus size={18} />} disabled={create.isPending} onClick={() => create.mutate({ parentPageId: null })} sx={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+            新しいページ
+          </Button>
         </Row>
+        {create.error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {errorMessage(create.error)}
+          </Alert>
+        )}
         <ListToolbar
           label="ページの絞り込みと並べ替え"
           sortFields={SORT_FIELDS}
@@ -213,7 +226,7 @@ export function PagesPage() {
 /** 0 件のときの案内。絞り込み中なら、効いている条件（`appliedFiltersText`）を言う。 */
 export function emptyMessage(applied: string): string {
   if (applied) return `条件（${applied}）に合うページはありません。`;
-  return "ページはまだありません。サイドバーの「最上位に新しいページ」（＋）から作れます。";
+  return "ページはまだありません。右上の「新しいページ」から作れます。";
 }
 
 export const visibilityLabel = { public: "公開", unlisted: "限定公開", private: "非公開" } as const;
