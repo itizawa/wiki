@@ -30,19 +30,27 @@ describe("workflowBlockInput", () => {
 });
 
 describe("workflowDraftProblem", () => {
-  const ok = { triggerType: "tag_attached" as const, tagId: id, pageId: "", time: "09:00", weekdays: [0, 1, 2, 3, 4, 5, 6], actions: [{ type: "remove_tag" as const, routineId: "", tagId: id, instruction: "" }] };
+  const T = { title: "", description: "", assigneeId: "" };
+  const ok = { triggerType: "tag_attached" as const, tagId: id, pageId: "", time: "09:00", weekdays: [0, 1, 2, 3, 4, 5, 6], actions: [{ type: "remove_tag" as const, routineId: "", tagId: id, instruction: "", ...T }] };
   it("says why it cannot be saved yet", () => {
     expect(workflowDraftProblem({ ...ok, tagId: "" })).toContain("トリガーのタグ");
     expect(workflowDraftProblem({ ...ok, actions: [] })).toContain("アクションを1つ以上");
-    expect(workflowDraftProblem({ ...ok, actions: [{ type: "call_routine", routineId: "", tagId: "", instruction: "" }] })).toBe("1 番目のアクションの Routine を選んでください。");
-    const call = { type: "call_routine" as const, routineId: id, tagId: "", instruction: "" };
+    expect(workflowDraftProblem({ ...ok, actions: [{ type: "call_routine", routineId: "", tagId: "", instruction: "", ...T }] })).toBe("1 番目のアクションの Routine を選んでください。");
+    const call = { type: "call_routine" as const, routineId: id, tagId: "", instruction: "", ...T };
     expect(workflowDraftProblem({ ...ok, actions: [call] })).toBe("1 番目のアクションの Routine への依頼を入れてください。");
     expect(workflowDraftProblem({ ...ok, actions: [{ ...call, instruction: "  " }] })).toContain("依頼を入れてください");
     expect(workflowDraftProblem({ ...ok, actions: [{ ...call, instruction: "x".repeat(ROUTINE_INSTRUCTION_MAX + 1) }] })).toContain("2000文字まで");
     expect(workflowDraftProblem({ ...ok, actions: [{ ...call, instruction: "x" }] })).toBeNull();
-    expect(workflowDraftProblem({ ...ok, actions: [ok.actions[0]!, { type: "remove_tag", routineId: "", tagId: "", instruction: "" }] })).toBe("2 番目のアクションのタグを選んでください。");
-    expect(workflowDraftProblem({ ...ok, actions: [{ type: "add_tag", routineId: "", tagId: "", instruction: "" }] })).toBe("1 番目のアクションのタグを選んでください。");
+    expect(workflowDraftProblem({ ...ok, actions: [ok.actions[0]!, { type: "remove_tag", routineId: "", tagId: "", instruction: "", ...T }] })).toBe("2 番目のアクションのタグを選んでください。");
+    expect(workflowDraftProblem({ ...ok, actions: [{ type: "add_tag", routineId: "", tagId: "", instruction: "", ...T }] })).toBe("1 番目のアクションのタグを選んでください。");
     expect(workflowDraftProblem({ ...ok, actions: Array(WORKFLOW_ACTIONS_MAX + 1).fill(ok.actions[0]) })).toContain("10件まで");
+  });
+  it("asks for a task title within the limits", () => {
+    const task = { type: "create_task" as const, routineId: "", tagId: "", instruction: "", ...T };
+    expect(workflowDraftProblem({ ...ok, actions: [task] })).toBe("1 番目のアクションのタスクの題を入れてください。");
+    expect(workflowDraftProblem({ ...ok, actions: [{ ...task, title: "x".repeat(101) }] })).toContain("100文字まで");
+    expect(workflowDraftProblem({ ...ok, actions: [{ ...task, title: "録る", description: "x".repeat(2001) }] })).toContain("2000文字まで");
+    expect(workflowDraftProblem({ ...ok, actions: [{ ...task, title: "録る" }] })).toBeNull();
   });
   it("is null when everything is chosen", () => {
     expect(workflowDraftProblem(ok)).toBeNull();
