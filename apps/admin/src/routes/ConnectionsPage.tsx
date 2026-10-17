@@ -6,7 +6,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { OAUTH_SCOPES, type OAuthGrantSummary } from "@wiki/shared";
-import { DataList, type DataListColumn } from "../components/DataList";
+import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading } from "../components/HelpTip";
 import { Mono, Muted, RouterLink, Section } from "../components/ui";
@@ -26,6 +26,20 @@ const SHORT_LABEL: Record<string, string> = {
 
 /** 「許可しているアプリ」の行の高さ（読み込み中の行も、この高さで出す）。 */
 const GRANT_ROW_HEIGHT = 54;
+
+/**
+ * 「許可しているアプリ」の列の幅と、狭い幅（md 未満）での扱い。
+ * - 広い幅：「できること」と日時は、足りなければ折り返す（PC の幅でも表を横に送らない）
+ * - 狭い幅：日時を隠し、「できること」と操作を行の下に積む
+ */
+export const grantColumnLayout = {
+  client: { width: "minmax(160px, 1fr)" },
+  scopes: { width: "minmax(140px, 1.5fr)", narrow: "stack" },
+  createdAt: { width: "minmax(112px, max-content)", narrow: "hide" },
+  lastUsedAt: { width: "minmax(112px, max-content)", narrow: "hide" },
+  expiresAt: { width: "minmax(112px, max-content)", narrow: "hide" },
+  actions: { width: "max-content", narrow: "stack" },
+} satisfies ColumnLayout;
 
 /** `/connections`：外部のアプリ（MCP クライアント）のつなぎ方と、自分が与えた許可の一覧・取り消し */
 export function ConnectionsPage() {
@@ -50,7 +64,8 @@ export function ConnectionsPage() {
     {
       key: "client",
       header: "アプリ",
-      width: "minmax(200px, 1fr)",
+      ...grantColumnLayout.client,
+      sx: { overflowWrap: "anywhere" },
       render: (g) => (
         <Box>
           {g.clientName}
@@ -61,19 +76,30 @@ export function ConnectionsPage() {
     {
       key: "scopes",
       header: "できること",
-      render: (g) => <span title={g.scopes.map((s) => OAUTH_SCOPES[s].label).join("\n")}>{g.scopes.map((s) => SHORT_LABEL[s] ?? s).join("・")}</span>,
+      ...grantColumnLayout.scopes,
+      sx: { overflowWrap: "anywhere" },
+      render: (g) => (
+        <span title={g.scopes.map((s) => OAUTH_SCOPES[s].label).join("\n")}>
+          {/* 狭い幅では見出しを出さないので、何の並びかを前に添える */}
+          <Box component="span" sx={{ display: { md: "none" } }}>
+            できること：
+          </Box>
+          {g.scopes.map((s) => SHORT_LABEL[s] ?? s).join("・")}
+        </span>
+      ),
     },
-    { key: "createdAt", header: "許可した日時", sx: { whiteSpace: "nowrap" }, render: (g) => formatDateTime(g.createdAt) },
+    // 日時は、幅が足りなければ日付と時刻の間で折り返す（表を横に送らない）
+    { key: "createdAt", header: "許可した日時", ...grantColumnLayout.createdAt, render: (g) => formatDateTime(g.createdAt) },
     {
       key: "lastUsedAt",
       header: "最後に使った日時",
-      sx: { whiteSpace: "nowrap" },
+      ...grantColumnLayout.lastUsedAt,
       render: (g) => (g.lastUsedAt ? formatDateTime(g.lastUsedAt) : "まだ使っていない"),
     },
-    { key: "expiresAt", header: "期限", sx: { whiteSpace: "nowrap" }, render: (g) => formatDateTime(g.expiresAt) },
+    { key: "expiresAt", header: "期限", ...grantColumnLayout.expiresAt, render: (g) => formatDateTime(g.expiresAt) },
     {
       key: "actions",
-      width: "max-content",
+      ...grantColumnLayout.actions,
       align: "right",
       render: (g) => (
         <Button color="error" disabled={revoke.isPending} onClick={() => confirmRevoke(g)} sx={{ whiteSpace: "nowrap" }}>
