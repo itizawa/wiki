@@ -1,9 +1,9 @@
 import { ArrowLeft } from "lucide-react";
 import Box from "@mui/material/Box";
 import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 import { createLink, Outlet, useRouterState } from "@tanstack/react-router";
+import { NavTabs } from "../components/NavTabs";
 import { RouterLink } from "../components/ui";
 import { useSession, useWikis } from "./Layout";
 import { useScreenTitle } from "../lib/documentTitle";
@@ -44,18 +44,11 @@ export function GlobalAdminLayout() {
           全体の管理
         </Typography>
         {session.isOwner && (
-          <Tabs
-            value={current}
-            variant="scrollable"
-            scrollButtons="auto"
-            allowScrollButtonsMobile
-            aria-label="全体の管理"
-            sx={{ mt: 1, borderBottom: 1, borderColor: "divider" }}
-          >
+          <NavTabs value={current} aria-label="全体の管理" sx={{ mt: 1, borderBottom: 1, borderColor: "divider" }}>
             {TABS.map((t) => (
               <TabLink key={t.to} to={t.to} value={t.to} label={t.label} />
             ))}
-          </Tabs>
+          </NavTabs>
         )}
       </Box>
       <Outlet />
