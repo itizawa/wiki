@@ -36,6 +36,12 @@ describe("query strings sent by the list APIs", () => {
       await api.listPagesPage({ limit: 0 });
       expect(calledPath()).toBe("/api/admin/w/docs/pages?limit=0");
     });
+    it("sends tags comma-separated and the order", async () => {
+      await api.listPagesPage({ limit: 5, tag: ["t1", "t2"], order: "asc" });
+      expect(calledPath()).toBe("/api/admin/w/docs/pages?limit=5&tag=t1%2Ct2&order=asc");
+      await api.listPagesPage({ limit: 5, tag: [] });
+      expect(calledPath()).toBe("/api/admin/w/docs/pages?limit=5");
+    });
   });
 
   describe("listVersions", () => {
@@ -55,13 +61,17 @@ describe("query strings sent by the list APIs", () => {
 
   describe("listWikiEditRequests", () => {
     it("sends status, limit, then cursor", async () => {
-      await api.listWikiEditRequests({ status: "open" as never, cursor: "abc", limit: 10 });
+      await api.listWikiEditRequests({ status: ["open"], cursor: "abc", limit: 10 });
       expect(calledPath()).toBe("/api/admin/w/docs/edit-requests?status=open&limit=10&cursor=abc");
     });
+    it("sends several statuses comma-separated", async () => {
+      await api.listWikiEditRequests({ status: ["open", "done"], limit: 10 });
+      expect(calledPath()).toBe("/api/admin/w/docs/edit-requests?status=open%2Cdone&limit=10");
+    });
     it("drops empty and null cursor", async () => {
-      await api.listWikiEditRequests({ status: "open" as never, cursor: "", limit: 10 });
+      await api.listWikiEditRequests({ status: ["open"], cursor: "", limit: 10 });
       expect(calledPath()).toBe("/api/admin/w/docs/edit-requests?status=open&limit=10");
-      await api.listWikiEditRequests({ status: "open" as never, cursor: null, limit: 0 });
+      await api.listWikiEditRequests({ status: ["open"], cursor: null, limit: 0 });
       expect(calledPath()).toBe("/api/admin/w/docs/edit-requests?status=open&limit=0");
     });
   });
@@ -92,26 +102,26 @@ describe("query strings sent by the list APIs", () => {
   });
 
   describe("listAuditLogs", () => {
-    it("puts the filter keys first in their own order, then cursor", async () => {
-      await api.listAuditLogs("wiki", { actor: "u1", from: "2026-01-01", category: "page" }, "cur");
-      expect(calledPath()).toBe("/api/admin/w/docs/audit-logs?actor=u1&from=2026-01-01&category=page&cursor=cur");
+    it("sends the period and order first, then people, categories and wikis comma-separated, then cursor", async () => {
+      await api.listAuditLogs("wiki", { actor: ["u1", "u2"], from: "2026-01-01", category: ["page"], order: "asc" }, "cur");
+      expect(calledPath()).toBe("/api/admin/w/docs/audit-logs?from=2026-01-01&order=asc&actor=u1%2Cu2&category=page&cursor=cur");
     });
     it("uses the all-scope path", async () => {
-      await api.listAuditLogs("all", { wiki: "docs" });
-      expect(calledPath()).toBe("/api/admin/audit-logs?wiki=docs");
+      await api.listAuditLogs("all", { wiki: ["global", "docs"] });
+      expect(calledPath()).toBe("/api/admin/audit-logs?wiki=global%2Cdocs");
     });
     it("has no query string when everything is empty", async () => {
       await api.listAuditLogs("wiki", {});
       expect(calledPath()).toBe("/api/admin/w/docs/audit-logs");
-      await api.listAuditLogs("all", { from: "", to: undefined, actor: "" }, "");
+      await api.listAuditLogs("all", { from: "", to: undefined, actor: [] }, "");
       expect(calledPath()).toBe("/api/admin/audit-logs");
     });
-    it("drops empty values among set ones, and 0 / null that sneak past the types", async () => {
-      await api.listAuditLogs("wiki", { from: "", to: "2026-02-01", actor: 0 as never, category: null as never }, undefined);
+    it("drops empty values among set ones", async () => {
+      await api.listAuditLogs("wiki", { from: "", to: "2026-02-01", actor: [], category: undefined }, undefined);
       expect(calledPath()).toBe("/api/admin/w/docs/audit-logs?to=2026-02-01");
     });
     it("encodes values", async () => {
-      await api.listAuditLogs("all", { actor: "a&b=c" });
+      await api.listAuditLogs("all", { actor: ["a&b=c"] });
       expect(calledPath()).toBe("/api/admin/audit-logs?actor=a%26b%3Dc");
     });
   });

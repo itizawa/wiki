@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { csvQuery } from "./query";
 
 /**
  * ワークフロー：wiki ごとに名前を付けて複数持つ、「ブロック」の集まり。1つのブロックは、1つのトリガーと、上から順に実行するアクションの並び。
@@ -220,12 +221,7 @@ export const WORKFLOW_RUNS_LIMIT_MAX = 100;
 /** 実行の履歴を一度に絞れるページの数 */
 export const WORKFLOW_RUNS_PAGE_FILTER_MAX = 50;
 
-/** カンマ区切りの値（`a,b`）を配列にする */
-const csv = <T extends z.ZodTypeAny>(item: T, max: number) =>
-  z
-    .string()
-    .transform((s) => s.split(",").filter((x) => x !== ""))
-    .pipe(z.array(item).min(1).max(max));
+const csv = csvQuery;
 
 /** `GET /admin/w/{key}/workflow/{workflowId}/runs` の問い合わせ */
 export const workflowRunsQuery = z.object({

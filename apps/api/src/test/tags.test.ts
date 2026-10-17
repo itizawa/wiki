@@ -296,6 +296,31 @@ describe("tags: filtering the page list", () => {
     expect([...first.pages, ...second.pages].map((p: { id: string }) => p.id).sort()).toEqual([a, b, c].sort());
   });
 
+  it("takes several tags separated by commas, and returns the pages with any of them", async () => {
+    ctx = await setup();
+    const cooking = await newTag("cooking");
+    const travel = await newTag("travel");
+    const a = await newPage("alpha");
+    const b = await newPage("beta");
+    const both = await newPage("both");
+    await newPage("untagged");
+    await ctx.call("PUT", `${W}/pages/${a}/tags/${cooking}`);
+    await ctx.call("PUT", `${W}/pages/${b}/tags/${travel}`);
+    await ctx.call("PUT", `${W}/pages/${both}/tags/${cooking}`);
+    await ctx.call("PUT", `${W}/pages/${both}/tags/${travel}`);
+
+    expect(await ids(`?tag=${cooking},${travel}`)).toEqual([a, b, both].sort());
+    expect(await ids(`?tag=${cooking},${cooking}`)).toEqual([a, both].sort());
+    expect(await ids(`?tag=${cooking},${travel}&q=alpha`)).toEqual([a]);
+    // 続きから取っても、同じページを2度返さない
+    const first = (await ctx.call("GET", `${W}/pages?tag=${cooking},${travel}&limit=2`)).body;
+    const second = (await ctx.call("GET", `${W}/pages?tag=${cooking},${travel}&limit=2&cursor=${encodeURIComponent(first.nextCursor)}`)).body;
+    expect([...first.pages, ...second.pages].map((p: { id: string }) => p.id).sort()).toEqual([a, b, both].sort());
+    // 1つでもこの wiki に無いタグが混じれば 400
+    expect((await ctx.call("GET", `${W}/pages?tag=${cooking},00000000-0000-0000-0000-000000000000`)).status).toBe(400);
+    expect((await ctx.call("GET", `${W}/pages?tag=${cooking},nope`)).status).toBe(400);
+  });
+
   it("does not list trashed pages, and an unused tag gives an empty list", async () => {
     ctx = await setup();
     const tag = await newTag("waiting");

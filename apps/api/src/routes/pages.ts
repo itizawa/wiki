@@ -16,7 +16,7 @@ import {
   type StructureOp,
   type TrashedPage,
 } from "@wiki/shared";
-import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { deleteAudioObjects, removeAudioRowsOfPages } from "../audio/service";
 import type { Db } from "../db/client";
@@ -91,6 +91,8 @@ const toDraft = (d: DraftRow): PageDraft => ({
 /** 一覧を続きから取るときの、1回の件数。 */
 const PAGE_LIMIT_DEFAULT = 50;
 const PAGE_LIMIT_MAX = 100;
+/** `GET /pages` の `tag` で、一度に絞れるタグの数 */
+const PAGE_TAG_FILTER_MAX = 100;
 
 /** `limit` を 1〜100 に丸める。数でなければ既定の件数にする。 */
 export function clampPageLimit(value: string | undefined): number {
@@ -491,19 +493,25 @@ export const pageRoutes = new Hono<AppEnv>()
     const live = and(eq(pages.wikiId, c.get("wiki").id), isNull(pages.deletedAt));
     // ?published=false：まだ公開したことのないページだけ（ダッシュボードの「下書き」）
     const unpublished = c.req.query("published") === "false" ? isNull(pages.publishedVersionId) : undefined;
-    // ?tag={タグの ID}：そのタグが付いたページだけ。この wiki のタグでなければ 400
+    // ?tag={タグの ID}（カンマ区切りで複数）：そのタグのどれかが付いたページだけ。この wiki のタグでないものが混じれば 400
     const tagParam = c.req.query("tag");
     let tagged: SQL | undefined;
     if (tagParam !== undefined) {
-      const [tag] = UUID_PATTERN.test(tagParam)
-        ? await db.select({ id: wikiTags.id }).from(wikiTags).where(and(eq(wikiTags.id, tagParam), eq(wikiTags.wikiId, c.get("wiki").id)))
-        : [];
-      if (!tag) throw new HttpError(400, "invalid_tag", "the tag does not exist in this wiki");
-      tagged = sql`exists (select 1 from ${pageTags} where ${pageTags.pageId} = ${pages.id} and ${pageTags.tagId} = ${tag.id})`;
+      const ids = [...new Set(tagParam.split(","))];
+      const found =
+        ids.length <= PAGE_TAG_FILTER_MAX && ids.every((id) => UUID_PATTERN.test(id))
+          ? await db.select({ id: wikiTags.id }).from(wikiTags).where(and(inArray(wikiTags.id, ids), eq(wikiTags.wikiId, c.get("wiki").id)))
+          : [];
+      if (found.length !== ids.length) throw new HttpError(400, "invalid_tag", "the tag does not exist in this wiki");
+      tagged = sql`exists (select 1 from ${pageTags} where ${pageTags.pageId} = ${pages.id} and ${inArray(pageTags.tagId, ids)})`;
     }
+    // ?order=asc|desc：更新日時の並び。省くと新しい順（検索・コマンドメニュー・編集カレンダー・ダッシュボードは省く）
+    const orderParam = c.req.query("order") ?? "desc";
+    if (orderParam !== "asc" && orderParam !== "desc") throw new HttpError(400, "invalid_order", "order must be asc or desc");
+    const by = orderParam === "asc" ? asc : desc;
     const base = and(live, unpublished, tagged);
     const where = q ? and(base, ilike(pages.title, `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`)) : base;
-    const order = [desc(pages.updatedAt), desc(pages.id)];
+    const order = [by(pages.updatedAt), by(pages.id)];
     const limitParam = c.req.query("limit");
     const cursorParam = c.req.query("cursor");
     // どちらも無ければ、続きを取らない呼び出し（検索・コマンドメニュー・編集カレンダーなど）。最大500件を一度に返す
@@ -514,8 +522,12 @@ export const pageRoutes = new Hono<AppEnv>()
     }
     const limit = clampPageLimit(limitParam);
     const after = cursorParam === undefined ? null : decodeCursor(cursorParam);
-    // 続きは「最後の行より後ろ」。更新日時が同じ行は id で順を決めるので、抜けも重なりも出ない
-    const rest = after ? sql`(${pages.updatedAt}, ${pages.id}) < (${after.at}::timestamptz, ${after.id})` : undefined;
+    // 続きは「最後の行より後ろ」（古い順なら、目印より新しい行）。更新日時が同じ行は id で順を決めるので、抜けも重なりも出ない
+    const rest = !after
+      ? undefined
+      : orderParam === "asc"
+        ? sql`(${pages.updatedAt}, ${pages.id}) > (${after.at}::timestamptz, ${after.id})`
+        : sql`(${pages.updatedAt}, ${pages.id}) < (${after.at}::timestamptz, ${after.id})`;
     const rows = await db
       // 日時はマイクロ秒まで持っている。Date にするとミリ秒に丸まり、同じミリ秒の行を取りこぼすので、カーソルには文字のまま使う
       .select({ page: pages, updatedAtText: sql<string>`${pages.updatedAt}::text` })

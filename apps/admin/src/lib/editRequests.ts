@@ -1,5 +1,15 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { applyLineEdits, locateLineEdit, type AppliedEditRequests, type EditRequest, type EditRequestItem, type EditRequestListStatus, type PageEditRequests } from "@wiki/shared";
+import {
+  applyLineEdits,
+  EDIT_REQUEST_LIST_STATUSES,
+  isEditRequestListStatus,
+  locateLineEdit,
+  type AppliedEditRequests,
+  type EditRequest,
+  type EditRequestItem,
+  type EditRequestListStatus,
+  type PageEditRequests,
+} from "@wiki/shared";
 import { api, currentWikiKey } from "./api";
 import { screenLink } from "./wiki";
 
@@ -20,7 +30,7 @@ export const editRequestKeys = {
   count: (pageId: string) => ["edit-requests", pageId, "count"] as const,
   /** 開いている wiki の一覧と、サイドバーの件数のすべて。読み直すときは、これで指す */
   wiki: () => ["edit-requests", WIKI_SCOPE] as const,
-  wikiList: (status: EditRequestListStatus) => ["edit-requests", WIKI_SCOPE, "list", status] as const,
+  wikiList: (status: readonly EditRequestListStatus[]) => ["edit-requests", WIKI_SCOPE, "list", [...status]] as const,
   wikiPageCount: () => ["edit-requests", WIKI_SCOPE, "page-count"] as const,
 };
 
@@ -52,9 +62,28 @@ export function editRequestsLink(pageId: string) {
   return { to: "/w/$wikiKey/pages/$pageId/requests", params: { wikiKey: currentWikiKey(), pageId } } as const;
 }
 
+/**
+ * 編集リクエストの一覧の URL の `?status=`（カンマ区切り）を、状態の並びにする。並びは `EDIT_REQUEST_LIST_STATUSES` の順に揃え、重なりと知らない値は捨てる。
+ * 付いていない・どれも知らない値なら undefined（はじめの「未対応」で開く）。
+ */
+export function parseEditRequestStatuses(value: unknown): EditRequestListStatus[] | undefined {
+  if (typeof value !== "string") return undefined;
+  const given = value.split(",").filter(isEditRequestListStatus);
+  const statuses = EDIT_REQUEST_LIST_STATUSES.filter((s) => given.includes(s));
+  return statuses.length > 0 ? statuses : undefined;
+}
+
+/** URL に入れる `?status=` の値。はじめの「未対応」だけのときと、条件が無いときは付けない（undefined） */
+export function editRequestStatusParam(statuses: readonly string[] | undefined): string | undefined {
+  if (!statuses || statuses.length === 0) return undefined;
+  const sorted = EDIT_REQUEST_LIST_STATUSES.filter((s) => statuses.includes(s));
+  return sorted.length === 1 && sorted[0] === "open" ? undefined : sorted.join(",");
+}
+
 /** 開いている wiki の、編集リクエストの一覧へのリンク。「完了」で絞った状態は `?status=done` */
-export function editRequestListLink(status: EditRequestListStatus = "open") {
-  return { ...screenLink("/w/$wikiKey/requests"), search: status === "done" ? { status } : {} } as const;
+export function editRequestListLink(statuses: readonly EditRequestListStatus[] = ["open"]) {
+  const status = editRequestStatusParam(statuses);
+  return { ...screenLink("/w/$wikiKey/requests"), search: status ? { status } : {} } as const;
 }
 
 /** サイドバーの件数を取り直す間隔（ミリ秒）。ほかの人や外部のアプリ（MCP）が出した・採否を決めたものは、この間隔で追いつく */

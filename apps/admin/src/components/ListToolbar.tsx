@@ -20,6 +20,7 @@ import { Field, Muted } from "./ui";
  * 一覧の上に置く、絞り込みと並べ替えの帯（Notion のデータベースの見た目）。管理画面の一覧の絞り込み・並べ替えは、これで作る。
  * - 並べ替えは、いまの並びをチップ（例:「↓ 日時：新しい順」）でいつも出す。押すと、並べる列と向きを選べる
  * - 「＋ フィルター」で条件を足す。足した条件はチップになり、押すと値を選ぶ欄が開く。値はチェックボックスで複数選べ、どれかに当たるものに絞る。値を選ぶまでは、条件として効かない
+ * - 期間（`dateRange`）は、チェックボックスの代わりに「いつから」「いつまで」の日付の欄を開く（チップは「期間: 10/1〜10/17」）
  * - 値を選んだ条件のチップは色を変え、値も書く（絞り込み中だと分かるように）。条件が1つでもあれば「すべて外す」を出す
  *
  * 状態は持たない（呼ぶ側が持つ）。値は文字列の組（`FilterOption`）だけなので、URL に載せることもできる。
@@ -49,6 +50,10 @@ export type FilterField = {
       kind: "search";
       search: (query: string) => Promise<FilterOption[]>;
       placeholder?: string;
+    }
+  | {
+      /** 日付の範囲（「いつから」「いつまで」。片方だけでもよい。「いつまで」はその日を含む）。値は1つで、`dateRangeOption` で作る */
+      kind: "dateRange";
     }
 );
 
@@ -86,6 +91,33 @@ export function filterValues(filters: ActiveFilter[], key: string): string[] | u
   return values.length > 0 ? values.map((v) => v.value) : undefined;
 }
 
+/** 期間の値の、「いつから」と「いつまで」の区切り（`2026-10-01..2026-10-17`。片方が無ければ `2026-10-01..` `..2026-10-17`） */
+const RANGE_SEPARATOR = "..";
+
+/** `YYYY-MM-DD` を「10/1」のように短く書く。今年でなければ年も付ける（`2025/10/1`） */
+export function shortDay(day: string, thisYear: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return y === thisYear ? `${m}/${d}` : `${y}/${m}/${d}`;
+}
+
+/** 期間の条件の値。`value` は「いつから..いつまで」、`label` は「10/1〜10/17」。どちらも無ければ null（条件にしない） */
+export function dateRangeOption(range: { from?: string; to?: string }, thisYear = new Date().getFullYear()): FilterOption | null {
+  const from = range.from || undefined;
+  const to = range.to || undefined;
+  if (!from && !to) return null;
+  return {
+    value: `${from ?? ""}${RANGE_SEPARATOR}${to ?? ""}`,
+    label: `${from ? shortDay(from, thisYear) : ""}〜${to ? shortDay(to, thisYear) : ""}`,
+  };
+}
+
+/** 期間の条件の値を、「いつから」「いつまで」に戻す。形の合わない側は無いものとする */
+export function parseDateRange(value: string | undefined): { from?: string; to?: string } {
+  const [from, to] = (value ?? "").split(RANGE_SEPARATOR);
+  const day = (s: string | undefined) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined);
+  return { from: day(from), to: day(to) };
+}
+
 /** チップに出す文字。値があれば「状態: 成功・失敗」、無ければ列の名前だけ */
 export function filterChipLabel(field: Pick<FilterField, "label">, values: FilterOption[]): string {
   return values.length > 0 ? `${field.label}: ${values.map((v) => v.label).join("・")}` : field.label;
@@ -104,6 +136,44 @@ export function appliedFiltersText(fields: FilterField[], filters: ActiveFilter[
 /** 並べ替えのチップに出す文字（例: 「日時：新しい順」） */
 export function sortChipLabel(field: SortField, direction: SortDirection): string {
   return `${field.label}：${field[direction]}`;
+}
+
+/**
+ * 条件を画面の中に持ちつつ、その一部を URL の検索部分（`?tag=` など）に入れる一覧のための状態（再読み込み・共有で同じ絞り込みが開くように）。
+ * 値を選ぶ前の条件（チップだけ）や URL に入れない条件も持てるよう、状態はこの中に持ち、URL には `toUrl` の値だけを書く。
+ * URL が外から変わったとき（リンク・戻る）だけ、`fromUrl` で条件を作り直す（自分で書いた値では作り直さない）。
+ */
+export function useUrlFilters({
+  param,
+  fromUrl,
+  toUrl,
+  onUrlChange,
+}: {
+  /** いまの URL の値 */
+  param: string | undefined;
+  /** URL の値から条件を作る。`prev` は手元の条件（URL に入れない条件を残すのに使う） */
+  fromUrl: (param: string | undefined, prev: ActiveFilter[]) => ActiveFilter[];
+  /** 条件から URL の値を作る。undefined なら URL から消す */
+  toUrl: (filters: ActiveFilter[]) => string | undefined;
+  onUrlChange: (param: string | undefined) => void;
+}): [ActiveFilter[], (next: ActiveFilter[]) => void] {
+  const [filters, setFilters] = useState<ActiveFilter[]>(() => fromUrl(param, []));
+  const written = useRef(param);
+  useEffect(() => {
+    if (param === written.current) return;
+    written.current = param;
+    setFilters((prev) => fromUrl(param, prev));
+    // URL の値が変わったときだけ作り直す
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [param]);
+  const change = (next: ActiveFilter[]) => {
+    setFilters(next);
+    const value = toUrl(next);
+    if (value === written.current) return;
+    written.current = value;
+    onUrlChange(value);
+  };
+  return [filters, change];
 }
 
 type Opened = { type: "sort" } | { type: "filter"; key: string } | null;
@@ -301,7 +371,40 @@ function FilterEditor({ field, values, onChange }: EditorProps<FilterField>) {
       return <TextFilter field={field} values={values} onChange={onChange} />;
     case "search":
       return <SearchFilter field={field} values={values} onChange={onChange} />;
+    case "dateRange":
+      return <DateRangeFilter field={field} values={values} onChange={onChange} />;
   }
+}
+
+/** 「いつから」「いつまで」の日付の欄。縦に積み、狭い幅でも欄からはみ出さない。「いつから」より前の「いつまで」は選べない */
+function DateRangeFilter({ field, values, onChange }: EditorProps<Extract<FilterField, { kind: "dateRange" }>>) {
+  const range = parseDateRange(values[0]?.value);
+  const change = (next: { from?: string; to?: string }) => {
+    const option = dateRangeOption(next);
+    onChange(option ? [option] : []);
+  };
+  return (
+    <Box role="group" aria-label={field.label} sx={{ display: "flex", flexDirection: "column", gap: 1.5, pt: 0.5 }}>
+      <Field
+        type="date"
+        label="いつから"
+        fullWidth
+        autoFocus
+        value={range.from ?? ""}
+        onChange={(e) => change({ ...range, from: e.target.value })}
+        slotProps={{ htmlInput: { max: range.to } }}
+      />
+      <Field
+        type="date"
+        label="いつまで"
+        fullWidth
+        value={range.to ?? ""}
+        onChange={(e) => change({ ...range, to: e.target.value })}
+        slotProps={{ htmlInput: { min: range.from } }}
+      />
+      <Muted variant="body2">片方だけでも絞れます。「いつまで」の日も含みます。</Muted>
+    </Box>
+  );
 }
 
 /** 選択肢のチェックボックスの並び。押すたびに、その場で条件に効く */

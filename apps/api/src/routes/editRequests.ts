@@ -142,11 +142,11 @@ export const editRequestRoutes = new Hono<AppEnv>()
  * ページごとの経路（上の `editRequestRoutes`）とは別に掛ける（`/pages/edit-requests` は、ページの ID として読まれてしまう）。
  */
 export const wikiEditRequestRoutes = new Hono<AppEnv>()
-  // ?status=open|done（省くと open）&limit=&cursor=：出した日時の新しい順。`nextCursor` を次の呼び出しに渡す（`GET /pages` と同じ形）
+  // ?status=open|done（カンマ区切りで複数。どれかに当たるもの。省くと open）&limit=&cursor=：出した日時の新しい順。`nextCursor` を次の呼び出しに渡す（`GET /pages` と同じ形）
   .get("/", async (c) => {
     const { db } = c.get("deps");
-    const status = c.req.query("status") ?? "open";
-    if (!isEditRequestListStatus(status)) throw new HttpError(400, "invalid_status", "status must be open or done");
+    const status = [...new Set((c.req.query("status") ?? "open").split(","))];
+    if (!status.every(isEditRequestListStatus)) throw new HttpError(400, "invalid_status", "status must be open or done");
     const cursorParam = c.req.query("cursor");
     const list = await listWikiEditRequests(db, c.get("wiki").id, {
       status,
