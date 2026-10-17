@@ -20,14 +20,12 @@ import {
   ACTION_KINDS,
   ACTION_TYPES,
   DEFAULT_ROUTINE_INSTRUCTION,
-  ROUTINE_INSTRUCTION_MAX,
   describeAction,
   describeTrigger,
   TRIGGER_KINDS,
   TRIGGER_TYPES,
   WEEKDAY_LABELS,
   type WorkflowTriggerType,
-  describeTriggerCondition,
   workflowDraftProblem,
   type WorkflowActionInput,
   type WorkflowActionType,
@@ -35,13 +33,15 @@ import {
   type WorkflowBlockInput,
   type WorkflowDraft,
 } from "@wiki/shared";
-import { ArrowDown, ArrowUp, GripVertical, X } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Field, Muted, RouterLink, Row, Section, SkeletonRows } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { useSession } from "./Layout";
+import { ACTION_UI, draftActionSummary, draftTriggerSummary, TRIGGER_UI, type Lookups } from "./workflowKinds";
+import { FlowCard, FlowConnector } from "./WorkflowFlow";
 
 /** ブロックの節の id（履歴が空のときの案内から、ここへ移る） */
 export const BLOCKS_SECTION_ID = "workflow-blocks";
@@ -80,12 +80,6 @@ export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
       instruction: a.type === "call_routine" ? a.instruction : "",
     })),
   };
-}
-
-/** 一覧に出す、依頼文の先頭（改行は空白にして、長ければ切る） */
-export function instructionPreview(instruction: string, max = 60): string {
-  const flat = instruction.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
 /** 配列の i 番目を、上（-1）か下（+1）と入れ替えた新しい配列。端では、そのまま返す */
@@ -184,27 +178,29 @@ export function WorkflowBlocksSection({ workflowId }: { workflowId: string }) {
   );
 }
 
-/** 1ブロック＝1枚のカード。「タグ『…』が付いたら」→ アクションの並び、を文で読める形で出す */
+/** 1ブロック＝1枚の枠。中に、トリガーのカード → アクションのカードを、矢印でつないで縦に並べる（読むだけ。編集はダイアログで） */
 function BlockCard({ block, busy, onEdit, onDelete }: { block: WorkflowBlock; busy: boolean; onEdit: () => void; onDelete: () => void }) {
   const label = describeTrigger(block.trigger);
+  const drafts = blockToDraft(block).actions;
   return (
     <Box
       component="li"
       sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 1.5, display: "flex", gap: 2, alignItems: "flex-start", flexWrap: "wrap", justifyContent: "space-between" }}
     >
-      <Box sx={{ minWidth: 0, flex: "1 1 240px" }}>
-        <Typography sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>{describeTriggerCondition(block.trigger)}</Typography>
-        <Box component="ol" sx={{ m: 0, mt: 0.5, pl: 3, color: "text.primary" }}>
+      <Box sx={{ minWidth: 0, flex: "1 1 280px", maxWidth: 560 }}>
+        <FlowCard
+          dense
+          tone="trigger"
+          icon={TRIGGER_UI[block.trigger.type].icon}
+          kind="トリガー"
+          summary={label}
+          detail={block.trigger.type === "schedule" ? `対象：「${block.trigger.pageTitle}」` : null}
+        />
+        <Box component="ol" aria-label={`${label}のアクション`} sx={{ listStyle: "none", m: 0, p: 0 }}>
           {block.actions.map((a, i) => (
             <li key={i}>
-              <Typography component="span" sx={{ overflowWrap: "anywhere" }}>
-                {describeAction(a)}
-              </Typography>
-              {a.type === "call_routine" && (
-                <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
-                  依頼：{instructionPreview(a.instruction)}
-                </Typography>
-              )}
+              <FlowConnector dense />
+              <FlowCard dense icon={ACTION_UI[a.type].icon} kind={`${i + 1} 番目のアクション`} summary={describeAction(a)} detail={ACTION_UI[a.type].detail(drafts[i]!)} />
             </li>
           ))}
         </Box>
@@ -246,7 +242,7 @@ function SchedulePagePicker({ value, onChange }: { value: { id: string; title: s
 }
 
 /** つまみ（GripVertical）だけを掴めるようにして、行の中の選択欄は今までどおり操作できるようにする */
-function SortableItem({ id, children }: { id: number; children: (handle: ReactNode) => ReactNode }) {
+function SortableItem({ id, label, children }: { id: number; label: string; children: (handle: ReactNode) => ReactNode }) {
   const sortable = useSortable({ id });
   const handle = (
     <IconButton
@@ -254,8 +250,8 @@ function SortableItem({ id, children }: { id: number; children: (handle: ReactNo
       ref={sortable.setActivatorNodeRef}
       {...sortable.attributes}
       {...sortable.listeners}
-      aria-label="ドラッグして順番を変える"
-      sx={{ cursor: "grab", touchAction: "none", mt: 0.25 }}
+      aria-label={label}
+      sx={{ cursor: "grab", touchAction: "none", color: "text.secondary" }}
     >
       <GripVertical size={18} />
     </IconButton>
@@ -265,7 +261,7 @@ function SortableItem({ id, children }: { id: number; children: (handle: ReactNo
       component="li"
       ref={sortable.setNodeRef}
       style={{ transform: sortable.transform ? `translate3d(0, ${sortable.transform.y}px, 0)` : undefined, transition: sortable.transition }}
-      sx={[{ display: "flex", gap: 1, alignItems: "flex-start", flexWrap: "wrap", bgcolor: "background.paper" }, sortable.isDragging && { position: "relative", zIndex: 1, opacity: 0.7 }]}
+      sx={[sortable.isDragging && { position: "relative", zIndex: 1, opacity: 0.7 }]}
     >
       {children(handle)}
     </Box>
@@ -290,6 +286,16 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
   const [time, setTime] = useState(initial.time);
   const [weekdays, setWeekdays] = useState(initial.weekdays);
   const [actions, setActions] = useState<DraftAction[]>(() => initial.actions.map(withKey));
+  // 開いているカード。作るときはトリガーから開き、編集のときは全部閉じて、流れを先に見せる。
+  // アクションは添字でなく key で持つ（並べ替えても、開いているカードが入れ替わらない）
+  const [triggerOpen, setTriggerOpen] = useState(block === null);
+  const [openKeys, setOpenKeys] = useState<ReadonlySet<number>>(() => new Set());
+  const toggleOpen = (key: number) =>
+    setOpenKeys((ks) => {
+      const next = new Set(ks);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
@@ -322,9 +328,14 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
     save.reset();
   };
   const addAction = () => {
-    setActions((xs) => [...xs, withKey(routineList.length > 0 ? { type: "call_routine", routineId: "", tagId: "", instruction: DEFAULT_ROUTINE_INSTRUCTION } : { type: "remove_tag", routineId: "", tagId: "", instruction: "" })]);
+    const added = withKey(routineList.length > 0 ? { type: "call_routine", routineId: "", tagId: "", instruction: DEFAULT_ROUTINE_INSTRUCTION } : { type: "remove_tag", routineId: "", tagId: "", instruction: "" });
+    setActions((xs) => [...xs, added]);
+    // 足したカードは、すぐ選べるように開いておく
+    setOpenKeys((ks) => new Set(ks).add(added.key));
     save.reset();
   };
+  const lookups: Lookups = { tags: tagList, routines: routineList };
+  const triggerSummary = draftTriggerSummary(draft, lookups, pageTitle);
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="workflow-block-title">
@@ -357,212 +368,182 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
             </Alert>
           )}
 
-          <Row sx={{ mb: 1, gap: 0.5 }}>
-            <Typography variant="subtitle2" component="h3">
-              トリガー
-            </Typography>
-            <HelpTip about="トリガーの種類">
-              「タグが付いたとき」は、選んだタグがページに付くたびに動きます。「初めて公開されたとき」は、一度も公開したことのないページを、公開か限定公開にしたときだけ動きます（公開し直し・非公開にしたときは動きません）。管理画面・MCP・予約のどれから公開しても動きます。「決まった時刻になったとき」は、選んだ曜日の時刻（日本時間）が来たあとの最初の確認（5分おき）で、選んだページを対象に1回だけ動きます（同じブロックの実行は、1時間に5回までです）。タグがトリガーでないとき、Routine に渡す値のタグ名は、空になります。
-            </HelpTip>
-          </Row>
-          <Field
-            select
-            fullWidth
-            label="きっかけ"
-            value={triggerType}
-            onChange={(e) => {
-              setTriggerType(e.target.value as WorkflowTriggerType);
-              save.reset();
-            }}
-            slotProps={{ select: { native: true } }}
+          <FlowCard
+            tone="trigger"
+            icon={TRIGGER_UI[triggerType].icon}
+            kind="トリガー"
+            summary={triggerSummary.text}
+            incomplete={!triggerSummary.complete}
+            expanded={triggerOpen}
+            onToggle={() => setTriggerOpen((o) => !o)}
+            end={
+              <HelpTip about="トリガーの種類">
+                「タグが付いたとき」は、選んだタグがページに付くたびに動きます。「初めて公開されたとき」は、一度も公開したことのないページを、公開か限定公開にしたときだけ動きます（公開し直し・非公開にしたときは動きません）。管理画面・MCP・予約のどれから公開しても動きます。「決まった時刻になったとき」は、選んだ曜日の時刻（日本時間）が来たあとの最初の確認（5分おき）で、選んだページを対象に1回だけ動きます（同じブロックの実行は、1時間に5回までです）。タグがトリガーでないとき、Routine に渡す値のタグ名は、空になります。
+              </HelpTip>
+            }
           >
-            {TRIGGER_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {TRIGGER_KINDS[t].label}
-              </option>
-            ))}
-          </Field>
-          {triggerType === "tag_attached" && (
             <Field
               select
               fullWidth
-              label="このタグ"
-              value={tagId}
-              disabled={noTags}
+              label="きっかけ"
+              value={triggerType}
               onChange={(e) => {
-                setTagId(e.target.value);
+                setTriggerType(e.target.value as WorkflowTriggerType);
                 save.reset();
               }}
               slotProps={{ select: { native: true } }}
-              sx={{ mt: 1.5 }}
             >
-              <option value="">選んでください</option>
-              {tagList.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+              {TRIGGER_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {TRIGGER_KINDS[t].label}
                 </option>
               ))}
             </Field>
-          )}
-
-          {triggerType === "schedule" && (
-            <Box sx={{ mt: 1.5, display: "grid", gap: 1.5 }}>
-              <SchedulePagePicker
-                value={pageId ? { id: pageId, title: pageTitle } : null}
-                onChange={(p) => {
-                  setPageId(p?.id ?? "");
-                  setPageTitle(p?.title ?? "");
-                  save.reset();
-                }}
-              />
+            {triggerType === "tag_attached" && (
               <Field
-                type="time"
-                label="時刻（日本時間）"
-                value={time}
+                select
+                fullWidth
+                label="このタグ"
+                value={tagId}
+                disabled={noTags}
                 onChange={(e) => {
-                  setTime(e.target.value);
+                  setTagId(e.target.value);
                   save.reset();
                 }}
-                helperText="5分おきに確認するので、数分遅れて動くことがあります。"
-                slotProps={{ inputLabel: { shrink: true } }}
-                sx={{ maxWidth: 240 }}
-              />
-              <FormControl component="fieldset" variant="standard">
-                <FormLabel component="legend" sx={{ fontSize: 12 }}>
-                  曜日
-                </FormLabel>
-                <FormGroup row>
-                  {WEEKDAY_LABELS.map((label, day) => (
-                    <FormControlLabel
-                      key={day}
-                      label={label}
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={weekdays.includes(day)}
-                          onChange={(e) => {
-                            setWeekdays((ds) => (e.target.checked ? [...ds, day] : ds.filter((d) => d !== day)));
-                            save.reset();
-                          }}
-                        />
-                      }
-                    />
-                  ))}
-                </FormGroup>
-              </FormControl>
-            </Box>
-          )}
+                slotProps={{ select: { native: true } }}
+              >
+                <option value="">選んでください</option>
+                {tagList.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </Field>
+            )}
 
-          <Row sx={{ mt: 2.5, mb: 1, gap: 0.5 }}>
-            <Typography variant="subtitle2" component="h3">
-              アクション（上から順に行う）
-            </Typography>
-            <HelpTip about="アクションの順番">
-              上から順に行います。「タグを外す」を最後に置くと、ほかのアクションを行ったあとにタグが外れます。左のつまみをドラッグするか、上へ・下へのボタンで順番を入れ替えられます。
-            </HelpTip>
-          </Row>
+            {triggerType === "schedule" && (
+              <>
+                <SchedulePagePicker
+                  value={pageId ? { id: pageId, title: pageTitle } : null}
+                  onChange={(p) => {
+                    setPageId(p?.id ?? "");
+                    setPageTitle(p?.title ?? "");
+                    save.reset();
+                  }}
+                />
+                <Field
+                  type="time"
+                  label="時刻（日本時間）"
+                  value={time}
+                  onChange={(e) => {
+                    setTime(e.target.value);
+                    save.reset();
+                  }}
+                  helperText="5分おきに確認するので、数分遅れて動くことがあります。"
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ maxWidth: 240 }}
+                />
+                <FormControl component="fieldset" variant="standard">
+                  <FormLabel component="legend" sx={{ fontSize: 12 }}>
+                    曜日
+                  </FormLabel>
+                  <FormGroup row>
+                    {WEEKDAY_LABELS.map((label, day) => (
+                      <FormControlLabel
+                        key={day}
+                        label={label}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={weekdays.includes(day)}
+                            onChange={(e) => {
+                              setWeekdays((ds) => (e.target.checked ? [...ds, day] : ds.filter((d) => d !== day)));
+                              save.reset();
+                            }}
+                          />
+                        }
+                      />
+                    ))}
+                  </FormGroup>
+                </FormControl>
+              </>
+            )}
+          </FlowCard>
+
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={actions.map((a) => a.key)} strategy={verticalListSortingStrategy}>
-            <Box component="ol" aria-label="アクション" sx={{ listStyle: "none", m: 0, p: 0, display: "grid", gap: 1.5 }}>
-              {actions.map((a, i) => (
-                <SortableItem key={a.key} id={a.key}>
-                  {(handle) => (
-                    <>
-                      {handle}
-                      <Typography sx={{ width: 20, pt: 0.75, textAlign: "right", color: "text.secondary" }} aria-hidden>
-                        {i + 1}
-                      </Typography>
-                      <Field
-                        select
-                        label={`${i + 1} 番目の種類`}
-                        value={a.type}
-                        onChange={(e) => {
-                          const type = e.target.value as WorkflowActionType;
-                          // 「Routine を呼ぶ」に変えたとき、依頼が空なら初期値を入れる
-                          change(a.key, { type, routineId: "", tagId: "", instruction: type === "call_routine" && !a.instruction ? DEFAULT_ROUTINE_INSTRUCTION : a.instruction });
-                        }}
-                        slotProps={{ select: { native: true } }}
-                        sx={{ width: 170 }}
-                      >
-                        {ACTION_TYPES.map((t) => (
-                          <option key={t} value={t} disabled={t === "call_routine" && noRoutines && a.type !== t}>
-                            {ACTION_KINDS[t].label}
-                          </option>
-                        ))}
-                      </Field>
-                      {a.type === "call_routine" ? (
-                        <Field
-                          select
-                          label={`${i + 1} 番目の Routine`}
-                          value={a.routineId}
-                          onChange={(e) => change(a.key, { routineId: e.target.value })}
-                          slotProps={{ select: { native: true } }}
-                          sx={{ flex: "1 1 160px", minWidth: 140 }}
-                        >
-                          <option value="">選んでください</option>
-                          {routineList.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {r.name}
-                            </option>
-                          ))}
-                        </Field>
-                      ) : (
-                        <Field
-                          select
-                          label={`${i + 1} 番目の${a.type === "add_tag" ? "付ける" : "外す"}タグ`}
-                          value={a.tagId}
-                          disabled={noTags}
-                          onChange={(e) => change(a.key, { tagId: e.target.value })}
-                          slotProps={{ select: { native: true } }}
-                          sx={{ flex: "1 1 160px", minWidth: 140 }}
-                        >
-                          <option value="">選んでください</option>
-                          {tagList.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </Field>
+              <Box component="ol" aria-label="アクション（上から順に行う）" sx={{ listStyle: "none", m: 0, p: 0 }}>
+                {actions.map((a, i) => {
+                  const ui = ACTION_UI[a.type];
+                  const summary = draftActionSummary(a, lookups);
+                  const n = i + 1;
+                  return (
+                    <SortableItem key={a.key} id={a.key} label={`${n} 番目のアクションをドラッグして順番を変える`}>
+                      {(handle) => (
+                        <>
+                          <FlowConnector />
+                          <FlowCard
+                            icon={ui.icon}
+                            kind={`${n} 番目のアクション`}
+                            summary={summary.text}
+                            detail={ui.detail(a)}
+                            incomplete={!summary.complete}
+                            expanded={openKeys.has(a.key)}
+                            onToggle={() => toggleOpen(a.key)}
+                            start={handle}
+                            wrapEnd
+                            end={
+                              <Row sx={{ flexWrap: "nowrap", gap: 0 }}>
+                                <IconButton size="small" aria-label={`${n} 番目のアクションを上へ`} disabled={i === 0} onClick={() => setActions((xs) => moveItem(xs, i, -1))}>
+                                  <ArrowUp size={18} />
+                                </IconButton>
+                                <IconButton size="small" aria-label={`${n} 番目のアクションを下へ`} disabled={i === actions.length - 1} onClick={() => setActions((xs) => moveItem(xs, i, 1))}>
+                                  <ArrowDown size={18} />
+                                </IconButton>
+                                {/* 取り除くは、並べ替えから少し離す */}
+                                <IconButton size="small" aria-label={`${n} 番目のアクションを取り除く`} onClick={() => setActions((xs) => xs.filter((x) => x.key !== a.key))} sx={{ ml: 1 }}>
+                                  <X size={18} />
+                                </IconButton>
+                              </Row>
+                            }
+                          >
+                            <Field
+                              select
+                              fullWidth
+                              label={`${n} 番目の種類`}
+                              value={a.type}
+                              onChange={(e) => {
+                                const type = e.target.value as WorkflowActionType;
+                                // 「Routine を呼ぶ」に変えたとき、依頼が空なら初期値を入れる
+                                change(a.key, { type, routineId: "", tagId: "", instruction: type === "call_routine" && !a.instruction ? DEFAULT_ROUTINE_INSTRUCTION : a.instruction });
+                              }}
+                              slotProps={{ select: { native: true } }}
+                            >
+                              {ACTION_TYPES.map((t) => (
+                                <option key={t} value={t} disabled={t === "call_routine" && noRoutines && a.type !== t}>
+                                  {ACTION_KINDS[t].label}
+                                </option>
+                              ))}
+                            </Field>
+                            <ui.Fields index={n} action={a} lookups={lookups} onChange={(patch) => change(a.key, patch)} />
+                          </FlowCard>
+                        </>
                       )}
-                      <Row sx={{ flexWrap: "nowrap", gap: 0 }}>
-                        <IconButton size="small" aria-label={`${i + 1} 番目のアクションを上へ`} disabled={i === 0} onClick={() => setActions((xs) => moveItem(xs, i, -1))}>
-                          <ArrowUp size={18} />
-                        </IconButton>
-                        <IconButton size="small" aria-label={`${i + 1} 番目のアクションを下へ`} disabled={i === actions.length - 1} onClick={() => setActions((xs) => moveItem(xs, i, 1))}>
-                          <ArrowDown size={18} />
-                        </IconButton>
-                        <IconButton size="small" aria-label={`${i + 1} 番目のアクションを取り除く`} onClick={() => setActions((xs) => xs.filter((x) => x.key !== a.key))}>
-                          <X size={18} />
-                        </IconButton>
-                      </Row>
-                      {a.type === "call_routine" && (
-                        <Box sx={{ flex: "1 1 100%", pl: 3.5, display: "flex", gap: 0.5, alignItems: "flex-start" }}>
-                          <Field
-                            multiline
-                            minRows={3}
-                            fullWidth
-                            label={`${i + 1} 番目の Routine への依頼`}
-                            value={a.instruction}
-                            onChange={(e) => change(a.key, { instruction: e.target.value })}
-                            error={a.instruction.trim().length > ROUTINE_INSTRUCTION_MAX}
-                            helperText={`${a.instruction.trim().length} / ${ROUTINE_INSTRUCTION_MAX} 文字`}
-                            slotProps={{ inputLabel: { shrink: true } }}
-                          />
-                          <HelpTip about="Routine への依頼">
-                            Routine にしてほしいことを書きます（例：記事の下書きを書く、台本を作る）。この文のあとに、対象のページを示す値（ページの ID・タイトル・タグ名・版の ID・URL）が自動で付きます。本文は付かないので、Routine が wiki の MCP で読みます。保存したあとに積まれる実行から、新しい依頼で呼びます。
-                          </HelpTip>
-                        </Box>
-                      )}
-                    </>
-                  )}
-                </SortableItem>
-              ))}
-            </Box>
+                    </SortableItem>
+                  );
+                })}
+              </Box>
             </SortableContext>
           </DndContext>
-          <Button variant="outlined" onClick={addAction} sx={{ mt: 1.5 }}>
-            アクションを足す
-          </Button>
+          <FlowConnector />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Button variant="outlined" startIcon={<Plus size={18} />} onClick={addAction} sx={{ flex: 1, borderStyle: "dashed", py: 1 }}>
+              アクションを足す
+            </Button>
+            <HelpTip about="アクションの順番">
+              上から順に行います。「タグを外す」を最後に置くと、ほかのアクションを行ったあとにタグが外れます。カードの左のつまみをドラッグするか、上へ・下へのボタンで順番を入れ替えられます。カードを押すと、編集欄が開きます。
+            </HelpTip>
+          </Box>
           {save.error && (
             <Alert severity="error" sx={{ mt: 2 }}>
               保存できませんでした：{errorMessage(save.error)}
