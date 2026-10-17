@@ -217,9 +217,24 @@ export const isWorkflowRunActive = (status: WorkflowRunStatus): boolean => statu
 export const WORKFLOW_RUNS_LIMIT_DEFAULT = 50;
 export const WORKFLOW_RUNS_LIMIT_MAX = 100;
 
+/** 実行の履歴を一度に絞れるページの数 */
+export const WORKFLOW_RUNS_PAGE_FILTER_MAX = 50;
+
+/** カンマ区切りの値（`a,b`）を配列にする */
+const csv = <T extends z.ZodTypeAny>(item: T, max: number) =>
+  z
+    .string()
+    .transform((s) => s.split(",").filter((x) => x !== ""))
+    .pipe(z.array(item).min(1).max(max));
+
 /** `GET /admin/w/{key}/workflow/{workflowId}/runs` の問い合わせ */
 export const workflowRunsQuery = z.object({
-  status: z.enum(WORKFLOW_RUN_STATUSES).optional(),
+  /** この状態のどれかの実行だけに絞る（カンマ区切りで複数） */
+  status: csv(z.enum(WORKFLOW_RUN_STATUSES), WORKFLOW_RUN_STATUSES.length).optional(),
+  /** このページのどれかの実行だけに絞る（カンマ区切りで複数） */
+  pageId: csv(z.string().min(1).max(100), WORKFLOW_RUNS_PAGE_FILTER_MAX).optional(),
+  /** 日時の並び。省くと新しい順 */
+  order: z.enum(["desc", "asc"]).default("desc"),
   limit: z.coerce.number().int().min(1).max(WORKFLOW_RUNS_LIMIT_MAX).default(WORKFLOW_RUNS_LIMIT_DEFAULT),
   cursor: z.string().max(100).optional(),
 });
