@@ -33,10 +33,11 @@ import { CodeBlockMenu } from "./CodeBlockMenu";
 import { ImageMenu } from "./ImageMenu";
 import { ImageUpload } from "./imageUpload";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type WheelEvent } from "react";
 import { MENU_MAX_WIDTH, monoFont, TOUCH } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { setBlockDragging } from "./blockMove";
+import { BLOCK_HANDLE } from "./blockHandle";
 import { createEditorExtensions } from "./extensions";
 import { watchPageTitles } from "./pageMentions";
 import { useQueryClient } from "@tanstack/react-query";
@@ -297,10 +298,10 @@ export function MarkdownEditor(props: {
   );
 }
 
-// ハンドルの位置。行の左の余白に出し、空行の「挿入」ボタン（行の左 4px）と重ならないよう、さらに左へ置く
+// ハンドルの位置。行の左の余白に出す（大きさと左へのずらし方は blockHandle.ts）
 // 左へずらすのは、外枠の余白ではなくオフセットでやる（外枠はライブラリが draggable にするので、大きくしたり pointer-events を切ったりするとつかめなくなる）
 const dragHandlePositionAt = (offset: number) => ({ placement: "left-start" as const, strategy: "absolute" as const, middleware: [{ name: "shiftLeft", fn: ({ x, y }: { x: number; y: number }) => ({ x: x - offset, y }) }] });
-const dragHandlePosition = { wide: dragHandlePositionAt(28), narrow: dragHandlePositionAt(4) };
+const dragHandlePosition = { wide: dragHandlePositionAt(BLOCK_HANDLE.wide.offset), narrow: dragHandlePositionAt(BLOCK_HANDLE.narrow.offset) };
 
 /**
  * ブロック（段落・見出し・リスト全体・表・画像など、最上位のもの）にマウスを乗せると左に出る、つかんで動かすハンドル。
@@ -312,6 +313,7 @@ function BlockDragHandle({ editor }: { editor: Editor }) {
   const [dragging, setDragging] = useState(false);
   const narrow = useMediaQuery((t: Theme) => t.breakpoints.down("md"));
   if (touch) return null;
+  const size = BLOCK_HANDLE[narrow ? "narrow" : "wide"];
   return (
     <DragHandle
       editor={editor}
@@ -331,9 +333,9 @@ function BlockDragHandle({ editor }: { editor: Editor }) {
         <Box
           role="img"
           aria-label="ブロックを動かす"
-          sx={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } }}
+          sx={{ display: "flex", alignItems: "center", justifyContent: "center", width: size.width, height: 24, borderRadius: 1, color: "text.secondary", cursor: "grab", "&:hover": { bgcolor: "action.hover" }, "&:active": { cursor: "grabbing" } }}
         >
-          <GripVertical size={18} />
+          <GripVertical size={size.icon} />
         </Box>
       </Tooltip>
     </DragHandle>
@@ -351,6 +353,13 @@ const showSelectionMenu: NonNullable<BubbleMenuProps["shouldShow"]> = ({ editor,
   if (selection.empty || selection instanceof NodeSelection || editor.isActive("codeBlock")) return false;
   if (state.doc.textBetween(from, to).length === 0) return false;
   return view.hasFocus() || element.contains(document.activeElement);
+};
+
+// マウスのホイール（縦）でも、はみ出したボタンへ横にスクロールできるようにする。はみ出していなければ何もしない（ページのスクロールに任せる）
+const scrollSideways = (e: WheelEvent<HTMLElement>) => {
+  const el = e.currentTarget;
+  if (el.scrollWidth <= el.clientWidth || e.deltaX !== 0) return;
+  el.scrollLeft += e.deltaY;
 };
 
 /** 文字を選択したときに、その近くに浮かぶ書式メニュー。 */
@@ -389,7 +398,7 @@ function SelectionMenu({ editor }: { editor: Editor }) {
 
   return (
     <BubbleMenu editor={editor} shouldShow={showSelectionMenu} options={selectionMenuOptions} style={{ zIndex: 1 }}>
-      {/* スマホの幅では1行に収まらないので、画面の幅で折り返す（折り返さないと、右のボタンが画面の外に出て押せない） */}
+      {/* 幅は画面の内側まで。狭い幅で1段に収まらないときは、折り返さず（2段になると選んだ文の上を広く隠す）、ツールバーの中を横にスクロールする */}
       <Paper elevation={4} sx={{ maxWidth: MENU_MAX_WIDTH }}>
         {linkEditing && (
           <LinkForm
@@ -399,7 +408,13 @@ function SelectionMenu({ editor }: { editor: Editor }) {
             onClose={() => closeLink(() => editor.commands.focus())}
           />
         )}
-        <Stack direction="row" role="toolbar" aria-label="書式" sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", flexWrap: "wrap", gap: 0.25, p: 0.5 }}>
+        <Stack
+          direction="row"
+          role="toolbar"
+          aria-label="書式"
+          onWheel={scrollSideways}
+          sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", flexWrap: "nowrap", overflowX: "auto", overscrollBehaviorX: "contain", gap: 0.25, p: 0.5, "& > *": { flexShrink: 0 } }}
+        >
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
             <Bold size={18} />
           </Tool>
