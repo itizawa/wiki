@@ -41,4 +41,14 @@ describe("「/」メニュー", () => {
     expect(filterBlocks("", false)).toHaveLength(17);
     expect(filterBlocks("音声", false)).toEqual([]);
   });
+
+  it("音声入力は、wiki の管理者にだけ出す", () => {
+    expect(filterBlocks("音声入力")).toEqual([]);
+    expect(filterBlocks("音声入力", true, true)).toEqual(["voice"]);
+    expect(filterBlocks("dictation", true, true)).toEqual(["voice"]);
+    expect(filterBlocks("音声", true, true)).toEqual(["record", "audio", "voice"]);
+    expect(filterBlocks("", true, true)).toHaveLength(20);
+    // ページに紐づかない本文（テンプレート）でも、音声入力はできる
+    expect(filterBlocks("音声", false, true)).toEqual(["voice"]);
+  });
 });

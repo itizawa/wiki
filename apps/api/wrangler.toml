@@ -77,6 +77,17 @@ name = "RATING_LIMITER"
 namespace_id = "6105"
 simple = { limit = 20, period = 60 }
 
+# 音声入力 POST /admin/w/{key}/transcribe（ログインしている人ごとに）：60 秒で 3 回まで。1 日の回数の上限（20 回）は API が監査ログで数える
+[[ratelimits]]
+name = "TRANSCRIBE_LIMITER"
+namespace_id = "6106"
+simple = { limit = 3, period = 60 }
+
+# Workers AI。音声入力が録音を Whisper で書き起こすのに使う（鍵は要らない。音声は保存しない）
+# https://developers.cloudflare.com/workers-ai/configuration/bindings/
+[ai]
+binding = "AI"
+
 [vars]
 # 開発用ログインを無効にし、Cookie を Secure にする
 NODE_ENV = "production"

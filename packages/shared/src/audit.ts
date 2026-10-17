@@ -58,6 +58,7 @@ export const AUDIT_ACTIONS = {
   page_tag_remove: "page",
   page_audio_upload: "page",
   page_audio_delete: "page",
+  voice_transcribe: "page",
   workflow_run_fail: "page",
 
   wiki_update: "settings",
@@ -157,6 +158,8 @@ export type AuditDetailMap = {
   /** ページに音声を添付した・外した（ファイル名は、その時点のもの。中身は残さない） */
   page_audio_upload: { name: string; bytes: number };
   page_audio_delete: { name: string };
+  /** 音声入力で書き起こした（回数の上限を数えるために残す。音声も書き起こした文も残さない） */
+  voice_transcribe: { bytes: number };
 
   wiki_update: { name?: { from: string; to: string }; iconUrl?: { from: string | null; to: string | null } };
   /** 公開サイトのトップの自由記述を変えた（中身は残さない） */
@@ -363,6 +366,8 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return [...quoted(t), { text: `に音声「${entry.detail.name}」を添付しました` }];
     case "page_audio_delete":
       return [...quoted(t), { text: `から音声「${entry.detail.name}」を削除しました` }];
+    case "voice_transcribe":
+      return plain("音声入力で書き起こしました");
 
     case "wiki_update": {
       const parts: string[] = [];

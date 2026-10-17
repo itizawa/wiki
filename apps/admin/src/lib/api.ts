@@ -246,6 +246,18 @@ export const api = {
     if (!res.ok) throw apiError(res, data);
     return data as PageAudio;
   },
+  /** 録音を書き起こす（音声入力。管理者だけ。音声は API に残らない）。本文は音声そのまま */
+  transcribeAudio: async (file: Blob): Promise<{ text: string }> => {
+    const res = await fetch(`/api${w("/transcribe")}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw apiError(res, data);
+    return data as { text: string };
+  },
   deletePageAudio: (pageId: string, id: string) => request<{ ok: true }>("DELETE", w(`/pages/${pageId}/audio/${id}`)),
   /** 音声を再生する URL（管理画面にログインしている Cookie で取り出す） */
   pageAudioUrl: (pageId: string, id: string) => `/api${w(`/pages/${pageId}/audio/${id}`)}`,

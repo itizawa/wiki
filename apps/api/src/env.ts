@@ -4,6 +4,7 @@ import type { Db } from "./db/client";
 import type { GoogleOidc } from "./auth/google";
 import type { XClient } from "./sns/x-client";
 import type { GoogleReporting } from "./analytics/google";
+import type { Transcriber } from "./audio/transcribe";
 import type { AudioStore } from "./audio/store";
 import type { ImageStore } from "./images/store";
 import type { RateLimiters } from "./rate-limit";
@@ -39,6 +40,8 @@ export type Deps = {
   cronMarks?: CronMarkStore | null;
   /** ログインせずに叩ける経路（/oauth/*・/mcp）の、接続元ごとの回数の制限。無ければ制限しない */
   rateLimits?: RateLimiters | null;
+  /** 音声入力の書き起こし（Workers AI の Whisper）。無ければ音声入力は使えない（503） */
+  transcribe?: Transcriber | null;
   /** 外部の URL の OGP を取りにいく関数（`GET /link-preview`）。無ければ `fetch`。テストで差し替える */
   linkFetch?: LinkFetch | null;
   /** 運用コストの使用量を取るもの。無ければ設定（`config.neon`）から作る。テストで差し替える */
