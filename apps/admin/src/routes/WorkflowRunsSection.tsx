@@ -7,13 +7,12 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Link from "@mui/material/Link";
-import Autocomplete from "@mui/material/Autocomplete";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   isWorkflowRunActive,
   WORKFLOW_RUN_STATUS_LABELS,
+  WORKFLOW_RUN_STATUSES,
   type WorkflowRunActionEntry,
   type WorkflowRunEntry,
   type WorkflowRunPage,
@@ -23,6 +22,7 @@ import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircl
 import { useState, type ReactElement } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
+import { ListToolbar, appliedFiltersText, filterValue, type ActiveFilter, type FilterField, type SortField, type SortValue } from "../components/ListToolbar";
 import { Muted, RouterLink, Section } from "../components/ui";
 import { api } from "../lib/api";
 import { formatShortDateTime } from "../lib/format";
@@ -74,40 +74,31 @@ function StatusBadge({ status }: { status: WorkflowRunStatus }) {
   return <Chip size="small" color={view.color} variant={status === "failed" ? "filled" : "outlined"} icon={view.icon} label={WORKFLOW_RUN_STATUS_LABELS[status]} />;
 }
 
-type PageOption = { id: string; title: string };
+const SORT_FIELDS: SortField[] = [{ key: "createdAt", label: "日時", asc: "古い順", desc: "新しい順" }];
 
-/** 履歴を絞るページを選ぶ欄。打った語で検索し、語が無いときは最近更新したページを出す。選びを外すと、全部の実行に戻る */
-function RunsPageFilter({ value, onChange }: { value: PageOption | null; onChange: (page: PageOption | null) => void }) {
-  const [input, setInput] = useState("");
-  const results = useQuery({ queryKey: ["workflow-runs-filter-pages", input], queryFn: () => api.search(input.trim()), placeholderData: (prev) => prev });
-  const options = (results.data?.results ?? []).map((r) => ({ id: r.id, title: r.title }));
-  return (
-    <Autocomplete
-      size="small"
-      sx={{ maxWidth: 360, mb: 1.5 }}
-      options={value && !options.some((o) => o.id === value.id) ? [value, ...options] : options}
-      value={value}
-      getOptionLabel={(o) => o.title || "（無題）"}
-      isOptionEqualToValue={(a, b) => a.id === b.id}
-      filterOptions={(xs) => xs}
-      onChange={(_, p) => onChange(p)}
-      onInputChange={(_, v, reason) => reason === "input" && setInput(v)}
-      loading={results.isFetching}
-      loadingText="検索しています…"
-      noOptionsText="見つかるページがありません"
-      clearText="絞り込みを外す"
-      renderInput={(params) => <TextField {...params} placeholder="ページで絞り込む（タイトルで探す）" slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps.htmlInput, "aria-label": "実行の履歴をページで絞り込む" } }} />}
-    />
-  );
-}
+const FILTER_FIELDS: FilterField[] = [
+  {
+    key: "page",
+    label: "ページ",
+    kind: "search",
+    // 語が無いときは、最近更新したページが出る
+    search: async (q) => (await api.search(q)).results.map((r) => ({ value: r.id, label: r.title || "無題" })),
+    placeholder: "タイトルで探す",
+  },
+  { key: "status", label: "状態", kind: "select", options: WORKFLOW_RUN_STATUSES.map((s) => ({ value: s, label: WORKFLOW_RUN_STATUS_LABELS[s] })) },
+];
 
-/** 「実行の履歴」の節：ワークフローの実行を新しい順に出す。失敗の理由と、Routine のセッションへたどれる。 */
+/** 「実行の履歴」の節：ワークフローの実行を日時の順に出す（はじめは新しい順。ページと状態で絞れる）。失敗の理由と、Routine のセッションへたどれる。 */
 export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
   const [opened, setOpened] = useState<string | null>(null);
-  const [pageFilter, setPageFilter] = useState<PageOption | null>(null);
+  const [filters, setFilters] = useState<ActiveFilter[]>([]);
+  const [sort, setSort] = useState<SortValue>({ key: "createdAt", direction: "desc" });
+  const pageId = filterValue(filters, "page");
+  const status = WORKFLOW_RUN_STATUSES.find((s) => s === filterValue(filters, "status"));
+  const order = sort.direction;
   const runs = useInfiniteQuery({
-    queryKey: ["workflow-runs", workflowId, pageFilter?.id ?? null],
-    queryFn: ({ pageParam }) => api.listWorkflowRuns(workflowId, { pageId: pageFilter?.id, limit: PAGE_SIZE, cursor: pageParam }),
+    queryKey: ["workflow-runs", workflowId, { pageId, status, order }],
+    queryFn: ({ pageParam }) => api.listWorkflowRuns(workflowId, { pageId, status, order, limit: PAGE_SIZE, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     refetchInterval: (q) => refetchIntervalFor(q.state.data?.pages),
@@ -116,7 +107,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
   const openedRun = rows?.find((r) => r.id === opened) ?? null;
 
   const columns: DataListColumn<WorkflowRunEntry>[] = [
-    { key: "at", header: "日時", width: "110px", sx: { whiteSpace: "nowrap" }, render: (r) => formatShortDateTime(r.createdAt) },
+    { key: "at", header: "日時", width: "110px", sort: order === "asc" ? "ascending" : "descending", sx: { whiteSpace: "nowrap" }, render: (r) => formatShortDateTime(r.createdAt) },
     { key: "status", header: "状態", width: "120px", render: (r) => <StatusBadge status={r.status} /> },
     {
       key: "page",
@@ -159,11 +150,19 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         variant="subtitle1"
         component="h2"
         sx={{ mb: 1 }}
-        help="ブロックのトリガー（タグが付いたとき・初めて公開されたとき・決まった時刻）で積まれた実行の記録です。新しい順に並び、終わってから90日たった記録は、毎日の掃除で消えます。実行待ちや実行中の行があるあいだは、30秒ごとに最新の状態に取り直します。失敗した実行は、「詳細を見る」から、理由と Routine のセッションを開けます。"
+        help="ブロックのトリガー（タグが付いたとき・初めて公開されたとき・決まった時刻）で積まれた実行の記録です。はじめは新しい順に並び（上の「日時」のチップで古い順にできます）、「＋ フィルター」でページや状態で絞れます。終わってから90日たった記録は、毎日の掃除で消えます。実行待ちや実行中の行があるあいだは、30秒ごとに最新の状態に取り直します。失敗した実行は、「詳細を見る」から、理由と Routine のセッションを開けます。"
       >
         実行の履歴
       </HelpHeading>
-      <RunsPageFilter value={pageFilter} onChange={setPageFilter} />
+      <ListToolbar
+        label="実行の履歴の絞り込みと並べ替え"
+        sortFields={SORT_FIELDS}
+        sort={sort}
+        onSortChange={setSort}
+        filterFields={FILTER_FIELDS}
+        filters={filters}
+        onFiltersChange={setFilters}
+      />
       <DataList
         label="実行の履歴"
         columns={columns}
@@ -172,8 +171,13 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         rowLink={(r) => (r.page.available ? pageLink(r.page.id) : undefined)}
         error={runs.error}
         empty={
-          pageFilter ? (
-            <>「{pageFilter.title || "無題"}」の実行はありません。絞り込みを外すと、ほかのページの実行も見られます。</>
+          pageId || status ? (
+            <>
+              条件（{appliedFiltersText(FILTER_FIELDS, filters)}）に合う実行はありません。{" "}
+              <Link component="button" type="button" onClick={() => setFilters([])} sx={{ verticalAlign: "baseline" }}>
+                絞り込みをすべて外す
+              </Link>
+            </>
           ) : (
           <>
             まだ実行はありません。ブロックのトリガー（タグが付く・初めて公開される・決まった時刻になる）が起きると、ここに実行が出ます。{" "}

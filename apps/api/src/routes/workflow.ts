@@ -40,7 +40,7 @@ export const workflowRoutes = new Hono<AppEnv>()
     const workflow = await findWorkflow(db, c.get("wiki").id, c.req.param("workflowId"));
     return c.json({ blocks: await listBlocks(db, c.get("wiki").id, workflow.id) });
   })
-  // 実行の履歴（新しい順。`limit` と `cursor` で続きを取る）。管理者だけ
+  // 実行の履歴（`order` を省くと新しい順。`limit` と `cursor` で続きを取る）。管理者だけ
   .get("/:workflowId/runs", requireWikiAdmin, async (c) => {
     const parsed = workflowRunsQuery.safeParse(c.req.query());
     if (!parsed.success) throw new HttpError(400, "invalid_input", "invalid input", parsed.error.issues);

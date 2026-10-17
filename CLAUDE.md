@@ -14,3 +14,4 @@
   - 行に遷移先があるなら `rowLink` を渡し、行のどこを押しても移れるようにする（タイトルの文字だけが押せる一覧を作らない）。行の中には、同じ遷移先の本物のリンク（`RouterLink`）も置く。Tab と Enter で開く操作、新しいタブで開く操作、リンクのコピーはそのリンクが受け持つ
   - 遷移先が無い一覧には `rowLink` を渡さない（押せない行を、押せるように見せない）
   - 件数が増える一覧は、API を続きから取れるようにし（`GET /pages` の `limit` と `cursor`）、`virtualized` と `useInfiniteQuery` の `hasNextPage` `isFetchingNextPage` `fetchNextPage` を渡す
+  - 絞り込みと並べ替えは、表の上に共通コンポーネント `apps/admin/src/components/ListToolbar.tsx` を置いて作る（Notion のような、チップと「＋ フィルター」）。入力欄やセレクトをその場で並べない。続きから取る一覧では、条件と並びを API に渡す（クライアントで並べ替えない）。並べ替えた列には `DataListColumn` の `sort` も渡す

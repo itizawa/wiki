@@ -222,6 +222,8 @@ export const workflowRunsQuery = z.object({
   status: z.enum(WORKFLOW_RUN_STATUSES).optional(),
   /** このページの実行だけに絞る */
   pageId: z.string().min(1).max(100).optional(),
+  /** 日時の並び。省くと新しい順 */
+  order: z.enum(["desc", "asc"]).default("desc"),
   limit: z.coerce.number().int().min(1).max(WORKFLOW_RUNS_LIMIT_MAX).default(WORKFLOW_RUNS_LIMIT_DEFAULT),
   cursor: z.string().max(100).optional(),
 });
