@@ -32,7 +32,7 @@ import { PageAudioSection } from "../components/PageAudio";
 import { PageCover, PageCoverPicker, useSetCover } from "../components/PageCover";
 import { PageIconButton, PageIconPicker } from "../components/PageIcon";
 import { PageMenu } from "../components/PageMenu";
-import { PageTagChips } from "../components/PageTagPicker";
+import { PageTagToggles } from "../components/PageTagPicker";
 import { PublishBadge, PublishMenu } from "../components/PublishMenu";
 import { SaveStatus, saveState } from "../components/SaveStatus";
 import { StarButton } from "../components/StarButton";
@@ -519,8 +519,8 @@ export function EditorPage({ pageId, historyVersionId }: { pageId: string; histo
                 {counter.kind === "over" && " 本文は、このまま保存されます。"}
               </Typography>
             )}
-            {/* 付いている管理用タグ。付け外しは「…」メニューの「タグ…」から */}
-            <PageTagChips tags={p.tags} />
+            {/* 管理用タグ。メニューを開かずに、ここで付け外しする */}
+            <PageTagToggles pageId={pageId} tags={p.tags} />
             <PageIconPicker pageId={pageId} icon={p.icon} anchorEl={titleRow.current} open={iconPickerOpen} onClose={() => setIconPickerOpen(false)} />
             {/* 本文が空のうちは、テンプレートから始められる（サイドバーの「＋」などで作ったばかりのページ） */}
             {draft.bodyMd.trim() === "" && (

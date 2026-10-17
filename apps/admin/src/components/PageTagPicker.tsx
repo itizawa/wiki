@@ -1,13 +1,14 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink } from "@tanstack/react-router";
-import type { PageDetail, PageTag, WikiTag } from "@wiki/shared";
-import { Check, Settings, Tag } from "lucide-react";
+import type { PageDetail, PageTag } from "@wiki/shared";
+import { Check, Plus, Settings, Tag, X } from "lucide-react";
 import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
@@ -16,6 +17,33 @@ import { screenLink, useWiki } from "../lib/wiki";
 import { Muted } from "./ui";
 
 const MenuItemLink = createLink(MenuItem);
+
+/**
+ * タグの付け外し。押すとすぐ反映し（応答を待たずに見た目を変える）、失敗したら元に戻して理由を返す。
+ * 編集画面が開いているページと同じキャッシュを使うので、メニューとタイトル下のどちらで付け外ししても、表示が揃う。
+ */
+export function usePageTagToggle(pageId: string, current: readonly PageTag[] | undefined) {
+  const qc = useQueryClient();
+  // 直近の付け外しの失敗。次に押すまで、メニューの先頭に出しておく
+  const [failure, setFailure] = useState<string | null>(null);
+  const attached = new Set(current?.map((t) => t.id));
+
+  const toggle = useMutation({
+    mutationFn: ({ tag, on }: { tag: PageTag; on: boolean }) => (on ? api.attachTag(pageId, tag.id) : api.detachTag(pageId, tag.id)),
+    onMutate: async ({ tag, on }) => {
+      setFailure(null);
+      await qc.cancelQueries({ queryKey: ["page", pageId] });
+      qc.setQueryData<PageDetail>(["page", pageId], (cur) => cur && { ...cur, tags: withTag(cur.tags, tag, on) });
+    },
+    // 失敗したぶんだけ戻す（続けて押した、ほかのタグの先取りは残す）
+    onError: (err, { tag, on }) => {
+      qc.setQueryData<PageDetail>(["page", pageId], (cur) => cur && { ...cur, tags: withTag(cur.tags, tag, !on) });
+      setFailure(`タグ「${tag.name}」を${on ? "付け" : "外せ"}ませんでした：${errorMessage(err)}`);
+    },
+    onSettled: () => invalidateAfterTagChange(qc, pageId),
+  });
+  return { failure, toggle, attached };
+}
 
 /**
  * ページにタグを付け外しするメニュー。ページメニュー（編集画面）と、サイドバーの行メニューの両方から開く。
@@ -29,29 +57,11 @@ export function PageTagMenu(props: {
   onClose: () => void;
 }) {
   const { pageId, open } = props;
-  const qc = useQueryClient();
   const { role } = useWiki();
   const tags = useQuery({ queryKey: ["tags"], queryFn: api.listTags, enabled: open });
   // 編集画面が開いているページと同じキャッシュを使うので、どちらで付け外ししても、もう一方の表示が揃う
   const page = useQuery({ queryKey: ["page", pageId], queryFn: () => api.getPage(pageId), enabled: open });
-  // 直近の付け外しの失敗。次に押すまで、メニューの先頭に出しておく
-  const [failure, setFailure] = useState<string | null>(null);
-  const attached = new Set(page.data?.tags.map((t) => t.id));
-
-  const toggle = useMutation({
-    mutationFn: ({ tag, on }: { tag: WikiTag; on: boolean }) => (on ? api.attachTag(pageId, tag.id) : api.detachTag(pageId, tag.id)),
-    onMutate: async ({ tag, on }) => {
-      setFailure(null);
-      await qc.cancelQueries({ queryKey: ["page", pageId] });
-      qc.setQueryData<PageDetail>(["page", pageId], (cur) => cur && { ...cur, tags: withTag(cur.tags, tag, on) });
-    },
-    // 失敗したぶんだけ戻す（続けて押した、ほかのタグの先取りは残す）
-    onError: (err, { tag, on }) => {
-      qc.setQueryData<PageDetail>(["page", pageId], (cur) => cur && { ...cur, tags: withTag(cur.tags, tag, !on) });
-      setFailure(`タグ「${tag.name}」を${on ? "付け" : "外せ"}ませんでした：${errorMessage(err)}`);
-    },
-    onSettled: () => invalidateAfterTagChange(qc, pageId),
-  });
+  const { failure, toggle, attached } = usePageTagToggle(pageId, page.data?.tags);
 
   const error = tags.error ?? page.error;
   const ready = tags.data && page.data;
@@ -106,16 +116,47 @@ export function PageTagMenu(props: {
   );
 }
 
-/** 付いているタグの表示（編集画面のタイトルの下）。押せるようには見せない。 */
-export function PageTagChips({ tags }: { tags: readonly PageTag[] }) {
-  if (tags.length === 0) return null;
+/**
+ * 編集画面のタイトルの下に置く、タグの付け外し。付いているタグを並べ、マウスを載せると右に「×」が出て、押すと外れる。
+ * 「＋」は常に出ていて、押すとタグの一覧（メニュー）が開き、そこから付ける。
+ * 余白を足すなら、外側の `ul`（gap と mb）か、各タグを包む `li` に足す。
+ */
+export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonly PageTag[] }) {
+  const { failure, toggle } = usePageTagToggle(pageId, tags);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   return (
-    <Box component="ul" aria-label="付いているタグ" sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, listStyle: "none", m: 0, mb: 1.5, p: 0 }}>
-      {tags.map((t) => (
-        <li key={t.id}>
-          <Chip size="small" variant="outlined" icon={<Tag size={14} />} label={t.name} sx={{ maxWidth: "100%", cursor: "default" }} />
+    <Box sx={{ mb: 1.5 }}>
+      <Box component="ul" aria-label="タグ" sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75, listStyle: "none", m: 0, p: 0 }}>
+        {tags.map((tag) => (
+          <li key={tag.id}>
+            <Chip
+              size="small"
+              icon={<Tag size={14} />}
+              label={tag.name}
+              onDelete={() => toggle.mutate({ tag, on: false })}
+              deleteIcon={<X size={14} aria-label={`タグ「${tag.name}」を外す`} />}
+              sx={{
+                maxWidth: "100%",
+                // ×は、マウスを載せたとき・キーボードで選んだときに出す。マウスを使えない端末（hover が無い）では常に出す
+                "& .MuiChip-deleteIcon": { opacity: 0 },
+                "&:hover .MuiChip-deleteIcon, &:focus-visible .MuiChip-deleteIcon": { opacity: 1 },
+                "@media (hover: none)": { "& .MuiChip-deleteIcon": { opacity: 1 } },
+              }}
+            />
+          </li>
+        ))}
+        <li>
+          <IconButton size="small" aria-label="タグを付ける" aria-haspopup="menu" aria-expanded={anchorEl !== null} onClick={(e) => setAnchorEl(e.currentTarget)}>
+            <Plus size={18} />
+          </IconButton>
         </li>
-      ))}
+      </Box>
+      {failure && (
+        <Muted role="alert" sx={{ mt: 0.75, color: "error.main", fontSize: "0.8125rem" }}>
+          {failure}
+        </Muted>
+      )}
+      <PageTagMenu pageId={pageId} anchorEl={anchorEl} open={anchorEl !== null} onClose={() => setAnchorEl(null)} />
     </Box>
   );
 }
