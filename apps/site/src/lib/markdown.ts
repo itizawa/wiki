@@ -20,7 +20,7 @@ import {
   type LinkCardData,
   type TileOptions,
 } from "@wiki/shared";
-import { Marked, type Tokens } from "marked";
+import { Marked, Renderer, type Tokens } from "marked";
 import { createHighlighter } from "shiki";
 
 export type RenderOptions = {
@@ -296,6 +296,11 @@ export function renderArticle(md: string, opts: RenderOptions): { html: string; 
           `<figure class="map-embed"><iframe src="${escapeHtml(map.embedSrc)}" title="Google マップ" loading="lazy" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-same-origin"></iframe>` +
           `<figcaption><a href="${href}" rel="noopener">Google マップで開く</a></figcaption></figure>\n`
         );
+      },
+      // 表は、横にスクロールできる箱で包む（収まらない表は、ページではなく表だけが横に動く）。
+      // キーボードでもスクロールできるよう、箱にフォーカスが届くようにし、名前を付ける
+      table(token: Tokens.Table) {
+        return `<div class="table-scroll" tabindex="0" role="region" aria-label="表">\n${Renderer.prototype.table.call(this, token)}</div>\n`;
       },
       html(token: Tokens.HTML | Tokens.Tag) {
         return escapeHtml(token.text);

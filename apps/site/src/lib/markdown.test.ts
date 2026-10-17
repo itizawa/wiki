@@ -424,3 +424,19 @@ describe("@audio（本文に置いた音声の印）", () => {
     expect(renderMarkdown(`文 @audio ${id}`, opts)).toContain("@audio");
   });
 });
+
+describe("表（横にスクロールできる箱で包む）", () => {
+  const md = "| アプリ | 役割 |\n| --- | --- |\n| `apps/admin` | 管理画面 |";
+  it("表を、キーボードで届く名前つきの箱で包む", () => {
+    const html = renderMarkdown(md, { publicPaths });
+    expect(html).toMatch(/^<div class="table-scroll" tabindex="0" role="region" aria-label="表">\n<table>/);
+    expect(html.trimEnd()).toMatch(/<\/table>\n<\/div>$/);
+    expect(html).toContain("<th>アプリ</th>");
+    expect(html).toContain("<td><code>apps/admin</code></td>");
+  });
+  it("セルの中のリンクも、ふつうのリンクと同じ扱いにする", () => {
+    const html = renderMarkdown("| a |\n| --- |\n| [公開](/p/abcdefghij) [非公開](/p/zzzzzzzzzz) |", { publicPaths });
+    expect(html).toContain('<a href="/p/abcdefghij">公開</a>');
+    expect(html).not.toContain("zzzzzzzzzz");
+  });
+});
