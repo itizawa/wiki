@@ -1,14 +1,14 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
-import Link from "@mui/material/Link";
+import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink } from "@tanstack/react-router";
-import type { PageDetail, PageTag, WikiTag } from "@wiki/shared";
-import { Check, Settings, Tag } from "lucide-react";
+import type { PageDetail, PageTag } from "@wiki/shared";
+import { Check, Plus, Settings, Tag, X } from "lucide-react";
 import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
@@ -29,7 +29,7 @@ export function usePageTagToggle(pageId: string, current: readonly PageTag[] | u
   const attached = new Set(current?.map((t) => t.id));
 
   const toggle = useMutation({
-    mutationFn: ({ tag, on }: { tag: WikiTag; on: boolean }) => (on ? api.attachTag(pageId, tag.id) : api.detachTag(pageId, tag.id)),
+    mutationFn: ({ tag, on }: { tag: PageTag; on: boolean }) => (on ? api.attachTag(pageId, tag.id) : api.detachTag(pageId, tag.id)),
     onMutate: async ({ tag, on }) => {
       setFailure(null);
       await qc.cancelQueries({ queryKey: ["page", pageId] });
@@ -117,61 +117,47 @@ export function PageTagMenu(props: {
 }
 
 /**
- * 編集画面のタイトルの下に置く、タグの付け外し。ウィキにあるタグを並べ、付いているものは塗って「レ」を付ける。押すと付け外しする。
+ * 編集画面のタイトルの下に置く、タグの付け外し。付いているタグを並べ、マウスを載せると右に「×」が出て、押すと外れる。
+ * 「＋」は常に出ていて、押すとタグの一覧（メニュー）が開き、そこから付ける。
  * タグの左右の余白は `tagChipSx`（一覧のタグ列・絞り込みと共通）。タグ同士の間は外側の `ul` の gap。
  */
 export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonly PageTag[] }) {
-  const { role } = useWiki();
-  const all = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
-  const { failure, toggle, attached } = usePageTagToggle(pageId, tags);
-  if (all.error) {
-    return (
-      <Muted role="alert" sx={{ mb: 1.5, color: "error.main", fontSize: "0.8125rem" }}>
-        タグを読み込めませんでした：{errorMessage(all.error)}
-      </Muted>
-    );
-  }
-  const list = all.data?.tags ?? [];
-  if (list.length === 0) {
-    // 作れるのは管理者だけ。作る場所へ案内する
-    return role === "admin" && all.data ? (
-      <Box sx={{ mb: 1.5 }}>
-        <Link {...screenLink("/w/$wikiKey/settings/tags")} variant="body2">
-          タグを作る（設定のタグ管理）
-        </Link>
-      </Box>
-    ) : null;
-  }
+  const { failure, toggle } = usePageTagToggle(pageId, tags);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   return (
     <Box sx={{ mb: 1.5 }}>
-      <Box component="ul" aria-label="タグ" sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, listStyle: "none", m: 0, p: 0 }}>
-        {list.map((tag) => {
-          const on = attached.has(tag.id);
-          return (
-            <li key={tag.id}>
-              <Chip
-                size="small"
-                clickable
-                component="button"
-                type="button"
-                role="switch"
-                aria-checked={on}
-                variant={on ? "filled" : "outlined"}
-                color={on ? "primary" : "default"}
-                icon={on ? <Check size={14} /> : <Tag size={14} />}
-                label={tag.name}
-                onClick={() => toggle.mutate({ tag, on: !on })}
-                sx={{ maxWidth: "100%", ...tagChipSx }}
-              />
-            </li>
-          );
-        })}
+      <Box component="ul" aria-label="タグ" sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.75, listStyle: "none", m: 0, p: 0 }}>
+        {tags.map((tag) => (
+          <li key={tag.id}>
+            <Chip
+              size="small"
+              icon={<Tag size={14} />}
+              label={tag.name}
+              onDelete={() => toggle.mutate({ tag, on: false })}
+              deleteIcon={<X size={14} aria-label={`タグ「${tag.name}」を外す`} />}
+              sx={{
+                maxWidth: "100%",
+                ...tagChipSx,
+                // ×は、マウスを載せたとき・キーボードで選んだときに出す。マウスを使えない端末（hover が無い）では常に出す
+                "& .MuiChip-deleteIcon": { opacity: 0 },
+                "&:hover .MuiChip-deleteIcon, &:focus-visible .MuiChip-deleteIcon": { opacity: 1 },
+                "@media (hover: none)": { "& .MuiChip-deleteIcon": { opacity: 1 } },
+              }}
+            />
+          </li>
+        ))}
+        <li>
+          <IconButton size="small" aria-label="タグを付ける" aria-haspopup="menu" aria-expanded={anchorEl !== null} onClick={(e) => setAnchorEl(e.currentTarget)}>
+            <Plus size={18} />
+          </IconButton>
+        </li>
       </Box>
       {failure && (
         <Muted role="alert" sx={{ mt: 0.75, color: "error.main", fontSize: "0.8125rem" }}>
           {failure}
         </Muted>
       )}
+      <PageTagMenu pageId={pageId} anchorEl={anchorEl} open={anchorEl !== null} onClose={() => setAnchorEl(null)} />
     </Box>
   );
 }
