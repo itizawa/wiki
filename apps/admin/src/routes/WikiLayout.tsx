@@ -13,6 +13,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type C
 import { createPortal } from "react-dom";
 import { CommandMenu } from "../components/CommandMenu";
 import { ConfirmHost } from "../components/ConfirmDialog";
+import { NotificationBell } from "../components/NotificationBell";
 import { ToastHost } from "../components/Toast";
 import { ShortcutGuide } from "../components/ShortcutGuide";
 import { Sidebar, SIDEBAR_WIDTH } from "../components/Sidebar";
@@ -308,6 +309,7 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
               email={email}
               name={name}
               pictureUrl={pictureUrl}
+              notifications
               onCollapse={peek ? undefined : () => setOpen(false)}
               onPin={peek ? () => setOpen(true) : undefined}
               onNavigate={peek ? sidebarPeek.close : undefined}
@@ -349,6 +351,10 @@ function Shell({ email, name, pictureUrl, onLogout }: { email: string; name: str
             {wiki.name}
           </Typography>
           <Box ref={setBarSlot} sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 0.5, flexShrink: 1, minWidth: 0 }} />
+          {/* 通知のベルは、画面ごとの操作のさらに右（どの画面でも同じ場所） */}
+          <Box sx={{ flexShrink: 0, ml: 0.5 }}>
+            <NotificationBell />
+          </Box>
         </Box>
       )}
       {/* 狭い画面では、サイドバーを本文に重ねて出す。「視差効果を減らす」が有効なら、滑らせずにすぐ出し入れする */}
