@@ -6,6 +6,7 @@ import { decryptToken } from "../crypto/token";
 import type { Db } from "../db/client";
 import { pages, pageTags, wikis, wikiTags, workflowRoutines, workflowRunActions, workflowRuns } from "../db/schema";
 import { HttpError } from "../errors";
+import { notifyWorkflowRunFinished } from "../notifications/service";
 import { detachTag } from "../tags/service";
 import { createTask, taskStatus } from "../tasks/service";
 import { attachTagAndEnqueue } from "./enqueue";
@@ -46,7 +47,8 @@ const failure = (reason: string, message: string, retryable = false): ActionResu
  *   戻した実行は、Cron（`retry.ts` の `runDueWorkflowRuns`）が拾ってもう一度呼ぶ。`attempts` が `WORKFLOW_MAX_ATTEMPTS` に達した失敗は、再試行できるものでも `failed` で確定する
  * - 「人の作業」は、タスクを作って実行を `waiting` にし、そこで止める（Cron は拾わない）。タスクを完了にすると、実行が `pending` に戻り
  *   （`tasks/service.ts` の `updateTask`）、もう一度このアクションから動く。そのときは、タスクが完了していれば成功にして次へ進む（タスクを作り直さない）
- * - `failed` で確定したときは、監査ログ（`workflow_run_fail`）を書く（通知は、Cron の `runDueWorkflowRuns` が `notified_at` の無い失敗を返して頼む）
+ * - `failed` で確定したときは、監査ログ（`workflow_run_fail`）を書く（外への通知は、Cron の `runDueWorkflowRuns` が `notified_at` の無い失敗を返して頼む）
+ * - `succeeded` か `failed` で確定したときは、その wiki の管理者に管理画面の通知を作る（同じトランザクション）。`waiting`・`pending` に戻す・`skipped` は終わりではないので知らせない
  * - 実行の直前に、ページがゴミ箱・完全に削除済み、wiki がアーカイブ中なら、何も呼ばずに `skipped`
  * Routine の呼び出しは、トランザクションの外で行う（相手が遅くても、接続を握らない）。投げない設計だが、DB の失敗などで落ちたら実行は `running` のまま残る
  * （`claimed_at` から一定時間たったものを、Cron が拾い直す）。
@@ -114,7 +116,7 @@ async function executeOne(db: Db, deps: RunDeps, runId: string, now: () => Date,
     await failRun(db, run, { title: page.title }, action.type, outcome.message, now());
     return "failed";
   }
-  await finish(db, run.id, "succeeded", null, now());
+  await succeedRun(db, run, { title: page.title }, now());
   return "succeeded";
 }
 
@@ -133,19 +135,31 @@ async function claim(db: Db, runId: string, at: Date): Promise<RunRow | null> {
   });
 }
 
-/** 終わらせる。`pending` に戻すときは、完了の時刻を入れない */
-async function finish(db: Db, runId: string, status: RunStatus | "skipped", error: string | null, at: Date): Promise<void> {
+/** 再試行待ちに戻す（完了の時刻を入れない）か、飛ばす。成功・失敗の確定は、通知を作る `succeedRun` / `failRun` を通す */
+async function finish(db: Db, runId: string, status: "pending" | "skipped", error: string | null, at: Date): Promise<void> {
   await db
     .update(workflowRuns)
     .set({ status, lastError: error, finishedAt: status === "pending" ? null : at })
     .where(eq(workflowRuns.id, runId));
 }
 
-/** 失敗で確定させる：実行を `failed` にして、監査ログを書く（同じトランザクション）。通知は、ここでは頼まない（`notified_at` が空のまま、Cron が拾う） */
+/** 成功で確定させる：実行を `succeeded` にして、管理者に通知を作る（同じトランザクション） */
+async function succeedRun(db: Db, run: RunRow, page: { title: string }, at: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.update(workflowRuns).set({ status: "succeeded", lastError: null, finishedAt: at }).where(eq(workflowRuns.id, run.id));
+    await notifyWorkflowRunFinished(tx, run, { status: "succeeded" }, page);
+  });
+}
+
+/**
+ * 失敗で確定させる：実行を `failed` にして、監査ログを書き、管理者に管理画面の通知を作る（同じトランザクション）。
+ * 外への通知は、ここでは頼まない（`notified_at` が空のまま、Cron が拾う）
+ */
 export async function failRun(db: Db, run: RunRow, page: { title: string }, actionType: string, message: string, at: Date): Promise<void> {
   const error = message.slice(0, ERROR_MAX);
   await db.transaction(async (tx) => {
     await tx.update(workflowRuns).set({ status: "failed", lastError: error, finishedAt: at }).where(eq(workflowRuns.id, run.id));
+    await notifyWorkflowRunFinished(tx, run, { status: "failed", error }, page);
     await writeAudit(tx, {
       wikiId: run.wikiId,
       actor: WORKFLOW_ACTOR,

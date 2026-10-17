@@ -923,6 +923,35 @@ export const auditLogs = pgTable(
   ],
 );
 
+/**
+ * 通知：管理画面の中で、宛先の1人に知らせる（`apps/api/src/notifications/service.ts`）。同じ出来事でも宛先ごとに1行。
+ * 読む・既読にするのは、宛先の本人が、その wiki の経路からだけ。移る先はパス（`link`）で持ち、実行やワークフローが消えても行は残す
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    /** 種類（shared の NOTIFICATION_KINDS） */
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    /** 管理画面のパス（`/w/{key}/...`）。無ければ null */
+    link: text("link"),
+    createdAt: createdAt(),
+    /** 既読にした日時。未読なら null */
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("notifications_kind_check", sql`${t.kind} in ('workflow_run_succeeded', 'workflow_run_failed')`),
+    index("notifications_user_idx").on(t.userId, t.wikiId, t.createdAt, t.id),
+    index("notifications_user_unread_idx").on(t.userId, t.wikiId).where(sql`${t.readAt} is null`),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // 外部のアプリ（MCP クライアント）からの操作：OAuth 2.1
 // トークン・認可コードは平文を持たず、SHA-256 のハッシュだけを持つ
