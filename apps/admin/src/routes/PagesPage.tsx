@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { StarButton } from "../components/StarButton";
-import { Field, Muted, RouterLink, Row, Section, StatusChip } from "../components/ui";
+import { Field, Muted, RouterLink, Row, Section, StatusChip, tagChipSx } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import type { PagesSearch } from "../lib/pagesSearch";
 import { pageLink } from "../lib/wiki";
@@ -87,7 +87,7 @@ export function PagesPage() {
         p.tags.length > 0 ? (
           <Row sx={{ gap: 0.5 }}>
             {p.tags.map((t) => (
-              <Chip key={t.id} label={t.name} size="small" variant="outlined" />
+              <Chip key={t.id} label={t.name} size="small" variant="outlined" sx={tagChipSx} />
             ))}
           </Row>
         ) : null,
@@ -141,7 +141,7 @@ export function PagesPage() {
                     icon={selected ? <Check size={16} /> : undefined}
                     onClick={() => selectTag(selected ? undefined : t.id)}
                     onDelete={selected ? () => selectTag(undefined) : undefined}
-                    sx={{ minHeight: 32 }}
+                    sx={{ minHeight: 32, ...tagChipSx }}
                   />
                 </li>
               );

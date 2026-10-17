@@ -266,8 +266,9 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 | `list_routines` | 設定 | ワークフローで選べる Routine の名前の一覧（登録は管理画面の「Routine」タブだけ） |
 | `list_workflows` / `create_workflow` / `rename_workflow` / `delete_workflow` | 設定 | ワークフローの一覧（ブロックつき）・作成・名前の変更・削除（その wiki の管理者だけ） |
 | `create_workflow_block` / `update_workflow_block` / `delete_workflow_block` | 設定 | ブロックを足す・置き換える・消す。タグと Routine は ID ではなく名前で指す（無い名前は 404） |
+| `get_home` / `update_home` | 設定 | 公開サイトのトップ（`/`）の設定（`introMd` の自由記述と、グリッドの `blocks`）を読む・保存する（その wiki の管理者だけ）。`update_home` は全体を置き換え、保存するとすぐ公開サイトをビルドし直す。検証は管理画面と同じ（`blocks` は 12 個まで、重なる配置は `invalid_input`）。`blocks` を省くか null にすると配置なし |
 
-- スコープ：`wiki.read`（公開中のページを読む。必ず含む）、`wiki.write`（作る・更新・移動）、`wiki.private`（非公開・限定公開のページも読み書きする）、`wiki.publish`（公開・非公開化・予約）、`wiki.delete`（削除＝ゴミ箱に入れる・ゴミ箱の一覧・元に戻す）、`wiki.suggest`（編集リクエストを出す・読む・返信する・取り下げる。下の「編集リクエスト」）、`wiki.admin`（wiki の作成と、タグ・ワークフローの設定。表の「設定」）
+- スコープ：`wiki.read`（公開中のページを読む。必ず含む）、`wiki.write`（作る・更新・移動）、`wiki.private`（非公開・限定公開のページも読み書きする）、`wiki.publish`（公開・非公開化・予約）、`wiki.delete`（削除＝ゴミ箱に入れる・ゴミ箱の一覧・元に戻す）、`wiki.suggest`（編集リクエストを出す・読む・返信する・取り下げる。下の「編集リクエスト」）、`wiki.admin`（wiki の作成と、タグ・ワークフロー・トップページの設定。表の「設定」）
   - 同意の画面では、`wiki.read` `wiki.write` `wiki.suggest` 以外は既定で外してある。アプリが依頼したものの中から、人が一つずつ選んで許す
   - `wiki.publish` を許したアプリは、人の確認を通さずに公開できる。外のアプリは許した人の代わりとして扱う
   - `wiki.admin` は、許可した人のロールの範囲でだけ効く：wiki を作れるのはオーナー、タグとワークフローを変えられるのはその wiki の管理者（オーナーはどの wiki でも管理者）。ほかのロールの人が許しても、道具は 403（`owner_only` / `admin_only`）を返す。同意の画面では既定で外してある
