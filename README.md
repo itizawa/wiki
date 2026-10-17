@@ -571,6 +571,17 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 - タスクを作る・割り当てる・状態を変えるのは `apps/api/src/tasks/service.ts` の `createTask` / `updateTask` だけ（担当者への通知を足すときは、ここに足す）
 - データ：`tasks`（`wiki_id` / `title` / `description` / `status`（`todo` `in_progress` `done`）/ `assignee_id` / `page_id` / `workflow_id`（ワークフローを消すと null）/ `run_id`（実行が消えると null）/ `run_position` / `completed_at` / `completed_by`）
 
+## 通知（管理画面の中だけ）
+
+起きたことを、管理画面の中で人に知らせる。メール・Slack など外へは送らない（ワークフローの失敗を外へ知らせる `NOTIFY_WEBHOOK_URL` は、これとは別のまま）。
+
+- いま届くのは、ワークフローの実行が成功・失敗で確定したとき。宛先はその wiki の管理者全員（メンバーのロールが管理者の人。メンバーに入っていないオーナーには届かない）。作業待ち（`waiting`）・再試行待ち・飛ばした実行は知らせない。再試行で終わる実行は、最後に成功・失敗が決まったときに1回だけ。実行を積んだ時点で失敗として記録したもの（版が無い・繰り返しが多すぎる）も知らせない
+- 画面：広い画面ではサイドバーの最上段、狭い画面では上の帯に、ベルのボタンと未読の数を出す（1分おきと、画面に戻ったときに取り直す）。押すと、開いている wiki の自分宛ての通知を新しい順に出す。1件を押すと既読にして、その画面（ワークフローの詳細。実行の履歴がある）へ移る。「すべて既読にする」で未読をまとめて既読にできる
+- 通知は wiki ごと。読めるのも既読にできるのも宛先の本人だけで、ほかの人宛ての通知は ID を指しても 404
+- API（`/admin/w/{key}/notifications`。自分宛てのものだけ）：`GET /`（`unread`・`limit`・`cursor`）・`GET /count`（未読の数）・`PATCH /{id}`（`{ read }`）・`POST /read-all`
+- 通知を作るのは `apps/api/src/notifications/service.ts` の `createNotifications` だけ。ほかの出来事（タスクの割り当てなど）を足すときは、種類（`packages/shared/src/notification.ts` の `NOTIFICATION_KINDS` と、テーブルの check）を足し、その出来事のトランザクションの中でこれを呼ぶ
+- データ：`notifications`（`wiki_id` / `user_id`（宛先）/ `kind` / `title` / `body` / `link`（管理画面のパス）/ `created_at` / `read_at`（未読なら null））。古い通知を消す掃除は、まだ無い
+
 ## スマホから使う（PWA）
 
 管理画面はホーム画面に置ける（Web App Manifest と Service Worker。`apps/admin/vite.config.ts` の `vite-plugin-pwa`）。置いたものから開くと、ブラウザの枠なしで出る。

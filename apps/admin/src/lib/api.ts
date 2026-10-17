@@ -54,6 +54,9 @@ import type {
   PageTagList,
   RoutineChoiceList,
   TagList,
+  Notification,
+  NotificationCount,
+  NotificationPage,
   Task,
   TaskCount,
   TaskPage,
@@ -409,6 +412,12 @@ export const api = {
   getTask: (id: string) => request<Task>("GET", w(`/tasks/${id}`)),
   countTodoTasks: () => request<TaskCount>("GET", w("/tasks/count")),
   updateTask: (id: string, input: UpdateTaskInput) => request<Task>("PATCH", w(`/tasks/${id}`), input),
+  /** 自分宛ての、開いている wiki の通知（新しい順）。`cursor` で続きを取る */
+  listNotifications: (input: { limit: number; cursor?: string }) =>
+    request<NotificationPage>("GET", w(`/notifications${query({ limit: String(input.limit), cursor: input.cursor })}`)),
+  countUnreadNotifications: () => request<NotificationCount>("GET", w("/notifications/count")),
+  markNotification: (id: string, read: boolean) => request<Notification>("PATCH", w(`/notifications/${id}`), { read }),
+  markAllNotificationsRead: () => request<{ updated: number }>("POST", w("/notifications/read-all")),
 
   listWorkflowRuns: (workflowId: string, input: { status?: WorkflowRunStatus[]; pageId?: string[]; order?: "asc" | "desc"; limit: number; cursor?: string }) =>
     request<WorkflowRunPage>("GET", w(`/workflow/${workflowId}/runs${query({ status: input.status?.join(","), pageId: input.pageId?.join(","), order: input.order, limit: String(input.limit), cursor: input.cursor })}`)),

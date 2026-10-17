@@ -32,6 +32,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Snackbar from "@mui/material/Snackbar";
 import type { SxProps, Theme } from "@mui/material/styles";
+import { NotificationBell } from "./NotificationBell";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -137,6 +138,8 @@ export function Sidebar(props: {
   /** Google アカウントの画像の URL。無ければ null（表示名の頭文字を出す） */
   pictureUrl: string | null;
   onCollapse?: () => void;
+  /** 最上段に通知のベルを出す（広い画面。狭い画面では、上の帯に出すので出さない） */
+  notifications?: boolean;
   /** 重ねて一時的に開いているとき、「常に開く」に切り替える */
   onPin?: () => void;
   onNavigate?: () => void;
@@ -194,6 +197,7 @@ export function Sidebar(props: {
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 1, pr: 1.5, pt: 1.5, pb: 1 }}>
         <WikiSwitcher onNavigate={props.onNavigate} />
+        {props.notifications && <NotificationBell onNavigate={props.onNavigate} />}
         {props.onCollapse && (
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
