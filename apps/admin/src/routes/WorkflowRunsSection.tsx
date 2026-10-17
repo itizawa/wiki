@@ -61,7 +61,7 @@ export function runResultText(run: WorkflowRunEntry): string {
     case "running":
       return "実行しています";
     case "waiting":
-      return "人の作業（タスク）の完了を待っています。サイドバーの「タスク」で完了にすると、続きから動きます";
+      return "タスクの完了を待っています（完了にすると続きから動きます）";
     case "succeeded":
       return `${run.actions.length} 件のアクションを実行しました`;
     case "failed":

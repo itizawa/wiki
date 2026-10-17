@@ -231,7 +231,7 @@ export type WorkflowRunStatus = (typeof WORKFLOW_RUN_STATUSES)[number];
 export const WORKFLOW_RUN_STATUS_LABELS: Record<WorkflowRunStatus, string> = {
   pending: "実行待ち",
   running: "実行中",
-  waiting: "人の作業待ち",
+  waiting: "作業待ち",
   succeeded: "成功",
   failed: "失敗",
   skipped: "見送り",
