@@ -2,19 +2,24 @@ name: CI
 
 on:
   pull_request:
+    # Draft の間は走らせない（下の check の if）。Draft を外したとき（ready_for_review）に走る。
+    # 既定の種類（opened / synchronize / reopened）に ready_for_review を足している
+    types: [opened, synchronize, reopened, ready_for_review]
     # 文書だけの変更では走らせない
     paths-ignore:
       - "**/*.md"
   # main への push では deploy.yml がこれを呼んでからデプロイする
   workflow_call:
     inputs:
-      # false なら、型チェックとビルドだけにする（テストは PR で済ませている）
-      tests:
+      # false なら、管理画面のビルドだけにする（型チェックとテストと公開サイトのビルド検査は、PR で済ませている）
+      verify:
         type: boolean
         default: true
 
 jobs:
   check:
+    # Draft の PR では動かさない。PR 以外（デプロイの前の確認）は常に動かす
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
       affected: ${{ steps.scope.outputs.affected }}
@@ -47,8 +52,9 @@ jobs:
           echo "$scope" >> "$GITHUB_OUTPUT"
           echo "$scope"
 
-      - run: pnpm ${{ steps.scope.outputs.filter }} typecheck
-      - if: github.event_name == 'pull_request' || inputs.tests
+      - if: github.event_name == 'pull_request' || inputs.verify
+        run: pnpm ${{ steps.scope.outputs.filter }} typecheck
+      - if: github.event_name == 'pull_request' || inputs.verify
         run: pnpm ${{ steps.scope.outputs.filter }} test
       - if: contains(steps.scope.outputs.affected, '@wiki/admin')
         run: pnpm --filter @wiki/admin build
@@ -74,7 +80,7 @@ jobs:
           path: apps/admin/dist
           key: admin-dist-${{ github.sha }}
       # サンプルのマニフェストで公開サイトをビルドし、限定公開の漏れ等を検査する
-      - if: contains(steps.scope.outputs.affected, '@wiki/site')
+      - if: contains(steps.scope.outputs.affected, '@wiki/site') && (github.event_name == 'pull_request' || inputs.verify)
         run: pnpm --filter @wiki/site build:sample
 
   # 管理画面と API を、本番と同じ1つの Worker（wrangler dev）で立て、ブラウザで操作して確かめる（apps/e2e）。
@@ -169,7 +175,20 @@ jobs:
           echo "E2E の管理画面: $how"
           echo "E2E の管理画面: $how" >> "$GITHUB_STEP_SUMMARY"
 
-      - run: pnpm --filter @wiki/e2e exec playwright install --with-deps chromium
+      # Playwright のブラウザ（Chromium）は、Playwright の版ごとにキャッシュする（毎回の取得は約 100MB）。
+      # OS のライブラリ（apt）はキャッシュできないので、見つかったときも install-deps で入れる
+      - name: Get Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter @wiki/e2e exec playwright --version | awk '{print $NF}')" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @wiki/e2e exec playwright install --with-deps chromium
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @wiki/e2e exec playwright install-deps chromium
       - name: Run E2E
         env:
           E2E_ADMIN_DIST: ${{ steps.admin.outputs.dist }}
