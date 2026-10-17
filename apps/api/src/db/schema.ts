@@ -520,6 +520,11 @@ export const workflowActions = pgTable(
     tagId: uuid("tag_id").references(() => wikiTags.id),
     /** 「Routine を呼ぶ」で Routine に渡す依頼文（call_routine のときだけ） */
     instruction: text("instruction"),
+    /** 「人の作業」で作るタスクの題と説明（create_task のときだけ） */
+    taskTitle: text("task_title"),
+    taskDescription: text("task_description"),
+    /** 「人の作業」で作るタスクの担当者（create_task のときだけ。null なら担当者なし） */
+    assigneeId: uuid("assignee_id").references(() => users.id),
   },
   (t) => [
     unique("workflow_actions_block_position_unique").on(t.blockId, t.position),
@@ -527,7 +532,7 @@ export const workflowActions = pgTable(
     index("workflow_actions_tag_idx").on(t.tagId),
     check(
       "workflow_actions_type_check",
-      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.instruction} is not null and ${t.tagId} is null) or (${t.type} in ('remove_tag', 'add_tag') and ${t.tagId} is not null and ${t.routineId} is null)`,
+      sql`(${t.type} = 'call_routine' and ${t.routineId} is not null and ${t.instruction} is not null and ${t.tagId} is null) or (${t.type} in ('remove_tag', 'add_tag') and ${t.tagId} is not null and ${t.routineId} is null) or (${t.type} = 'create_task' and ${t.taskTitle} is not null and ${t.taskDescription} is not null and ${t.routineId} is null and ${t.tagId} is null)`,
     ),
   ],
 );
@@ -535,7 +540,7 @@ export const workflowActions = pgTable(
 /**
  * ワークフローの実行：タグが付いたときに、ブロックごとに1件積む。Routine へ渡す文にも `id` を入れ、二重実行の目印にする。
  * ブロック・タグ・版は、消えても記録を残すので外部キーにしない（`block_id` だけ、消えたら null）。
- * 状態：pending（待ち。再試行で戻すのもここ）／running（実行中。落ちるとここに残る）／succeeded／failed／skipped
+ * 状態：pending（待ち。再試行で戻すのもここ）／running（実行中。落ちるとここに残る）／waiting（「人の作業」のタスクの完了待ち。Cron は拾わない）／succeeded／failed／skipped
  */
 export const workflowRuns = pgTable(
   "workflow_runs",
@@ -570,7 +575,7 @@ export const workflowRuns = pgTable(
     index("workflow_runs_status_idx").on(t.status, t.createdAt),
     index("workflow_runs_wiki_idx").on(t.wikiId, t.createdAt),
     index("workflow_runs_workflow_idx").on(t.workflowId, t.createdAt),
-    check("workflow_runs_status_check", sql`${t.status} in ('pending', 'running', 'succeeded', 'failed', 'skipped')`),
+    check("workflow_runs_status_check", sql`${t.status} in ('pending', 'running', 'waiting', 'succeeded', 'failed', 'skipped')`),
   ],
 );
 
@@ -587,6 +592,10 @@ export const workflowRunActions = pgTable(
     tagId: uuid("tag_id"),
     /** 積んだ時点の依頼文の写し（call_routine のときだけ） */
     instruction: text("instruction"),
+    /** 積んだ時点の、作るタスクの題・説明・担当者の写し（create_task のときだけ） */
+    taskTitle: text("task_title"),
+    taskDescription: text("task_description"),
+    assigneeId: uuid("assignee_id"),
     status: text("status").notNull().default("pending"),
     result: jsonb("result"),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
@@ -594,6 +603,38 @@ export const workflowRunActions = pgTable(
   (t) => [
     primaryKey({ columns: [t.runId, t.position] }),
     check("workflow_run_actions_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
+  ],
+);
+
+/**
+ * タスク：人が進める作業（`apps/api/src/tasks/service.ts`）。いまは、ワークフローの「人の作業」のアクションが作り、止めた実行（`run_id`）に紐づく。
+ * 完了にすると、その実行が続きから動く。実行が消えても（90日で掃除・ワークフローの削除）、タスクは残す（`run_id` は null）。
+ * 担当者は任意（null なら、その wiki のメンバーなら誰でも拾える）
+ */
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    status: text("status").notNull().default("todo"),
+    assigneeId: uuid("assignee_id").references(() => users.id),
+    pageId: text("page_id").references(() => pages.id),
+    workflowId: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
+    runId: uuid("run_id").references(() => workflowRuns.id, { onDelete: "set null" }),
+    /** 実行の中の、どのアクションが作ったか（`workflow_run_actions.position`） */
+    runPosition: integer("run_position"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedBy: uuid("completed_by").references(() => users.id),
+  },
+  (t) => [
+    index("tasks_wiki_idx").on(t.wikiId, t.createdAt),
+    index("tasks_wiki_status_idx").on(t.wikiId, t.status, t.createdAt),
+    index("tasks_run_idx").on(t.runId),
+    check("tasks_status_check", sql`${t.status} in ('todo', 'in_progress', 'done')`),
   ],
 );
 
@@ -879,6 +920,35 @@ export const auditLogs = pgTable(
     index("audit_logs_created_idx").on(t.createdAt, t.id),
     index("audit_logs_actor_idx").on(t.actorUserId, t.createdAt),
     index("audit_logs_target_idx").on(t.targetType, t.targetId),
+  ],
+);
+
+/**
+ * 通知：管理画面の中で、宛先の1人に知らせる（`apps/api/src/notifications/service.ts`）。同じ出来事でも宛先ごとに1行。
+ * 読む・既読にするのは、宛先の本人が、その wiki の経路からだけ。移る先はパス（`link`）で持ち、実行やワークフローが消えても行は残す
+ */
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wikiId: wikiId(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    /** 種類（shared の NOTIFICATION_KINDS） */
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    /** 管理画面のパス（`/w/{key}/...`）。無ければ null */
+    link: text("link"),
+    createdAt: createdAt(),
+    /** 既読にした日時。未読なら null */
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("notifications_kind_check", sql`${t.kind} in ('workflow_run_succeeded', 'workflow_run_failed')`),
+    index("notifications_user_idx").on(t.userId, t.wikiId, t.createdAt, t.id),
+    index("notifications_user_unread_idx").on(t.userId, t.wikiId).where(sql`${t.readAt} is null`),
   ],
 );
 

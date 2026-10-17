@@ -42,6 +42,7 @@ import { api, errorMessage } from "../lib/api";
 import { useSession } from "./Layout";
 import { ACTION_UI, draftActionSummary, draftTriggerSummary, TRIGGER_UI, type Lookups } from "./workflowKinds";
 import { FlowCard, FlowConnector } from "./WorkflowFlow";
+import { assigneeChoices } from "./taskView";
 
 /** ブロックの節の id（履歴が空のときの案内から、ここへ移る） */
 export const BLOCKS_SECTION_ID = "workflow-blocks";
@@ -53,6 +54,9 @@ const ROUTINES_KEY = ["routine-choices"];
 const DEFAULT_SCHEDULE_TIME = "09:00";
 const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
+/** アクションの編集の入力の、空の形（種類ごとの欄はすべて空） */
+const EMPTY_ACTION: Omit<WorkflowDraft["actions"][number], "type"> = { routineId: "", tagId: "", instruction: "", title: "", description: "", assigneeId: "" };
+
 /** 編集の入力 → API に送る形（選び終えていることは、呼ぶ前に `workflowDraftProblem` で確かめてある） */
 export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
   return {
@@ -62,7 +66,17 @@ export function draftToInput(draft: WorkflowDraft): WorkflowBlockInput {
         : draft.triggerType === "schedule"
           ? { type: "schedule", pageId: draft.pageId, time: draft.time, weekdays: [...draft.weekdays].sort((a, b) => a - b) }
           : { type: "page_first_published" },
-    actions: draft.actions.map((a): WorkflowActionInput => (a.type === "call_routine" ? { type: "call_routine", routineId: a.routineId, instruction: a.instruction.trim() } : { type: a.type, tagId: a.tagId })),
+    actions: draft.actions.map((a): WorkflowActionInput => {
+      switch (a.type) {
+        case "call_routine":
+          return { type: "call_routine", routineId: a.routineId, instruction: a.instruction.trim() };
+        case "create_task":
+          return { type: "create_task", title: a.title.trim(), description: a.description.trim(), assigneeId: a.assigneeId || null };
+        case "remove_tag":
+        case "add_tag":
+          return { type: a.type, tagId: a.tagId };
+      }
+    }),
   };
 }
 
@@ -74,10 +88,14 @@ export function blockToDraft(block: WorkflowBlock): WorkflowDraft {
     time: block.trigger.type === "schedule" ? block.trigger.time : DEFAULT_SCHEDULE_TIME,
     weekdays: block.trigger.type === "schedule" ? block.trigger.weekdays : ALL_WEEKDAYS,
     actions: block.actions.map((a) => ({
+      ...EMPTY_ACTION,
       type: a.type,
       routineId: a.type === "call_routine" ? a.routineId : "",
-      tagId: a.type === "call_routine" ? "" : a.tagId,
+      tagId: a.type === "remove_tag" || a.type === "add_tag" ? a.tagId : "",
       instruction: a.type === "call_routine" ? a.instruction : "",
+      title: a.type === "create_task" ? a.title : "",
+      description: a.type === "create_task" ? a.description : "",
+      assigneeId: a.type === "create_task" ? (a.assigneeId ?? "") : "",
     })),
   };
 }
@@ -273,9 +291,10 @@ type DraftAction = WorkflowDraft["actions"][number] & { key: number };
 /** 作る・編集のダイアログ。選び終えていない欄があれば、保存ボタンの横に理由を出す */
 function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: string; block: WorkflowBlock | null; onClose: () => void; onDone: (message: string) => void }) {
   const qc = useQueryClient();
-  const { isOwner } = useSession();
   const tags = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
   const routines = useQuery({ queryKey: ROUTINES_KEY, queryFn: api.listRoutineChoices });
+  const session = useSession();
+  const members = useQuery({ queryKey: ["members"], queryFn: api.listMembers });
   const nextKey = useRef(0);
   const withKey = (a: WorkflowDraft["actions"][number]): DraftAction => ({ ...a, key: nextKey.current++ });
   const initial: WorkflowDraft = block ? blockToDraft(block) : { triggerType: "tag_attached", tagId: "", pageId: "", time: DEFAULT_SCHEDULE_TIME, weekdays: ALL_WEEKDAYS, actions: [] };
@@ -328,13 +347,13 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
     save.reset();
   };
   const addAction = () => {
-    const added = withKey(routineList.length > 0 ? { type: "call_routine", routineId: "", tagId: "", instruction: DEFAULT_ROUTINE_INSTRUCTION } : { type: "remove_tag", routineId: "", tagId: "", instruction: "" });
+    const added = withKey(routineList.length > 0 ? { ...EMPTY_ACTION, type: "call_routine", instruction: DEFAULT_ROUTINE_INSTRUCTION } : { ...EMPTY_ACTION, type: "remove_tag" });
     setActions((xs) => [...xs, added]);
     // 足したカードは、すぐ選べるように開いておく
     setOpenKeys((ks) => new Set(ks).add(added.key));
     save.reset();
   };
-  const lookups: Lookups = { tags: tagList, routines: routineList };
+  const lookups: Lookups = { tags: tagList, routines: routineList, members: assigneeChoices(members.data?.members ?? [], session) };
   const triggerSummary = draftTriggerSummary(draft, lookups, pageTitle);
 
   return (
@@ -357,7 +376,7 @@ function BlockDialog({ workflowId, block, onClose, onDone }: { workflowId: strin
           {noRoutines && (
             <Alert severity="info" sx={{ mb: 2 }}>
               Routine がまだ登録されていないため、「Routine を呼ぶ」は選べません。
-              {isOwner ? (
+              {session.isOwner ? (
                 <>
                   {" "}
                   <RouterLink to="/routines">「全体の管理」の「Routine」</RouterLink>で登録してください。

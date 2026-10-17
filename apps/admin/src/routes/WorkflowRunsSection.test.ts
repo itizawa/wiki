@@ -1,6 +1,6 @@
 import type { WorkflowRunEntry, WorkflowRunPage } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { refetchIntervalFor, runResultText, runTriggerText, RUNS_REFETCH_MS } from "./WorkflowRunsSection";
+import { INSTRUCTION_PREVIEW_LINES, isLongInstruction, refetchIntervalFor, runResultText, runTriggerText, RUNS_REFETCH_MS } from "./WorkflowRunsSection";
 
 const run = (patch: Partial<WorkflowRunEntry>): WorkflowRunEntry => ({
   id: "r",
@@ -26,6 +26,7 @@ describe("runResultText", () => {
     expect(runResultText(run({ status: "pending", attempts: 0 }))).toBe("実行を待っています");
     expect(runResultText(run({ status: "pending", attempts: 1, error: "タイムアウト" }))).toContain("タイムアウト");
     expect(runResultText(run({ status: "running" }))).toBe("実行しています");
+    expect(runResultText(run({ status: "waiting" }))).toContain("タスク");
   });
 });
 
@@ -43,5 +44,16 @@ describe("runTriggerText", () => {
   it("shows the tag name, or 初めての公開 for a run that no tag started", () => {
     expect(runTriggerText(run({}))).toBe("校正待ち");
     expect(runTriggerText(run({ triggerType: "page_first_published", tagName: null }))).toBe("初めての公開");
+  });
+});
+
+describe("isLongInstruction", () => {
+  it("keeps a short instruction open, and folds one that runs past the preview lines", () => {
+    expect(isLongInstruction("誤字を直してください")).toBe(false);
+    expect(isLongInstruction(Array.from({ length: INSTRUCTION_PREVIEW_LINES }, (_, i) => `${i + 1}行目`).join("\n"))).toBe(false);
+    expect(isLongInstruction(Array.from({ length: INSTRUCTION_PREVIEW_LINES + 1 }, (_, i) => `${i + 1}行目`).join("\n"))).toBe(true);
+  });
+  it("counts a long line as the lines it wraps into", () => {
+    expect(isLongInstruction("あ".repeat(400))).toBe(true);
   });
 });

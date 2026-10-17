@@ -1,5 +1,5 @@
 import { Calendar, ChartColumn, Check, FileText, ChevronRight, ChevronsLeft, ChevronsUpDown, Command, House, Keyboard, LayoutTemplate, Link, Lock, LogOut, MonitorSmartphone, Pin, Plus, Puzzle, Search, Settings, SlidersHorizontal, Star, Trash2, Workflow } from "lucide-react";
-import { GitPullRequestArrow } from "lucide-react";
+import { GitPullRequestArrow, ListTodo } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -32,6 +32,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Snackbar from "@mui/material/Snackbar";
 import type { SxProps, Theme } from "@mui/material/styles";
+import { NotificationBell } from "./NotificationBell";
 import { Tooltip } from "./Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -43,6 +44,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { api, errorMessage, type StructureResponse, type StructureTree } from "../lib/api";
 import { pageLink, screenLink, useWiki, type WikiScreen } from "../lib/wiki";
 import { useOpenEditRequestPageCount } from "../lib/editRequests";
+import { useTodoTaskCount } from "../lib/tasks";
 import { useCreatePage } from "../lib/createPage";
 import { moveStar, useStars } from "../lib/stars";
 import { usePersistentState } from "../lib/storage";
@@ -134,6 +136,8 @@ export function Sidebar(props: {
   /** Google アカウントの画像の URL。無ければ null（表示名の頭文字を出す） */
   pictureUrl: string | null;
   onCollapse?: () => void;
+  /** 最上段に通知のベルを出す（広い画面。狭い画面では、上の帯に出すので出さない） */
+  notifications?: boolean;
   /** 重ねて一時的に開いているとき、「常に開く」に切り替える */
   onPin?: () => void;
   onNavigate?: () => void;
@@ -180,6 +184,7 @@ export function Sidebar(props: {
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 1, pr: 1.5, pt: 1.5, pb: 1 }}>
         <WikiSwitcher onNavigate={props.onNavigate} />
+        {props.notifications && <NotificationBell onNavigate={props.onNavigate} />}
         {props.onCollapse && (
           <Tooltip title="サイドバーを閉じる (⌘.)">
             <IconButton size="small" aria-label="サイドバーを閉じる" onClick={props.onCollapse}>
@@ -207,6 +212,7 @@ export function Sidebar(props: {
           すべてのページ
         </NavItem>
         <EditRequestsNavItem onClick={props.onNavigate} />
+        <TasksNavItem onClick={props.onNavigate} />
         <NavItem to="/w/$wikiKey/calendar" icon={<Calendar size={18} />} onClick={props.onNavigate}>
           編集カレンダー
         </NavItem>
@@ -587,18 +593,32 @@ const visuallyHidden = { position: "absolute", width: "1px", height: "1px", over
 function EditRequestsNavItem({ onClick }: { onClick?: () => void }) {
   const count = useOpenEditRequestPageCount();
   return (
-    <NavItem
-      to="/w/$wikiKey/requests"
-      icon={<GitPullRequestArrow size={18} />}
-      onClick={onClick}
-      badge={
-        count !== undefined && count > 0 ? (
+    <NavItem to="/w/$wikiKey/requests" icon={<GitPullRequestArrow size={18} />} onClick={onClick} badge={<NavCount count={count} what="未対応のリクエストがあるページ" />}>
+      編集リクエスト
+    </NavItem>
+  );
+}
+
+/** タスク（ワークフローの「人の作業」）の入口。未着手の数を出す */
+function TasksNavItem({ onClick }: { onClick?: () => void }) {
+  const count = useTodoTaskCount();
+  return (
+    <NavItem to="/w/$wikiKey/tasks" icon={<ListTodo size={18} />} onClick={onClick} badge={<NavCount count={count} what="未着手のタスク" />}>
+      タスク
+    </NavItem>
+  );
+}
+
+/** ナビ項目の右の件数。0件・読み込み中は出さない。`what` は何の数か（ツールチップと読み上げに使う） */
+function NavCount({ count, what }: { count: number | undefined; what: string }) {
+  if (count === undefined || count === 0) return null;
+  return (
           <>
             <Box
               component="span"
               // 数字だけでは何の数か伝わらないので、ツールチップと読み上げ（すぐ下）には言葉で出す
               aria-hidden
-              title={`未対応のリクエストがあるページ ${count} 件`}
+              title={`${what} ${count} 件`}
               sx={{
                 flexShrink: 0,
                 minWidth: 20,
@@ -616,14 +636,9 @@ function EditRequestsNavItem({ onClick }: { onClick?: () => void }) {
               {count > 99 ? "99+" : count}
             </Box>
             <Box component="span" sx={visuallyHidden}>
-              （未対応のリクエストがあるページ {count} 件）
+              （{what} {count} 件）
             </Box>
           </>
-        ) : undefined
-      }
-    >
-      編集リクエスト
-    </NavItem>
   );
 }
 

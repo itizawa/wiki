@@ -37,6 +37,23 @@ describe("draft conversion", () => {
   });
 });
 
+describe("draft conversion: 人の作業", () => {
+  it("keeps the title, description and assignee, and sends no assignee as null", () => {
+    const task: WorkflowBlock = {
+      ...block,
+      actions: [
+        { type: "create_task", title: "録音する", description: "台本を読む", assigneeId: "u1", assigneeName: "録音係" },
+        { type: "create_task", title: "確かめる", description: "", assigneeId: null, assigneeName: null },
+      ],
+    };
+    expect(blockToDraft(task).actions[1]).toMatchObject({ type: "create_task", title: "確かめる", assigneeId: "", tagId: "", routineId: "" });
+    expect(draftToInput(blockToDraft(task)).actions).toEqual([
+      { type: "create_task", title: "録音する", description: "台本を読む", assigneeId: "u1" },
+      { type: "create_task", title: "確かめる", description: "", assigneeId: null },
+    ]);
+  });
+});
+
 describe("draft conversion: 初めて公開されたとき", () => {
   it("has no tag in either direction", () => {
     const first: WorkflowBlock = { ...block, trigger: { type: "page_first_published" }, actions: [block.actions[0]!] };

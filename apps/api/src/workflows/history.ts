@@ -39,7 +39,7 @@ function readResult(result: unknown): { sessionUrl: string | null; error: string
 /**
  * そのワークフローの実行を日時の順（`order`。省くと新しい順）に返す（`limit` 件と、続きの `nextCursor`）。`status`・`pageId`（どちらもカンマ区切りで複数。どれかに当たる実行だけ）で絞れる。
  * アクションは、実行を積んだ時点の写し（`workflow_run_actions`）から作る。ブロックが消えていても、記録だけで要約を言える。
- * 応答に入れるのは、状態・理由の文・Routine のセッション URL だけ（トークンは、記録にも入っていない）。
+ * 応答に入れるのは、状態・理由の文・Routine のセッション URL・Routine へ頼んだ内容だけ（トークンは、記録にも入っていない）。
  */
 export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: string, query: WorkflowRunsQuery): Promise<WorkflowRunPage> {
   const conds = [eq(workflowRuns.wikiId, wikiId), eq(workflowRuns.workflowId, workflowId)];
@@ -81,14 +81,18 @@ export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: strin
     const action: WorkflowAction =
       a.type === "remove_tag" || a.type === "add_tag"
         ? { type: a.type, tagId: a.tagId ?? "", tagName: tagName.get(a.tagId ?? "") ?? DELETED_TAG }
-        : { type: "call_routine", routineId: a.routineId ?? "", routineName: routineName.get(a.routineId ?? "") ?? DELETED_ROUTINE, instruction: a.instruction ?? "" };
+        : a.type === "create_task"
+          ? { type: "create_task", title: a.taskTitle ?? "", description: a.taskDescription ?? "", assigneeId: a.assigneeId, assigneeName: null }
+          : { type: "call_routine", routineId: a.routineId ?? "", routineName: routineName.get(a.routineId ?? "") ?? DELETED_ROUTINE, instruction: a.instruction ?? "" };
     return describeAction(action);
   };
 
   const byRun = new Map<string, WorkflowRunActionEntry[]>();
   for (const a of actionRows) {
     const { sessionUrl, error } = readResult(a.result);
-    const entry: WorkflowRunActionEntry = { type: a.type as WorkflowActionType, label: labelOf(a), status: a.status as WorkflowRunActionEntry["status"], sessionUrl, error };
+    // 依頼の文は、積んだ時点の写し。写す前の古い実行は null（空の文も、出すものが無いので null）
+    const instruction = a.type === "call_routine" && a.instruction ? a.instruction : null;
+    const entry: WorkflowRunActionEntry = { type: a.type as WorkflowActionType, label: labelOf(a), status: a.status as WorkflowRunActionEntry["status"], sessionUrl, instruction, error };
     byRun.set(a.runId, [...(byRun.get(a.runId) ?? []), entry]);
   }
 

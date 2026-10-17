@@ -4,6 +4,8 @@ import {
   describeAction,
   describeTrigger,
   ROUTINE_INSTRUCTION_MAX,
+  TASK_DESCRIPTION_MAX,
+  TASK_TITLE_MAX,
   TRIGGER_KINDS,
   type WorkflowAction,
   type WorkflowActionType,
@@ -11,7 +13,7 @@ import {
   type WorkflowTrigger,
   type WorkflowTriggerType,
 } from "@wiki/shared";
-import { Bot, CalendarClock, Rocket, Tag, TagPlus, TagX, type LucideIcon } from "lucide-react";
+import { Bot, CalendarClock, Rocket, Tag, TagPlus, TagX, UserRoundCheck, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { HelpTip } from "../components/HelpTip";
 import { Field } from "../components/ui";
@@ -24,9 +26,10 @@ import { Field } from "../components/ui";
  * `draftToInput` / `blockToDraft`（編集の入力 ⇔ API の形）にも足す。
  */
 
-/** 選ぶ欄に出す候補（タグ・Routine の ID と名前） */
+/** 選ぶ欄に出す候補（タグ・Routine・担当者の ID と名前） */
 export type Choice = { id: string; name: string };
-export type Lookups = { tags: Choice[]; routines: Choice[] };
+/** `members`：「人の作業」の担当者にできる人（メンバーと、自分） */
+export type Lookups = { tags: Choice[]; routines: Choice[]; members: Choice[] };
 
 export type DraftActionFields = WorkflowDraft["actions"][number];
 
@@ -135,6 +138,61 @@ export const ACTION_UI: Record<WorkflowActionType, ActionUi> = {
   },
   remove_tag: tagAction("remove_tag", TagX, "外す"),
   add_tag: tagAction("add_tag", TagPlus, "付ける"),
+  create_task: {
+    icon: UserRoundCheck,
+    fromDraft: (a, l) => {
+      if (!a.title.trim()) return null;
+      const assigneeName = a.assigneeId ? (nameOf(l.members, a.assigneeId) ?? "メンバーでない人") : null;
+      return { type: "create_task", title: a.title.trim(), description: a.description.trim(), assigneeId: a.assigneeId || null, assigneeName };
+    },
+    detail: (a) => (a.description.trim() ? `説明：${instructionPreview(a.description)}` : null),
+    Fields: ({ index, action, onChange, lookups }) => (
+      <>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "flex-start" }}>
+          <Field
+            fullWidth
+            label={`${index} 番目のタスクの題`}
+            value={action.title}
+            onChange={(e) => onChange({ title: e.target.value })}
+            placeholder="例：ナレーションを録音する"
+            error={action.title.trim().length > TASK_TITLE_MAX}
+            helperText={`${action.title.trim().length} / ${TASK_TITLE_MAX} 文字`}
+          />
+          <HelpTip about="人の作業">
+            ここまで進むと、対象のページのタスクを作り、実行を止めて待ちます。サイドバーの「タスク」でそのタスクを「完了」にすると、次のアクションから続きます。人が録音・撮影・確認などをしてから、次の工程（Routine やタグの付け替え）へ進めたいときに使います。
+          </HelpTip>
+        </Box>
+        <Field
+          multiline
+          minRows={2}
+          fullWidth
+          label={`${index} 番目のタスクの説明（任意）`}
+          value={action.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder="例：台本のページを読み、声を録って音声を添付してください"
+          error={action.description.trim().length > TASK_DESCRIPTION_MAX}
+          helperText={`${action.description.trim().length} / ${TASK_DESCRIPTION_MAX} 文字`}
+        />
+        <Field
+          select
+          fullWidth
+          label={`${index} 番目のタスクの担当者`}
+          value={action.assigneeId}
+          onChange={(e) => onChange({ assigneeId: e.target.value })}
+          helperText="決めなければ、この wiki のメンバーなら誰でも拾って進められます。"
+          slotProps={{ select: { native: true } }}
+        >
+          <option value="">担当者なし（メンバーの誰でも）</option>
+          {lookups.members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+          {action.assigneeId && !lookups.members.some((m) => m.id === action.assigneeId) && <option value={action.assigneeId}>メンバーでない人</option>}
+        </Field>
+      </>
+    ),
+  },
 };
 
 /** 要約の文と、選び終えているか。選び終えていなければ「種類の名前（未設定）」にする */

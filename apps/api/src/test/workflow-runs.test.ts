@@ -164,6 +164,12 @@ describe("workflow runs: enqueue", () => {
     expect(texts).toHaveLength(2);
     expect(texts[0]!.startsWith("最初の依頼\n")).toBe(true);
     expect(texts[1]!.startsWith("新しい依頼\n")).toBe(true);
+
+    // 実行の履歴でも、それぞれの実行で頼んだ内容が読める（Claude のセッションを開かなくても）
+    const history = (await ctx.call("GET", `${W}/workflow/${await defaultWorkflowId(ctx.call)}/runs`)).body.runs as { actions: { instruction: string | null; sessionUrl: string | null }[] }[];
+    const asked = history.map((r) => r.actions[0]!);
+    expect(asked.map((a) => a.instruction).sort()).toEqual(["新しい依頼", "最初の依頼"].sort());
+    expect(asked.every((a) => a.sessionUrl === SESSION.claude_code_session_url)).toBe(true);
   });
 
   it("records a failed run without calling anything when the page has no version", async () => {

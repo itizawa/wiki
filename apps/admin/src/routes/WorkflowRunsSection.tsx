@@ -18,8 +18,8 @@ import {
   type WorkflowRunPage,
   type WorkflowRunStatus,
 } from "@wiki/shared";
-import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircle } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircle, UserRoundCheck } from "lucide-react";
+import { useId, useState, type ReactElement } from "react";
 import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
 import { ListToolbar, appliedFiltersText, filterValues, type ActiveFilter, type FilterField, type SortField, type SortValue } from "../components/ListToolbar";
@@ -54,6 +54,7 @@ export const RUNS_REFETCH_MS = 30_000;
 const STATUS_VIEW: Record<WorkflowRunStatus, { color: "default" | "success" | "error" | "warning" | "info"; icon: ReactElement }> = {
   pending: { color: "info", icon: <Clock size={14} /> },
   running: { color: "info", icon: <LoaderCircle size={14} /> },
+  waiting: { color: "warning", icon: <UserRoundCheck size={14} /> },
   succeeded: { color: "success", icon: <CircleCheck size={14} /> },
   failed: { color: "error", icon: <CircleAlert size={14} /> },
   skipped: { color: "default", icon: <CircleMinus size={14} /> },
@@ -71,6 +72,8 @@ export function runResultText(run: WorkflowRunEntry): string {
       return run.attempts > 0 ? `${run.attempts} 回試して失敗。もう一度試すのを待っています${run.error ? `（${run.error}）` : ""}` : "実行を待っています";
     case "running":
       return "実行しています";
+    case "waiting":
+      return "タスクの完了を待っています（完了にすると続きから動きます）";
     case "succeeded":
       return `${run.actions.length} 件のアクションを実行しました`;
     case "failed":
@@ -162,7 +165,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         variant="subtitle1"
         component="h2"
         sx={{ mb: 1 }}
-        help="ブロックのトリガー（タグが付いたとき・初めて公開されたとき・決まった時刻）で積まれた実行の記録です。はじめは新しい順に並び（上の「日時」のチップで古い順にできます）、「＋ フィルター」でページや状態で絞れます。終わってから90日たった記録は、毎日の掃除で消えます。実行待ちや実行中の行があるあいだは、30秒ごとに最新の状態に取り直します。失敗した実行は、「詳細を見る」から、理由と Routine のセッションを開けます。"
+        help="ブロックのトリガー（タグが付いたとき・初めて公開されたとき・決まった時刻）で積まれた実行の記録です。はじめは新しい順に並び（上の「日時」のチップで古い順にできます）、「＋ フィルター」でページや状態で絞れます。終わってから90日たった記録は、毎日の掃除で消えます。実行待ちや実行中の行があるあいだは、30秒ごとに最新の状態に取り直します。「詳細を見る」から、Routine に頼んだ内容と失敗の理由を読めます。Routine を呼べた実行は、そのセッションも開けます。"
       >
         実行の履歴
       </HelpHeading>
@@ -214,7 +217,51 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
 
 const ACTION_STATUS_LABELS: Record<WorkflowRunActionEntry["status"], string> = { pending: "未実行", succeeded: "成功", failed: "失敗" };
 
-/** 実行の詳細：アクションごとの結果。Routine のセッションは外部リンク、失敗の理由はそのまま読める。 */
+/** 頼んだ内容を、はじめに見せる行数。これより長い文は折りたたむ */
+export const INSTRUCTION_PREVIEW_LINES = 4;
+/** 詳細の欄の幅で、1行におおよそ入る文字数（折り返しで行が増える分の目安） */
+const INSTRUCTION_CHARS_PER_LINE = 36;
+
+/** 頼んだ内容が、はじめに見せる行数に収まらないか（収まらなければ、折りたたんで「すべて表示」を出す） */
+export function isLongInstruction(text: string): boolean {
+  const lines = text.split("\n").reduce((n, line) => n + Math.max(1, Math.ceil(line.length / INSTRUCTION_CHARS_PER_LINE)), 0);
+  return lines > INSTRUCTION_PREVIEW_LINES;
+}
+
+/** Routine に頼んだ内容。改行はそのまま出し、長い文ははじめの数行だけにして、押すと全文を出す */
+function RoutineInstruction({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const id = useId();
+  const long = isLongInstruction(text);
+  const clamped = long && !expanded;
+  return (
+    <Box>
+      <Typography variant="caption" component="p" color="text.secondary">
+        頼んだ内容
+      </Typography>
+      {/* 余白は外の箱に持たせる（行を絞る箱に余白があると、隠した行の頭がのぞく） */}
+      <Box id={id} sx={{ bgcolor: "action.hover", borderLeft: 3, borderColor: "divider", borderRadius: 1, px: 1.5, py: 1 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            ...(clamped && { display: "-webkit-box", WebkitLineClamp: INSTRUCTION_PREVIEW_LINES, WebkitBoxOrient: "vertical", overflow: "hidden" }),
+          }}
+        >
+          {text}
+        </Typography>
+      </Box>
+      {long && (
+        <Button size="small" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-controls={id} sx={{ px: 0, minWidth: 0 }}>
+          {expanded ? "頼んだ内容を折りたたむ" : "頼んだ内容をすべて表示する"}
+        </Button>
+      )}
+    </Box>
+  );
+}
+
+/** 実行の詳細：アクションごとの結果。Routine に頼んだ内容と失敗の理由はそのまま読め、Routine のセッションは外部リンクで開ける。 */
 function RunDialog({ run, onClose }: { run: WorkflowRunEntry; onClose: () => void }) {
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="workflow-run-title">
@@ -255,6 +302,7 @@ function RunDialog({ run, onClose }: { run: WorkflowRunEntry; onClose: () => voi
                     {ACTION_STATUS_LABELS[a.status]}
                   </Box>
                 </Typography>
+                {a.instruction && <RoutineInstruction text={a.instruction} />}
                 {a.error && (
                   <Typography variant="body2" color={a.status === "failed" ? "error" : "text.secondary"}>
                     {a.status === "failed" ? "失敗の理由" : "直近の失敗の理由"}：{a.error}

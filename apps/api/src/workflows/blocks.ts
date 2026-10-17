@@ -10,10 +10,10 @@ import {
   type WorkflowTriggerInput,
   type WorkflowTriggerType,
 } from "@wiki/shared";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { type AuditActor, actorUserId, writeAudit } from "../audit/service";
 import type { Db } from "../db/client";
-import { pages, wikis, wikiTags, workflowActions, workflowBlocks, workflowRoutines } from "../db/schema";
+import { pages, users, wikiMembers, wikis, wikiTags, workflowActions, workflowBlocks, workflowRoutines } from "../db/schema";
 import { markCronWork } from "../cron/marks";
 import { HttpError, notFound } from "../errors";
 import { nextSlot } from "./schedule";
@@ -25,7 +25,8 @@ import { nextSlot } from "./schedule";
  */
 
 type ActionRow = typeof workflowActions.$inferSelect;
-type ActionColumns = Pick<typeof workflowActions.$inferInsert, "routineId" | "tagId" | "instruction">;
+type ActionColumns = Pick<typeof workflowActions.$inferInsert, "routineId" | "tagId" | "instruction" | "taskTitle" | "taskDescription" | "assigneeId">;
+const NO_ACTION_COLUMNS: ActionColumns = { routineId: null, tagId: null, instruction: null, taskTitle: null, taskDescription: null, assigneeId: null };
 
 /** アクションの種類ごとの、DB の列との対応と、参照の確かめ */
 const ACTION_COLUMNS: {
@@ -37,25 +38,40 @@ const ACTION_COLUMNS: {
   };
 } = {
   call_routine: {
-    toColumns: (a) => ({ routineId: a.routineId, tagId: null, instruction: a.instruction }),
+    toColumns: (a) => ({ ...NO_ACTION_COLUMNS, routineId: a.routineId, instruction: a.instruction }),
     check: (ctx, a) => {
       if (!ctx.routines.has(a.routineId)) throw badRef("unknown_routine", `routine ${a.routineId} is not registered`);
     },
     toAction: (row, ctx) => ({ type: "call_routine", routineId: row.routineId!, routineName: ctx.routines.get(row.routineId!) ?? "", instruction: row.instruction ?? "" }),
   },
   remove_tag: {
-    toColumns: (a) => ({ routineId: null, tagId: a.tagId, instruction: null }),
+    toColumns: (a) => ({ ...NO_ACTION_COLUMNS, tagId: a.tagId }),
     check: (ctx, a) => {
       if (!ctx.tags.has(a.tagId)) throw badRef("unknown_tag", `tag ${a.tagId} is not in this wiki`);
     },
     toAction: (row, ctx) => ({ type: "remove_tag", tagId: row.tagId!, tagName: ctx.tags.get(row.tagId!) ?? "" }),
   },
   add_tag: {
-    toColumns: (a) => ({ routineId: null, tagId: a.tagId, instruction: null }),
+    toColumns: (a) => ({ ...NO_ACTION_COLUMNS, tagId: a.tagId }),
     check: (ctx, a) => {
       if (!ctx.tags.has(a.tagId)) throw badRef("unknown_tag", `tag ${a.tagId} is not in this wiki`);
     },
     toAction: (row, ctx) => ({ type: "add_tag", tagId: row.tagId!, tagName: ctx.tags.get(row.tagId!) ?? "" }),
+  },
+  create_task: {
+    toColumns: (a) => ({ ...NO_ACTION_COLUMNS, taskTitle: a.title, taskDescription: a.description, assigneeId: a.assigneeId }),
+    // 担当者は任意。決めたなら、この wiki のメンバー（かオーナー）であること
+    check: (ctx, a) => {
+      if (a.assigneeId && !ctx.users.has(a.assigneeId)) throw badRef("unknown_assignee", `user ${a.assigneeId} is not a member of this wiki`);
+    },
+    toAction: (row, ctx) => ({
+      type: "create_task",
+      title: row.taskTitle ?? "",
+      description: row.taskDescription ?? "",
+      assigneeId: row.assigneeId,
+      // メンバーから外れた人は、名前を引けないので「メンバーでない人」と出す（タスクを作るときは、担当者なしで作る）
+      assigneeName: row.assigneeId ? (ctx.users.get(row.assigneeId) ?? "メンバーでない人") : null,
+    }),
   },
 };
 
@@ -98,14 +114,21 @@ const TRIGGER_COLUMNS: {
   },
 };
 
-type Refs = { tags: Map<string, string>; routines: Map<string, string>; /** ページの ID → タイトル（時刻で起動するブロックの対象のページだけ） */ pages: Map<string, string> };
+type Refs = {
+  tags: Map<string, string>;
+  routines: Map<string, string>;
+  /** ページの ID → タイトル（時刻で起動するブロックの対象のページだけ） */
+  pages: Map<string, string>;
+  /** 担当者にできる人（この wiki のメンバーとオーナー）の ID → 名前 */
+  users: Map<string, string>;
+};
 type Names = Refs;
 
 const badRef = (code: string, message: string) => new HttpError(400, code, message);
 
 /** その wiki のタグと、登録済みの Routine（ID → 名前）。参照の確かめと、名前の表示に使う */
 async function loadNames(db: Db, wikiId: string, pageIds: string[] = [], opts: { liveOnly?: boolean } = {}): Promise<Names> {
-  const [tags, routines, pageRows] = await Promise.all([
+  const [tags, routines, pageRows, userRows] = await Promise.all([
     db.select({ id: wikiTags.id, name: wikiTags.name }).from(wikiTags).where(eq(wikiTags.wikiId, wikiId)),
     db.select({ id: workflowRoutines.id, name: workflowRoutines.name }).from(workflowRoutines),
     pageIds.length > 0
@@ -114,11 +137,16 @@ async function loadNames(db: Db, wikiId: string, pageIds: string[] = [], opts: {
           .from(pages)
           .where(and(eq(pages.wikiId, wikiId), inArray(pages.id, pageIds), ...(opts.liveOnly ? [isNull(pages.deletedAt), isNull(pages.purgedAt)] : [])))
       : [],
+    db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(or(eq(users.isOwner, true), inArray(users.id, db.select({ id: wikiMembers.userId }).from(wikiMembers).where(eq(wikiMembers.wikiId, wikiId))))),
   ]);
   return {
     tags: new Map(tags.map((t) => [t.id, t.name])),
     routines: new Map(routines.map((r) => [r.id, r.name])),
     pages: new Map(pageRows.map((p) => [p.id, p.title])),
+    users: new Map(userRows.map((u) => [u.id, u.name || u.email])),
   };
 }
 
