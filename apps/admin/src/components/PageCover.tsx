@@ -9,6 +9,7 @@ import { ImagePlus } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { COVER_PRESETS, COVER_UPLOAD_LIMIT_LABEL, COVER_UPLOAD_TYPES, IMAGE_MAX_BYTES, coverPresetPath, findCoverPreset, type PageDetail } from "@wiki/shared";
 import { useEffect, useState } from "react";
+import type { SxProps, Theme } from "@mui/material/styles";
 import type { ImageRule } from "../editor/imageFile";
 import { api, errorMessage } from "../lib/api";
 import { ImageUploader } from "./ImageUploader";
@@ -19,6 +20,33 @@ const COVER_HEIGHT = { xs: 120, sm: 200 };
 /** カバーにアップロードできる画像。本文の画像と同じ上限で、動く GIF だけ除く */
 const COVER_RULE: ImageRule = { types: COVER_UPLOAD_TYPES, maxBytes: IMAGE_MAX_BYTES, limitLabel: COVER_UPLOAD_LIMIT_LABEL };
 
+/** カバーの上の「変更」「削除」を入れる箱に付ける class。出し方は `coverSx` で切り替える */
+export const COVER_ACTIONS_CLASS = "cover-actions";
+
+const ACTIONS_SHOWN = { opacity: 1, pointerEvents: "auto" } as const;
+
+/**
+ * カバー（画像の箱）の見た目。「変更」「削除」は普段は隠し、カバーを見せる。
+ * - 隠すときは透明にするだけ（`display: none` にしない）。Tab で届き、フォーカスが入ったら出す
+ * - 隠れているあいだは押せない（`pointer-events: none`）。見えないボタンを誤って押さない
+ * - ホバーできる端末（PC）：カバーにマウスを載せたら出す
+ * - ホバーできない端末（スマホ）：タップで出す・隠すを切り替える（`shownByTap`）
+ */
+export function coverSx(shownByTap: boolean): SxProps<Theme> {
+  const actions = `& .${COVER_ACTIONS_CLASS}`;
+  return {
+    position: "relative",
+    height: COVER_HEIGHT,
+    borderRadius: 1.5,
+    overflow: "hidden",
+    bgcolor: "action.hover",
+    [actions]: { opacity: 0, pointerEvents: "none", transition: "opacity 150ms" },
+    [`&:focus-within .${COVER_ACTIONS_CLASS}`]: ACTIONS_SHOWN,
+    "@media (hover: hover)": { [`&:hover .${COVER_ACTIONS_CLASS}`]: ACTIONS_SHOWN },
+    "@media (hover: none)": shownByTap ? { [actions]: ACTIONS_SHOWN } : {},
+  };
+}
+
 /** パスから、画像の説明に使う名前（用意した画像のときだけ） */
 const coverName = (cover: string) => findCoverPreset(cover)?.name;
 
@@ -26,11 +54,16 @@ const coverName = (cover: string) => findCoverPreset(cover)?.name;
  * 編集画面の、タイトルの上のカバー。
  * - 付いていない：「カバーを追加」を控えめに出す（押すとカバーを選ぶ画面を開く）
  * - 付いている：横長の画像（高さは固定、中央を切り抜いて出す）と、「カバーを変更」「カバーを削除」。
- *   2つは離して右下に置き、削除は赤にしない（外してもまた選べるので、取り返しはつく）
+ *   2つは離して右下に置き、削除は赤にしない（外してもまた選べるので、取り返しはつく）。
+ *   2つは普段は隠し、ホバー・フォーカス（スマホはタップ）で出す（`coverSx`）
  * 選ぶ画面は `PageCoverPicker`。この部品の下に置く `anchorEl` を渡す。
  */
 export function PageCover(props: { cover: string | null; onPick: () => void; onRemove: () => void; removing: boolean; error: string | null }) {
   const { cover } = props;
+  // スマホ（ホバーできない端末）で、タップして「変更」「削除」を出しているか。PC では使わない
+  const [shownByTap, setShownByTap] = useState(false);
+  // カバーを替えた・外したら、また隠したところから始める
+  useEffect(() => setShownByTap(false), [cover]);
   if (cover === null) {
     return (
       <Box sx={{ mb: 1 }}>
@@ -47,10 +80,11 @@ export function PageCover(props: { cover: string | null; onPick: () => void; onR
   }
   return (
     <Box sx={{ mb: 2 }}>
-      <Box sx={{ position: "relative", height: COVER_HEIGHT, borderRadius: 1.5, overflow: "hidden", bgcolor: "action.hover" }}>
+      <Box sx={coverSx(shownByTap)} onClick={() => setShownByTap((v) => !v)}>
         {/* 飾りなので alt は空。選んだ名前は「変更」のボタンの説明に出す */}
         <Box component="img" src={cover} alt="" sx={{ display: "block", width: "100%", height: "100%", objectFit: "cover", objectPosition: "center" }} />
-        <Box sx={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 1.5 }}>
+        {/* ボタンを押したときは、カバーのタップ（出す・隠す）として数えない */}
+        <Box className={COVER_ACTIONS_CLASS} onClick={(e) => e.stopPropagation()} sx={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 1.5 }}>
           <Button
             size="small"
             variant="contained"
