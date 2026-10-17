@@ -71,7 +71,8 @@ export function PagesPage() {
     queryKey: ["pages", "infinite", q, tagIds ?? null, order],
     queryFn: ({ pageParam }) => api.listPagesPage({ q, cursor: pageParam, limit: PAGE_SIZE, tag: tagIds, order }),
     // タグで絞るときは、タグの一覧を読んで、この wiki のタグだと分かってから取りに行く
-    enabled: !unknownTag && (!tagIds || !!tags.data),
+    // （タグの一覧が読めなかったときは、そのまま取りに行き、API の答えを出す）
+    enabled: !unknownTag && (!tagIds || !tags.isPending),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });
