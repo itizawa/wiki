@@ -182,6 +182,33 @@ describe("MCP wiki admin tools", () => {
     });
     expect(updated.data).toMatchObject({ id: block.data.id, trigger: { type: "page_first_published" }, actions: [{ type: "add_tag", tag: "確認待ち" }] });
 
+    // 時刻で起動するブロック：対象のページ・時刻（JST）・曜日を渡す。非公開のページは wiki.private が無いと選べない
+    const page = await ctx.call("POST", `${W}/pages`, { title: "巡回メモ", bodyMd: "" });
+    const scheduleBlock = (t: string) =>
+      callTool(t, "create_workflow_block", {
+        wiki: "wiki",
+        workflowId: wf.data.id,
+        trigger: { type: "schedule", pageId: page.body.id, time: "07:00", weekdays: [0, 1, 2, 3, 4, 5, 6] },
+        actions: [{ type: "call_routine", routine: "記事下書き", instruction: "巡回してください" }],
+      });
+    expect((await scheduleBlock(token)).data.error.code).toBe("not_found");
+    const privateToken = await connect("wiki.read wiki.private wiki.admin");
+    const scheduled = await scheduleBlock(privateToken);
+    expect(scheduled.isError).toBe(false);
+    expect(scheduled.data.trigger).toMatchObject({ type: "schedule", pageId: page.body.id, time: "07:00", weekdays: [0, 1, 2, 3, 4, 5, 6] });
+    // 形の合わない時刻・空の曜日・無いページは断る
+    const badSchedule = (trigger: Record<string, unknown>) =>
+      callTool(privateToken, "create_workflow_block", {
+        wiki: "wiki",
+        workflowId: wf.data.id,
+        trigger: { type: "schedule", pageId: page.body.id, time: "07:00", weekdays: [1], ...trigger },
+        actions: [{ type: "add_tag", tag: "採用" }],
+      });
+    expect((await badSchedule({ time: "7:00" })).data.error.code).toBe("invalid_input");
+    expect((await badSchedule({ weekdays: [] })).data.error.code).toBe("invalid_input");
+    expect((await badSchedule({ pageId: "nopage00000" })).data.error.code).toBe("unknown_page");
+    expect((await callTool(token, "delete_workflow_block", { wiki: "wiki", workflowId: wf.data.id, blockId: scheduled.data.id })).isError).toBe(false);
+
     expect((await callTool(token, "rename_tag", { wiki: "wiki", tag: "確認待ち", name: "記事確認待ち" })).isError).toBe(false);
     const listed = await callTool(token, "list_workflows", { wiki: "wiki" });
     expect(listed.data.workflows).toEqual([

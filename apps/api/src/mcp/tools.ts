@@ -188,7 +188,12 @@ async function adminWiki(db: Db, agent: AgentContext, key: string) {
 const tagName = z.string().min(1).max(100);
 /** MCP で渡すブロック：タグと Routine を、ID の代わりに名前で指す */
 const namedBlockInput = z.object({
-  trigger: z.discriminatedUnion("type", [z.object({ type: z.literal("tag_attached"), tag: tagName }), z.object({ type: z.literal("page_first_published") })]),
+  trigger: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("tag_attached"), tag: tagName }),
+    z.object({ type: z.literal("page_first_published") }),
+    // 時刻と曜日の検査は workflowBlockInput に任せる（管理画面と同じ文言で断る）
+    z.object({ type: z.literal("schedule"), pageId: z.string().min(1), time: z.string(), weekdays: z.array(z.number()) }),
+  ]),
   actions: z
     .array(
       z.discriminatedUnion("type", [
@@ -204,14 +209,22 @@ type NamedBlockInput = z.output<typeof namedBlockInput>;
 
 const BLOCK_DESCRIPTION =
   "ブロックは、トリガー1つと、上から順に行うアクションの並び（1〜" + WORKFLOW_ACTIONS_MAX + "件）。" +
-  "トリガーは tag_attached（tag のタグが付いたとき）か page_first_published（ページが初めて公開されたとき）。" +
+  "トリガーは tag_attached（tag のタグが付いたとき）・page_first_published（ページが初めて公開されたとき）・" +
+  "schedule（weekdays の曜日の time（JST）になったら、pageId のページを対象に動く。Cron は5分おきなので数分遅れることがある）。" +
   "アクションは call_routine（routine の Routine を呼び、instruction を依頼として渡す。Routine が始まった時点で成功になり、終わるのを待たない）・remove_tag・add_tag（付けたタグのブロックも動く）。" +
   "タグは list_tags、Routine は list_routines にある名前で指す。";
 const BLOCK_PROPS = {
   trigger: {
     type: "object",
-    description: '{ "type": "tag_attached", "tag": "タグの名前" } か { "type": "page_first_published" }',
-    properties: { type: { type: "string", enum: ["tag_attached", "page_first_published"] }, tag: str("タグの名前（tag_attached のとき）") },
+    description:
+      '{ "type": "tag_attached", "tag": "タグの名前" } / { "type": "page_first_published" } / { "type": "schedule", "pageId": "対象のページの ID", "time": "07:00", "weekdays": [0, 1, 2, 3, 4, 5, 6] }',
+    properties: {
+      type: { type: "string", enum: ["tag_attached", "page_first_published", "schedule"] },
+      tag: str("タグの名前（tag_attached のとき）"),
+      pageId: str("対象のページの ID（schedule のとき）"),
+      time: str("起動する時刻。HH:MM、24時間、JST（schedule のとき）"),
+      weekdays: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 }, description: "起動する曜日。0 が日曜、毎日なら 0〜6 のすべて（schedule のとき）" },
+    },
     required: ["type"],
   },
   actions: {
@@ -234,7 +247,7 @@ const BLOCK_PROPS = {
 };
 
 /** 名前で指したブロックを、ID で指す入力に直す。無いタグ・Routine は 404、依頼文の誤りは 400 */
-async function resolveBlock(tx: Db, wikiId: string, input: NamedBlockInput): Promise<WorkflowBlockInput> {
+async function resolveBlock(tx: Db, agent: AgentContext, wikiId: string, input: NamedBlockInput): Promise<WorkflowBlockInput> {
   const routines = new Map((await listRoutineChoices(tx)).map((r) => [r.name, r.id]));
   const routineId = (name: string) => {
     const id = routines.get(name.trim());
@@ -242,6 +255,8 @@ async function resolveBlock(tx: Db, wikiId: string, input: NamedBlockInput): Pro
     return id;
   };
   const trigger = input.trigger.type === "tag_attached" ? { type: "tag_attached" as const, tagId: (await findTagByName(tx, wikiId, input.trigger.tag)).id } : input.trigger;
+  // 読めないページ（wiki.private が無いときの非公開のページ）は、時刻で起動する対象にもできない
+  if (input.trigger.type === "schedule" && !(await canSee(tx, agent, input.trigger.pageId))) throw notFound(`page ${input.trigger.pageId}`);
   const actions = [];
   for (const a of input.actions) {
     actions.push(a.type === "call_routine" ? { type: a.type, routineId: routineId(a.routine), instruction: a.instruction } : { type: a.type, tagId: (await findTagByName(tx, wikiId, a.tag)).id });
@@ -1237,7 +1252,7 @@ export const TOOLS = [
       const wiki = await adminWiki(db, agent, input.wiki);
       const block = await db.transaction(async (tx) => {
         const workflow = await findWorkflow(tx, wiki.id, input.workflowId);
-        return createBlock(tx, wiki.id, workflow.id, await resolveBlock(tx, wiki.id, input), agentActor(agent));
+        return createBlock(tx, wiki.id, workflow.id, await resolveBlock(tx, agent, wiki.id, input), agentActor(agent));
       });
       return describeBlock(block);
     },
@@ -1255,7 +1270,7 @@ export const TOOLS = [
       const wiki = await adminWiki(db, agent, input.wiki);
       const block = await db.transaction(async (tx) => {
         const workflow = await findWorkflow(tx, wiki.id, input.workflowId);
-        return replaceBlock(tx, wiki.id, workflow.id, input.blockId, await resolveBlock(tx, wiki.id, input), agentActor(agent));
+        return replaceBlock(tx, wiki.id, workflow.id, input.blockId, await resolveBlock(tx, agent, wiki.id, input), agentActor(agent));
       });
       return describeBlock(block);
     },

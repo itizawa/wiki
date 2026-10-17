@@ -265,7 +265,7 @@ Claude などの AI エージェントや手元のスクリプトから、MCP �
 | `create_tag` / `rename_tag` / `delete_tag` | 設定 | タグを作る・名前を変える・消す（その wiki の管理者だけ。消したときのワークフローの片付けは管理画面と同じ） |
 | `list_routines` | 設定 | ワークフローで選べる Routine の名前の一覧（登録は管理画面の「Routine」タブだけ） |
 | `list_workflows` / `create_workflow` / `rename_workflow` / `delete_workflow` | 設定 | ワークフローの一覧（ブロックつき）・作成・名前の変更・削除（その wiki の管理者だけ） |
-| `create_workflow_block` / `update_workflow_block` / `delete_workflow_block` | 設定 | ブロックを足す・置き換える・消す。タグと Routine は ID ではなく名前で指す（無い名前は 404） |
+| `create_workflow_block` / `update_workflow_block` / `delete_workflow_block` | 設定 | ブロックを足す・置き換える・消す。タグと Routine は ID ではなく名前で指す（無い名前は 404）。トリガーは「タグが付いたとき」「初めて公開されたとき」「決まった時刻になったとき」（`schedule`：対象のページの ID・時刻（JST）・曜日）の3つで、管理画面と同じ。時刻で起動する対象には、その許可で読めるページだけを選べる |
 | `get_home` / `update_home` | 設定 | 公開サイトのトップ（`/`）の設定（`introMd` の自由記述と、グリッドの `blocks`）を読む・保存する（その wiki の管理者だけ）。`update_home` は全体を置き換え、保存するとすぐ公開サイトをビルドし直す。検証は管理画面と同じ（`blocks` は 12 個まで、重なる配置は `invalid_input`）。`blocks` を省くか null にすると配置なし |
 
 - スコープ：`wiki.read`（公開中のページを読む。必ず含む）、`wiki.write`（作る・更新・移動）、`wiki.private`（非公開・限定公開のページも読み書きする）、`wiki.publish`（公開・非公開化・予約）、`wiki.delete`（削除＝ゴミ箱に入れる・ゴミ箱の一覧・元に戻す）、`wiki.suggest`（編集リクエストを出す・読む・返信する・取り下げる。下の「編集リクエスト」）、`wiki.admin`（wiki の作成と、タグ・ワークフロー・トップページの設定。表の「設定」）
