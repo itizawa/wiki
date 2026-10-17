@@ -8,12 +8,11 @@ import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import type { Editor } from "@tiptap/react";
 import { useState } from "react";
 import { Tooltip } from "../components/Tooltip";
 import { ImageUploader } from "../components/ImageUploader";
-import { Muted } from "../components/ui";
+import { Field, Muted } from "../components/ui";
 
 /**
  * 入力されたリンク先を整える。`example.com` のようにスキームが無ければ https:// を補う。
@@ -113,7 +112,7 @@ export function ImageDialog(props: { open: boolean; onSubmit: (image: { src: str
               )}
               <Muted sx={{ fontSize: "0.8rem" }}>本文への貼り付けやドラッグでも入れられます。アップロードした画像は、URL を知っていればだれでも見られます（非公開のページに貼ったものも）。</Muted>
             </Stack>
-            <TextField
+            <Field
               fullWidth
               label="画像の説明（任意）"
               value={alt}

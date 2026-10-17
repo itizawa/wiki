@@ -3,9 +3,9 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import TextField from "@mui/material/TextField";
 import { googleMapFromText } from "@wiki/shared";
 import { useState } from "react";
+import { Field } from "../components/ui";
 
 /** Google マップを入れるダイアログ。地図の URL か、「共有」→「地図を埋め込む」の HTML を貼る。 */
 export function GoogleMapDialog(props: { open: boolean; onSubmit: (url: string) => void; onClose: () => void }) {
@@ -30,7 +30,7 @@ export function GoogleMapDialog(props: { open: boolean; onSubmit: (url: string) 
       >
         <DialogTitle>Google マップを挿入</DialogTitle>
         <DialogContent>
-          <TextField
+          <Field
             autoFocus
             fullWidth
             multiline

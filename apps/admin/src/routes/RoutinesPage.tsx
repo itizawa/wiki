@@ -8,7 +8,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import MuiLink from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ROUTINE_HOST, ROUTINE_NAME_MAX, isRoutineUrl, type RoutineSummary, type RoutineTestResult } from "@wiki/shared";
@@ -16,7 +15,7 @@ import { useState } from "react";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
-import { Mono, Muted, Row, Section } from "../components/ui";
+import { Field, Mono, Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useSession } from "./Layout";
@@ -203,7 +202,7 @@ function RoutineDialog({ routine, onClose, onDone }: { routine: RoutineSummary |
                 {errorMessage(save.error)}
               </Alert>
             )}
-            <TextField
+            <Field
               label="名前"
               autoFocus
               required
@@ -214,10 +213,10 @@ function RoutineDialog({ routine, onClose, onDone }: { routine: RoutineSummary |
               }}
               placeholder="例：ページ編集"
               helperText="ワークフローで選ぶときの名前です。ほかの Routine と重ならない名前にします。"
-              slotProps={{ htmlInput: { maxLength: ROUTINE_NAME_MAX }, inputLabel: { shrink: true } }}
+              slotProps={{ htmlInput: { maxLength: ROUTINE_NAME_MAX } }}
               sx={{ maxWidth: 420 }}
             />
-            <TextField
+            <Field
               label="URL"
               required
               value={url}
@@ -230,11 +229,10 @@ function RoutineDialog({ routine, onClose, onDone }: { routine: RoutineSummary |
               helperText={`https://${ROUTINE_HOST}/v1/claude_code/routines/…/fire の形の URL だけ登録できます。`}
               slotProps={{
                 htmlInput: { maxLength: 500, autoCapitalize: "off", autoCorrect: "off", spellCheck: false, inputMode: "url" },
-                inputLabel: { shrink: true },
                 input: { sx: { fontFamily: "monospace", fontSize: 14 } },
               }}
             />
-            <TextField
+            <Field
               label={routine ? "トークン（変えるときだけ入力）" : "トークン"}
               required={routine === null}
               type="password"
@@ -250,7 +248,6 @@ function RoutineDialog({ routine, onClose, onDone }: { routine: RoutineSummary |
               }
               slotProps={{
                 htmlInput: { maxLength: 500, autoCapitalize: "off", autoCorrect: "off", spellCheck: false },
-                inputLabel: { shrink: true },
                 input: { sx: { fontFamily: "monospace", fontSize: 14 } },
               }}
               sx={{ maxWidth: 420 }}

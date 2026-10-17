@@ -9,7 +9,8 @@ import TableRow from "@mui/material/TableRow";
 import Typography, { type TypographyProps } from "@mui/material/Typography";
 import { createLink, type LinkComponent } from "@tanstack/react-router";
 import Alert from "@mui/material/Alert";
-import { forwardRef, useEffect, useRef, type ReactNode } from "react";
+import TextField, { type TextFieldProps } from "@mui/material/TextField";
+import { forwardRef, useEffect, useId, useRef, type ReactNode } from "react";
 import { monoFont } from "../theme";
 
 /**
@@ -203,3 +204,36 @@ const CreatedLink = createLink(MuiLinkComponent);
 
 /** TanStack Router の型つきリンクを MUI の Link で描画する。 */
 export const RouterLink: LinkComponent<typeof MuiLinkComponent> = (props) => <CreatedLink {...props} />;
+
+export type FieldProps = Omit<TextFieldProps, "label" | "variant"> & {
+  /** 入力欄の名前。入力欄の上に 8px 離して出す。要らない入力欄（見出しなどで名前が分かる）には渡さず、`aria-label` を付ける */
+  label?: ReactNode;
+};
+
+/**
+ * 管理画面の入力欄。MUI の `TextField` を直接使わず、これを使う。
+ * `size="small"`（テーマの既定）で、MUI の浮き上がるラベル（`label`）は使わない。名前が要るときは、入力欄の上に `Typography`（`<label>`）を 8px 離して置く。
+ * `sx` と `fullWidth` は、ラベルと入力欄を包む外側に効く。
+ */
+export function Field({ label, id: idProp, sx, fullWidth, required, slotProps, ...props }: FieldProps) {
+  const auto = useId();
+  const id = idProp ?? auto;
+  if (label == null) return <TextField id={id} sx={sx} fullWidth={fullWidth} required={required} slotProps={slotProps} {...props} />;
+  const labelId = `${id}-label`;
+  const native = typeof slotProps?.select === "object" && slotProps.select !== null && "native" in slotProps.select && Boolean(slotProps.select.native);
+  const select = props.select && !native;
+  const merged = select ? { ...slotProps, select: { ...(typeof slotProps?.select === "object" ? slotProps.select : {}), labelId } } : slotProps;
+  return (
+    <Stack spacing={1} sx={[{ minWidth: 0, width: fullWidth ? "100%" : undefined }, ...sxList(sx)]}>
+      <Typography component="label" variant="body2" id={labelId} htmlFor={select ? undefined : id} sx={{ fontWeight: 600 }}>
+        {label}
+        {required && (
+          <Box component="span" aria-hidden sx={{ color: "error.main", ml: 0.5 }}>
+            *
+          </Box>
+        )}
+      </Typography>
+      <TextField id={id} fullWidth={fullWidth} required={required} slotProps={merged as TextFieldProps["slotProps"]} {...props} />
+    </Stack>
+  );
+}

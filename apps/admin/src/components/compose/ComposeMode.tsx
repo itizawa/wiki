@@ -8,7 +8,6 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 import { useTheme } from "@mui/material/styles";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +22,7 @@ import { UNTITLED_TITLE } from "../../lib/untitled";
 import { TOUCH } from "../../theme";
 import { confirmDialog } from "../ConfirmDialog";
 import { ReviewBody, unitName, type ReviewSelect, type ReviewSlot } from "../ReviewBody";
-import { Muted } from "../ui";
+import { Field, Muted } from "../ui";
 import { DraftItemCard } from "./DraftItemCard";
 import { ItemComposer, type ComposedItem, type ComposerDraft, type ComposerInitial } from "./ItemComposer";
 
@@ -433,7 +432,7 @@ export function ComposeMode(props: {
                 <DraftItemCard key={item.id} item={item} index={i + 1} disabled={send.isPending} onEdit={() => void edit(item)} onRemove={() => void remove(item)} />
               ))}
             </Stack>
-            <TextField
+            <Field
               label="全体へのひとこと（任意）"
               placeholder="例：用語の表記をそろえる提案です"
               value={comment}
@@ -443,7 +442,7 @@ export function ComposeMode(props: {
               maxRows={8}
               fullWidth
               disabled={send.isPending}
-              slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.comment }, inputLabel: { shrink: true } }}
+              slotProps={{ htmlInput: { maxLength: EDIT_REQUEST_LIMITS.comment } }}
               helperText={
                 comment.length > EDIT_REQUEST_LIMITS.comment * 0.9
                   ? `${comment.length.toLocaleString()} / ${EDIT_REQUEST_LIMITS.comment.toLocaleString()} 字`

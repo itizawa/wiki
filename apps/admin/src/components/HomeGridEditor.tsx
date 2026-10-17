@@ -1,7 +1,6 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import {
   HOME_BLOCKS_MAX,
@@ -13,7 +12,7 @@ import {
 } from "@wiki/shared";
 import { type KeyboardEvent, type PointerEvent, useRef, useState } from "react";
 import { addHomeBlock, changeHomeBlock, HOME_BLOCK_LABELS, lastUsedRow, pixelsToCells, removeHomeBlock } from "../lib/homeGrid";
-import { Muted, Row } from "./ui";
+import { Field, Muted, Row } from "./ui";
 
 /** 編集画面のマス目の 1 行の高さ（px）。ブロックの高さは行の数で決める（公開サイトでは中身の高さに合わせて伸びる） */
 const ROW_PX = 52;
@@ -282,11 +281,10 @@ function NumberField({
     if (!ok) input.value = value === null ? "" : String(value);
   };
   return (
-    <TextField
+    <Field
       key={value ?? "none"}
       label={label}
       type="number"
-      size="small"
       defaultValue={value ?? ""}
       onBlur={(e) => commit(e.target as HTMLInputElement)}
       onKeyDown={(e) => {

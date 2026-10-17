@@ -3,9 +3,9 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import TextField from "@mui/material/TextField";
 import { parseYoutubeUrl } from "@wiki/shared";
 import { useState } from "react";
+import { Field } from "../components/ui";
 
 /** YouTube の動画を入れるダイアログ。動画の URL を貼る。 */
 export function YoutubeDialog(props: { open: boolean; onSubmit: (url: string) => void; onClose: () => void }) {
@@ -30,7 +30,7 @@ export function YoutubeDialog(props: { open: boolean; onSubmit: (url: string) =>
       >
         <DialogTitle>YouTube の動画を挿入</DialogTitle>
         <DialogContent>
-          <TextField
+          <Field
             autoFocus
             fullWidth
             margin="dense"

@@ -1,7 +1,6 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import TextField from "@mui/material/TextField";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { EDIT_REQUEST_LIMITS, type EditRequestComment } from "@wiki/shared";
 import { useId, useState } from "react";
@@ -9,6 +8,7 @@ import { api, errorMessage } from "../lib/api";
 import { invalidateEditRequests, requesterLabel } from "../lib/editRequests";
 import { formatDateTime } from "../lib/format";
 import { TOUCH } from "../theme";
+import { Field } from "./ui";
 
 /**
  * 編集リクエストの項目への返信：これまでの返信（古い順）と、入力欄。
@@ -75,8 +75,7 @@ export function EditRequestReplies(props: {
         }}
         sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 1 }}
       >
-        <TextField
-          label="返信"
+        <Field
           placeholder="例：出典が分かれば、教えてください"
           value={text}
           onChange={(e) => {
@@ -93,13 +92,11 @@ export function EditRequestReplies(props: {
           multiline
           minRows={1}
           maxRows={8}
-          size="small"
           disabled={send.isPending}
           error={tooLong}
           sx={{ flex: "1 1 240px", minWidth: 0 }}
           slotProps={{
             htmlInput: { "aria-label": `${props.about}に返信する`, "aria-describedby": helpId },
-            inputLabel: { shrink: true },
           }}
         />
         <Button type="submit" variant="outlined" size="small" disabled={body === "" || tooLong} loading={send.isPending} sx={{ mt: "3px", whiteSpace: "nowrap", [TOUCH]: { minHeight: 40, mt: 0 } }}>

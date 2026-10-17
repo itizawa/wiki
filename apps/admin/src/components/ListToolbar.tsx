@@ -10,12 +10,11 @@ import MenuItem from "@mui/material/MenuItem";
 import Popover from "@mui/material/Popover";
 import Radio from "@mui/material/Radio";
 import RadioGroup from "@mui/material/RadioGroup";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronDown, ListFilter, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Muted } from "./ui";
+import { Field, Muted } from "./ui";
 
 /**
  * 一覧の上に置く、絞り込みと並べ替えの帯（Notion のデータベースの見た目）。管理画面の一覧の絞り込み・並べ替えは、これで作る。
@@ -336,8 +335,7 @@ function TextFilter({ field, values, onChange }: EditorProps<Extract<FilterField
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
   return (
-    <TextField
-      size="small"
+    <Field
       fullWidth
       autoFocus
       value={draft}
@@ -355,8 +353,7 @@ function SearchFilter({ field, values, onChange }: EditorProps<Extract<FilterFie
   const found = (results.data ?? []).filter((o) => !values.some((v) => v.value === o.value));
   return (
     <>
-      <TextField
-        size="small"
+      <Field
         fullWidth
         autoFocus
         value={input}
