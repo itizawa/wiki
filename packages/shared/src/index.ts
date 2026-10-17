@@ -39,3 +39,4 @@ export * from "./tag";
 export * from "./routine";
 export * from "./workflow";
 export * from "./rating";
+export * from "./tile";

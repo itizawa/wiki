@@ -8,6 +8,7 @@ import { BlockMove } from "./blockMove";
 import { CalloutBlockquote } from "./callout";
 import { ChildrenList } from "./childrenList";
 import { RatingEmbed } from "./ratingEmbed";
+import { Tile } from "./tile";
 import { GoogleMap } from "./googleMap";
 import { Youtube } from "./youtube";
 import { PageAudioBlock } from "./pageAudio";
@@ -44,6 +45,7 @@ export const createEditorExtensions = (linkCard?: Partial<LinkCardOptions>) => [
   PageMentions,
   ChildrenList,
   RatingEmbed,
+  Tile,
   PageAudioBlock,
   // 言語を選んでいないブロックは色分けしない（中身から言語を当てにいくと、打つたびに色が変わって落ち着かない）
   CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),

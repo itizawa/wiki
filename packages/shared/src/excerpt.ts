@@ -2,6 +2,7 @@ import { googleMapOfParagraph } from "./googleMap";
 import { youtubeOfParagraph } from "./youtube";
 import { matchAudio } from "./audio";
 import { matchChildren } from "./children";
+import { matchTile } from "./tile";
 
 /** 一覧やRSS用の短い抜粋（Markdown記法を落とした先頭部分）。 */
 export function excerpt(md: string, length = 120): string {
@@ -14,6 +15,11 @@ export function excerpt(md: string, length = 120): string {
     .replace(/^.*$/gm, (line) => (googleMapOfParagraph(line) || youtubeOfParagraph(line) ? "" : line))
     .replace(/^@children(?:[ \t].*)?$/gm, (line) => (matchChildren(line) ? "" : line))
     .replace(/^@rating[ \t]*$/gm, "")
+    // タイルの行は名前だけを残す（名前を省いた行は、何も残さない）
+    .replace(/^@tile[ \t].*$/gm, (line) => {
+      const m = matchTile(line);
+      return m ? (m.options.label ?? "") : line;
+    })
     .replace(/^@audio[ \t]+[0-9a-f-]{36}[ \t]*$/gm, (line) => (matchAudio(line) ? "" : line))
     .replace(/^\+\+\+[ \t]*/gm, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")

@@ -59,6 +59,14 @@
 .body :global(ul.children-list) { margin: 12px 0; }
 .body :global(a.page-mention) { font-weight: 700; }
 .body :global(a.page-mention)::before { content: "@"; }
+/* タイル（@tile）。デッキリストのように、続けて書いた行が縦に並ぶ。画像が暗いことが多いので、テーマによらず暗い帯にする */
+.body :global(.tile) { position: relative; display: flex; align-items: center; gap: 10px; max-width: 420px; height: 44px; margin: 4px 0; padding-right: 12px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius); background: #23262e; color: #fff; text-decoration: none; }
+.body :global(a.tile:hover) { border-color: var(--accent); }
+.body :global(a.tile:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.body :global(.tile-art) { position: absolute; top: 0; right: 0; width: 62%; height: 100%; object-fit: cover; object-position: right center; -webkit-mask-image: linear-gradient(to right, transparent, #000 45%); mask-image: linear-gradient(to right, transparent, #000 45%); }
+.body :global(.tile-badge) { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; flex: none; min-width: 40px; height: 100%; padding: 0 6px; background: #3b5bab; font-size: 1.25rem; font-weight: 800; }
+.body :global(.tile-name) { position: relative; z-index: 1; min-width: 0; overflow: hidden; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; text-shadow: 0 1px 2px #000, 0 0 6px #000; }
+.body :global(.tile:not(:has(.tile-badge))) { padding-left: 12px; }
 .body :global(p.link-card) { margin: 12px 0; }
 .body :global(p.link-card > a) { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border: 1px solid var(--border, rgba(128, 128, 128, 0.45)); border-radius: 8px; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 .body :global(p.link-card > a:hover) { background: rgba(128, 128, 128, 0.08); }
