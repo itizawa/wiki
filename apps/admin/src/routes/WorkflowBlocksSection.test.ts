@@ -1,7 +1,8 @@
 import type { WorkflowBlock } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
 import { ApiError, errorMessage } from "../lib/api";
-import { blockToDraft, deleteBlockBody, draftToInput, instructionPreview, moveItem } from "./WorkflowBlocksSection";
+import { blockToDraft, deleteBlockBody, draftToInput, moveItem } from "./WorkflowBlocksSection";
+import { instructionPreview } from "./workflowKinds";
 
 const block: WorkflowBlock = {
   id: "b",
