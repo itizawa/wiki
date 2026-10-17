@@ -210,40 +210,40 @@ export function ListToolbar({ label, sortFields = [], sort, onSortChange, filter
       )}
 
       {opened && (
-      <Popover
-        open
-        // 足したばかりの条件のチップは、メニューを選んだあとに描かれるので、開くときに探す
-        anchorEl={() => chips.current.get(opened?.type === "filter" ? opened.key : "__sort") ?? document.body}
-        onClose={close}
-        disableRestoreFocus
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        slotProps={{ paper: { role: "dialog", "aria-labelledby": `${id}-title`, sx: { width: 320, maxWidth: "calc(100vw - 32px)", mt: 0.5, p: 1.5 } } }}
-      >
-        {opened?.type === "sort" && sort && sortField && (
-          <SortEditor titleId={`${id}-title`} fields={sortFields} value={sort} onChange={(s) => onSortChange?.(s)} />
-        )}
-        {openedField && openedFilter && (
-          <>
-            <Typography id={`${id}-title`} variant="subtitle2" component="h2" sx={{ mb: 1 }}>
-              {openedField.label}で絞り込む
-            </Typography>
-            <FilterEditor field={openedField} value={openedFilter.value} onChange={(v) => changeFilters(setFilterValue(filters, openedField.key, v))} />
-            <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
-              <Button
-                size="small"
-                color="inherit"
-                startIcon={<X size={16} />}
-                onClick={() => {
-                  setOpened(null);
-                  changeFilters(removeFilter(filters, openedField.key));
-                }}
-              >
-                この条件を外す
-              </Button>
-            </Box>
-          </>
-        )}
-      </Popover>
+        <Popover
+          open
+          // 足したばかりの条件のチップは、メニューを選んだあとに描かれるので、開くときに探す
+          anchorEl={() => chips.current.get(opened?.type === "filter" ? opened.key : "__sort") ?? document.body}
+          onClose={close}
+          disableRestoreFocus
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          slotProps={{ paper: { role: "dialog", "aria-labelledby": `${id}-title`, sx: { width: 320, maxWidth: "calc(100vw - 32px)", mt: 0.5, p: 1.5 } } }}
+        >
+          {opened?.type === "sort" && sort && sortField && (
+            <SortEditor titleId={`${id}-title`} fields={sortFields} value={sort} onChange={(s) => onSortChange?.(s)} />
+          )}
+          {openedField && openedFilter && (
+            <>
+              <Typography id={`${id}-title`} variant="subtitle2" component="h2" sx={{ mb: 1 }}>
+                {openedField.label}で絞り込む
+              </Typography>
+              <FilterEditor field={openedField} value={openedFilter.value} onChange={(v) => changeFilters(setFilterValue(filters, openedField.key, v))} />
+              <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+                <Button
+                  size="small"
+                  color="inherit"
+                  startIcon={<X size={16} />}
+                  onClick={() => {
+                    setOpened(null);
+                    changeFilters(removeFilter(filters, openedField.key));
+                  }}
+                >
+                  この条件を外す
+                </Button>
+              </Box>
+            </>
+          )}
+        </Popover>
       )}
     </Box>
   );
