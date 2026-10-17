@@ -12,6 +12,7 @@ import type { Me } from "@wiki/shared";
 import { createContext, useContext, useEffect, type MouseEvent, type ReactNode } from "react";
 import { SIDEBAR_WIDTH } from "../components/Sidebar";
 import { clampSidebarWidth } from "../components/SidebarResizer";
+import { updatePromptInsetSx } from "../components/updatePromptStyle";
 import { LoadingRegion, Muted, PageBody, Section } from "../components/ui";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { usePersistentState } from "../lib/storage";
@@ -123,9 +124,12 @@ export function SkipLink() {
   );
 }
 
-/** 本文の枠（`main`）。スキップリンクから移れるよう `id` と `tabIndex={-1}` を持つ。移ったときに枠線は出さない（本文全体を囲んでも手がかりにならない）。 */
+/**
+ * 本文の枠（`main`）。スキップリンクから移れるよう `id` と `tabIndex={-1}` を持つ。移ったときに枠線は出さない（本文全体を囲んでも手がかりにならない）。
+ * 「新しい版があります」の知らせが出ている間は、その高さぶんを下の余白に足す（一番下までスクロールすれば、最後の行が知らせに隠れない）。
+ */
 export const mainProps = { component: "main", id: MAIN_ID, tabIndex: -1 } as const;
-export const mainSx = { outline: "none" } as const;
+export const mainSx = { outline: "none", ...updatePromptInsetSx } as const;
 
 /** `/`：最後に開いていた wiki へ移す。使用中の wiki が1つも無ければ「wiki を作成する」だけを出す。 */
 export function Home() {
