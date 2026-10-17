@@ -1,9 +1,8 @@
-import { useEffect, useRef } from "react";
 import Box from "@mui/material/Box";
 import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import { createLink, Outlet, useRouterState } from "@tanstack/react-router";
 import { HelpHeading } from "../components/HelpTip";
+import { NavTabs } from "../components/NavTabs";
 import { Section } from "../components/ui";
 import { useWiki } from "../lib/wiki";
 import { useScreenTitle } from "../lib/documentTitle";
@@ -54,32 +53,17 @@ export function WikiSettingsLayout() {
   const tabLabel = TABS.find((t) => t.path === rest)?.label;
   useScreenTitle(tabLabel && rest !== "" ? `${tabLabel} - 設定` : "設定");
 
-  // 狭い幅では、開いた直後に、選ばれたタブが帯の見える範囲に入るよう送る（MUI の自動の送りは、リンクのタブでは効かないことがある）
-  const tabsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    tabsRef.current?.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [current]);
-
   return (
     <Box>
       <Section sx={{ pb: 0, mb: 1.5 }}>
         <HelpHeading variant="h6" component="h1" help={<>「{wiki.name}」の設定です。wiki ごとに持ち、ほかの wiki には影響しません。</>}>
           設定
         </HelpHeading>
-        <Tabs
-          ref={tabsRef}
-          value={current}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          aria-label="設定"
-          // 端まで送り切ったときの矢印は、見えないまま幅だけ取ってしまう（左に空きができる）ので、幅ごと畳む
-          sx={{ mt: 0.5, "& .MuiTabScrollButton-root.Mui-disabled": { width: 0 } }}
-        >
+        <NavTabs value={current} aria-label="設定" sx={{ mt: 0.5 }}>
           {tabs.map((t) => (
             <TabLink key={t.to} to={t.to} params={{ wikiKey: wiki.key }} value={t.to} label={t.label} />
           ))}
-        </Tabs>
+        </NavTabs>
       </Section>
       <Outlet />
     </Box>
