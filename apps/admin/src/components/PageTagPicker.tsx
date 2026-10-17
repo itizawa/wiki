@@ -1,5 +1,6 @@
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
 import Link from "@mui/material/Link";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -8,7 +9,7 @@ import MenuItem from "@mui/material/MenuItem";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createLink } from "@tanstack/react-router";
 import type { PageDetail, PageTag, WikiTag } from "@wiki/shared";
-import { Check, Settings, Tag } from "lucide-react";
+import { Check, Plus, Settings, Tag } from "lucide-react";
 import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
@@ -124,6 +125,8 @@ export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonl
   const { role } = useWiki();
   const all = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
   const { failure, toggle, attached } = usePageTagToggle(pageId, tags);
+  // タグが 1 つも付いていないうちは「＋」だけを出し、押したら一覧を開く。一度開いたら、全部外しても閉じない（続けて付け外しできる）
+  const [expanded, setExpanded] = useState(false);
   if (all.error) {
     return (
       <Muted role="alert" sx={{ mb: 1.5, color: "error.main", fontSize: "0.8125rem" }}>
@@ -141,6 +144,15 @@ export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonl
         </Link>
       </Box>
     ) : null;
+  }
+  if (attached.size === 0 && !expanded) {
+    return (
+      <Box sx={{ mb: 1.5 }}>
+        <IconButton size="small" aria-label="タグを付ける" aria-expanded={false} onClick={() => setExpanded(true)}>
+          <Plus size={18} />
+        </IconButton>
+      </Box>
+    );
   }
   return (
     <Box sx={{ mb: 1.5 }}>
