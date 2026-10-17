@@ -7,7 +7,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import type { EditRequestListItem, EditRequestListStatus } from "@wiki/shared";
 import { useMemo } from "react";
 import { HelpHeading } from "../components/HelpTip";
-import { DataList, type DataListColumn } from "../components/DataList";
+import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { Muted, RouterLink, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { editRequestKeys, editRequestListLink, editRequestsLink, requesterLabel } from "../lib/editRequests";
@@ -16,10 +16,22 @@ import { useScreenTitle } from "../lib/documentTitle";
 
 /** 行の高さの目安（ひとことの無い行）。ひとことのある行は、これより高くなる。 */
 const ROW_HEIGHT = 37;
+
+/**
+ * 編集リクエストの一覧の列の幅と、狭い幅（md 未満）での扱い。行の数が多いので（`virtualized`）、中身で幅が動かない値にする。
+ * - 広い幅：これまでの固定の幅を上限にし、足りなければ縮めて日時や件数を折り返す（PC の幅でも表を横に送らない）。余りはページの列に回す
+ * - 狭い幅：ページを1段目に残し、項目の件数を行の下に積む。出した人と日時は隠す（開けば見られる）
+ */
+export const editRequestColumnLayout = {
+  page: { width: "minmax(200px, 1fr)" },
+  requester: { width: "minmax(120px, 160px)", narrow: "hide" },
+  items: { width: "minmax(112px, 140px)", narrow: "stack" },
+  createdAt: { width: "minmax(112px, 150px)", narrow: "hide" },
+  lastActivityAt: { width: "minmax(112px, 150px)", narrow: "hide" },
+} satisfies ColumnLayout;
+
 /** 一度に読み込む件数。下まで送ると、続きを読み込む。 */
 const PAGE_SIZE = 50;
-
-const nowrap = { whiteSpace: "nowrap" } as const;
 
 const FILTERS: { status: EditRequestListStatus; label: string; showing: string }[] = [
   { status: "open", label: "未対応", showing: "未対応の項目が残っているリクエストを表示しています。" },
@@ -54,7 +66,7 @@ export function EditRequestListPage({ status, onStatusChange }: { status: EditRe
       key: "page",
       header: "ページ",
       // タイトルは長ければ折り返す。狭い画面でも1文字ずつに潰れない幅を取る
-      width: "minmax(220px, 1fr)",
+      ...editRequestColumnLayout.page,
       stickyLeft: 0,
       sx: { overflowWrap: "anywhere" },
       render: (r) => (
@@ -74,29 +86,35 @@ export function EditRequestListPage({ status, onStatusChange }: { status: EditRe
     {
       key: "requester",
       header: "出した人",
-      width: "160px",
+      ...editRequestColumnLayout.requester,
       sx: { overflowWrap: "anywhere" },
       render: (r) => requesterLabel(r),
     },
     {
       key: "items",
       header: status === "open" ? "未対応の項目" : "項目",
-      width: "140px",
-      sx: { ...nowrap, fontVariantNumeric: "tabular-nums" },
-      render: (r) => (status === "open" ? `${r.openCount} 件（全 ${r.itemCount} 件）` : `${r.itemCount} 件`),
+      ...editRequestColumnLayout.items,
+      sx: { fontVariantNumeric: "tabular-nums" },
+      render: (r) => (
+        <span>
+          {/* 狭い幅では見出しを出さないので、何の件数かを前に添える */}
+          <Box component="span" sx={{ display: { md: "none" } }}>
+            {status === "open" ? "未対応の項目：" : "項目："}
+          </Box>
+          {status === "open" ? `${r.openCount} 件（全 ${r.itemCount} 件）` : `${r.itemCount} 件`}
+        </span>
+      ),
     },
     {
       key: "createdAt",
       header: "出した日時",
-      width: "150px",
-      sx: nowrap,
+      ...editRequestColumnLayout.createdAt,
       render: (r) => <Muted component="span">{formatDateTime(r.createdAt)}</Muted>,
     },
     {
       key: "lastActivityAt",
       header: "最後の動き",
-      width: "150px",
-      sx: nowrap,
+      ...editRequestColumnLayout.lastActivityAt,
       render: (r) => <Muted component="span">{formatDateTime(r.lastActivityAt)}</Muted>,
     },
   ];

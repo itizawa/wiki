@@ -6,7 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { WORKFLOWS_MAX, type Workflow } from "@wiki/shared";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { DataList, type DataListColumn } from "../components/DataList";
+import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
 import { Muted, RouterLink, Row, Section } from "../components/ui";
 import { api } from "../lib/api";
@@ -16,6 +16,13 @@ import { useWiki, workflowLink } from "../lib/wiki";
 import { WorkflowNameDialog } from "./WorkflowNameDialog";
 
 const ROW_HEIGHT = 56;
+
+/** ワークフローの一覧の列の幅と、狭い幅（md 未満）での扱い。狭い幅では名前だけを残し、補足のブロックの数（開けば並んでいる）と作った日時は隠す。 */
+export const workflowColumnLayout = {
+  name: { width: "minmax(160px, 1fr)" },
+  blocks: { width: "100px", narrow: "hide" },
+  createdAt: { width: "160px", narrow: "hide" },
+} satisfies ColumnLayout;
 
 /**
  * 「ワークフロー」（`/w/{key}/workflows`）：サイドバーから開く、設定とは独立した画面。この wiki のワークフローの一覧と、作る操作。管理者だけ。
@@ -57,12 +64,12 @@ function WorkflowList({ wikiName }: { wikiName: string }) {
     {
       key: "name",
       header: "名前",
-      width: "minmax(160px, 1fr)",
+      ...workflowColumnLayout.name,
       sx: { overflowWrap: "anywhere" },
       render: (w) => <RouterLink {...workflowLink(w.id)}>{w.name}</RouterLink>,
     },
-    { key: "blocks", header: "ブロック", width: "100px", sx: { whiteSpace: "nowrap" }, render: (w) => `${w.blockCount} 件` },
-    { key: "createdAt", header: "作った日時", width: "160px", sx: { whiteSpace: "nowrap" }, render: (w) => <Muted component="span">{formatDateTime(w.createdAt)}</Muted> },
+    { key: "blocks", header: "ブロック", ...workflowColumnLayout.blocks, sx: { whiteSpace: "nowrap" }, render: (w) => `${w.blockCount} 件` },
+    { key: "createdAt", header: "作った日時", ...workflowColumnLayout.createdAt, sx: { whiteSpace: "nowrap" }, render: (w) => <Muted component="span">{formatDateTime(w.createdAt)}</Muted> },
   ];
 
   return (

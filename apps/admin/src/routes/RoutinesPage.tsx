@@ -13,14 +13,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ROUTINE_HOST, ROUTINE_NAME_MAX, isRoutineUrl, type RoutineSummary, type RoutineTestResult } from "@wiki/shared";
 import { useState } from "react";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
-import { DataList, type DataListColumn } from "../components/DataList";
+import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { HelpHeading, HelpTip } from "../components/HelpTip";
 import { Field, Mono, Muted, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { useSession } from "./Layout";
+import { actionsRowSx } from "./WikisPage";
 
 const ROW_HEIGHT = 56;
+
+/** Routine の一覧の、列の幅と狭い幅（md 未満）での扱い。狭い幅では、URL と登録日を隠し（「編集」で見られる）、操作を行の下に積む。 */
+export const routineColumnLayout = {
+  name: { width: "minmax(140px, 1fr)" },
+  url: { width: "minmax(220px, 2fr)", narrow: "hide" },
+  createdAt: { width: "max-content", narrow: "hide" },
+  actions: { width: "max-content", narrow: "stack" },
+} satisfies ColumnLayout;
 
 /** 一覧のあとで、登録・変更・削除のたびに読み直す */
 const KEY = ["routines"];
@@ -62,11 +71,11 @@ export function RoutinesPage() {
   };
 
   const columns: DataListColumn<RoutineSummary>[] = [
-    { key: "name", header: "名前", width: "minmax(140px, 1fr)", sx: { fontWeight: 600, overflowWrap: "anywhere" }, render: (r) => r.name },
+    { key: "name", header: "名前", ...routineColumnLayout.name, sx: { fontWeight: 600, overflowWrap: "anywhere" }, render: (r) => r.name },
     {
       key: "url",
       header: "URL",
-      width: "minmax(220px, 2fr)",
+      ...routineColumnLayout.url,
       render: (r) => (
         <Box sx={{ minWidth: 0 }}>
           <Mono sx={{ wordBreak: "break-all", fontSize: 13 }}>{r.url}</Mono>
@@ -74,21 +83,21 @@ export function RoutinesPage() {
         </Box>
       ),
     },
-    { key: "createdAt", header: "登録日", width: "max-content", sx: { whiteSpace: "nowrap" }, render: (r) => formatDateTime(r.createdAt) },
+    { key: "createdAt", header: "登録日", ...routineColumnLayout.createdAt, sx: { whiteSpace: "nowrap" }, render: (r) => formatDateTime(r.createdAt) },
     {
       key: "actions",
       header: "操作",
-      width: "max-content",
+      ...routineColumnLayout.actions,
       render: (r) => (
         // 取り返しのつかない操作（削除）は、ほかの操作から離して置く
-        <Row sx={{ flexWrap: "nowrap" }}>
+        <Row sx={actionsRowSx}>
           <Button variant="outlined" disabled={!available} onClick={() => setTesting(r)} sx={{ whiteSpace: "nowrap" }}>
             テスト実行
           </Button>
           <Button variant="outlined" disabled={!available} onClick={() => setEditing(r)} sx={{ whiteSpace: "nowrap" }}>
             編集
           </Button>
-          <Button variant="outlined" color="error" disabled={!available || remove.isPending} onClick={() => askDelete(r)} sx={{ ml: 3, whiteSpace: "nowrap" }}>
+          <Button variant="outlined" color="error" disabled={!available || remove.isPending} onClick={() => askDelete(r)} sx={{ ml: { md: 3 }, whiteSpace: "nowrap" }}>
             削除
           </Button>
         </Row>

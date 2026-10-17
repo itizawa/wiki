@@ -10,12 +10,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TAG_NAME_MAX, tagNameSchema, type WikiTag } from "@wiki/shared";
 import { useState } from "react";
 import { ConfirmHost, confirmDialog } from "../components/ConfirmDialog";
-import { DataList, type DataListColumn } from "../components/DataList";
+import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
 import { Field, RouterLink, Row, Section } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
 import { tagPagesLink, useWiki } from "../lib/wiki";
+import { actionsRowSx } from "./WikisPage";
+
+/**
+ * タグの一覧の、列の幅と狭い幅（md 未満）での扱い。狭い幅では、操作を行の下に積む（横に送らなくても押せる）。
+ * 付いているページの数は隠す（行を押せば、そのタグが付いたページの一覧が開く）。
+ */
+export const tagColumnLayout = {
+  name: { width: "minmax(140px, 1fr)" },
+  pages: { width: "max-content", narrow: "hide" },
+  actions: { width: "max-content", narrow: "stack" },
+} satisfies ColumnLayout;
 
 /** 入力したタグ名の誤り（空・長すぎ）。誤りが無ければ null。API に送る前に、入力欄の下へその場で出す。 */
 export function tagNameProblem(name: string): string | null {
@@ -76,25 +87,25 @@ function TagsSection() {
   };
 
   const columns: DataListColumn<WikiTag>[] = [
-    { key: "name", header: "名前", width: "minmax(140px, 1fr)", sx: { overflowWrap: "anywhere" }, render: (t) => (
+    { key: "name", header: "名前", ...tagColumnLayout.name, sx: { overflowWrap: "anywhere" }, render: (t) => (
         // 行のどこを押しても移れるが、Tab・Enter・新しいタブで開く操作は、この本物のリンクが受け持つ
         <RouterLink {...tagPagesLink(t.id)} sx={{ fontWeight: 600 }}>
           {t.name}
         </RouterLink>
       ),
     },
-    { key: "pages", header: "付いているページ", width: "max-content", sx: { whiteSpace: "nowrap" }, render: (t) => `${t.pageCount} ページ` },
+    { key: "pages", header: "付いているページ", ...tagColumnLayout.pages, sx: { whiteSpace: "nowrap" }, render: (t) => `${t.pageCount} ページ` },
     {
       key: "actions",
       header: "操作",
-      width: "max-content",
+      ...tagColumnLayout.actions,
       render: (t) => (
         // 取り返しのつかない操作（削除）は、ほかの操作から離して置く
-        <Row sx={{ flexWrap: "nowrap" }}>
+        <Row sx={actionsRowSx}>
           <Button variant="outlined" aria-label={`タグ「${t.name}」の名前を変える`} onClick={() => setRenaming(t)} sx={{ whiteSpace: "nowrap" }}>
             名前を変える
           </Button>
-          <Button variant="outlined" color="error" aria-label={`タグ「${t.name}」を削除`} disabled={remove.isPending} onClick={() => askDelete(t)} sx={{ ml: 3, whiteSpace: "nowrap" }}>
+          <Button variant="outlined" color="error" aria-label={`タグ「${t.name}」を削除`} disabled={remove.isPending} onClick={() => askDelete(t)} sx={{ ml: { md: 3 }, whiteSpace: "nowrap" }}>
             削除
           </Button>
         </Row>

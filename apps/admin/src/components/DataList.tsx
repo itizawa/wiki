@@ -44,6 +44,9 @@ export type DataListColumn<T> = {
   render: (row: T) => ReactNode;
 };
 
+/** 列ごとの幅と、狭い幅での扱い（列の `key` ごと）。画面の中の列の定義から抜き出し、狭い幅で収まるかをテストで確かめるのに使う。 */
+export type ColumnLayout = Record<string, Pick<DataListColumn<never>, "width" | "narrow">>;
+
 /** 行の遷移先。`pageLink(id)` などの、`RouterLink` に渡すものと同じ形。 */
 export type RowLink = { to: string; params?: Record<string, string>; search?: Record<string, string> };
 
