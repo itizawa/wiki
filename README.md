@@ -679,13 +679,14 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 
 ## デプロイ
 
-`main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。
+`main` に入ると GitHub Actions（`.github/workflows/deploy.yml`）が、検査 → マイグレーション → 管理画面+API → Cron ワーカーの順にデプロイする。公開サイトは Cloudflare の Workers Builds が Git 連携でビルドしてデプロイする。LP（`hatchery-works.com`）は同じ Actions の `lp` ジョブが、`apps/lp` が変わったときだけデプロイする。
 
 どちらも、関係するファイルが変わったときだけ動く。
 
 | 動くもの | 動かない変更 | 決めている場所 |
 |---|---|---|
 | GitHub Actions の「Deploy」 | `*.md` と `.claude/` の中**だけ**を変えた push（1つでもほかのファイルが変わっていれば動く。マイグレーションのファイルだけの変更でも動く） | `deploy.yml` の `paths-ignore` |
+| GitHub Actions の「Deploy」の `lp` ジョブ（LP） | `apps/lp/` の中を1つも変えていない push（手動実行は変わったファイルに関係なく出す） | `deploy.yml` の `lp` ジョブの「Decide whether apps/lp changed」 |
 | 公開サイトのビルド（Workers Builds） | `apps/site/`、`packages/shared/`、`pnpm-lock.yaml` のどれも変えていない push | Cloudflare のダッシュボードの Build watch paths（下の「初回の準備」の手順5） |
 
 - 「Deploy」の手動実行（Actions → Deploy → Run workflow）と、記事の公開のあとのビルド（デプロイフック）は、変わったファイルに関係なく動く
@@ -697,10 +698,21 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 | 管理画面 + API | Cloudflare Workers `wiki-admin`（静的アセット + Hono）。DB へは Hyperdrive 経由 | `apps/api/wrangler.toml` |
 | Cron ワーカー | Cloudflare Workers `wiki-worker`（5分間隔。やることが無ければ API を呼ばない。ほかに、1日1回の版の間引きと、運用コストの取得） | `apps/worker/wrangler.toml` |
 | 公開サイト | Cloudflare Workers `wiki-site`（静的アセット + `Host` で wiki を振り分ける Worker。Workers Builds が Git 連携でビルドし、記事の公開時はワーカーがデプロイフックを叩く） | `apps/site/wrangler.toml` |
+| LP | Cloudflare Workers `wiki-lp`（`hatchery-works.com` のルートドメインに、ビルド無しの静的 HTML `apps/lp/public/` を出す。`www.hatchery-works.com` はルートへ 301。詳しくは下の「LP」） | `apps/lp/wrangler.toml` |
 | DB | マネージド PostgreSQL（Neon など） | — |
 | 画像 | Cloudflare R2 のバケット `wiki-images`（`wiki-admin` と `wiki-site` の両方がバインディング `IMAGES` で使う） | 両方の `wrangler.toml` |
 | 音声 | Cloudflare R2 のバケット `wiki-audio`（`wiki-admin` だけがバインディング `AUDIO` で使う。公開サイトは使わない） | `apps/api/wrangler.toml` |
 | Cron への印 | Cloudflare Workers KV の名前空間 `wiki-cron-marks`（`wiki-admin` が書き、`wiki-worker` が読む。どちらもバインディング `CRON_MARKS`） | 両方の `wrangler.toml` |
+
+### LP
+
+`hatchery-works.com`（ルートドメイン）に、サービスの紹介と「編集したい場合は問い合わせる」の案内を出す静的な 1 ページ。ビルドも依存も無く、`apps/lp/public/index.html` をそのまま出す。wiki の公開サイト（`wiki-site`）とは別の Worker `wiki-lp` なので、LP だけの変更で wiki のビルドは走らない。
+
+- ルートドメインは `custom_domain = true`（DNS と証明書はデプロイ時に Cloudflare が作る）。`*.hatchery-works.com/*` はサブドメインの無いルートドメインには当たらない
+- `www.hatchery-works.com` は `www.hatchery-works.com/*` のルートで `wiki-lp` に届き、`worker.mjs` がルートドメインへ 301 で寄せる。`*.hatchery-works.com/*` より細かいルートが先に当たり、DNS は公開サイトのワイルドカードがそのまま受ける。デプロイしたあと、`https://www.hatchery-works.com/` がルートドメインへ移ることを確かめる
+- **問い合わせフォームの URL**は `apps/lp/public/index.html` の `id="contact-link"` の `href` に1か所だけある。仮の値（`PLACEHOLDER-REPLACE-ME`）のままなので、Google フォームを作ったら差し替える（ほかの「問い合わせ」のリンクは、この節へのページ内リンク）
+- 手元で見る：`cd apps/lp && pnpm exec wrangler dev`、またはファイルをそのまま開く。テストは `pnpm --filter @wiki/lp test`
+- エディタの画像（`public/editor.png`）は、ダミーのページを開いた管理画面のスクリーンショット。画面が大きく変わったら撮り直す
 
 管理画面と API は同じ Worker が同一オリジンで出す（`/api/*` が API、それ以外は管理画面）。サイトのビルドとワーカーが使う `/export/*` `/internal/*` も同じオリジンにある。
 

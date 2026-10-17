@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wiki — 書いたそばから流れていく公開型wiki</title>
+<meta name="description" content="ネタをページとして置けば、公開まで運ぶ。書く人が「書く」と「確かめる」に集中できる、公開型 wiki。">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #fff;
+    --surface: #f4f6fb;
+    --text: #1b2330;
+    --muted: #4f5b6e;
+    --line: #d9deea;
+    --accent: #2563eb;
+    --accent-text: #1d4fd7;
+    --on-accent: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11151c;
+      --surface: #1a202b;
+      --text: #e8ecf3;
+      --muted: #a9b3c4;
+      --line: #2f3848;
+      --accent: #5b8cff;
+      --accent-text: #8aaaff;
+      --on-accent: #0b1020;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.8 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  a { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  header { border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); text-decoration: none; }
+  .brand img { width: 28px; height: 28px; }
+  nav a { display: inline-block; padding: 12px 8px; }
+  .hero { padding: 56px 0 40px; }
+  h1 { font-size: clamp(28px, 6vw, 44px); line-height: 1.35; margin: 0 0 16px; }
+  .lead { font-size: 18px; color: var(--muted); margin: 0 0 24px; max-width: 36em; }
+  .notice {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 0 0 24px;
+    max-width: 36em;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .button {
+    display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px;
+    border-radius: 8px; font-weight: 700; text-decoration: none;
+    background: var(--accent); color: var(--on-accent);
+  }
+  .button.secondary { background: transparent; color: var(--accent-text); border: 2px solid var(--accent); }
+  .button:hover { filter: brightness(1.08); }
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 24px; margin: 0 0 20px; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; list-style: none; margin: 0; padding: 0; }
+  .features li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .features h3 { font-size: 17px; margin: 0 0 6px; }
+  .features p { margin: 0; color: var(--muted); }
+  figure { margin: 0; }
+  figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .admin-entry { color: var(--muted); font-size: 14px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  footer { border-top: 1px solid var(--line); padding: 24px 0; color: var(--muted); font-size: 14px; }
+  @media (prefers-reduced-motion: no-preference) { .button { transition: filter .15s; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="28" height="28">wiki</a>
+    <nav aria-label="ページ内"><a href="#contact">編集したいときは</a></nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <div class="hero">
+      <h1>書いたそばから流れていく、公開型 wiki</h1>
+      <p class="lead">ネタをページとして置けば、公開まで運ぶ。書く人は「書く」と「確かめる」に集中できる。</p>
+      <p class="notice"><strong>いまは閲覧のみです。</strong>編集したい場合は、<a href="#contact">問い合わせ</a>から連絡してください。</p>
+      <div class="actions">
+        <a class="button" href="https://wiki.hatchery-works.com" target="_blank" rel="noopener">公開中の wiki を読む<span aria-hidden="true"> ↗</span><span class="sr-only">（新しいタブで開く）</span></a>
+        <a class="button secondary" href="#contact">編集したいと問い合わせる</a>
+      </div>
+    </div>
+
+    <section aria-labelledby="features">
+      <h2 id="features">できること</h2>
+      <ul class="features">
+        <li><h3>wiki を複数持てる</h3><p>wiki ごとに、ページ・ツリー・予約・設定を分ける。それぞれ別のサブドメインで公開する。</p></li>
+        <li><h3>ページの下にページを置く</h3><p>フォルダは無く、ページの下にページを置いて階層を作る。記事の置き場所は 1 本のツリーで決める。</p></li>
+        <li><h3>公開と予約</h3><p>書いたページをそのまま公開したり、日時を決めて予約公開したりできる。公開前は限定公開にもできる。</p></li>
+        <li><h3>外部のアプリ（MCP）と連携</h3><p>MCP でつないだアプリから、ページを探す・読む・書く・移動する。</p></li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="screen">
+      <h2 id="screen">書く画面</h2>
+      <figure>
+        <img src="/editor.png" width="1280" height="800" loading="lazy" alt="wiki の管理画面のエディタ。左にページのツリー、右に見出しと表と本文が並ぶページを編集している。">
+        <figcaption>管理画面のエディタ（ダミーのページ）。左のツリーで置き場所を決め、右で書く。</figcaption>
+      </figure>
+    </section>
+
+    <section id="contact" aria-labelledby="contact-title">
+      <h2 id="contact-title">編集したいときは、問い合わせてください</h2>
+      <p>管理画面は招待制で、編集できるのは招待された人だけです。編集したい場合は、フォームから連絡してください。折り返しの連絡をもって、招待を進めます。</p>
+      <p><a class="button" id="contact-link" href="https://docs.google.com/forms/d/e/PLACEHOLDER-REPLACE-ME/viewform" target="_blank" rel="noopener">問い合わせフォームを開く<span aria-hidden="true"> ↗</span><span class="sr-only">（新しいタブで開く）</span></a></p>
+      <p class="admin-entry">招待された人は <a href="https://wiki-admin.hatchery-works.com">管理画面へ</a>。招待されていないと「この管理画面は招待制です」と表示されます。</p>
+    </section>
+  </div>
+</main>
+<footer>
+  <div class="wrap">wiki — hatchery-works.com</div>
+</footer>
+</body>
+</html>

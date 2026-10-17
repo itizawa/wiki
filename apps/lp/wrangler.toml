@@ -1,0 +1,23 @@
+# hatchery-works.com（ルートドメイン）の LP。ビルドも依存も無い静的 HTML（public/）を出す。
+# wiki の公開サイト（apps/site）とは別の Worker で、LP だけの変更では wiki のビルドを走らせない。
+# デプロイは GitHub Actions（.github/workflows/deploy.yml の lp ジョブ）。
+name = "wiki-lp"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+routes = [
+  # ルートドメイン。DNS レコードと証明書はデプロイ時に Cloudflare が作る（wiki-admin と同じ形）。
+  # 公開サイトのルート（*.hatchery-works.com/*）には、サブドメインが無いので当たらない
+  { pattern = "hatchery-works.com", custom_domain = true },
+  # www はルートドメインへ寄せる（worker.mjs）。*.hatchery-works.com/* より細かいルートが先に当たり、
+  # DNS は公開サイトのためのワイルドカード（プロキシ有効）がそのまま受ける。
+  # custom_domain にしないのは、ルートがカスタムドメインより先に当たるので、ワイルドカードに負けるため
+  { pattern = "www.hatchery-works.com/*", zone_name = "hatchery-works.com" },
+]
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+# www の振り分けのため、すべて Worker を通す
+run_worker_first = true
