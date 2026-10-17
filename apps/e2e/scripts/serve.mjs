@@ -8,7 +8,7 @@
 //                      起動のたびにマイグレーションする。手元の開発用の DB とは分ける
 //   E2E_PORT           待ち受けるポート（既定は 8789。`pnpm dev` の API :8787 と重ねない）
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,12 +40,24 @@ const stateDir = resolve(here, "../.wrangler");
 mkdirSync(stateDir, { recursive: true });
 const envFile = resolve(stateDir, "e2e.env");
 writeFileSync(envFile, Object.entries(vars).map(([k, v]) => `${k}=${v}\n`).join(""));
+// Workers AI（`[ai]`）は手元で動かせず、wrangler dev が Cloudflare の API トークンを求めて起動できない。
+// E2E では音声入力を使わないので、`[ai]` を除いた設定を同じ場所（相対パスが同じになるように）に作って使う（`AI` が無ければ、音声入力は 503）
+const e2eConfig = resolve(apiDir, "wrangler.e2e.toml");
+const baseConfig = readFileSync(resolve(apiDir, "wrangler.toml"), "utf8");
+const withoutAi = baseConfig.replace(/^\[ai\]\nbinding = "AI"\n/m, "");
+if (withoutAi === baseConfig) {
+  console.error("wrangler.toml から [ai] を取り除けませんでした（書き方を変えたなら、scripts/serve.mjs も直してください）");
+  process.exit(1);
+}
+writeFileSync(e2eConfig, withoutAi);
 const child = spawn(
   "pnpm",
   [
     "exec",
     "wrangler",
     "dev",
+    "--config",
+    e2eConfig,
     "--port",
     port,
     "--ip",
@@ -71,5 +83,7 @@ const child = spawn(
     env: { ...process.env, CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: databaseUrl },
   },
 );
+const cleanup = () => rmSync(e2eConfig, { force: true });
+process.on("exit", cleanup);
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
 child.on("exit", (code) => process.exit(code ?? 0));

@@ -5,6 +5,7 @@ dist
 !.env.example
 *.tsbuildinfo
 .wrangler
+wrangler.e2e.toml
 .dev.vars
 .manifest.json
 .astro
