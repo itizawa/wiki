@@ -41,6 +41,8 @@
   /* 閉じている間は、見えず、中のリンクにフォーカスも入らない。開閉の動き（html[data-sidebar-animating]）の間は、列が縮み切るまで中身を見せたまま薄くする */
   :global(html[data-sidebar-closed]) .withNav > aside { visibility: hidden; opacity: 0; border-right-color: transparent; }
   :global(html[data-sidebar-animating]) .withNav > aside { transition: opacity 0.18s ease, visibility 0.18s, border-color 0.18s ease; }
+  /* 開くときは、すぐに見える状態にする（visibility を動かすと、動きの最初のコマは hidden のままで、「サイドバーを閉じる」へフォーカスを移せない。NavDrawer.astro） */
+  :global(html[data-sidebar-animating]:not([data-sidebar-closed])) .withNav > aside { transition: opacity 0.18s ease, border-color 0.18s ease; }
 }
 /* 狭い画面では、ツリーを本文の下に回さず、左のドロワーにする（ヘッダーの「ページ一覧を開く」で開く。NavDrawer.astro）。
    閉じている間は visibility: hidden で、中のリンクにフォーカスが入らない */
