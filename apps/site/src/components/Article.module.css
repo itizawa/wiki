@@ -142,9 +142,18 @@
     .article :global(dialog[data-image-zoom][open])::backdrop { opacity: 0; }
   }
 }
+/* 表を包む箱（markdown.ts が足す）。収まらない表は、ページではなくこの箱の中だけを横にスクロールさせる。
+   キーボードでもスクロールできるよう、箱にはフォーカスが届く（tabindex="0"） */
+.body :global(.table-scroll) { max-width: 100%; overflow-x: auto; }
+.body :global(.table-scroll:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .body :global(table) { border-collapse: collapse; }
+/* セルでは語を割らない。body の overflow-wrap: anywhere（global.css）を受け継ぐと、表の列の最小幅が 0 近くまで縮み、
+   1列目が詰められて「apps/a／dmin」のように語の途中で折り返される。break-word は最小幅に効かないので、
+   語のままでは収まらない長い URL だけが折れる（列が広がって収まらない表は、箱が横にスクロールする）。
+   日本語はどの文字の間でも折り返せるので、収まらない表では日本語の列が1文字の幅まで縮み、縦書きのようになる。
+   それを防ぐため、列の幅に下限（6文字ぶん）を付ける */
 .body :global(th),
-.body :global(td) { border: 1px solid var(--border); padding: 4px 8px; }
+.body :global(td) { border: 1px solid var(--border); padding: 4px 8px; overflow-wrap: break-word; min-width: 6em; }
 /* 目次。見出しをクリックで閉じられる */
 .toc { margin: 0 0 24px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
 .toc summary { cursor: pointer; font-weight: 600; }
