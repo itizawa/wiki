@@ -1,16 +1,17 @@
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { PageSummary } from "@wiki/shared";
 import { useMemo, useState } from "react";
-import { Check } from "lucide-react";
 import { DataList, type DataListColumn } from "../components/DataList";
+import { ListToolbar, appliedFiltersText, filterValues, removeFilter, useUrlFilters, type FilterField, type SortField, type SortValue } from "../components/ListToolbar";
 import { StarButton } from "../components/StarButton";
-import { Field, Muted, RouterLink, Row, Section, StatusChip, tagChipSx } from "../components/ui";
+import { Muted, RouterLink, Row, Section, StatusChip, tagChipSx } from "../components/ui";
 import { api, errorMessage } from "../lib/api";
 import type { PagesSearch } from "../lib/pagesSearch";
 import { pageLink } from "../lib/wiki";
@@ -25,22 +26,53 @@ const PAGE_SIZE = 50;
 
 const nowrap = { whiteSpace: "nowrap" } as const;
 
+const SORT_FIELDS: SortField[] = [{ key: "updatedAt", label: "更新日時", asc: "古い順", desc: "新しい順" }];
+
+/** URL の `?tag=`（カンマ区切り）を、タグの ID の並びにする（重なりは捨てる） */
+export function parseTagParam(tag: string | undefined): string[] {
+  return [...new Set((tag ?? "").split(",").filter(Boolean))];
+}
+
 export function PagesPage() {
   useScreenTitle("すべてのページ");
-  const [q, setQ] = useState("");
-  // 選んだタグは URL の ?tag= に入れる（再読み込み・共有で同じ絞り込みが開く）
+  // 選んだタグは URL の ?tag=（カンマ区切り）に入れる（再読み込み・共有で同じ絞り込みが開く）。タイトルと並びは画面の中だけに持つ
   const { tag } = useSearch({ strict: false }) as PagesSearch;
   const navigate = useNavigate();
-  const selectTag = (id: string | undefined) => void navigate({ to: ".", search: id ? { tag: id } : {}, replace: true });
+  const [filters, setFilters] = useUrlFilters({
+    param: tag,
+    fromUrl: (param, prev) => {
+      const ids = parseTagParam(param);
+      const rest = prev.filter((f) => f.key !== "tag");
+      // 名前はタグの一覧から、出すときに引く
+      return ids.length > 0 ? [...rest, { key: "tag", values: ids.map((id) => ({ value: id, label: id })) }] : rest;
+    },
+    toUrl: (next) => filterValues(next, "tag")?.join(","),
+    onUrlChange: (next) => void navigate({ to: ".", search: next ? { tag: next } : {}, replace: true }),
+  });
+  const [sort, setSort] = useState<SortValue>({ key: "updatedAt", direction: "desc" });
+  const order = sort.direction;
   const tags = useQuery({ queryKey: ["tags"], queryFn: api.listTags });
-  const selectedTag = tags.data?.tags.find((t) => t.id === tag);
+  const q = filterValues(filters, "title")?.[0] ?? "";
+  const tagIds = filterValues(filters, "tag");
+  const tagName = (id: string) => tags.data?.tags.find((t) => t.id === id)?.name;
   // この wiki に無いタグ（消されたタグの URL など）。取りに行かず、絞り込みを外す道を出す
-  const unknownTag = !!tag && !!tags.data && !selectedTag;
+  const unknownTag = !!tagIds && !!tags.data && tagIds.some((id) => !tagName(id));
+  const filterFields: FilterField[] = [
+    { key: "title", label: "タイトル", kind: "text", placeholder: "例: 議事録" },
+    { key: "tag", label: "タグ", kind: "select", options: (tags.data?.tags ?? []).map((t) => ({ value: t.id, label: t.name })) },
+  ];
+  // タグの名前は、一覧が読めてから引く（読めるまでは「…」）
+  const shownFilters = filters.map((f) =>
+    f.key === "tag" ? { ...f, values: f.values.map((v) => ({ value: v.value, label: tagName(v.value) ?? (tags.data ? "（無いタグ）" : "…") })) } : f,
+  );
+  const applied = appliedFiltersText(filterFields, shownFilters);
   // 絞り込みを変えるとキーが変わり、先頭から取り直す。["pages", q] を使うほかの一覧（検索・コマンドメニューなど）とは重ならないキーにする
   const pages = useInfiniteQuery({
-    queryKey: ["pages", "infinite", q, tag ?? null],
-    queryFn: ({ pageParam }) => api.listPagesPage({ q, cursor: pageParam, limit: PAGE_SIZE, tag }),
-    enabled: !unknownTag,
+    queryKey: ["pages", "infinite", q, tagIds ?? null, order],
+    queryFn: ({ pageParam }) => api.listPagesPage({ q, cursor: pageParam, limit: PAGE_SIZE, tag: tagIds, order }),
+    // タグで絞るときは、タグの一覧を読んで、この wiki のタグだと分かってから取りに行く
+    // （タグの一覧が読めなかったときは、そのまま取りに行き、API の答えを出す）
+    enabled: !unknownTag && (!tagIds || !tags.isPending),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
   });
@@ -109,6 +141,7 @@ export function PagesPage() {
       key: "updatedAt",
       header: "更新日時",
       narrow: "hide",
+      sort: order === "asc" ? "ascending" : "descending",
       width: "160px",
       sx: nowrap,
       render: (p) => <Muted component="span">{formatDateTime(p.updatedAt)}</Muted>,
@@ -122,35 +155,19 @@ export function PagesPage() {
           <Typography variant="h6" component="h2" sx={{ flex: "1 1 auto" }}>
             ページ
           </Typography>
-          {/* 狭い幅では、見出しの下の段に全幅で置く（見出しを省略させない） */}
-          <Field value={q} onChange={(e) => setQ(e.target.value)} placeholder="タイトルで絞り込み" slotProps={{ htmlInput: { "aria-label": "ページをタイトルで絞り込む" } }} sx={{ flex: { xs: "1 1 100%", sm: "0 1 auto" } }} />
         </Row>
-        {/* タグで絞り込む。選んだタグは塗りつぶし＋チェック＋×で示し、もう一度押すか × で外す（色だけに頼らない） */}
-        {tags.data && tags.data.tags.length > 0 && (
-          <Row component="ul" aria-label="タグで絞り込み" sx={{ mb: 1, gap: 0.75, listStyle: "none", p: 0, m: 0 }}>
-            {tags.data.tags.map((t) => {
-              const selected = t.id === tag;
-              return (
-                <li key={t.id}>
-                  <Chip
-                    label={`${t.name} ${t.pageCount}`}
-                    clickable
-                    aria-pressed={selected}
-                    color={selected ? "primary" : "default"}
-                    variant={selected ? "filled" : "outlined"}
-                    icon={selected ? <Check size={16} /> : undefined}
-                    onClick={() => selectTag(selected ? undefined : t.id)}
-                    onDelete={selected ? () => selectTag(undefined) : undefined}
-                    sx={{ minHeight: 32, ...tagChipSx }}
-                  />
-                </li>
-              );
-            })}
-          </Row>
-        )}
+        <ListToolbar
+          label="ページの絞り込みと並べ替え"
+          sortFields={SORT_FIELDS}
+          sort={sort}
+          onSortChange={setSort}
+          filterFields={filterFields}
+          filters={shownFilters}
+          onFiltersChange={setFilters}
+        />
         {/* 一覧にないタグ（消されたタグの URL など）。絞り込みを外す道を残す */}
         {unknownTag && (
-          <Alert severity="warning" sx={{ mb: 1 }} action={<Button color="inherit" size="small" onClick={() => selectTag(undefined)}>絞り込みを外す</Button>}>
+          <Alert severity="warning" sx={{ mb: 1 }} action={<Button color="inherit" size="small" onClick={() => setFilters(removeFilter(filters, "tag"))}>絞り込みを外す</Button>}>
             URL で指定されたタグは、この wiki にありません。
           </Alert>
         )}
@@ -168,7 +185,18 @@ export function PagesPage() {
           rowKey={(p) => p.id}
           rowLink={(p) => pageLink(p.id)}
           error={pages.error}
-          empty={emptyMessage(q, selectedTag?.name)}
+          empty={
+            applied ? (
+              <>
+                {emptyMessage(applied)}{" "}
+                <Link component="button" type="button" onClick={() => setFilters([])} sx={{ verticalAlign: "baseline" }}>
+                  絞り込みをすべて外す
+                </Link>
+              </>
+            ) : (
+              emptyMessage("")
+            )
+          }
           rowHeight={PAGE_ROW_HEIGHT}
           virtualized
           hasNextPage={hasNextPage}
@@ -182,10 +210,9 @@ export function PagesPage() {
   );
 }
 
-/** 絞り込み中に 0 件のとき、何で絞っているかを言う（タグは名前で）。 */
-export function emptyMessage(q: string, tagName?: string): string {
-  const conditions = [tagName && `タグ「${tagName}」が付いた`, q && `「${q}」をタイトルに含む`].filter(Boolean);
-  if (conditions.length > 0) return `${conditions.join("、")}ページはありません。`;
+/** 0 件のときの案内。絞り込み中なら、効いている条件（`appliedFiltersText`）を言う。 */
+export function emptyMessage(applied: string): string {
+  if (applied) return `条件（${applied}）に合うページはありません。`;
   return "ページはまだありません。サイドバーの「最上位に新しいページ」（＋）から作れます。";
 }
 

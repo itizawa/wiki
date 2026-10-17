@@ -1,7 +1,6 @@
 import Box from "@mui/material/Box";
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
 import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, X_CONNECT_RESULTS, type AnalyticsDays, type XConnectResult } from "@wiki/shared";
-import type { EditRequestListStatus } from "@wiki/shared";
 import { useCallback, type ComponentType } from "react";
 import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
@@ -21,6 +20,7 @@ import { RoutinesPage } from "./routes/RoutinesPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { validatePagesSearch } from "./lib/pagesSearch";
+import { parseEditRequestStatuses } from "./lib/editRequests";
 import { FIRST_WIKI } from "./lib/wiki";
 import { TrashPage } from "./routes/TrashPage";
 import { SearchPage } from "./routes/SearchPage";
@@ -133,17 +133,20 @@ const editRequestsRoute = createRoute({
     return <EditRequestsPage key={pageId} pageId={pageId} />;
   },
 });
-// この wiki の編集リクエストの一覧。?status=done：完了したもの（既定の「未対応」は付けない）。再読み込みや URL の共有で同じ絞り込みが開く
+// この wiki の編集リクエストの一覧。?status=done・?status=open,done：その状態で絞ったもの（はじめの「未対応」だけは付けない）。再読み込みや URL の共有で同じ絞り込みが開く
 const editRequestListRoute = createRoute({
   getParentRoute: () => wikiRoute,
   path: "requests",
-  validateSearch: (search: Record<string, unknown>): { status?: "done" } => (search.status === "done" ? { status: "done" } : {}),
+  validateSearch: (search: Record<string, unknown>): { status?: string } => {
+    const status = parseEditRequestStatuses(search.status);
+    return status ? { status: status.join(",") } : {};
+  },
   component: function EditRequestList() {
-    const { status = "open" } = editRequestListRoute.useSearch();
+    const { status } = editRequestListRoute.useSearch();
     const navigate = editRequestListRoute.useNavigate();
     return (
       <PageBody>
-        <EditRequestListPage status={status} onStatusChange={(next: EditRequestListStatus) => void navigate({ search: next === "done" ? { status: next } : {} })} />
+        <EditRequestListPage status={status} onStatusChange={(next) => void navigate({ search: next ? { status: next } : {} })} />
       </PageBody>
     );
   },

@@ -7,8 +7,10 @@ import {
   ListToolbar,
   addFilter,
   appliedFiltersText,
+  dateRangeOption,
   filterChipLabel,
   filterValues,
+  parseDateRange,
   removeFilter,
   setFilterValues,
   sortChipLabel,
@@ -84,6 +86,32 @@ describe("チップの文字", () => {
   it("並べ替えは、列と向きを言葉で出す", () => {
     expect(sortChipLabel(sortFields[0]!, "desc")).toBe("日時：新しい順");
     expect(sortChipLabel(sortFields[0]!, "asc")).toBe("日時：古い順");
+  });
+});
+
+describe("期間の条件", () => {
+  it("「いつから..いつまで」を値にし、「10/1〜10/17」をチップに出す。片方だけでもよい", () => {
+    expect(dateRangeOption({ from: "2026-10-01", to: "2026-10-17" }, 2026)).toEqual({ value: "2026-10-01..2026-10-17", label: "10/1〜10/17" });
+    expect(dateRangeOption({ from: "2026-10-01" }, 2026)).toEqual({ value: "2026-10-01..", label: "10/1〜" });
+    expect(dateRangeOption({ to: "2026-10-17" }, 2026)).toEqual({ value: "..2026-10-17", label: "〜10/17" });
+    expect(filterChipLabel({ label: "期間" }, [dateRangeOption({ from: "2026-10-01", to: "2026-10-17" }, 2026)!])).toBe("期間: 10/1〜10/17");
+  });
+
+  it("今年でない日は年も付ける", () => {
+    expect(dateRangeOption({ from: "2025-12-25", to: "2026-01-05" }, 2026)?.label).toBe("2025/12/25〜1/5");
+  });
+
+  it("どちらも空なら条件にしない", () => {
+    expect(dateRangeOption({}, 2026)).toBeNull();
+    expect(dateRangeOption({ from: "", to: "" }, 2026)).toBeNull();
+  });
+
+  it("値から「いつから」「いつまで」に戻せる。形の合わない側は無いものとする", () => {
+    expect(parseDateRange("2026-10-01..2026-10-17")).toEqual({ from: "2026-10-01", to: "2026-10-17" });
+    expect(parseDateRange("2026-10-01..")).toEqual({ from: "2026-10-01", to: undefined });
+    expect(parseDateRange("..2026-10-17")).toEqual({ from: undefined, to: "2026-10-17" });
+    expect(parseDateRange("nope..2026-10-17")).toEqual({ from: undefined, to: "2026-10-17" });
+    expect(parseDateRange(undefined)).toEqual({ from: undefined, to: undefined });
   });
 });
 
