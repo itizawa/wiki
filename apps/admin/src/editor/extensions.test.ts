@@ -41,6 +41,8 @@ describe("本文のMarkdown往復", () => {
     ["評価の欄", "効果\n\n@rating\n\n使い方"],
     ["コードブロックの中の @rating", "```\n@rating\n```"],
     ["引数の付いた @rating は、ふつうの文字", "@rating 5"],
+    ["タイル（並べた行）", "前の文\n\n@tile badge=6 image=https://art.hearthstonejson.com/v1/tiles/TLC_401.png link=/p/abcdefghij カチコチステゴドン\n\n@tile badge=2 Snoozin' Zookeeper\n\n後の文"],
+    ["タイル（リンクだけ）", "@tile link=/p/abcdefghij"],
     ["音声", "前\n\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n\n後"],
     ["コードブロックの中の @audio", "```\n@audio 0b8f3c1e-5a52-4c8e-9d0e-6f3a1c2b7d41\n```"],
     ["ID でない @audio は、ふつうの文字", "@audio abc"],
@@ -121,6 +123,18 @@ describe("本文のMarkdown往復", () => {
     };
     expect(JSON.stringify(render("https://www.google.com/maps/embed?pb=1"))).toContain('"iframe"');
     expect(JSON.stringify(render("https://maps.app.goo.gl/abc"))).not.toContain('"iframe"');
+  });
+
+  it("続けて書いたタイルの行は、空行をはさんだ形で書き出す（公開サイトでの見た目は同じ）", () => {
+    expect(roundTrip("@tile 名前A\n@tile 名前B").trim()).toBe("@tile 名前A\n\n@tile 名前B");
+  });
+
+  it("@tile はタイルの部品になり、値を持つ。文中と不正な値は部品にならない", () => {
+    const first = (md: string) => manager.parse(md).content?.[0];
+    expect(first("@tile badge=6 link=/p/abcdefghij 名前")?.type).toBe("tile");
+    expect(first("@tile badge=6 link=/p/abcdefghij 名前")?.attrs).toEqual({ badge: "6", image: null, pageId: "abcdefghij", label: "名前" });
+    expect(first("文 @tile 名前")?.type).toBe("paragraph");
+    expect(first("@tile badge=6")?.type).toBe("paragraph");
   });
 
   it("@rating は評価の欄の部品になり、文中は部品にならない", () => {

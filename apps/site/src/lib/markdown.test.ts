@@ -265,6 +265,32 @@ describe("@rating（評価の欄）", () => {
   });
 });
 
+describe("@tile（数字と画像つきの帯）", () => {
+  const IMAGE = "https://art.hearthstonejson.com/v1/tiles/TLC_401.png";
+  const opts = { publicPaths, titleOf: (id: string) => (id === "abcdefghij" ? "いまのタイトル" : undefined) };
+  it("続けて書いた行を、それぞれ帯にする。公開ページへのものは帯全体がリンク", () => {
+    const html = renderMarkdown(`前\n\n@tile badge=6 image=${IMAGE} link=/p/abcdefghij 名前<A>\n@tile badge=2 Snoozin' Zookeeper\n\n後`, opts);
+    expect(html).toContain(
+      `<a class="tile" href="/p/abcdefghij"><span class="tile-badge">6</span><span class="tile-name">名前&lt;A&gt;</span><img class="tile-art" src="${IMAGE}" alt="" loading="lazy"></a>`,
+    );
+    expect(html).toContain(`<div class="tile"><span class="tile-badge">2</span><span class="tile-name">Snoozin' Zookeeper</span></div>`);
+    expect(html).toContain("<p>前</p>");
+    expect(html).toContain("<p>後</p>");
+  });
+  it("名前を省くと、リンク先のいまのタイトルを出す", () => {
+    expect(renderMarkdown("@tile badge=1 link=/p/abcdefghij", opts)).toContain('<span class="tile-name">いまのタイトル</span>');
+  });
+  it("公開されていないページへの帯は押せない。名前も無ければ出さない", () => {
+    expect(renderMarkdown("@tile link=/p/zzzzzzzzzz 名前", opts)).toBe('<div class="tile"><span class="tile-name">名前</span></div>\n');
+    expect(renderMarkdown("@tile link=/p/zzzzzzzzzz", opts)).toBe("");
+  });
+  it("コードブロックの中・文中・不正な値の記法はそのまま", () => {
+    const html = renderMarkdown("```\n@tile 名前\n```\n\n@tile image=javascript:x 名前\n\n文 @tile 名前", opts);
+    expect(html).not.toContain('class="tile"');
+    expect(html).toContain("<p>@tile image=javascript:x 名前</p>");
+  });
+});
+
 describe("リンクカード（URL だけの段落）", () => {
   const linkPreviews = { "https://example.com/post": { title: "記事 <b>", description: "説明", siteName: "サイト" } };
 
