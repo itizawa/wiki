@@ -14,7 +14,7 @@ import { api, errorMessage } from "../lib/api";
 import { invalidateAfterTagChange } from "../lib/invalidatePageLists";
 import { withTag } from "../lib/pageTags";
 import { screenLink, useWiki } from "../lib/wiki";
-import { Muted } from "./ui";
+import { Muted, tagChipSx } from "./ui";
 
 const MenuItemLink = createLink(MenuItem);
 
@@ -119,7 +119,7 @@ export function PageTagMenu(props: {
 /**
  * 編集画面のタイトルの下に置く、タグの付け外し。付いているタグを並べ、マウスを載せると右に「×」が出て、押すと外れる。
  * 「＋」は常に出ていて、押すとタグの一覧（メニュー）が開き、そこから付ける。
- * 余白を足すなら、外側の `ul`（gap と mb）か、各タグを包む `li` に足す。
+ * タグの左右の余白は `tagChipSx`（一覧のタグ列・絞り込みと共通）。タグ同士の間は外側の `ul` の gap。
  */
 export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonly PageTag[] }) {
   const { failure, toggle } = usePageTagToggle(pageId, tags);
@@ -137,6 +137,7 @@ export function PageTagToggles({ pageId, tags }: { pageId: string; tags: readonl
               deleteIcon={<X size={14} aria-label={`タグ「${tag.name}」を外す`} />}
               sx={{
                 maxWidth: "100%",
+                ...tagChipSx,
                 // ×は、マウスを載せたとき・キーボードで選んだときに出す。マウスを使えない端末（hover が無い）では常に出す
                 "& .MuiChip-deleteIcon": { opacity: 0 },
                 "&:hover .MuiChip-deleteIcon, &:focus-visible .MuiChip-deleteIcon": { opacity: 1 },
