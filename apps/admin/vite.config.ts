@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { APP_SHELL_URL, precacheAppShellAtRoot } from "./build/appShell";
 import { firstLoadProblem, type Chunk } from "./build/firstLoad";
 
 const apiTarget = process.env.API_ORIGIN ?? "http://localhost:8787";
@@ -70,7 +71,9 @@ export default defineConfig({
         // 画面の JS は分けてある（下の manualChunks と、src/router.tsx の lazyScreen）が、分けたファイルも全部覚える（オフラインでも画面を開けるように）。
         // 既定の上限（2MB）を超えたファイルは黙って覚える対象から外れ、その画面だけオフラインで開けなくなるので、上げておく
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        navigateFallback: "/index.html",
+        // 画面遷移には、覚えておいた / を返す。/index.html にしない理由は build/appShell.ts
+        navigateFallback: APP_SHELL_URL,
+        manifestTransforms: [precacheAppShellAtRoot],
         // Worker が先に受ける経路（apps/api/wrangler.toml の run_worker_first）は、画面遷移でも index.html を返さない。
         // 外すと、Google ログイン（/api/auth/google/login とコールバック）や、外部のアプリの認可（/oauth/authorize）が画面に戻されて通らなくなる
         navigateFallbackDenylist: [
