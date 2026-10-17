@@ -91,6 +91,7 @@ export type WikiScreen =
   | "/w/$wikiKey"
   | "/w/$wikiKey/pages"
   | "/w/$wikiKey/requests"
+  | "/w/$wikiKey/tasks"
   | "/w/$wikiKey/search"
   | "/w/$wikiKey/calendar"
   | "/w/$wikiKey/analytics"

@@ -18,7 +18,7 @@ import {
   type WorkflowRunPage,
   type WorkflowRunStatus,
 } from "@wiki/shared";
-import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircle } from "lucide-react";
+import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircle, UserRoundCheck } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
@@ -42,6 +42,7 @@ export const RUNS_REFETCH_MS = 30_000;
 const STATUS_VIEW: Record<WorkflowRunStatus, { color: "default" | "success" | "error" | "warning" | "info"; icon: ReactElement }> = {
   pending: { color: "info", icon: <Clock size={14} /> },
   running: { color: "info", icon: <LoaderCircle size={14} /> },
+  waiting: { color: "warning", icon: <UserRoundCheck size={14} /> },
   succeeded: { color: "success", icon: <CircleCheck size={14} /> },
   failed: { color: "error", icon: <CircleAlert size={14} /> },
   skipped: { color: "default", icon: <CircleMinus size={14} /> },
@@ -59,6 +60,8 @@ export function runResultText(run: WorkflowRunEntry): string {
       return run.attempts > 0 ? `${run.attempts} 回試して失敗。もう一度試すのを待っています${run.error ? `（${run.error}）` : ""}` : "実行を待っています";
     case "running":
       return "実行しています";
+    case "waiting":
+      return "人の作業（タスク）の完了を待っています。サイドバーの「タスク」で完了にすると、続きから動きます";
     case "succeeded":
       return `${run.actions.length} 件のアクションを実行しました`;
     case "failed":

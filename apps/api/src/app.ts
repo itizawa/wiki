@@ -24,6 +24,7 @@ import { starRoutes } from "./routes/stars";
 import { routineRoutes } from "./routes/routines";
 import { pageTagRoutes, tagRoutes } from "./routes/tags";
 import { routineChoiceRoutes, workflowRoutes } from "./routes/workflow";
+import { taskRoutes } from "./routes/tasks";
 import { structureRoutes, treeRoutes } from "./routes/structure";
 import { inviteAdminRoutes, inviteRoutes, memberRoutes, userRoutes } from "./routes/members";
 import { templateRoutes } from "./routes/templates";
@@ -132,6 +133,7 @@ export function createApp(deps: Deps) {
   wiki.route("/tags", tagRoutes);
   wiki.route("/workflow", workflowRoutes);
   wiki.route("/routines", routineChoiceRoutes);
+  wiki.route("/tasks", taskRoutes);
   wiki.route("/pages", pageTagRoutes);
   wiki.route("/structure", structureRoutes);
   wiki.route("/trees", treeRoutes);

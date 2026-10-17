@@ -28,6 +28,8 @@ import { SettingsPage } from "./routes/SettingsPage";
 import { SnsSettingsPage } from "./routes/SnsSettingsPage";
 import { WorkflowDetailPage } from "./routes/WorkflowDetailPage";
 import { WorkflowsPage } from "./routes/WorkflowsPage";
+import { TaskDetailPage } from "./routes/TaskDetailPage";
+import { TasksPage } from "./routes/TasksPage";
 import { TagSettingsPage } from "./routes/TagSettingsPage";
 import { WikiLayout } from "./routes/WikiLayout";
 import { WikiSettingsLayout } from "./routes/WikiSettingsLayout";
@@ -201,6 +203,16 @@ const workflowDetailRoute = createRoute({
     return <WorkflowDetailPage key={workflowId} workflowId={workflowId} />;
   }),
 });
+// タスク（ワークフローの「人の作業」が作る）。wiki のメンバーなら誰でも。一覧と、1つのタスク（状態と担当者を変える）
+const tasksRoute = createRoute({ getParentRoute: () => wikiRoute, path: "tasks", component: padded(TasksPage) });
+const taskDetailRoute = createRoute({
+  getParentRoute: () => wikiRoute,
+  path: "tasks/$taskId",
+  component: padded(function TaskDetail() {
+    const { taskId } = taskDetailRoute.useParams();
+    return <TaskDetailPage key={taskId} taskId={taskId} />;
+  }),
+});
 const trashRoute = createRoute({ getParentRoute: () => wikiRoute, path: "trash", component: padded(TrashPage) });
 
 // wiki ごとの設定。見出しとタブ（WikiSettingsLayout）の下に、タブごとの画面を出す。タブごとに URL を分ける
@@ -292,6 +304,8 @@ const routeTree = rootRoute.addChildren([
     trashRoute,
     workflowsRoute,
     workflowDetailRoute,
+    tasksRoute,
+    taskDetailRoute,
     settingsRoute.addChildren([settingsGeneralRoute, appearanceRoute, siteHomeRoute, integrationsRoute, snsRoute, tagsRoute, membersRoute, auditRoute]),
     legacySettingsScreen("members"),
     legacySettingsScreen("audit"),

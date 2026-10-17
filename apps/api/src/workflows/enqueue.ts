@@ -24,9 +24,9 @@ export async function attachTagAndEnqueue(tx: Db, wikiId: string, pageId: string
 /**
  * 積んだことを、5分おきの Cron に知らせる印（`markCronWork("workflow", at)`）。
  * 応答のあとの実行が取りこぼされても（落ちた・再試行できない失敗の通知待ち）、Cron が拾う。
- * 印を書く呼び出しは、ここの1か所だけ。
+ * 印を書く呼び出しは、ここの1か所だけ（実行を積んだとき、タスクの完了で待っていた実行を戻したとき（`tasks/service.ts`）に呼ぶ）。
  */
-function markWorkflowQueued(at: Date): void {
+export function markWorkflowQueued(at: Date): void {
   markCronWork("workflow", at);
 }
 
@@ -103,7 +103,19 @@ async function enqueueRuns(tx: Db, wikiId: string, pageId: string, trigger: SQL 
     if (actions.length > 0) {
       await tx
         .insert(workflowRunActions)
-        .values(actions.map((a) => ({ runId: run!.id, position: a.position, type: a.type, routineId: a.routineId, tagId: a.tagId, instruction: a.instruction })));
+        .values(
+          actions.map((a) => ({
+            runId: run!.id,
+            position: a.position,
+            type: a.type,
+            routineId: a.routineId,
+            tagId: a.tagId,
+            instruction: a.instruction,
+            taskTitle: a.taskTitle,
+            taskDescription: a.taskDescription,
+            assigneeId: a.assigneeId,
+          })),
+        );
     }
     if (!failedReason) queued.push(run!.id);
   }

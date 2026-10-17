@@ -7,6 +7,7 @@ import type { Db } from "../db/client";
 import { pages, pageTags, wikis, wikiTags, workflowRoutines, workflowRunActions, workflowRuns } from "../db/schema";
 import { HttpError } from "../errors";
 import { detachTag } from "../tags/service";
+import { createTask, taskStatus } from "../tasks/service";
 import { attachTagAndEnqueue } from "./enqueue";
 import { buildRoutineText } from "./payload";
 import { fireRoutine } from "./routine";
@@ -23,11 +24,12 @@ const ERROR_MAX = 500;
 /** `executeRun` が使うもの（Deps のうちの一部） */
 export type RunDeps = { config: Pick<AppConfig, "routineTokenKey" | "adminOrigin">; routineFetch?: typeof fetch | null };
 
-export type RunOutcome = "skipped" | "not_pending" | RunStatus;
+export type RunOutcome = "skipped" | "not_pending" | "waiting" | RunStatus;
 type RunStatus = "succeeded" | "failed" | "pending";
 
 type Failure = { retryable: boolean; reason: string; message: string; status?: number };
-type ActionResult = { ok: true; result: Record<string, unknown>; queued?: string[] } | ({ ok: false } & Failure);
+/** `ok: "waiting"`：「人の作業」のタスクを作って、実行を `waiting` にした（ここで止める。タスクが完了すると、続きから動く） */
+type ActionResult = { ok: true; result: Record<string, unknown>; queued?: string[] } | { ok: "waiting" } | ({ ok: false } & Failure);
 
 export type RunRow = typeof workflowRuns.$inferSelect;
 type RunActionRow = typeof workflowRunActions.$inferSelect;
@@ -42,6 +44,8 @@ const failure = (reason: string, message: string, retryable = false): ActionResu
  * - 再試行できない失敗（認証エラー・URL 違い・Routine が無いなど）は、アクションと実行を `failed`
  * - 再試行できる失敗（ネットワーク・タイムアウト・429・5xx）は、実行を `pending` に戻す（失敗したアクションも `pending` のまま、理由は result に残す）。
  *   戻した実行は、Cron（`retry.ts` の `runDueWorkflowRuns`）が拾ってもう一度呼ぶ。`attempts` が `WORKFLOW_MAX_ATTEMPTS` に達した失敗は、再試行できるものでも `failed` で確定する
+ * - 「人の作業」は、タスクを作って実行を `waiting` にし、そこで止める（Cron は拾わない）。タスクを完了にすると、実行が `pending` に戻り
+ *   （`tasks/service.ts` の `updateTask`）、もう一度このアクションから動く。そのときは、タスクが完了していれば成功にして次へ進む（タスクを作り直さない）
  * - `failed` で確定したときは、監査ログ（`workflow_run_fail`）を書く（通知は、Cron の `runDueWorkflowRuns` が `notified_at` の無い失敗を返して頼む）
  * - 実行の直前に、ページがゴミ箱・完全に削除済み、wiki がアーカイブ中なら、何も呼ばずに `skipped`
  * Routine の呼び出しは、トランザクションの外で行う（相手が遅くても、接続を握らない）。投げない設計だが、DB の失敗などで落ちたら実行は `running` のまま残る
@@ -88,6 +92,7 @@ async function executeOne(db: Db, deps: RunDeps, runId: string, now: () => Date,
       (err): ActionResult =>
         err instanceof HttpError ? failure("not_found", `実行できなかった（${err.message}）`) : failure("unexpected", "実行中に予期しないエラーが起きた", true),
     );
+    if (outcome.ok === "waiting") return "waiting";
     if (outcome.ok) {
       spawned.push(...(outcome.queued ?? []));
       await db
@@ -157,6 +162,7 @@ async function runAction(db: Db, deps: RunDeps, ctx: Context, action: RunActionR
   if (action.type === "call_routine" && action.routineId) return callRoutine(db, deps, ctx, action.routineId, action.instruction ?? DEFAULT_ROUTINE_INSTRUCTION);
   if (action.type === "remove_tag" && action.tagId) return removeTag(db, ctx, action.tagId);
   if (action.type === "add_tag" && action.tagId) return addTag(db, ctx, action.tagId);
+  if (action.type === "create_task" && action.taskTitle !== null) return waitForTask(db, ctx, action);
   return failure("unknown_action", `知らないアクションの種類（${action.type}）`);
 }
 
@@ -203,6 +209,50 @@ async function addTag(db: Db, ctx: Context, tagId: string): Promise<ActionResult
   const [before] = await db.select({ n: count() }).from(pageTags).where(and(eq(pageTags.pageId, run.pageId), eq(pageTags.tagId, tagId)));
   const queued = await db.transaction((tx) => attachTagAndEnqueue(tx, run.wikiId, run.pageId, tagId, WORKFLOW_ACTOR, run.id));
   return { ok: true, result: { added: Number(before?.n ?? 0) === 0 }, queued };
+}
+
+/** アクションの記録（`result`）に残した、作ったタスクの ID */
+function taskIdOf(result: unknown): string | null {
+  const r = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+  return typeof r.taskId === "string" ? r.taskId : null;
+}
+
+/**
+ * 人の作業。初めて来たときは、タスクを作り、作ったタスクの ID をアクションの記録に残して、実行を `waiting` にする（ひとつのトランザクション。
+ * タスクが見える時点で、実行はもう待っている）。待っているあいだは `attempts` を数えない（待つのは失敗ではないので、再試行の回数を使わせない）。
+ * タスクが完了して戻ってきたときは、成功にして次のアクションへ進む。まだ完了していなければ、タスクを作り直さずにもう一度待つ。
+ */
+async function waitForTask(db: Db, ctx: Context, action: RunActionRow): Promise<ActionResult> {
+  const { run } = ctx;
+  const existing = taskIdOf(action.result);
+  if (existing) {
+    const status = await taskStatus(db, run.wikiId, existing);
+    if (status === "done") return { ok: true, result: { taskId: existing } };
+  }
+  await db.transaction(async (tx) => {
+    const taskId =
+      existing && (await taskStatus(tx, run.wikiId, existing)) !== null
+        ? existing
+        : await createTask(tx, {
+            wikiId: run.wikiId,
+            title: action.taskTitle ?? "",
+            description: action.taskDescription ?? "",
+            assigneeId: action.assigneeId,
+            pageId: run.pageId,
+            workflowId: run.workflowId,
+            runId: run.id,
+            runPosition: action.position,
+          });
+    await tx
+      .update(workflowRunActions)
+      .set({ result: { taskId } })
+      .where(and(eq(workflowRunActions.runId, run.id), eq(workflowRunActions.position, action.position)));
+    await tx
+      .update(workflowRuns)
+      .set({ status: "waiting", attempts: Math.max(0, run.attempts - 1), lastError: null, finishedAt: null })
+      .where(eq(workflowRuns.id, run.id));
+  });
+  return { ok: "waiting" };
 }
 
 /**

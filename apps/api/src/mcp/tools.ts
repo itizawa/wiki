@@ -14,6 +14,8 @@ import {
   publishVisibilitySchema,
   renameTagInput,
   ROUTINE_INSTRUCTION_MAX,
+  TASK_DESCRIPTION_MAX,
+  TASK_TITLE_MAX,
   resolveHome,
   savePageInput,
   sniffImageType,
@@ -32,7 +34,8 @@ import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql, type SQ
 import { z } from "zod";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
-import { editRequestItems, editRequests, pages, pageTags, pageVersions, scheduledActions, wikiTags } from "../db/schema";
+import { editRequestItems, editRequests, pages, pageTags, pageVersions, scheduledActions, users, wikiTags } from "../db/schema";
+import { isAssignable } from "../tasks/service";
 import {
   acceptEditRequestItems,
   addEditRequestComment,
@@ -200,6 +203,8 @@ const namedBlockInput = z.object({
         z.object({ type: z.literal("call_routine"), routine: z.string().min(1).max(200), instruction: z.string() }),
         z.object({ type: z.literal("remove_tag"), tag: tagName }),
         z.object({ type: z.literal("add_tag"), tag: tagName }),
+        // 題・説明の長さの検査は workflowBlockInput に任せる。担当者はメールアドレスで指す（省けば担当者なし）
+        z.object({ type: z.literal("create_task"), title: z.string(), description: z.string().optional(), assignee: z.string().max(320).nullable().optional() }),
       ]),
     )
     .min(1)
@@ -211,7 +216,8 @@ const BLOCK_DESCRIPTION =
   "ブロックは、トリガー1つと、上から順に行うアクションの並び（1〜" + WORKFLOW_ACTIONS_MAX + "件）。" +
   "トリガーは tag_attached（tag のタグが付いたとき）・page_first_published（ページが初めて公開されたとき）・" +
   "schedule（weekdays の曜日の time（JST）になったら、pageId のページを対象に動く。Cron は5分おきなので数分遅れることがある）。" +
-  "アクションは call_routine（routine の Routine を呼び、instruction を依頼として渡す。Routine が始まった時点で成功になり、終わるのを待たない）・remove_tag・add_tag（付けたタグのブロックも動く）。" +
+  "アクションは call_routine（routine の Routine を呼び、instruction を依頼として渡す。Routine が始まった時点で成功になり、終わるのを待たない）・remove_tag・add_tag（付けたタグのブロックも動く）・" +
+  "create_task（人の作業。title・description のタスクを作り、管理画面の「タスク」で人が完了にするまで、実行を止める。assignee は担当者のメールアドレスで、省くと担当者なし）。" +
   "タグは list_tags、Routine は list_routines にある名前で指す。";
 const BLOCK_PROPS = {
   trigger: {
@@ -232,14 +238,17 @@ const BLOCK_PROPS = {
     minItems: 1,
     maxItems: WORKFLOW_ACTIONS_MAX,
     description:
-      '上から順に行う。{ "type": "call_routine", "routine": "Routine の名前", "instruction": "Routine への依頼" } / { "type": "remove_tag", "tag": "…" } / { "type": "add_tag", "tag": "…" }',
+      '上から順に行う。{ "type": "call_routine", "routine": "Routine の名前", "instruction": "Routine への依頼" } / { "type": "remove_tag", "tag": "…" } / { "type": "add_tag", "tag": "…" } / { "type": "create_task", "title": "タスクの題", "description": "説明", "assignee": "担当者のメールアドレス（省くと担当者なし）" }',
     items: {
       type: "object",
       properties: {
-        type: { type: "string", enum: ["call_routine", "remove_tag", "add_tag"] },
+        type: { type: "string", enum: ["call_routine", "remove_tag", "add_tag", "create_task"] },
         routine: str("Routine の名前（call_routine のとき）"),
         instruction: str(`Routine への依頼（call_routine のとき。${ROUTINE_INSTRUCTION_MAX}文字まで）`),
         tag: str("タグの名前（remove_tag / add_tag のとき）"),
+        title: str(`タスクの題（create_task のとき。${TASK_TITLE_MAX}文字まで）`),
+        description: str(`タスクの説明（create_task のとき。${TASK_DESCRIPTION_MAX}文字まで。省いてよい）`),
+        assignee: str("担当者のメールアドレス（create_task のとき。その wiki のメンバー。省くと担当者なし）"),
       },
       required: ["type"],
     },
@@ -259,6 +268,10 @@ async function resolveBlock(tx: Db, agent: AgentContext, wikiId: string, input: 
   if (input.trigger.type === "schedule" && !(await canSee(tx, agent, input.trigger.pageId))) throw notFound(`page ${input.trigger.pageId}`);
   const actions = [];
   for (const a of input.actions) {
+    if (a.type === "create_task") {
+      actions.push({ type: a.type, title: a.title, description: a.description ?? "", assigneeId: a.assignee ? await assigneeByEmail(tx, wikiId, a.assignee) : null });
+      continue;
+    }
     actions.push(a.type === "call_routine" ? { type: a.type, routineId: routineId(a.routine), instruction: a.instruction } : { type: a.type, tagId: (await findTagByName(tx, wikiId, a.tag)).id });
   }
   const parsed = workflowBlockInput.safeParse({ trigger, actions });
@@ -266,12 +279,23 @@ async function resolveBlock(tx: Db, agent: AgentContext, wikiId: string, input: 
   return parsed.data;
 }
 
+/** タスクの担当者を、メールアドレスで探す（その wiki の担当者にできる人だけ。いなければ 404） */
+async function assigneeByEmail(tx: Db, wikiId: string, email: string): Promise<string> {
+  const rows = await tx.select({ id: users.id }).from(users).where(eq(users.email, email.trim().toLowerCase()));
+  for (const r of rows) if (await isAssignable(tx, wikiId, r.id)) return r.id;
+  throw notFound(`member ${email} (担当者は、この wiki のメンバーのメールアドレスで指す)`);
+}
+
 /** ブロックを、create_workflow_block に渡すのと同じ形（名前で指す）で返す */
 const describeBlock = (b: WorkflowBlock) => ({
   id: b.id,
   trigger: b.trigger.type === "tag_attached" ? { type: b.trigger.type, tag: b.trigger.tagName } : b.trigger,
   actions: b.actions.map((a) =>
-    a.type === "call_routine" ? { type: a.type, routine: a.routineName, instruction: a.instruction } : { type: a.type, tag: a.tagName },
+    a.type === "call_routine"
+      ? { type: a.type, routine: a.routineName, instruction: a.instruction }
+      : a.type === "create_task"
+        ? { type: a.type, title: a.title, description: a.description, assignee: a.assigneeName }
+        : { type: a.type, tag: a.tagName },
   ),
 });
 

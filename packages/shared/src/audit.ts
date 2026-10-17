@@ -4,6 +4,7 @@ import type { PublishVisibility } from "./publish";
 import { WIKI_ROLE_LABELS, type WikiRole } from "./users";
 import { ROUTINE_FAILURE_MESSAGES, type RoutineFailureReason } from "./routine";
 import { SNS_PROVIDER_LABELS, type SnsProvider } from "./sns";
+import { ACTION_KINDS } from "./workflow";
 
 /**
  * 監査ログ：「誰が・いつ・何をしたか」を、あとから確かめるための記録。追記だけで、直したり消したりしない。
@@ -382,7 +383,7 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
       return plain(`${SNS_PROVIDER_LABELS[entry.detail.provider]} のアカウント（@${entry.detail.username}）にテスト投稿をしました`);
 
     case "workflow_run_fail": {
-      const kind = entry.detail.actionType === "call_routine" ? "Routine を呼ぶ" : entry.detail.actionType === "remove_tag" ? "タグを外す" : entry.detail.actionType === "add_tag" ? "タグを付ける" : entry.detail.actionType;
+      const kind = (ACTION_KINDS as Record<string, { label: string } | undefined>)[entry.detail.actionType]?.label ?? entry.detail.actionType;
       return [...quoted(t), { text: `のワークフローの実行に失敗しました（${kind}：${entry.detail.error}）` }];
     }
 

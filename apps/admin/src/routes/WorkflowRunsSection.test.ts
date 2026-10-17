@@ -26,6 +26,7 @@ describe("runResultText", () => {
     expect(runResultText(run({ status: "pending", attempts: 0 }))).toBe("実行を待っています");
     expect(runResultText(run({ status: "pending", attempts: 1, error: "タイムアウト" }))).toContain("タイムアウト");
     expect(runResultText(run({ status: "running" }))).toBe("実行しています");
+    expect(runResultText(run({ status: "waiting" }))).toContain("タスク");
   });
 });
 

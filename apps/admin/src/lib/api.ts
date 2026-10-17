@@ -54,6 +54,11 @@ import type {
   PageTagList,
   RoutineChoiceList,
   TagList,
+  Task,
+  TaskCount,
+  TaskPage,
+  TaskStatus,
+  UpdateTaskInput,
   Workflow,
   WorkflowBlock,
   WorkflowBlockInput,
@@ -399,6 +404,12 @@ export const api = {
   replaceWorkflowBlock: (workflowId: string, id: string, input: WorkflowBlockInput) => request<WorkflowBlock>("PUT", w(`/workflow/${workflowId}/blocks/${id}`), input),
   deleteWorkflowBlock: (workflowId: string, id: string) => request<null>("DELETE", w(`/workflow/${workflowId}/blocks/${id}`)),
   /** そのワークフローの実行の履歴（`order` を省くと新しい順。管理者だけ）。`cursor` で続きを取る */
+  listTasks: (input: { status?: TaskStatus[]; assignee?: string[]; order?: "asc" | "desc"; limit: number; cursor?: string }) =>
+    request<TaskPage>("GET", w(`/tasks${query({ status: input.status?.join(","), assignee: input.assignee?.join(","), order: input.order, limit: String(input.limit), cursor: input.cursor })}`)),
+  getTask: (id: string) => request<Task>("GET", w(`/tasks/${id}`)),
+  countTodoTasks: () => request<TaskCount>("GET", w("/tasks/count")),
+  updateTask: (id: string, input: UpdateTaskInput) => request<Task>("PATCH", w(`/tasks/${id}`), input),
+
   listWorkflowRuns: (workflowId: string, input: { status?: WorkflowRunStatus[]; pageId?: string[]; order?: "asc" | "desc"; limit: number; cursor?: string }) =>
     request<WorkflowRunPage>("GET", w(`/workflow/${workflowId}/runs${query({ status: input.status?.join(","), pageId: input.pageId?.join(","), order: input.order, limit: String(input.limit), cursor: input.cursor })}`)),
   /** ブロックで選ぶための、登録済み Routine の ID と名前（管理者だけ） */

@@ -77,7 +77,22 @@ export const callRoutineAction = z.object({
 export const removeTagAction = z.object({ type: z.literal("remove_tag"), tagId: id });
 export const addTagAction = z.object({ type: z.literal("add_tag"), tagId: id });
 
-export const workflowActionSchema = z.discriminatedUnion("type", [callRoutineAction, removeTagAction, addTagAction]);
+/** 「人の作業（タスクを作る）」のタスクの題と説明の長さ（文字数）の上限 */
+export const TASK_TITLE_MAX = 100;
+export const TASK_DESCRIPTION_MAX = 2000;
+
+/**
+ * 人の作業：ここに来たら、対象のページのタスクを作り、タスクが完了するまで実行を止める（完了すると、次のアクションから続ける）。
+ * 担当者は任意。決めなければ（null）、その wiki のメンバーなら誰でも拾って進められる
+ */
+export const createTaskAction = z.object({
+  type: z.literal("create_task"),
+  title: z.string().trim().min(1, "タスクの題を入れてください").max(TASK_TITLE_MAX, `タスクの題は${TASK_TITLE_MAX}文字までです`),
+  description: z.string().trim().max(TASK_DESCRIPTION_MAX, `タスクの説明は${TASK_DESCRIPTION_MAX}文字までです`).default(""),
+  assigneeId: id.nullable().default(null),
+});
+
+export const workflowActionSchema = z.discriminatedUnion("type", [callRoutineAction, removeTagAction, addTagAction, createTaskAction]);
 export type WorkflowActionInput = z.infer<typeof workflowActionSchema>;
 
 export type WorkflowTriggerType = WorkflowTriggerInput["type"];
@@ -93,6 +108,7 @@ export const ACTION_KINDS: Record<WorkflowActionType, { label: string }> = {
   call_routine: { label: "Routine を呼ぶ" },
   remove_tag: { label: "タグを外す" },
   add_tag: { label: "タグを付ける" },
+  create_task: { label: "人の作業（タスクを作る）" },
 };
 export const TRIGGER_TYPES = Object.keys(TRIGGER_KINDS) as WorkflowTriggerType[];
 export const ACTION_TYPES = Object.keys(ACTION_KINDS) as WorkflowActionType[];
@@ -114,7 +130,9 @@ export type WorkflowTrigger =
 export type WorkflowAction =
   | { type: "call_routine"; routineId: string; routineName: string; instruction: string }
   | { type: "remove_tag"; tagId: string; tagName: string }
-  | { type: "add_tag"; tagId: string; tagName: string };
+  | { type: "add_tag"; tagId: string; tagName: string }
+  /** 担当者を決めていなければ `assigneeId` `assigneeName` とも null */
+  | { type: "create_task"; title: string; description: string; assigneeId: string | null; assigneeName: string | null };
 
 export type WorkflowBlock = { id: string; trigger: WorkflowTrigger; actions: WorkflowAction[]; createdAt: string };
 
@@ -163,6 +181,8 @@ export function describeAction(a: WorkflowAction): string {
       return `タグ「${a.tagName}」を外す`;
     case "add_tag":
       return `タグ「${a.tagName}」を付ける`;
+    case "create_task":
+      return `タスク「${a.title}」を作り、完了を待つ${a.assigneeName ? `（担当：${a.assigneeName}）` : ""}`;
   }
 }
 
@@ -175,7 +195,8 @@ export type WorkflowDraft = {
   /** 時刻（`HH:MM`）と曜日（`WEEKDAY_LABELS` の添字） */
   time: string;
   weekdays: number[];
-  actions: { type: WorkflowActionType; routineId: string; tagId: string; instruction: string }[];
+  /** `title` `description` `assigneeId`（空なら担当者なし）は「人の作業」のとき */
+  actions: { type: WorkflowActionType; routineId: string; tagId: string; instruction: string; title: string; description: string; assigneeId: string }[];
 };
 
 /** 入力の誤りを、保存ボタンを押す前に出す文にする。誤りが無ければ null */
@@ -193,19 +214,24 @@ export function workflowDraftProblem(draft: WorkflowDraft): string | null {
     if (a.type === "call_routine" && !a.instruction.trim()) return `${i + 1} 番目のアクションの Routine への依頼を入れてください。`;
     if (a.type === "call_routine" && a.instruction.trim().length > ROUTINE_INSTRUCTION_MAX) return `${i + 1} 番目のアクションの Routine への依頼は${ROUTINE_INSTRUCTION_MAX}文字までです。`;
     if ((a.type === "remove_tag" || a.type === "add_tag") && !a.tagId) return `${i + 1} 番目のアクションのタグを選んでください。`;
+    if (a.type === "create_task" && !a.title.trim()) return `${i + 1} 番目のアクションのタスクの題を入れてください。`;
+    if (a.type === "create_task" && a.title.trim().length > TASK_TITLE_MAX) return `${i + 1} 番目のアクションのタスクの題は${TASK_TITLE_MAX}文字までです。`;
+    if (a.type === "create_task" && a.description.trim().length > TASK_DESCRIPTION_MAX) return `${i + 1} 番目のアクションのタスクの説明は${TASK_DESCRIPTION_MAX}文字までです。`;
   }
   return null;
 }
 
 // ---- 実行の履歴 ----
 
-export const WORKFLOW_RUN_STATUSES = ["pending", "running", "succeeded", "failed", "skipped"] as const;
+/** `waiting`：「人の作業」のタスクが完了するのを待っている（Cron は拾わない。タスクを完了にすると `pending` に戻って続きから動く） */
+export const WORKFLOW_RUN_STATUSES = ["pending", "running", "waiting", "succeeded", "failed", "skipped"] as const;
 export type WorkflowRunStatus = (typeof WORKFLOW_RUN_STATUSES)[number];
 
 /** 画面に出す、実行の状態の名前 */
 export const WORKFLOW_RUN_STATUS_LABELS: Record<WorkflowRunStatus, string> = {
   pending: "実行待ち",
   running: "実行中",
+  waiting: "人の作業待ち",
   succeeded: "成功",
   failed: "失敗",
   skipped: "見送り",

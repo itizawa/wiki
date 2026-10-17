@@ -173,6 +173,17 @@ describe("MCP wiki admin tools", () => {
     expect((await bad([{ type: "call_routine", routine: "無い", instruction: "x" }])).data.error.code).toBe("not_found");
     expect((await bad([{ type: "call_routine", routine: "記事下書き", instruction: "  " }])).data.error.code).toBe("invalid_input");
 
+    // 人の作業：担当者はメールアドレスで指す（省けば担当者なし）。メンバーでない人・空の題は断る
+    const task = await bad([{ type: "create_task", title: "録音する", description: "台本を読む", assignee: "ADMIN@example.com" }, { type: "create_task", title: "確かめる" }]);
+    expect(task.isError).toBe(false);
+    expect(task.data.actions).toEqual([
+      { type: "create_task", title: "録音する", description: "台本を読む", assignee: "オーナー" },
+      { type: "create_task", title: "確かめる", description: "", assignee: null },
+    ]);
+    expect((await bad([{ type: "create_task", title: "録音する", assignee: "nobody@example.com" }])).data.error.code).toBe("not_found");
+    expect((await bad([{ type: "create_task", title: " " }])).data.error.code).toBe("invalid_input");
+    expect((await callTool(token, "delete_workflow_block", { wiki: "wiki", workflowId: wf.data.id, blockId: task.data.id })).isError).toBe(false);
+
     const updated = await callTool(token, "update_workflow_block", {
       wiki: "wiki",
       workflowId: wf.data.id,
