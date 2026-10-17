@@ -22,6 +22,10 @@ describe("画面ごとのタブの題", () => {
     expect(read(`./${file}`)).toContain(`useScreenTitle("${name}")`);
   });
 
+  it("すべてのページは、画面の見出しもタブの題と同じ名前にする", () => {
+    expect(read("./PagesPage.tsx")).toMatch(/component="h2"[^>]*>\s*すべてのページ\s*</);
+  });
+
   it("編集画面とテンプレートの編集画面は、入力中のタイトルに追従させる", () => {
     expect(read("./EditorPage.tsx")).toMatch(/useScreenTitle\(draft && page\.data \? draft\.title : null\)/);
     expect(read("./TemplatesPage.tsx")).toMatch(/useScreenTitle\(draft \? draft\.title : null\)/);

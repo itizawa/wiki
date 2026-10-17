@@ -9,7 +9,7 @@ import {
   type AuditLogQuery,
   type AuditTargetType,
 } from "@wiki/shared";
-import { and, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc as ascending, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import type { Context } from "hono";
 import type { Db } from "../db/client";
 import { auditLogs, pages, users, wikiMembers, wikis } from "../db/schema";
@@ -93,23 +93,26 @@ export async function writeAudit<A extends AuditAction>(db: Db, input: AuditInpu
 const JST = "+09:00";
 const DAY_MS = 24 * 3600_000;
 
-/** 続きの読み込みの目印：最後の行の日時と ID。 */
-function encodeCursor(row: { createdAt: Date; id: string }): string {
-  return `${row.createdAt.toISOString()}_${row.id}`;
+/**
+ * 続きの読み込みの目印：最後の行の日時と ID。日時は DB の文字のまま（マイクロ秒まで）使う。
+ * Date にするとミリ秒に丸まり、古い順では最後の行をもう一度返し、新しい順では同じミリ秒の行を取りこぼす。
+ */
+function encodeCursor(row: { createdAtText: string; id: string }): string {
+  return `${row.createdAtText}_${row.id}`;
 }
 
-function decodeCursor(cursor: string): { createdAt: Date; id: string } {
+function decodeCursor(cursor: string): { at: string; id: string } {
   const [at, id] = cursor.split("_");
-  const createdAt = new Date(at ?? "");
-  if (Number.isNaN(createdAt.getTime()) || !id || !/^[0-9a-f-]{36}$/.test(id)) {
+  if (!at || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/.test(at) || !id || !/^[0-9a-f-]{36}$/.test(id)) {
     throw new HttpError(400, "invalid_cursor", "invalid cursor");
   }
-  return { createdAt, id };
+  return { at, id };
 }
 
 /**
- * 監査ログの一覧（新しい順）。scope が wiki ならその wiki のものだけ（管理者）、all ならすべて（オーナー）。
- * all のときだけ、query.wiki で wiki（"global" なら全体にかかわるもの）を絞れる。
+ * 監査ログの一覧（日時の順。`order` を省くと新しい順）。scope が wiki ならその wiki のものだけ（管理者）、all ならすべて（オーナー）。
+ * all のときだけ、query.wiki で wiki（"global" なら全体にかかわるもの。混ぜれば、そのどれか）を絞れる。
+ * actor・category も、どれかに当たる記録に絞る。
  */
 export async function listAuditLogs(
   db: Db,
@@ -118,24 +121,35 @@ export async function listAuditLogs(
 ): Promise<AuditLogPage> {
   const conds: (SQL | undefined)[] = [];
   if (scope !== "all") conds.push(eq(auditLogs.wikiId, scope.wikiId));
-  else if (query.wiki === "global") conds.push(isNull(auditLogs.wikiId));
   else if (query.wiki) {
-    const [wiki] = await db.select({ id: wikis.id }).from(wikis).where(eq(wikis.key, query.wiki));
-    if (!wiki) return { entries: [], nextCursor: null };
-    conds.push(eq(auditLogs.wikiId, wiki.id));
+    const keys = query.wiki.filter((k) => k !== "global");
+    const found = keys.length > 0 ? await db.select({ id: wikis.id }).from(wikis).where(inArray(wikis.key, keys)) : [];
+    const ids = found.map((w) => w.id);
+    const global = query.wiki.includes("global");
+    // 選んだ wiki が1つも無ければ（消えた wiki のキーなど）、何も出さない
+    if (!global && ids.length === 0) return { entries: [], nextCursor: null };
+    conds.push(or(global ? isNull(auditLogs.wikiId) : undefined, ids.length > 0 ? inArray(auditLogs.wikiId, ids) : undefined));
   }
   if (query.from) conds.push(gte(auditLogs.createdAt, new Date(`${query.from}T00:00:00${JST}`)));
   if (query.to) conds.push(lt(auditLogs.createdAt, new Date(new Date(`${query.to}T00:00:00${JST}`).getTime() + DAY_MS)));
-  if (query.actor) conds.push(eq(auditLogs.actorUserId, query.actor));
-  if (query.category) conds.push(inArray(auditLogs.action, actionsIn(query.category)));
+  if (query.actor) conds.push(inArray(auditLogs.actorUserId, query.actor));
+  if (query.category) conds.push(inArray(auditLogs.action, query.category.flatMap(actionsIn)));
+  const asc = query.order === "asc";
   if (query.cursor) {
     const c = decodeCursor(query.cursor);
-    conds.push(or(lt(auditLogs.createdAt, c.createdAt), and(eq(auditLogs.createdAt, c.createdAt), lt(auditLogs.id, c.id))));
+    // 古い順では、目印より後の行が続き
+    conds.push(
+      asc
+        ? sql`(${auditLogs.createdAt}, ${auditLogs.id}) > (${c.at}::timestamptz, ${c.id}::uuid)`
+        : sql`(${auditLogs.createdAt}, ${auditLogs.id}) < (${c.at}::timestamptz, ${c.id}::uuid)`,
+    );
   }
+  const by = asc ? ascending : desc;
 
   const rows = await db
     .select({
       log: auditLogs,
+      createdAtText: sql<string>`${auditLogs.createdAt}::text`,
       wikiKey: wikis.key,
       wikiName: wikis.name,
       // 対象のページがいまも開けるか（同じ wiki の、削除されていないページ）
@@ -154,14 +168,15 @@ export async function listAuditLogs(
       ),
     )
     .where(and(...conds))
-    .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
+    .orderBy(by(auditLogs.createdAt), by(auditLogs.id))
     .limit(query.limit + 1);
 
   const more = rows.length > query.limit;
   const list = more ? rows.slice(0, query.limit) : rows;
+  const last = list[list.length - 1];
   return {
     entries: list.map(({ log, wikiKey, wikiName, pageLive }) => toEntry(log, wikiKey && wikiName ? { key: wikiKey, name: wikiName } : null, pageLive !== null)),
-    nextCursor: more ? encodeCursor(list[list.length - 1]!.log) : null,
+    nextCursor: more && last ? encodeCursor({ createdAtText: last.createdAtText, id: last.log.id }) : null,
   };
 }
 

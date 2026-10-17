@@ -61,6 +61,7 @@ const { current, list = true } = Astro.props;
 
 <script>
   import { SIDEBAR_CLOSED, SIDEBAR_STORAGE_KEY } from "../lib/nav";
+  import { sidebarCloseFocusTarget } from "../lib/sidebarFocus";
 
   // ヘッダーのリンク（スクリプトが動かないときの行き先）を、ボタンに差しかえる。
   // 狭い画面ではドロワーを開き、広い画面では閉じたサイドバーを開く
@@ -106,8 +107,30 @@ const { current, list = true } = Astro.props;
         // 覚えられないブラウザでも、このページの中では開閉できる
       }
       syncToggle();
-      // 押したボタンは消えるので、入れ替わりに出たボタンへフォーカスを移す
-      (closed ? toggle : sidebarClose)?.focus();
+      // 押したボタンは消えるので、入れ替わりに出たボタンへフォーカスを移す。どちらもスクロールはさせない（読んでいた位置にとどまる）
+      // 開くときに「サイドバーを閉じる」へ移せるのは、開く動きでは visibility をすぐ切り替えているから（page.module.css）
+      if (closed) focusAfterSidebarClose();
+      else sidebarClose?.focus({ preventScroll: true });
+    };
+
+    // ヘッダーは本文と一緒に流れるので、読んでいる途中に閉じると「サイドバーを開く」は画面の外にある。
+    // そのときは、画面に入っている本文の見出し（無ければ本文の領域）へ移し、次の Tab が読んでいた位置の続きへ進むようにする
+    const focusAfterSidebarClose = () => {
+      const main = drawer.parentElement?.querySelector<HTMLElement>("main") ?? null;
+      const headings = Array.from(main?.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? []);
+      const target = sidebarCloseFocusTarget(
+        { el: toggle as HTMLElement, rect: toggle.getBoundingClientRect() },
+        headings.map((el) => ({ el, rect: el.getBoundingClientRect() })),
+        main,
+        window.innerHeight,
+      );
+      if (!target) return;
+      // 見出しと main はもともとフォーカスできないので、移す間だけ tabindex="-1" を付け、外れたら戻す
+      if (target !== toggle && !target.hasAttribute("tabindex")) {
+        target.setAttribute("tabindex", "-1");
+        target.addEventListener("blur", () => target.removeAttribute("tabindex"), { once: true });
+      }
+      target.focus({ preventScroll: true });
     };
     let inerted: HTMLElement[] = [];
 

@@ -305,6 +305,57 @@ describe("audit log: guarantees", () => {
     expect((await ctx.call("GET", `${W}/audit-logs?category=nope`)).status).toBe(400);
   });
 
+  it("takes several people, categories and wikis (any of them), and pages through oldest first with order=asc", async () => {
+    ctx = await setup();
+    await ctx.call("POST", "/admin/wikis", { key: "notes", name: "開発ノート" });
+    await ctx.call("POST", "/admin/wikis", { key: "diary", name: "日記" });
+    const sakura = await ctx.addUser("sakura@example.com", { wiki: "admin" });
+    const minato = await ctx.addUser("minato@example.com", { wiki: "admin" });
+    const p1 = await newPage("記事1", "", sakura.call);
+    const p2 = await newPage("記事2", "", minato.call);
+    await sakura.call("POST", `${W}/pages/${p1.id}/publish`, { versionId: p1.headVersionId, visibility: "public" });
+    await minato.call("POST", `${W}/pages/${p2.id}/publish`, { versionId: p2.headVersionId, visibility: "public" });
+    await ctx.call("POST", `${W}/invites`, { role: "editor" });
+    await ctx.call("POST", "/admin/w/notes/invites", { role: "editor" });
+
+    // 人・分類：どれかに当たる記録
+    const actions = async (path: string) => (await logs(path)).map((e) => e.action);
+    expect(await actions(`${W}/audit-logs?actor=${sakura.user.id},${minato.user.id}`)).toEqual(["page_publish", "page_publish"]);
+    expect(await actions(`${W}/audit-logs?actor=${sakura.user.id},${ctx.owner.id}`)).toEqual(["invite_create", "page_publish"]);
+    expect(await actions(`${W}/audit-logs?category=member,publish`)).toEqual(["invite_create", "page_publish", "page_publish"]);
+    expect(await actions(`${W}/audit-logs?category=member,publish&actor=${minato.user.id}`)).toEqual(["page_publish"]);
+    expect((await ctx.call("GET", `${W}/audit-logs?actor=${sakura.user.id},nope`)).status).toBe(400);
+    expect((await ctx.call("GET", `${W}/audit-logs?category=member,nope`)).status).toBe(400);
+
+    // wiki：全体にかかわるものと、wiki のキーを混ぜられる。無いキーは無視し、1つも無ければ空
+    expect(await actions("/admin/audit-logs?wiki=global,notes")).toEqual(["invite_create", "wiki_create", "wiki_create"]);
+    expect(await actions("/admin/audit-logs?wiki=notes,diary")).toEqual(["invite_create"]);
+    expect(await actions("/admin/audit-logs?wiki=nothing")).toEqual([]);
+    expect(await actions("/admin/audit-logs?wiki=nothing,global")).toEqual(["wiki_create", "wiki_create"]);
+    // wiki の一覧では、wiki の指定を無視する
+    expect(await actions(`${W}/audit-logs?wiki=notes`)).toEqual(["invite_create", "page_publish", "page_publish"]);
+
+    // 古い順：先頭がいちばん古く、続きも古い順で、抜けも重なりも無い
+    const newest = (await logs("/admin/audit-logs")).map((e) => e.id);
+    const oldest: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const res: { body: { entries: AuditLogEntry[]; nextCursor: string | null } } = await ctx.call(
+        "GET",
+        `/admin/audit-logs?order=asc&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      );
+      oldest.push(...res.body.entries.map((e) => e.id));
+      cursor = res.body.nextCursor;
+    } while (cursor);
+    expect(oldest).toEqual([...newest].reverse());
+    // 新しい順で続きから取っても、同じ並び
+    const first = (await ctx.call("GET", "/admin/audit-logs?limit=3")).body;
+    const second = (await ctx.call("GET", `/admin/audit-logs?limit=3&cursor=${encodeURIComponent(first.nextCursor)}`)).body;
+    expect([...first.entries, ...second.entries].map((e: AuditLogEntry) => e.id)).toEqual(newest.slice(0, 6));
+    expect((await ctx.call("GET", "/admin/audit-logs?order=new")).status).toBe(400);
+    expect((await ctx.call("GET", "/admin/audit-logs?cursor=broken")).status).toBe(400);
+  });
+
   it("offers the wiki's members and the owners as people to filter by, without reading the logs", async () => {
     ctx = await setup();
     await ctx.call("POST", "/admin/wikis", { key: "notes", name: "Notes" });

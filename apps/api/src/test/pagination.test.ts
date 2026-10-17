@@ -63,6 +63,25 @@ describe("ページの一覧を続きから取る", () => {
     expect(ids).toEqual([...created].reverse());
   });
 
+  it("order=asc は古い順で、続きも古い順で続く（同じ日時・ミリ秒より細かい差でも、抜けも重なりも無い）", async () => {
+    ctx = await setup();
+    const created: string[] = [];
+    for (let i = 0; i < 9; i++) created.push(await create(`page ${i}`));
+    // 3件ずつ同じ日時、組のあいだは 1 マイクロ秒ずつ新しくする
+    for (const [i, id] of created.entries()) {
+      await ctx.client.query(`update pages set updated_at = timestamptz '2026-01-01T00:00:00.123Z' + $1 * interval '1 microsecond' where id = $2`, [Math.floor(i / 3), id]);
+    }
+    const desc = (await walk("", 2)).ids;
+    const asc = (await walk("&order=asc", 2)).ids;
+    expect(asc).toEqual([...desc].reverse());
+    expect(new Set(asc).size).toBe(asc.length);
+    // 指定なしの呼び出しも、向きを変えられる。省けば今までどおり新しい順
+    const all = (await ctx.call("GET", `${W}/pages?order=asc`)).body.pages.map((p: { id: string }) => p.id);
+    expect(all).toEqual(asc);
+    expect((await ctx.call("GET", `${W}/pages`)).body.pages.map((p: { id: string }) => p.id)).toEqual(desc);
+    expect((await ctx.call("GET", `${W}/pages?order=new`)).status).toBe(400);
+  });
+
   it("ちょうど最後まで取ったら、続きは無い", async () => {
     ctx = await setup();
     for (let i = 0; i < 4; i++) await create(`page ${i}`);

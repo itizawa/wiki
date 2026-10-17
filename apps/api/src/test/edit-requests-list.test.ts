@@ -127,6 +127,12 @@ describe("the list of edit requests in a wiki", () => {
     expect(await ids("?status=done")).toEqual([decided.id, withdrawn.id].sort());
     expect((await list("?status=done")).requests.every((r) => r.openCount === 0)).toBe(true);
     expect((await ctx.call("GET", `${W}/edit-requests?status=closed`)).status).toBe(400);
+    // カンマ区切りで両方を選ぶと、どちらも出る（出した日時の新しい順のまま）
+    expect(await ids("?status=open,done")).toEqual([open.id, decided.id, withdrawn.id].sort());
+    expect(await ids("?status=done,open")).toEqual([open.id, decided.id, withdrawn.id].sort());
+    expect(await ids("?status=done,done")).toEqual([decided.id, withdrawn.id].sort());
+    expect((await ctx.call("GET", `${W}/edit-requests?status=open,closed`)).status).toBe(400);
+    expect((await ctx.call("GET", `${W}/edit-requests?status=`)).status).toBe(400);
 
     // 未対応に戻すと、未対応の側に戻る
     expect((await item(page, decided.itemIds[0]!, "reopen")).status).toBe(200);

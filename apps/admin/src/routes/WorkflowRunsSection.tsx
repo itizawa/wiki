@@ -20,7 +20,7 @@ import {
 } from "@wiki/shared";
 import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircle, UserRoundCheck } from "lucide-react";
 import { useId, useState, type ReactElement } from "react";
-import { DataList, type DataListColumn } from "../components/DataList";
+import { DataList, type ColumnLayout, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
 import { ListToolbar, appliedFiltersText, filterValues, type ActiveFilter, type FilterField, type SortField, type SortValue } from "../components/ListToolbar";
 import { Muted, RouterLink, Section } from "../components/ui";
@@ -36,6 +36,18 @@ export function runTriggerText(r: Pick<WorkflowRunEntry, "triggerType" | "tagNam
 
 const PAGE_SIZE = 50;
 const ROW_HEIGHT = 72;
+
+/**
+ * 実行の履歴の列の幅と、狭い幅（md 未満）での扱い。行の数が多いので（`virtualized`）、どの列にも決まった幅を渡す。
+ * 狭い幅では、日時とページを1段目に残し、状態と結果（「詳細を見る」）を行の下に積む。トリガーは隠す（「詳細を見る」で見られる）。
+ */
+export const runColumnLayout = {
+  at: { width: "110px" },
+  status: { width: "120px", narrow: "stack" },
+  page: { width: "minmax(140px, 1fr)" },
+  result: { width: "minmax(220px, 1.4fr)", narrow: "stack" },
+  tag: { width: "minmax(100px, 160px)", narrow: "hide" },
+} satisfies ColumnLayout;
 /** 実行待ち・実行中の行があるあいだ、履歴を取り直す間隔 */
 export const RUNS_REFETCH_MS = 30_000;
 
@@ -110,12 +122,12 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
   const openedRun = rows?.find((r) => r.id === opened) ?? null;
 
   const columns: DataListColumn<WorkflowRunEntry>[] = [
-    { key: "at", header: "日時", width: "110px", sort: order === "asc" ? "ascending" : "descending", sx: { whiteSpace: "nowrap" }, render: (r) => formatShortDateTime(r.createdAt) },
-    { key: "status", header: "状態", width: "120px", render: (r) => <StatusBadge status={r.status} /> },
+    { key: "at", header: "日時", ...runColumnLayout.at, sort: order === "asc" ? "ascending" : "descending", sx: { whiteSpace: "nowrap" }, render: (r) => formatShortDateTime(r.createdAt) },
+    { key: "status", header: "状態", ...runColumnLayout.status, render: (r) => <StatusBadge status={r.status} /> },
     {
       key: "page",
       header: "ページ",
-      width: "minmax(140px, 1fr)",
+      ...runColumnLayout.page,
       sx: { overflowWrap: "anywhere" },
       render: (r) =>
         r.page.available ? (
@@ -129,7 +141,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
     {
       key: "result",
       header: "結果",
-      width: "minmax(220px, 1.4fr)",
+      ...runColumnLayout.result,
       render: (r) => (
         <Box sx={{ minWidth: 0 }}>
           <Typography
@@ -144,7 +156,7 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
         </Box>
       ),
     },
-    { key: "tag", header: "トリガー", width: "minmax(100px, 160px)", sx: { overflowWrap: "anywhere" }, render: runTriggerText },
+    { key: "tag", header: "トリガー", ...runColumnLayout.tag, sx: { overflowWrap: "anywhere" }, render: runTriggerText },
   ];
 
   return (

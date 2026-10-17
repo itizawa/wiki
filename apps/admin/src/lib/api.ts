@@ -169,7 +169,10 @@ export type StructureResponse = {
 };
 
 /** 監査ログの絞り込み。from / to は JST の日付（YYYY-MM-DD）。wiki はオーナーの一覧だけ（"global" は全体にかかわるもの） */
-export type AuditLogFilter = { from?: string; to?: string; actor?: string; category?: string; wiki?: string };
+/** 監査ログの絞り込みと並び。actor・category・wiki は、どれかに当たる記録（API にはカンマ区切りで渡す）。order を省くと新しい順 */
+export type AuditLogFilter = { from?: string; to?: string; actor?: string[]; category?: string[]; wiki?: string[]; order?: "asc" | "desc" };
+
+const csv = (values: readonly string[] | undefined) => values?.join(",");
 
 /** wiki：開いている wiki の監査ログ（管理者）／all：すべて（オーナー） */
 export type AuditScope = "wiki" | "all";
@@ -210,10 +213,11 @@ export const api = {
   listPages: (q?: string) =>
     request<{ pages: PageSummary[] }>("GET", w(`/pages${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
   /** ページの一覧を、続きから取る（「すべてのページ」の一覧）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
-  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number; unpublished?: boolean; tag?: string }) => {
+  /** tag はどれかが付いたページ。order は更新日時の並び（省くと新しい順） */
+  listPagesPage: (input: { q?: string; cursor?: string | null; limit: number; unpublished?: boolean; tag?: readonly string[]; order?: "asc" | "desc" }) => {
     return request<{ pages: PageSummary[]; nextCursor: string | null }>(
       "GET",
-      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor, published: input.unpublished ? "false" : undefined, tag: input.tag })}`),
+      w(`/pages${query({ limit: String(input.limit), q: input.q, cursor: input.cursor, published: input.unpublished ? "false" : undefined, tag: csv(input.tag), order: input.order })}`),
     );
   },
   /** 外部の URL の OGP（API が代わりに取る）。取れなければ `preview: null`。取りにいけない URL（http・内部 IP など）は 400 */
@@ -299,8 +303,9 @@ export const api = {
   withdrawEditRequest: (pageId: string, requestId: string) =>
     request<{ withdrawn: number }>("POST", w(`/pages/${pageId}/edit-requests/${requestId}/withdraw`)),
   /** この wiki の編集リクエストの一覧を、続きから取る（出した日時の新しい順）。`nextCursor` を次の呼び出しに渡す。無ければ、そこで終わり */
-  listWikiEditRequests: (input: { status: EditRequestListStatus; cursor?: string | null; limit: number }) => {
-    return request<EditRequestList>("GET", w(`/edit-requests${query({ status: input.status, limit: String(input.limit), cursor: input.cursor })}`));
+  /** status は、どれかに当たるリクエスト */
+  listWikiEditRequests: (input: { status: readonly EditRequestListStatus[]; cursor?: string | null; limit: number }) => {
+    return request<EditRequestList>("GET", w(`/edit-requests${query({ status: csv(input.status), limit: String(input.limit), cursor: input.cursor })}`));
   },
   /** この wiki で、未対応の編集リクエストがあるページの数（サイドバーに出す） */
   countEditRequestPages: () => request<EditRequestPageCount>("GET", w("/edit-requests/count")),
@@ -373,7 +378,8 @@ export const api = {
   revokeInvite: (id: string) => request<{ ok: true }>("POST", w(`/invites/${id}/revoke`)),
 
   listAuditLogs: (scope: AuditScope, filter: AuditLogFilter, cursor?: string) => {
-    return request<AuditLogPage>("GET", auditPath(scope, query({ ...filter, cursor })));
+    const { actor, category, wiki, ...rest } = filter;
+    return request<AuditLogPage>("GET", auditPath(scope, query({ ...rest, actor: csv(actor), category: csv(category), wiki: csv(wiki), cursor })));
   },
   listAuditActors: (scope: AuditScope) => request<{ actors: AuditActorOption[] }>("GET", auditPath(scope, "/actors")),
   /** 公開サイトの「外観」（管理者だけ） */

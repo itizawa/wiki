@@ -365,7 +365,7 @@ export type EditRequestListItem = {
   lastActivityAt: string;
 };
 
-/** `GET /edit-requests?status=open|done&limit=&cursor=`：その wiki のリクエスト（出した日時の新しい順）。ゴミ箱のページのものは入らない */
+/** `GET /edit-requests?status=open|done|open,done&limit=&cursor=`：その wiki のリクエスト（出した日時の新しい順）。ゴミ箱のページのものは入らない */
 export type EditRequestList = {
   requests: EditRequestListItem[];
   /** 続きがあれば、次の呼び出しの `cursor` に渡す値。無ければ null */

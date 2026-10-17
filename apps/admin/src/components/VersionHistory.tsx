@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { monoFont } from "../theme";
+import { HelpTip } from "./HelpTip";
 import { Tooltip } from "./Tooltip";
 import { editRequestsLink } from "../lib/editRequests";
 import { LoadingRegion, Muted, RouterLink, SkeletonRows, StatusChip } from "./ui";
@@ -31,6 +32,15 @@ const VERSION_PAGE_SIZE = 50;
 const LOAD_AHEAD = 200;
 
 const asDocument = (c: Content) => `# ${c.title}\n\n${c.bodyMd}`;
+
+/**
+ * 「この版に戻す」を押せない理由。押せるなら null。
+ * 選んだ版が編集中の内容と同じなら、戻しても何も変わらない（最新の版を選んだままのとき）。
+ * 編集中に変更があれば、最新の版でも戻せる（編集を捨てて最新の版に戻す）。
+ */
+export function restoreBlockedReason(version: Content, current: Content): string | null {
+  return asDocument(version) === asDocument(current) ? "編集中の内容と同じです" : null;
+}
 
 /**
  * 版履歴。画面全体に重ねて開き、左に選んだ版（編集中の内容との差分か、その版の本文）、右に版の一覧を出す。
@@ -87,6 +97,7 @@ export function VersionHistory(props: {
     enabled: open,
   });
   const [view, setView] = useState<"diff" | "body">("diff");
+  const restoreBlocked = version.data ? restoreBlockedReason(version.data, props.current) : null;
 
   // 選んでいた版が、もう無い（開いているあいだに間引かれた、古い URL を開いた）。最新の版に選び直し、一覧を読み直す
   const qc = useQueryClient();
@@ -157,9 +168,25 @@ export function VersionHistory(props: {
                   <ToggleButton value="diff">編集中の内容との差分</ToggleButton>
                   <ToggleButton value="body">この版の本文</ToggleButton>
                 </ToggleButtonGroup>
-                <Button variant="contained" onClick={() => props.onRestore(version.data!)}>
-                  この版に戻す
-                </Button>
+                <Stack direction="row" sx={{ alignItems: "center", gap: 0.5 }}>
+                  {/* 押せないボタンにはツールチップが出ないので、理由はボタンの横に出したままにする */}
+                  {restoreBlocked && (
+                    <Muted id="version-restore-blocked" variant="caption" component="span">
+                      {restoreBlocked}
+                    </Muted>
+                  )}
+                  <Button
+                    variant="contained"
+                    disabled={restoreBlocked !== null}
+                    aria-describedby={restoreBlocked ? "version-restore-blocked" : undefined}
+                    onClick={() => props.onRestore(version.data!)}
+                  >
+                    この版に戻す
+                  </Button>
+                  <HelpTip about="「この版に戻す」">
+                    この版の内容をエディタに入れて閉じます。戻した内容は、ほかの編集と同じく自動で保存され、新しい版になります。公開中の内容は、公開し直すまで変わりません。
+                  </HelpTip>
+                </Stack>
               </Stack>
               {version.data.acceptedItems > 0 ? (
                 <Muted>
@@ -169,9 +196,6 @@ export function VersionHistory(props: {
               ) : (
                 version.data.createdBy && <Muted>{version.data.createdBy.name} が作った版です。</Muted>
               )}
-              <Muted>
-                「この版に戻す」は、この版の内容をエディタに入れて閉じます。戻した内容は、ほかの編集と同じく自動で保存され、新しい版になります。公開中の内容は、公開し直すまで変わりません。
-              </Muted>
               {view === "diff" ? (
                 <Diff before={asDocument(version.data)} after={asDocument(props.current)} />
               ) : (

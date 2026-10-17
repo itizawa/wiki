@@ -2,37 +2,69 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import MenuItem from "@mui/material/MenuItem";
+import Link from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import {
-  AUDIT_CATEGORIES,
-  AUDIT_CATEGORY_LABELS,
-  describeAudit,
-  formatAuditTime,
-  type AuditCategory,
-  type AuditLogEntry,
-} from "@wiki/shared";
+import { AUDIT_CATEGORIES, AUDIT_CATEGORY_LABELS, describeAudit, formatAuditTime, type AuditLogEntry } from "@wiki/shared";
 import { useState } from "react";
 import { HelpHeading } from "../components/HelpTip";
-import { Field, Muted, RouterLink, Row, Section } from "../components/ui";
+import {
+  ListToolbar,
+  appliedFiltersText,
+  filterValues,
+  parseDateRange,
+  type ActiveFilter,
+  type FilterField,
+  type SortDirection,
+  type SortField,
+  type SortValue,
+} from "../components/ListToolbar";
+import { Muted, RouterLink, Section } from "../components/ui";
 import { api, errorMessage, type AuditLogFilter, type AuditScope } from "../lib/api";
-import { formatDay } from "../lib/format";
 import { monoFont } from "../theme";
 import { useWikis } from "./Layout";
 
 const GLOBAL = "global";
 
-/** 「すべて」を選んでいるときも、ラベルを上に出して選んでいるものを見せる */
-const selectSlots = { select: { displayEmpty: true } } as const;
+const SORT_FIELDS: SortField[] = [{ key: "createdAt", label: "日時", asc: "古い順", desc: "新しい順" }];
+
+/** 絞り込める列。人と wiki の選択肢は、読み込んでから入る。wiki は全体の一覧（`all`）だけ */
+export function auditFilterFields(
+  scope: AuditScope,
+  actors: readonly { userId: string; label: string }[],
+  wikis: readonly { key: string; name: string }[],
+): FilterField[] {
+  const fields: FilterField[] = [
+    { key: "period", label: "期間", kind: "dateRange" },
+    { key: "actor", label: "人", kind: "select", options: actors.map((a) => ({ value: a.userId, label: a.label })) },
+    { key: "category", label: "分類", kind: "select", options: AUDIT_CATEGORIES.map((c) => ({ value: c, label: AUDIT_CATEGORY_LABELS[c] })) },
+  ];
+  if (scope === "all") {
+    fields.push({ key: "wiki", label: "wiki", kind: "select", options: [{ value: GLOBAL, label: "全体にかかわるもの" }, ...wikis.map((w) => ({ value: w.key, label: w.name }))] });
+  }
+  return fields;
+}
+
+/** 条件と並びを、API に渡す形にする（値を選んでいない条件は渡さない） */
+export function auditLogFilter(filters: ActiveFilter[], order: SortDirection): AuditLogFilter {
+  const { from, to } = parseDateRange(filterValues(filters, "period")?.[0]);
+  const filter: AuditLogFilter = { from, to, actor: filterValues(filters, "actor"), category: filterValues(filters, "category"), wiki: filterValues(filters, "wiki"), order };
+  // 問い合わせのキーに、空の値を残さない
+  return Object.fromEntries(Object.entries(filter).filter(([, v]) => v !== undefined)) as AuditLogFilter;
+}
 
 /**
- * 監査ログ：重要な操作を「いつ・誰が・何をした」の文で、新しい順に出す。
+ * 監査ログ：重要な操作を「いつ・誰が・何をした」の文で、日時の順（はじめは新しい順）に出す。期間・人・分類（全体の一覧では wiki も）で絞れる。
  * scope が wiki なら開いている wiki のもの（管理者）、all ならすべての wiki と全体にかかわるもの（オーナー）。
+ * 絞り込みと並びは画面の中だけに持つ（URL には入れない）。
  */
 export function AuditLogPage({ scope }: { scope: AuditScope }) {
-  const [filter, setFilter] = useState<AuditLogFilter>({});
+  const [filters, setFilters] = useState<ActiveFilter[]>([]);
+  const [sort, setSort] = useState<SortValue>({ key: "createdAt", direction: "desc" });
+  const actors = useQuery({ queryKey: ["audit-actors", scope], queryFn: () => api.listAuditActors(scope) });
+  const wikis = useWikis();
+  const filterFields = auditFilterFields(scope, actors.data?.actors ?? [], wikis.data?.wikis ?? []);
+  const filter = auditLogFilter(filters, sort.direction);
   const logs = useInfiniteQuery({
     queryKey: ["audit-logs", scope, filter],
     queryFn: ({ pageParam }) => api.listAuditLogs(scope, filter, pageParam),
@@ -40,7 +72,7 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
   const entries = logs.data?.pages.flatMap((p) => p.entries) ?? [];
-  const filtered = Object.values(filter).some(Boolean);
+  const applied = appliedFiltersText(filterFields, filters);
 
   return (
     <Stack spacing={1.5}>
@@ -63,114 +95,55 @@ export function AuditLogPage({ scope }: { scope: AuditScope }) {
         </HelpHeading>
       </Box>
 
-      <Filters scope={scope} filter={filter} onChange={setFilter} />
+      <Box>
+        <ListToolbar
+          label="監査ログの絞り込みと並べ替え"
+          sortFields={SORT_FIELDS}
+          sort={sort}
+          onSortChange={setSort}
+          filterFields={filterFields}
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
 
-      <Section sx={{ p: 0 }}>
-        {logs.isPending && <Muted sx={{ p: 2 }}>読み込み中…</Muted>}
-        {logs.error && (
-          <Alert severity="error" sx={{ m: 2 }}>
-            {errorMessage(logs.error)}
-          </Alert>
-        )}
-        {logs.data && entries.length === 0 && (
-          <Box sx={{ p: 2 }}>
-            {filtered ? (
-              <Muted>条件に合う記録はありません。期間を広げるか、絞り込みを解除してください。</Muted>
-            ) : (
-              <Muted>まだ記録はありません。公開・メンバーの変更・設定の変更などをすると、ここに残ります。</Muted>
-            )}
-          </Box>
-        )}
-        {entries.length > 0 && (
-          <Box component="ol" sx={{ listStyle: "none", m: 0, p: 0 }}>
-            {entries.map((e) => (
-              <EntryRow key={e.id} entry={e} showWiki={scope === "all"} />
-            ))}
-          </Box>
-        )}
-        {logs.hasNextPage && (
-          <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
-            <Button onClick={() => void logs.fetchNextPage()} disabled={logs.isFetchingNextPage}>
-              {logs.isFetchingNextPage ? "読み込み中…" : "続きを読み込む"}
-            </Button>
-          </Box>
-        )}
-      </Section>
+        <Section sx={{ p: 0 }}>
+          {logs.isPending && <Muted sx={{ p: 2 }}>読み込み中…</Muted>}
+          {logs.error && (
+            <Alert severity="error" sx={{ m: 2 }}>
+              {errorMessage(logs.error)}
+            </Alert>
+          )}
+          {logs.data && entries.length === 0 && (
+            <Box sx={{ p: 2 }}>
+              {applied ? (
+                <Muted>
+                  条件（{applied}）に合う記録はありません。{" "}
+                  <Link component="button" type="button" onClick={() => setFilters([])} sx={{ verticalAlign: "baseline" }}>
+                    絞り込みをすべて外す
+                  </Link>
+                </Muted>
+              ) : (
+                <Muted>まだ記録はありません。公開・メンバーの変更・設定の変更などをすると、ここに残ります。</Muted>
+              )}
+            </Box>
+          )}
+          {entries.length > 0 && (
+            <Box component="ol" sx={{ listStyle: "none", m: 0, p: 0 }}>
+              {entries.map((e) => (
+                <EntryRow key={e.id} entry={e} showWiki={scope === "all"} />
+              ))}
+            </Box>
+          )}
+          {logs.hasNextPage && (
+            <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
+              <Button onClick={() => void logs.fetchNextPage()} disabled={logs.isFetchingNextPage}>
+                {logs.isFetchingNextPage ? "読み込み中…" : "続きを読み込む"}
+              </Button>
+            </Box>
+          )}
+        </Section>
+      </Box>
     </Stack>
-  );
-}
-
-function Filters({ scope, filter, onChange }: { scope: AuditScope; filter: AuditLogFilter; onChange: (f: AuditLogFilter) => void }) {
-  const actors = useQuery({ queryKey: ["audit-actors", scope], queryFn: () => api.listAuditActors(scope) });
-  const wikis = useWikis();
-  const set = (patch: AuditLogFilter) => onChange({ ...filter, ...patch });
-  const thisYear = new Date().getFullYear();
-
-  const wikiName = (key: string) => (key === GLOBAL ? "全体にかかわるもの" : (wikis.data?.wikis.find((w) => w.key === key)?.name ?? key));
-  const actorName = (id: string) => actors.data?.actors.find((a) => a.userId === id)?.label ?? "選んだ人";
-  const conditions = [
-    filter.from || filter.to
-      ? `期間：${filter.from ? formatDay(filter.from, thisYear) : ""}〜${filter.to ? formatDay(filter.to, thisYear) : ""}`
-      : null,
-    filter.actor ? `人：${actorName(filter.actor)}` : null,
-    filter.category ? `分類：${AUDIT_CATEGORY_LABELS[filter.category as AuditCategory]}` : null,
-    filter.wiki ? `wiki：${wikiName(filter.wiki)}` : null,
-  ].filter(Boolean);
-
-  return (
-    <Section>
-      <Row sx={{ gap: 1.5, alignItems: "flex-start" }}>
-        <Field
-          type="date"
-          label="いつから"
-          value={filter.from ?? ""}
-          onChange={(e) => set({ from: e.target.value || undefined })}
-          slotProps={{ htmlInput: { max: filter.to } }}
-        />
-        <Field
-          type="date"
-          label="いつまで"
-          value={filter.to ?? ""}
-          onChange={(e) => set({ to: e.target.value || undefined })}
-          slotProps={{ htmlInput: { min: filter.from } }}
-        />
-        <Field select label="人" slotProps={selectSlots} value={filter.actor ?? ""} onChange={(e) => set({ actor: e.target.value || undefined })} sx={{ minWidth: 180 }}>
-          <MenuItem value="">すべての人</MenuItem>
-          {actors.data?.actors.map((a) => (
-            <MenuItem key={a.userId} value={a.userId}>
-              {a.label}
-            </MenuItem>
-          ))}
-        </Field>
-        <Field select label="分類" slotProps={selectSlots} value={filter.category ?? ""} onChange={(e) => set({ category: e.target.value || undefined })} sx={{ minWidth: 140 }}>
-          <MenuItem value="">すべての分類</MenuItem>
-          {AUDIT_CATEGORIES.map((c) => (
-            <MenuItem key={c} value={c}>
-              {AUDIT_CATEGORY_LABELS[c]}
-            </MenuItem>
-          ))}
-        </Field>
-        {scope === "all" && (
-          <Field select label="wiki" slotProps={selectSlots} value={filter.wiki ?? ""} onChange={(e) => set({ wiki: e.target.value || undefined })} sx={{ minWidth: 180 }}>
-            <MenuItem value="">すべて</MenuItem>
-            <MenuItem value={GLOBAL}>全体にかかわるもの</MenuItem>
-            {wikis.data?.wikis.map((w) => (
-              <MenuItem key={w.key} value={w.key}>
-                {w.name}
-              </MenuItem>
-            ))}
-          </Field>
-        )}
-      </Row>
-      {conditions.length > 0 && (
-        <Row sx={{ mt: 1.5 }}>
-          <Muted component="span">絞り込み中　{conditions.join("、")}</Muted>
-          <Button size="small" onClick={() => onChange({})}>
-            絞り込みを解除する
-          </Button>
-        </Row>
-      )}
-    </Section>
   );
 }
 

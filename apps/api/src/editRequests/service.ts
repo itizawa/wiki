@@ -284,9 +284,13 @@ const livePage = isNull(pages.deletedAt);
 export async function listWikiEditRequests(
   db: Db,
   wikiId: string,
-  opts: { status: EditRequestListStatus; limit: number; after: ListCursor | null },
+  opts: { status: readonly EditRequestListStatus[]; limit: number; after: ListCursor | null },
 ): Promise<EditRequestList> {
   const { limit, after } = opts;
+  // 片方だけなら、その状態で絞る（両方なら絞らない）
+  const open = opts.status.includes("open");
+  const done = opts.status.includes("done");
+  const byStatus = open === done ? undefined : open ? hasOpenItem : not(hasOpenItem);
   const rest = after ? sql`(${editRequests.createdAt}, ${editRequests.id}) < (${after.at}::timestamptz, ${after.id}::uuid)` : undefined;
   const rows = await db
     .select({
@@ -303,7 +307,7 @@ export async function listWikiEditRequests(
     .innerJoin(users, eq(users.id, editRequests.createdBy))
     .leftJoin(oauthGrants, eq(oauthGrants.id, editRequests.oauthGrantId))
     .leftJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-    .where(and(eq(editRequests.wikiId, wikiId), livePage, opts.status === "open" ? hasOpenItem : not(hasOpenItem), rest))
+    .where(and(eq(editRequests.wikiId, wikiId), livePage, byStatus, rest))
     .orderBy(desc(editRequests.createdAt), desc(editRequests.id))
     // 1件多く取って、続きがあるかを見る
     .limit(limit + 1);

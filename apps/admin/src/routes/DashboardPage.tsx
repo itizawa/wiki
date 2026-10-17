@@ -58,11 +58,17 @@ function Block({ title, help, link, children }: { title: string; help: ReactNode
   );
 }
 
-const allPagesLink = (
-  <RouterLink {...screenLink("/w/$wikiKey/pages")} underline="always">
-    すべてのページを見る
-  </RouterLink>
-);
+/**
+ * 「すべてのページを見る」。描画のたびに呼ぶ（`screenLink` は呼んだ時点の wiki を読むので、モジュールの外側で一度だけ作ると、
+ * wiki が決まる前の空の key のまま `/w//pages` を指してしまう）。
+ */
+export function allPagesLink() {
+  return (
+    <RouterLink {...screenLink("/w/$wikiKey/pages")} underline="always">
+      すべてのページを見る
+    </RouterLink>
+  );
+}
 
 const titleColumn: DataListColumn<PageSummary> = {
   key: "title",
@@ -102,7 +108,7 @@ function PageList({ label, rows, error, empty, columns }: { label: string; rows:
 function RecentPages() {
   const recent = useQuery({ queryKey: ["pages", "dashboard", "recent"], queryFn: () => api.listPagesPage({ limit: DASHBOARD_ROWS }) });
   return (
-    <Block title="最近更新したページ" help={`更新日時が新しい順に、${DASHBOARD_ROWS} 件まで出します。`} link={allPagesLink}>
+    <Block title="最近更新したページ" help={`更新日時が新しい順に、${DASHBOARD_ROWS} 件まで出します。`} link={allPagesLink()}>
       <PageList
         label="最近更新したページの一覧"
         rows={recent.data?.pages}
@@ -120,7 +126,7 @@ function Drafts() {
     <Block
       title="下書き"
       help={`まだ一度も公開していないページです。更新日時が新しい順に、${DASHBOARD_ROWS} 件まで出します。AI が書いたものには「AI下書き」と付きます。`}
-      link={allPagesLink}
+      link={allPagesLink()}
     >
       <PageList
         label="下書きの一覧"

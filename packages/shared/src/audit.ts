@@ -5,6 +5,7 @@ import { WIKI_ROLE_LABELS, type WikiRole } from "./users";
 import { ROUTINE_FAILURE_MESSAGES, type RoutineFailureReason } from "./routine";
 import { SNS_PROVIDER_LABELS, type SnsProvider } from "./sns";
 import { ACTION_KINDS } from "./workflow";
+import { csvQuery, listOrder } from "./query";
 
 /**
  * 監査ログ：「誰が・いつ・何をしたか」を、あとから確かめるための記録。追記だけで、直したり消したりしない。
@@ -231,16 +232,22 @@ export type AuditLogPage = { entries: AuditLogEntry[]; nextCursor: string | null
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/** 監査ログを一度に絞れる人・wiki の数 */
+export const AUDIT_LOG_FILTER_MAX = 100;
+
 /**
- * 一覧の絞り込み。from / to は JST の日付（to の日を含む）。cursor は前のページの nextCursor。
- * wiki はオーナーの一覧だけ（"global" は全体にかかわるもの）。
+ * 一覧の絞り込み。from / to は JST の日付（to の日を含む）。cursor は前のページの nextCursor（同じ `order` で取ったもの）。
+ * actor・category・wiki はカンマ区切りで複数（どれかに当たる記録）。
+ * wiki はオーナーの一覧だけ（"global" は全体にかかわるもの。wiki のキーと混ぜられる）。
  */
 export const auditLogQuery = z.object({
   from: dateOnly.optional(),
   to: dateOnly.optional(),
-  actor: z.string().uuid().optional(),
-  category: auditCategorySchema.optional(),
-  wiki: z.string().min(1).max(64).optional(),
+  actor: csvQuery(z.string().uuid(), AUDIT_LOG_FILTER_MAX).optional(),
+  category: csvQuery(auditCategorySchema, AUDIT_CATEGORIES.length).optional(),
+  wiki: csvQuery(z.string().min(1).max(64), AUDIT_LOG_FILTER_MAX).optional(),
+  /** 日時の並び。省くと新しい順 */
+  order: listOrder,
   cursor: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });

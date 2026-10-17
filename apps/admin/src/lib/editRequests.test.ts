@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { EditRequest, EditRequestItem, PageEditRequests } from "@wiki/shared";
 import { describe, expect, it } from "vitest";
-import { editRequestKeys, groupEditRequestItems, invalidateEditRequests, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
+import { editRequestKeys, editRequestStatusParam, groupEditRequestItems, parseEditRequestStatuses, invalidateEditRequests, itemCountLabel, mergeAppliedEdits, placeOfAccepted, requesterLabel } from "./editRequests";
 
 const step = (versionId: string, edits: [string, string][]) => ({
   versionId,
@@ -64,7 +64,7 @@ describe("editRequestKeys", () => {
 describe("invalidateEditRequests（採否・返信・送信のあとの読み直し）", () => {
   it("wiki ごとの一覧とサイドバーの件数のキーは、wiki のキーで始まり、どれも edit-requests で始まる", () => {
     const wiki = editRequestKeys.wiki();
-    for (const key of [editRequestKeys.wikiList("open"), editRequestKeys.wikiList("done"), editRequestKeys.wikiPageCount()]) {
+    for (const key of [editRequestKeys.wikiList(["open"]), editRequestKeys.wikiList(["done"]), editRequestKeys.wikiPageCount()]) {
       expect(key.slice(0, wiki.length)).toEqual([...wiki]);
       expect(key[0]).toBe("edit-requests");
     }
@@ -77,8 +77,8 @@ describe("invalidateEditRequests（採否・返信・送信のあとの読み直
     const keys = {
       list: editRequestKeys.list("p1"),
       count: editRequestKeys.count("p1"),
-      wikiOpen: editRequestKeys.wikiList("open"),
-      wikiDone: editRequestKeys.wikiList("done"),
+      wikiOpen: editRequestKeys.wikiList(["open"]),
+      wikiDone: editRequestKeys.wikiList(["done"]),
       sidebar: editRequestKeys.wikiPageCount(),
       otherPage: editRequestKeys.count("p2"),
       pages: ["pages"],
@@ -199,5 +199,24 @@ describe("groupEditRequestItems（項目を、本文の箇所・場所なし・�
     const a = mkReq("a", [mk("x", { status: "rejected" })]);
     const b = mkReq("b", [mk("y", { status: "rejected" }), mk("z")]);
     expect(group({ data: mkData([a, b]), recent: {} }).pendingRequests).toEqual([b]);
+  });
+});
+
+describe("編集リクエストの一覧の ?status=", () => {
+  it("カンマ区切りを状態の並びにする。順を揃え、重なりと知らない値は捨てる", () => {
+    expect(parseEditRequestStatuses("done")).toEqual(["done"]);
+    expect(parseEditRequestStatuses("done,open")).toEqual(["open", "done"]);
+    expect(parseEditRequestStatuses("open,open,closed")).toEqual(["open"]);
+    expect(parseEditRequestStatuses("closed")).toBeUndefined();
+    expect(parseEditRequestStatuses(undefined)).toBeUndefined();
+    expect(parseEditRequestStatuses(1)).toBeUndefined();
+  });
+
+  it("はじめの「未対応」だけと、条件が無いときは付けない", () => {
+    expect(editRequestStatusParam(["open"])).toBeUndefined();
+    expect(editRequestStatusParam([])).toBeUndefined();
+    expect(editRequestStatusParam(undefined)).toBeUndefined();
+    expect(editRequestStatusParam(["done"])).toBe("done");
+    expect(editRequestStatusParam(["done", "open"])).toBe("open,done");
   });
 });
