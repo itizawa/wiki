@@ -42,7 +42,7 @@ async function addRun(input: {
   finishedAt?: Date | null;
   lastError?: string | null;
   attempts?: number;
-  actions?: { type: string; routineId?: string; tagId?: string; status?: string; result?: unknown }[];
+  actions?: { type: string; routineId?: string; tagId?: string; instruction?: string | null; status?: string; result?: unknown }[];
 }): Promise<string> {
   const wiki = (await ctx.client.query<{ id: string }>(`select id from wikis where key = 'wiki'`)).rows[0]!;
   const workflowId = await defaultWorkflowId(ctx.call);
@@ -67,6 +67,7 @@ async function addRun(input: {
       type: a.type,
       routineId: a.routineId ?? null,
       tagId: a.tagId ?? null,
+      instruction: a.instruction ?? null,
       status: a.status ?? "succeeded",
       result: a.result ?? null,
     });
@@ -124,11 +125,40 @@ describe("GET /workflow/{id}/runs", () => {
       summary: "Routine「校正」を呼ぶ → Routine「校正」を呼ぶ → タグ「校正待ち」を外す",
       error: "Routine の認証に失敗した",
       actions: [
-        { type: "call_routine", status: "succeeded", sessionUrl: SESSION_URL, error: null },
-        { type: "call_routine", status: "failed", sessionUrl: null, error: "Routine の認証に失敗した" },
-        { type: "remove_tag", status: "pending", sessionUrl: null, error: null },
+        { type: "call_routine", status: "succeeded", sessionUrl: SESSION_URL, instruction: null, error: null },
+        { type: "call_routine", status: "failed", sessionUrl: null, instruction: null, error: "Routine の認証に失敗した" },
+        { type: "remove_tag", status: "pending", sessionUrl: null, instruction: null, error: null },
       ],
     });
+  });
+
+  it("returns what was asked of each routine, and null for old runs that never recorded it", async () => {
+    ctx = await setup({ config: { routineTokenKey: KEY } });
+    const page = await newPage("記事");
+    const tag = await newTag("校正待ち");
+    const routine = await newRoutine("校正");
+    const asked = "誤字を直して。\n表記ゆれも見て。";
+    await addRun({
+      pageId: page,
+      tagId: tag,
+      status: "failed",
+      lastError: "Routine の認証に失敗した",
+      actions: [
+        { type: "call_routine", routineId: routine, instruction: asked, result: { sessionId: "session_01XYZ", sessionUrl: SESSION_URL } },
+        { type: "call_routine", routineId: routine, instruction: asked, status: "failed", result: { error: "Routine の認証に失敗した" } },
+        // 依頼の文を写す前に積んだ実行
+        { type: "call_routine", routineId: routine, instruction: null },
+        { type: "remove_tag", tagId: tag, status: "pending" },
+      ],
+    });
+    const res = await ctx.call("GET", `${await runsUrl()}`);
+    expect(res.status).toBe(200);
+    expect(res.body.runs[0].actions).toMatchObject([
+      { type: "call_routine", instruction: asked, sessionUrl: SESSION_URL, error: null },
+      { type: "call_routine", instruction: asked, sessionUrl: null, error: "Routine の認証に失敗した" },
+      { type: "call_routine", instruction: null, sessionUrl: null, error: null },
+      { type: "remove_tag", instruction: null },
+    ]);
   });
 
   it("never returns the token, and only passes https session URLs through", async () => {

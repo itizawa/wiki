@@ -274,6 +274,12 @@ export type WorkflowRunActionEntry = {
   status: "pending" | "succeeded" | "failed";
   /** Routine のセッション（呼べたときだけ） */
   sessionUrl: string | null;
+  /**
+   * Routine へ頼んだ内容（積んだ時点の依頼の文の写し）。Routine を呼ぶアクションだけ。
+   * 依頼の文を写す前に積んだ古い実行や、ほかの種類のアクションは null。
+   * Routine の結果（要約など）は持たない：呼び出しのトークンには読む権限が無く、呼び出しはセッションの完了を待たない
+   */
+  instruction: string | null;
   /** 失敗の理由（再試行待ちのときの、直近の理由も含む） */
   error: string | null;
 };
