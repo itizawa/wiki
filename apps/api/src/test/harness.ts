@@ -17,6 +17,7 @@ import { bootstrapStructure } from "../structure/repo";
 import { users, wikiMembers, wikis } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { DEFAULT_WIKI_KEY } from "../wikis/service";
+import type { Transcriber } from "../audio/transcribe";
 import { memoryAudioStore, type AudioStore } from "../audio/store";
 import { memoryImageStore, type ImageStore } from "../images/store";
 import type { RateLimiter, RateLimiters } from "../rate-limit";
@@ -95,6 +96,7 @@ export async function setup(
     audio?: AudioStore | null;
     reporting?: GoogleReporting | null;
     rateLimits?: RateLimiters;
+    transcribe?: Transcriber | null;
     linkFetch?: LinkFetch;
     cronMarks?: CronMarkStore | null;
     costSources?: CostSource[];
@@ -119,6 +121,7 @@ export async function setup(
     audio,
     reporting: opts.reporting ?? null,
     rateLimits: opts.rateLimits ?? null,
+    transcribe: opts.transcribe ?? null,
     linkFetch: opts.linkFetch ?? null,
     cronMarks: opts.cronMarks ?? null,
     costSources: opts.costSources ?? null,

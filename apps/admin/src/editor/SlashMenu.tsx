@@ -1,4 +1,4 @@
-import { Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Star, Table, MapPin, CirclePlay, Mic, FileAudio } from "lucide-react";
+import { AudioLines, Braces, ChevronRight, Heading1, Heading2, Heading3, Image, List, ListChecks, ListOrdered, Megaphone, ListTree, Minus, Quote, Star, Table, MapPin, CirclePlay, Mic, FileAudio } from "lucide-react";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { Editor } from "@tiptap/react";
@@ -10,7 +10,9 @@ import { GoogleMapDialog } from "./GoogleMapDialog";
 import { insertGoogleMap } from "./googleMap";
 import { YoutubeDialog } from "./YoutubeDialog";
 import { insertYoutube } from "./youtube";
+import { useWiki } from "../lib/wiki";
 import { AudioDialog } from "./AudioDialog";
+import { VoiceDialog } from "./VoiceDialog";
 import { insertPageAudio } from "./pageAudio";
 import { insertToggle } from "./toggle";
 import { ImageDialog, insertImage } from "./LinkForm";
@@ -30,9 +32,11 @@ type Block = {
   /** ラベル以外に、絞り込みで当たる語（英語名やMarkdownの記法） */
   keywords: string[];
   icon: ReactNode;
-  run: (editor: Editor, ui: { openImageDialog: () => void; openMapDialog: () => void; openYoutubeDialog: () => void; openAudioDialog: (mode: "record" | "file") => void }) => void;
+  run: (editor: Editor, ui: { openImageDialog: () => void; openMapDialog: () => void; openYoutubeDialog: () => void; openAudioDialog: (mode: "record" | "file") => void; openVoiceDialog: () => void }) => void;
   /** ページの本文でだけ使える（テンプレートなど、ページに紐づかない本文では出さない） */
   pageOnly?: boolean;
+  /** wiki の管理者にだけ出す（費用がかかる機能） */
+  adminOnly?: boolean;
 };
 
 const headingIcons = { 1: Heading1, 2: Heading2, 3: Heading3 } as const;
@@ -64,6 +68,7 @@ const blocks: Block[] = [
   { id: "youtube", label: "YouTube…", keywords: ["youtube", "video", "movie", "douga", "動画", "ユーチューブ"], icon: <CirclePlay size={18} />, run: (_e, ui) => ui.openYoutubeDialog() },
   { id: "record", label: "録音…", keywords: ["record", "recording", "audio", "voice", "mic", "rokuon", "音声", "マイク"], icon: <Mic size={18} />, run: (_e, ui) => ui.openAudioDialog("record"), pageOnly: true },
   { id: "audio", label: "音声を添付…", keywords: ["audio", "sound", "file", "attach", "onsei", "音声", "録音"], icon: <FileAudio size={18} />, run: (_e, ui) => ui.openAudioDialog("file"), pageOnly: true },
+  { id: "voice", label: "音声入力…", keywords: ["voice", "dictation", "speech", "transcribe", "onsei", "音声", "マイク", "書き起こし"], icon: <AudioLines size={18} />, run: (_e, ui) => ui.openVoiceDialog(), adminOnly: true },
   {
     id: "children",
     label: "配下のページの一覧",
@@ -96,19 +101,21 @@ const blocks: Block[] = [
 ];
 
 /** 絞り込みの文字に当たるブロックの id を、メニューに出す順で返す。 */
-export function filterBlocks(query: string, inPage = true): string[] {
+export function filterBlocks(query: string, inPage = true, isAdmin = false): string[] {
   const q = query.trim().toLowerCase();
-  return blocks.filter((b) => (inPage || !b.pageOnly) && (q === "" || b.label.toLowerCase().includes(q) || b.keywords.some((k) => k.startsWith(q)))).map((b) => b.id);
+  return blocks.filter((b) => (inPage || !b.pageOnly) && (isAdmin || !b.adminOnly) && (q === "" || b.label.toLowerCase().includes(q) || b.keywords.some((k) => k.startsWith(q)))).map((b) => b.id);
 }
 
 /** 本文で「/」を打つと出る、ブロックの挿入メニュー。続けて打った文字で絞り込める。 */
 export function SlashMenu({ editor }: { editor: Editor }) {
   const match = useTriggerMatch(editor, slashTrigger);
   const { pageId } = useParams({ strict: false }) as { pageId?: string };
-  const ids = filterBlocks(match?.query ?? "", pageId != null);
+  const { role } = useWiki();
+  const ids = filterBlocks(match?.query ?? "", pageId != null, role === "admin");
   const [imageOpen, setImageOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [youtubeOpen, setYoutubeOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [audioMode, setAudioMode] = useState<"record" | "file" | null>(null);
   // 閉じるアニメーションの間も、開いていたときのモードを見せる
   const [lastAudioMode, setLastAudioMode] = useState<"record" | "file">("record");
@@ -131,7 +138,7 @@ export function SlashMenu({ editor }: { editor: Editor }) {
         onChoose={(b, range) => {
           // 打ち込んだ「/…」を消してから、その行をブロックに変える
           editor.chain().focus().deleteRange(range).run();
-          b.run(editor, { openImageDialog: () => setImageOpen(true), openMapDialog: () => setMapOpen(true), openYoutubeDialog: () => setYoutubeOpen(true),
+          b.run(editor, { openImageDialog: () => setImageOpen(true), openMapDialog: () => setMapOpen(true), openYoutubeDialog: () => setYoutubeOpen(true), openVoiceDialog: () => setVoiceOpen(true),
             openAudioDialog: (mode) => {
               setLastAudioMode(mode);
               setAudioMode(mode);
@@ -169,6 +176,17 @@ export function SlashMenu({ editor }: { editor: Editor }) {
         }}
         onClose={() => {
           setYoutubeOpen(false);
+          editor.commands.focus();
+        }}
+      />
+      <VoiceDialog
+        open={voiceOpen}
+        onTranscribed={(text) => {
+          setVoiceOpen(false);
+          editor.chain().focus().insertContent({ type: "text", text }).run();
+        }}
+        onClose={() => {
+          setVoiceOpen(false);
           editor.commands.focus();
         }}
       />

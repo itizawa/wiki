@@ -14,6 +14,7 @@ import { analyticsRoutes } from "./routes/analytics";
 import { costRoutes } from "./routes/costs";
 import { editRequestRoutes, wikiEditRequestRoutes } from "./routes/editRequests";
 import { exportRoutes, internalRoutes } from "./routes/internal";
+import { transcribeRoutes } from "./routes/transcribe";
 import { linkPreviewRoutes } from "./routes/linkPreview";
 import { pageRoutes } from "./routes/pages";
 import { pagePublishRoutes, scheduleRoutes } from "./routes/publishing";
@@ -130,6 +131,7 @@ export function createApp(deps: Deps) {
   wiki.route("/templates", templateRoutes);
   wiki.route("/search", searchRoutes);
   wiki.route("/link-preview", linkPreviewRoutes);
+  wiki.route("/transcribe", transcribeRoutes);
   wiki.route("/stars", starRoutes);
   wiki.route("/tags", tagRoutes);
   wiki.route("/workflow", workflowRoutes);

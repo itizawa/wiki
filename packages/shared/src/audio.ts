@@ -21,6 +21,17 @@ export type AudioType = keyof typeof AUDIO_TYPES;
 /** 画面に出す上限の説明 */
 export const AUDIO_LIMIT_LABEL = "WebM・M4A（MP4）・MP3・WAV、50MB まで";
 
+/**
+ * 音声入力（録音を書き起こして本文に入れる。音声は保存しない）の上限。費用を抑えるためのもの。
+ * 録音は 3 分で自動で止まる。API は長さを測れないので、大きさ（3 分の録音は WebM で 1MB 前後、M4A で 3MB 前後）で断る。
+ */
+export const VOICE_MAX_MS = 3 * 60_000;
+export const VOICE_MAX_BYTES = 8 * 1024 * 1024;
+/** 1人が 24 時間に書き起こせる回数 */
+export const VOICE_DAILY_LIMIT = 20;
+/** 書き起こした文字の長さの上限（暴走した出力を本文に入れない） */
+export const VOICE_TEXT_MAX = 10_000;
+
 /** 1ページに添付できる数の上限 */
 export const AUDIO_MAX_PER_PAGE = 50;
 

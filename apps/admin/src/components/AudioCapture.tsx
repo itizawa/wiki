@@ -8,7 +8,8 @@ import { AUDIO_ACCEPT, AUDIO_LIMIT_LABEL, formatDuration, type PageAudio } from 
 import { FileUp, Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../lib/api";
-import { audioFileProblem, microphoneProblem, pickRecorderType, readAudioDuration, recordingName } from "../lib/pageAudio";
+import { audioFileProblem, readAudioDuration, recordingName } from "../lib/pageAudio";
+import { useAudioRecorder } from "../lib/useAudioRecorder";
 import { Muted } from "./ui";
 
 /** 録った音声。聞き直してから上げる */
@@ -31,15 +32,14 @@ export function AudioCapture({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const qc = useQueryClient();
-  const recorderType = useRef(pickRecorderType()).current;
-  const canRecord = recorderType !== null && typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
-
-  const [recording, setRecording] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
   const [recorded, setRecorded] = useState<Recorded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const session = useRef<{ recorder: MediaRecorder; stream: MediaStream; chunks: Blob[]; startedAt: number; timer: number } | null>(null);
+  const recorder = useAudioRecorder({
+    onRecorded: ({ blob, durationMs, type }) => setRecorded({ blob, url: URL.createObjectURL(blob), name: recordingName(new Date(), type), durationMs }),
+    onError: setError,
+  });
+  const { canRecord, recording, elapsedMs } = recorder;
 
   const upload = useMutation({
     mutationFn: (v: { blob: Blob; name: string; durationMs: number | null }) => api.uploadPageAudio(pageId, v.blob, { name: v.name, durationMs: v.durationMs }),
@@ -57,54 +57,16 @@ export function AudioCapture({
   onDirty.current = onDirtyChange;
   useEffect(() => onDirty.current?.(dirty), [dirty]);
 
-  // 聞き直しの URL は、捨てるときに解放する。画面を離れたら、録音もマイクも止める
+  // 聞き直しの URL は、捨てるときに解放する
   useEffect(() => () => void (recorded && URL.revokeObjectURL(recorded.url)), [recorded]);
-  useEffect(
-    () => () => {
-      const s = session.current;
-      if (!s) return;
-      window.clearInterval(s.timer);
-      s.recorder.onstop = null;
-      if (s.recorder.state !== "inactive") s.recorder.stop();
-      s.stream.getTracks().forEach((t) => t.stop());
-    },
-    [],
-  );
 
   const startRecording = async () => {
     setError(null);
     setRecorded(null);
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) {
-      setError(microphoneProblem(err));
-      return;
-    }
-    const recorder = new MediaRecorder(stream, { mimeType: recorderType! });
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
-    recorder.onstop = () => {
-      const s = session.current;
-      session.current = null;
-      stream.getTracks().forEach((t) => t.stop());
-      if (s) window.clearInterval(s.timer);
-      setRecording(false);
-      const blob = new Blob(chunks, { type: recorderType! });
-      // MediaRecorder の WebM は長さが入らないことがあるので、測った長さではなく、録っていた時間を使う
-      const durationMs = Date.now() - (s?.startedAt ?? Date.now());
-      if (blob.size === 0) return setError("音声が録れていません。マイクが動いているか確かめて、もう一度録音してください。");
-      setRecorded({ blob, url: URL.createObjectURL(blob), name: recordingName(new Date(), recorderType!), durationMs });
-    };
-    const startedAt = Date.now();
-    const timer = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 250);
-    session.current = { recorder, stream, chunks, startedAt, timer };
-    setElapsedMs(0);
-    setRecording(true);
-    recorder.start();
+    await recorder.start();
   };
 
-  const stopRecording = () => session.current?.recorder.stop();
+  const stopRecording = recorder.stop;
 
   const uploadRecorded = () => {
     if (!recorded) return;

@@ -7,6 +7,7 @@ import type { CronMarkStore } from "./cron/marks";
 import type { Db } from "./db/client";
 import { createPostgresDb } from "./db/postgres";
 import { r2AudioStore } from "./audio/store";
+import { whisperTranscriber, type AiBinding } from "./audio/transcribe";
 import { r2ImageStore, type R2BucketLike } from "./images/store";
 import type { RateLimiter } from "./rate-limit";
 
@@ -25,6 +26,9 @@ export type WorkerEnv = {
   MCP_LIMITER?: RateLimiter;
   LINK_PREVIEW_LIMITER?: RateLimiter;
   RATING_LIMITER?: RateLimiter;
+  TRANSCRIBE_LIMITER?: RateLimiter;
+  /** Workers AI（wrangler.toml の [ai]）。音声入力の書き起こしに使う。無ければ音声入力は使えない */
+  AI?: AiBinding;
   [key: string]: unknown;
 };
 
@@ -92,7 +96,7 @@ export function createWorker(connect: Connect) {
       const { db, close } = connect(env);
       // 応答のあとも続ける処理（ワークフローの実行）。DB の接続は、それが終わってから閉じる
       const deferred: Promise<unknown>[] = [];
-      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER, linkPreview: env.LINK_PREVIEW_LIMITER, rating: env.RATING_LIMITER };
+      const rateLimits = { oauthRegister: env.OAUTH_REGISTER_LIMITER, oauth: env.OAUTH_LIMITER, mcp: env.MCP_LIMITER, linkPreview: env.LINK_PREVIEW_LIMITER, rating: env.RATING_LIMITER, transcribe: env.TRANSCRIBE_LIMITER };
       try {
         const res = await createApp({
           db,
@@ -100,6 +104,7 @@ export function createWorker(connect: Connect) {
           google,
           x,
           images: env.IMAGES ? r2ImageStore(env.IMAGES) : null,
+          transcribe: env.AI ? whisperTranscriber(env.AI) : null,
           audio: env.AUDIO ? r2AudioStore(env.AUDIO) : null,
           reporting: reportingFromConfig(config),
           cronMarks: env.CRON_MARKS ?? null,
