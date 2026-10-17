@@ -33,11 +33,12 @@ import { CodeBlockMenu } from "./CodeBlockMenu";
 import { ImageMenu } from "./ImageMenu";
 import { ImageUpload } from "./imageUpload";
 import { BubbleMenu, FloatingMenu, type BubbleMenuProps, type FloatingMenuProps } from "@tiptap/react/menus";
-import { useEffect, useRef, useState, type ReactNode, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MENU_MAX_WIDTH, monoFont, TOUCH } from "../theme";
 import { TableMenu } from "./TableMenu";
 import { setBlockDragging } from "./blockMove";
 import { BLOCK_HANDLE } from "./blockHandle";
+import { useSideScroll } from "./sideScroll";
 import { createEditorExtensions } from "./extensions";
 import { watchPageTitles } from "./pageMentions";
 import { useQueryClient } from "@tanstack/react-query";
@@ -355,13 +356,6 @@ const showSelectionMenu: NonNullable<BubbleMenuProps["shouldShow"]> = ({ editor,
   return view.hasFocus() || element.contains(document.activeElement);
 };
 
-// マウスのホイール（縦）でも、はみ出したボタンへ横にスクロールできるようにする。はみ出していなければ何もしない（ページのスクロールに任せる）
-const scrollSideways = (e: WheelEvent<HTMLElement>) => {
-  const el = e.currentTarget;
-  if (el.scrollWidth <= el.clientWidth || e.deltaX !== 0) return;
-  el.scrollLeft += e.deltaY;
-};
-
 /** 文字を選択したときに、その近くに浮かぶ書式メニュー。 */
 function SelectionMenu({ editor }: { editor: Editor }) {
   const state = useEditorState({
@@ -396,6 +390,9 @@ function SelectionMenu({ editor }: { editor: Editor }) {
     return () => void editor.off("selectionUpdate", reset);
   }, [editor]);
 
+  // 狭い幅で1段に収まらないときの横スクロール（続きがある側の端をぼかす）
+  const sideScroll = useSideScroll<HTMLDivElement>();
+
   return (
     <BubbleMenu editor={editor} shouldShow={showSelectionMenu} options={selectionMenuOptions} style={{ zIndex: 1 }}>
       {/* 幅は画面の内側まで。狭い幅で1段に収まらないときは、折り返さず（2段になると選んだ文の上を広く隠す）、ツールバーの中を横にスクロールする */}
@@ -412,8 +409,9 @@ function SelectionMenu({ editor }: { editor: Editor }) {
           direction="row"
           role="toolbar"
           aria-label="書式"
-          onWheel={scrollSideways}
-          sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", flexWrap: "nowrap", overflowX: "auto", overscrollBehaviorX: "contain", gap: 0.25, p: 0.5, "& > *": { flexShrink: 0 } }}
+          ref={sideScroll.ref}
+          // スクロールバーは出さない（出ると、ツールバーの下に帯が増えて本文を隠す）。続きは、端のぼかしと、切れて見えるボタンで示す
+          sx={{ display: linkEditing ? "none" : "flex", alignItems: "center", flexWrap: "nowrap", overflowX: "auto", overscrollBehaviorX: "contain", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" }, maskImage: sideScroll.mask, gap: 0.25, p: 0.5, "& > *": { flexShrink: 0 } }}
         >
           <Tool label="太字 (⌘B)" active={state.bold} onClick={() => chain().toggleBold().run()}>
             <Bold size={18} />
