@@ -106,8 +106,9 @@ const { current, list = true } = Astro.props;
         // 覚えられないブラウザでも、このページの中では開閉できる
       }
       syncToggle();
-      // 押したボタンは消えるので、入れ替わりに出たボタンへフォーカスを移す
-      (closed ? toggle : sidebarClose)?.focus();
+      // 押したボタンは消えるので、入れ替わりに出たボタンへフォーカスを移す。
+      // ヘッダーは本文と一緒に流れるので、読んでいる途中に閉じると「サイドバーを開く」は画面の外にある。そこまでスクロールさせない
+      (closed ? toggle : sidebarClose)?.focus({ preventScroll: true });
     };
     let inerted: HTMLElement[] = [];
 
