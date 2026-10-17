@@ -227,23 +227,19 @@ function RoutineInstruction({ text }: { text: string }) {
       <Typography variant="caption" component="p" color="text.secondary">
         頼んだ内容
       </Typography>
-      <Typography
-        id={id}
-        variant="body2"
-        sx={{
-          whiteSpace: "pre-wrap",
-          overflowWrap: "anywhere",
-          bgcolor: "action.hover",
-          borderLeft: 3,
-          borderColor: "divider",
-          borderRadius: 1,
-          px: 1.5,
-          py: 1,
-          ...(clamped && { display: "-webkit-box", WebkitLineClamp: INSTRUCTION_PREVIEW_LINES, WebkitBoxOrient: "vertical", overflow: "hidden" }),
-        }}
-      >
-        {text}
-      </Typography>
+      {/* 余白は外の箱に持たせる（行を絞る箱に余白があると、隠した行の頭がのぞく） */}
+      <Box id={id} sx={{ bgcolor: "action.hover", borderLeft: 3, borderColor: "divider", borderRadius: 1, px: 1.5, py: 1 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            ...(clamped && { display: "-webkit-box", WebkitLineClamp: INSTRUCTION_PREVIEW_LINES, WebkitBoxOrient: "vertical", overflow: "hidden" }),
+          }}
+        >
+          {text}
+        </Typography>
+      </Box>
       {long && (
         <Button size="small" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-controls={id} sx={{ px: 0, minWidth: 0 }}>
           {expanded ? "頼んだ内容を折りたたむ" : "頼んだ内容をすべて表示する"}
