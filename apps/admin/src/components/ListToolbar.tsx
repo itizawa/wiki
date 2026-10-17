@@ -1,9 +1,10 @@
-import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import FormGroup from "@mui/material/FormGroup";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Popover from "@mui/material/Popover";
@@ -14,11 +15,12 @@ import Typography from "@mui/material/Typography";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronDown, ListFilter, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { Muted } from "./ui";
 
 /**
  * 一覧の上に置く、絞り込みと並べ替えの帯（Notion のデータベースの見た目）。管理画面の一覧の絞り込み・並べ替えは、これで作る。
  * - 並べ替えは、いまの並びをチップ（例:「↓ 日時：新しい順」）でいつも出す。押すと、並べる列と向きを選べる
- * - 「＋ フィルター」で条件を足す。足した条件はチップになり、押すと値を選ぶ欄が開く。値を選ぶまでは、条件として効かない
+ * - 「＋ フィルター」で条件を足す。足した条件はチップになり、押すと値を選ぶ欄が開く。値はチェックボックスで複数選べ、どれかに当たるものに絞る。値を選ぶまでは、条件として効かない
  * - 値を選んだ条件のチップは色を変え、値も書く（絞り込み中だと分かるように）。条件が1つでもあれば「すべて外す」を出す
  *
  * 状態は持たない（呼ぶ側が持つ）。値は文字列の組（`FilterOption`）だけなので、URL に載せることもできる。
@@ -39,20 +41,20 @@ export type FilterField = {
       placeholder?: string;
     }
   | {
-      /** 決まった選択肢から1つ */
+      /** 決まった選択肢から選ぶ */
       kind: "select";
       options: FilterOption[];
     }
   | {
-      /** 打った語で探して1つ選ぶ（ページなど、数が多いもの）。語が空のときの候補も `search("")` で返す */
+      /** 打った語で探して選ぶ（ページなど、数が多いもの）。語が空のときの候補も `search("")` で返す */
       kind: "search";
       search: (query: string) => Promise<FilterOption[]>;
       placeholder?: string;
     }
 );
 
-/** 足した条件。`value` が null のあいだは、チップだけ出て条件としては効かない */
-export type ActiveFilter = { key: string; value: FilterOption | null };
+/** 足した条件。`values` のどれかに当たるものに絞る。空のあいだは、チップだけ出て条件としては効かない */
+export type ActiveFilter = { key: string; values: FilterOption[] };
 
 export type SortDirection = "asc" | "desc";
 
@@ -63,11 +65,16 @@ export type SortValue = { key: string; direction: SortDirection };
 
 /** 条件を足す。もうあれば、そのまま */
 export function addFilter(filters: ActiveFilter[], key: string): ActiveFilter[] {
-  return filters.some((f) => f.key === key) ? filters : [...filters, { key, value: null }];
+  return filters.some((f) => f.key === key) ? filters : [...filters, { key, values: [] }];
 }
 
-export function setFilterValue(filters: ActiveFilter[], key: string, value: FilterOption | null): ActiveFilter[] {
-  return filters.map((f) => (f.key === key ? { key, value } : f));
+export function setFilterValues(filters: ActiveFilter[], key: string, values: FilterOption[]): ActiveFilter[] {
+  return filters.map((f) => (f.key === key ? { key, values } : f));
+}
+
+/** 値を選んでいれば外し、選んでいなければ足す（チェックボックスを押したとき） */
+export function toggleOption(values: FilterOption[], option: FilterOption): FilterOption[] {
+  return values.some((v) => v.value === option.value) ? values.filter((v) => v.value !== option.value) : [...values, option];
 }
 
 export function removeFilter(filters: ActiveFilter[], key: string): ActiveFilter[] {
@@ -75,21 +82,22 @@ export function removeFilter(filters: ActiveFilter[], key: string): ActiveFilter
 }
 
 /** その列の、効いている条件の値（API に渡すもの）。値を選んでいなければ undefined */
-export function filterValue(filters: ActiveFilter[], key: string): string | undefined {
-  return filters.find((f) => f.key === key)?.value?.value;
+export function filterValues(filters: ActiveFilter[], key: string): string[] | undefined {
+  const values = filters.find((f) => f.key === key)?.values ?? [];
+  return values.length > 0 ? values.map((v) => v.value) : undefined;
 }
 
-/** チップに出す文字。値があれば「ページ: 記事A」、無ければ列の名前だけ */
-export function filterChipLabel(field: Pick<FilterField, "label">, value: FilterOption | null): string {
-  return value ? `${field.label}: ${value.label}` : field.label;
+/** チップに出す文字。値があれば「状態: 成功・失敗」、無ければ列の名前だけ */
+export function filterChipLabel(field: Pick<FilterField, "label">, values: FilterOption[]): string {
+  return values.length > 0 ? `${field.label}: ${values.map((v) => v.label).join("・")}` : field.label;
 }
 
-/** 効いている条件を、文に入れる形で並べる（例: 「ページ: 記事A、状態: 失敗」）。0件のときの案内などに使う */
+/** 効いている条件を、文に入れる形で並べる（例: 「ページ: 記事A、状態: 成功・失敗」）。0件のときの案内などに使う */
 export function appliedFiltersText(fields: FilterField[], filters: ActiveFilter[]): string {
   return filters
     .flatMap((f) => {
       const field = fields.find((x) => x.key === f.key);
-      return field && f.value ? [filterChipLabel(field, f.value)] : [];
+      return field && f.values.length > 0 ? [filterChipLabel(field, f.values)] : [];
     })
     .join("、");
 }
@@ -154,19 +162,20 @@ export function ListToolbar({ label, sortFields = [], sort, onSortChange, filter
       {filters.map((f) => {
         const field = filterFields.find((x) => x.key === f.key);
         if (!field) return null;
-        const text = filterChipLabel(field, f.value);
+        const text = filterChipLabel(field, f.values);
+        const applied = f.values.length > 0;
         return (
           <Chip
             key={f.key}
             ref={chipRef(f.key)}
             size="small"
             // 効いている条件は色で、値の文字でも分かるようにする
-            color={f.value ? "primary" : "default"}
+            color={applied ? "primary" : "default"}
             variant="outlined"
             icon={<ListFilter size={14} />}
             label={<ChipText text={text} />}
             onClick={() => setOpened({ type: "filter", key: f.key })}
-            aria-label={f.value ? `絞り込み：${text}` : `絞り込み：${field.label}（値を選んでいません）`}
+            aria-label={applied ? `絞り込み：${text}` : `絞り込み：${field.label}（値を選んでいません）`}
             aria-haspopup="dialog"
             aria-expanded={opened?.type === "filter" && opened.key === f.key}
             sx={{ maxWidth: 280 }}
@@ -227,7 +236,7 @@ export function ListToolbar({ label, sortFields = [], sort, onSortChange, filter
               <Typography id={`${id}-title`} variant="subtitle2" component="h2" sx={{ mb: 1 }}>
                 {openedField.label}で絞り込む
               </Typography>
-              <FilterEditor field={openedField} value={openedFilter.value} onChange={(v) => changeFilters(setFilterValue(filters, openedField.key, v))} />
+              <FilterEditor field={openedField} values={openedFilter.values} onChange={(v) => changeFilters(setFilterValues(filters, openedField.key, v))} />
               <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
                 <Button
                   size="small"
@@ -283,35 +292,45 @@ function SortEditor({ titleId, fields, value, onChange }: { titleId: string; fie
   );
 }
 
-function FilterEditor({ field, value, onChange }: { field: FilterField; value: FilterOption | null; onChange: (v: FilterOption | null) => void }) {
+type EditorProps<F> = { field: F; values: FilterOption[]; onChange: (values: FilterOption[]) => void };
+
+function FilterEditor({ field, values, onChange }: EditorProps<FilterField>) {
   switch (field.kind) {
     case "select":
-      return (
-        <RadioGroup
-          aria-label={field.label}
-          value={value?.value ?? ""}
-          onChange={(_, v) => onChange(field.options.find((o) => o.value === v) ?? null)}
-        >
-          {field.options.map((o) => (
-            <FormControlLabel key={o.value} value={o.value} control={<Radio size="small" />} label={o.label} />
-          ))}
-        </RadioGroup>
-      );
+      return <OptionChecks label={field.label} options={field.options} values={values} onChange={onChange} />;
     case "text":
-      return <TextFilter field={field} value={value} onChange={onChange} />;
+      return <TextFilter field={field} values={values} onChange={onChange} />;
     case "search":
-      return <SearchFilter field={field} value={value} onChange={onChange} />;
+      return <SearchFilter field={field} values={values} onChange={onChange} />;
   }
+}
+
+/** 選択肢のチェックボックスの並び。押すたびに、その場で条件に効く */
+function OptionChecks({ label, options, values, onChange }: { label: string; options: FilterOption[]; values: FilterOption[]; onChange: (values: FilterOption[]) => void }) {
+  return (
+    <FormGroup aria-label={label}>
+      {options.map((o) => (
+        <FormControlLabel
+          key={o.value}
+          control={<Checkbox size="small" checked={values.some((v) => v.value === o.value)} onChange={() => onChange(toggleOption(values, o))} />}
+          label={o.label}
+          sx={{ overflowWrap: "anywhere" }}
+        />
+      ))}
+    </FormGroup>
+  );
 }
 
 /** 打つたびに問い合わせないよう、手が止まってから値にする */
 const TEXT_DELAY_MS = 300;
 
-function TextFilter({ field, value, onChange }: { field: Extract<FilterField, { kind: "text" }>; value: FilterOption | null; onChange: (v: FilterOption | null) => void }) {
-  const [draft, setDraft] = useState(value?.value ?? "");
+/** 含む文字は1つだけ（文字を変えると、条件が入れ替わる） */
+function TextFilter({ field, values, onChange }: EditorProps<Extract<FilterField, { kind: "text" }>>) {
+  const current = values[0]?.value ?? "";
+  const [draft, setDraft] = useState(current);
   useEffect(() => {
-    if (draft === (value?.value ?? "")) return;
-    const t = setTimeout(() => onChange(draft.trim() ? { value: draft.trim(), label: `「${draft.trim()}」を含む` } : null), TEXT_DELAY_MS);
+    if (draft === current) return;
+    const t = setTimeout(() => onChange(draft.trim() ? [{ value: draft.trim(), label: `「${draft.trim()}」を含む` }] : []), TEXT_DELAY_MS);
     return () => clearTimeout(t);
     // 打った文字が変わったときだけ数え直す
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,33 +348,28 @@ function TextFilter({ field, value, onChange }: { field: Extract<FilterField, { 
   );
 }
 
-function SearchFilter({ field, value, onChange }: { field: Extract<FilterField, { kind: "search" }>; value: FilterOption | null; onChange: (v: FilterOption | null) => void }) {
+/** 探す欄と、チェックボックスの並び。選んだ値は、探す語に関係なく上に残す（外せるように） */
+function SearchFilter({ field, values, onChange }: EditorProps<Extract<FilterField, { kind: "search" }>>) {
   const [input, setInput] = useState("");
-  const results = useQuery({ queryKey: ["list-toolbar-search", field.key, input], queryFn: () => field.search(input.trim()), placeholderData: (prev) => prev });
-  const options = results.data ?? [];
+  const results = useQuery({ queryKey: ["list-toolbar-search", field.key, input.trim()], queryFn: () => field.search(input.trim()), placeholderData: (prev) => prev });
+  const found = (results.data ?? []).filter((o) => !values.some((v) => v.value === o.value));
   return (
-    <Autocomplete
-      size="small"
-      openOnFocus
-      options={value && !options.some((o) => o.value === value.value) ? [value, ...options] : options}
-      value={value}
-      getOptionLabel={(o) => o.label}
-      isOptionEqualToValue={(a, b) => a.value === b.value}
-      filterOptions={(xs) => xs}
-      onChange={(_, v) => onChange(v)}
-      onInputChange={(_, v, reason) => reason === "input" && setInput(v)}
-      loading={results.isFetching}
-      loadingText="探しています…"
-      noOptionsText="見つかりません"
-      clearText="選んだ値を外す"
-      renderInput={(params) => (
-        <TextField
-          {...params}
-          autoFocus
-          placeholder={field.placeholder}
-          slotProps={{ ...params.slotProps, htmlInput: { ...params.slotProps.htmlInput, "aria-label": `${field.label}を探す` } }}
-        />
-      )}
-    />
+    <>
+      <TextField
+        size="small"
+        fullWidth
+        autoFocus
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder={field.placeholder}
+        slotProps={{ htmlInput: { "aria-label": `${field.label}を探す` } }}
+        sx={{ mb: 1 }}
+      />
+      <Box aria-busy={results.isFetching} sx={{ maxHeight: 280, overflowY: "auto" }}>
+        <OptionChecks label={field.label} options={[...values, ...found]} values={values} onChange={onChange} />
+        {results.data && values.length + found.length === 0 && <Muted variant="body2">見つかりません</Muted>}
+        {!results.data && results.isFetching && <Muted variant="body2">探しています…</Muted>}
+      </Box>
+    </>
   );
 }

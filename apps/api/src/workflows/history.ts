@@ -37,14 +37,14 @@ function readResult(result: unknown): { sessionUrl: string | null; error: string
 }
 
 /**
- * そのワークフローの実行を日時の順（`order`。省くと新しい順）に返す（`limit` 件と、続きの `nextCursor`）。`status`・`pageId`（そのページの実行だけ）で絞れる。
+ * そのワークフローの実行を日時の順（`order`。省くと新しい順）に返す（`limit` 件と、続きの `nextCursor`）。`status`・`pageId`（どちらもカンマ区切りで複数。どれかに当たる実行だけ）で絞れる。
  * アクションは、実行を積んだ時点の写し（`workflow_run_actions`）から作る。ブロックが消えていても、記録だけで要約を言える。
  * 応答に入れるのは、状態・理由の文・Routine のセッション URL だけ（トークンは、記録にも入っていない）。
  */
 export async function listWorkflowRuns(db: Db, wikiId: string, workflowId: string, query: WorkflowRunsQuery): Promise<WorkflowRunPage> {
   const conds = [eq(workflowRuns.wikiId, wikiId), eq(workflowRuns.workflowId, workflowId)];
-  if (query.status) conds.push(eq(workflowRuns.status, query.status));
-  if (query.pageId) conds.push(eq(workflowRuns.pageId, query.pageId));
+  if (query.status) conds.push(inArray(workflowRuns.status, query.status));
+  if (query.pageId) conds.push(inArray(workflowRuns.pageId, query.pageId));
   // 古い順では、目印より後の行が続き
   const after = query.order === "asc" ? gt : lt;
   const by = query.order === "asc" ? asc : desc;

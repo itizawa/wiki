@@ -22,7 +22,7 @@ import { CircleAlert, CircleCheck, CircleMinus, Clock, ExternalLink, LoaderCircl
 import { useState, type ReactElement } from "react";
 import { DataList, type DataListColumn } from "../components/DataList";
 import { HelpHeading } from "../components/HelpTip";
-import { ListToolbar, appliedFiltersText, filterValue, type ActiveFilter, type FilterField, type SortField, type SortValue } from "../components/ListToolbar";
+import { ListToolbar, appliedFiltersText, filterValues, type ActiveFilter, type FilterField, type SortField, type SortValue } from "../components/ListToolbar";
 import { Muted, RouterLink, Section } from "../components/ui";
 import { api } from "../lib/api";
 import { formatShortDateTime } from "../lib/format";
@@ -93,8 +93,8 @@ export function WorkflowRunsSection({ workflowId }: { workflowId: string }) {
   const [opened, setOpened] = useState<string | null>(null);
   const [filters, setFilters] = useState<ActiveFilter[]>([]);
   const [sort, setSort] = useState<SortValue>({ key: "createdAt", direction: "desc" });
-  const pageId = filterValue(filters, "page");
-  const status = WORKFLOW_RUN_STATUSES.find((s) => s === filterValue(filters, "status"));
+  const pageId = filterValues(filters, "page");
+  const status = filterValues(filters, "status")?.flatMap((v) => WORKFLOW_RUN_STATUSES.filter((s) => s === v));
   const order = sort.direction;
   const runs = useInfiniteQuery({
     queryKey: ["workflow-runs", workflowId, { pageId, status, order }],

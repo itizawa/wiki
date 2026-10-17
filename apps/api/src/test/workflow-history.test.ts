@@ -215,6 +215,10 @@ describe("cleanupWorkflowRuns", () => {
     expect(first.runs.map((r: { id: string }) => r.id)).toEqual([a2]);
     expect(await ids(`?pageId=${a}&limit=1&cursor=${encodeURIComponent(first.nextCursor)}`)).toEqual([a1]);
     expect(await ids(`?pageId=00000000-0000-4000-8000-000000000000`)).toEqual([]);
+    // カンマ区切りで、どれかに当たるものを返す
+    expect(await ids(`?pageId=${a},${b}`)).toEqual([a2, b1, a1]);
+    expect(await ids(`?status=failed,succeeded&pageId=${b}`)).toEqual([b1]);
+    expect((await ctx.call("GET", `${await runsUrl()}?status=failed,bogus`)).status).toBe(400);
   });
 
   it("returns oldest first with order=asc, and the cursor continues in that order", async () => {
