@@ -29,7 +29,7 @@ jobs:
 
   deploy:
     needs: check
-    # 準備（README「デプロイ」）が済むまでは動かさない。リポジトリ変数 DEPLOY_ENABLED を true にすると有効になる
+    # 準備（docs/operations.md「デプロイ」）が済むまでは動かさない。リポジトリ変数 DEPLOY_ENABLED を true にすると有効になる
     if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     env:

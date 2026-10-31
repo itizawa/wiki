@@ -16,7 +16,7 @@ export const SERVICE_ACCOUNT_SECRET = "GOOGLE_SERVICE_ACCOUNT_JSON";
 export const ASK_OWNER = "サーバーの設定が要るので、この wiki のオーナーに頼んでください。";
 
 /** サービスアカウントの鍵の登録の手順（サーバーを運用するオーナーが読む「i」の中身） */
-export const SERVICE_ACCOUNT_HELP = `サーバーを運用するオーナー向け：Google Cloud で作ったサービスアカウントの鍵（JSON）を、そのまま GitHub のリポジトリのシークレット ${SERVICE_ACCOUNT_SECRET} に登録し、Actions の「Deploy」を実行します。手順は、リポジトリの README の「アクセス解析」にあります。`;
+export const SERVICE_ACCOUNT_HELP = `サーバーを運用するオーナー向け：Google Cloud で作ったサービスアカウントの鍵（JSON）を、そのまま GitHub のリポジトリのシークレット ${SERVICE_ACCOUNT_SECRET} に登録し、Actions の「Deploy」を実行します。手順は、リポジトリの docs/operations.md の「アクセス解析」にあります。`;
 
 /**
  * Google への問い合わせが失敗した理由を、何が起きたか（what）と、次にすること（fix）に分けて返す。

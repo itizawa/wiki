@@ -12,7 +12,7 @@ compatibility_flags = ["global_fetch_strictly_public"]
 crons = ["*/5 * * * *", "0 18 * * *"]
 
 # 「やることがある」の印（Workers KV）。API（apps/api/wrangler.toml）が書き、このワーカーが読む。
-# 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
+# 名前空間を作ってから（docs/operations.md「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
 # 下の3行のコメントを外し、出力された id を入れる。apps/api/wrangler.toml にも同じ id で同じブロックを入れる
 # （こちらだけに入れると、API が印を書かないので、下書き・予約・ビルドが最大1時間遅れる）。
 # id が実在しない名前空間のままコメントを外すと、wrangler deploy が失敗する。

@@ -5,7 +5,7 @@ name = "wiki-site"
 main = "worker/index.ts"
 compatibility_date = "2026-10-01"
 # wiki は {key}.hatchery-works.com で公開する。カスタムドメインはワイルドカードを使えないので、ゾーンのルートで受ける。
-# - DNS に、プロキシを有効にしたワイルドカードのレコード（*.hatchery-works.com）が要る（README「デプロイ」）
+# - DNS に、プロキシを有効にしたワイルドカードのレコード（*.hatchery-works.com）が要る（docs/operations.md「デプロイ」）
 # - このルートは管理画面（wiki-admin）など、ほかの Worker のサブドメインにも当たる。
 #   wiki の key として使えないホスト名は worker/index.ts がそのまま本来の Worker へ渡す
 routes = [{ pattern = "*.hatchery-works.com/*", zone_name = "hatchery-works.com" }]
