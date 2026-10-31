@@ -2,7 +2,7 @@
 
 書いたそばから流れていく公開型 wiki。ページを書いて公開や予約をし、ワークフローや AI エージェントに作業の一部を任せられる。wiki を複数持て、それぞれ別のサブドメインで公開できる。
 
-使い方は[マニュアル](https://docs.hatchery-works.com/)にある。
+使い方は[マニュアル](https://docs.hatchery-works.com/)に、構成・デプロイ・ローカル開発の手順は [docs/operations.md](docs/operations.md) にある。
 
 ## どうやって作ったか
 

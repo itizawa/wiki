@@ -14,7 +14,7 @@
 - 1つの intent は1つの PR にまとまる大きさにする。大きいものは Units Generation で分け、Unit ごとに PR にする
 - 作業はブランチで行い、`main` へ直接 push しない。変更は PR にしてマージする
 - UI（画面の見た目や操作）を変えたら、変更後の画面のスクリーンショットを PR の説明文に載せる。変更前と比べないと伝わらない変更は、変更前のものも並べる（管理画面には PR ごとのプレビューが無いため）。撮るときは `pnpm dev` で立ち上げ、開発用ログイン（`DEV_LOGIN_EMAIL`）で入る
-- 使い方が変わったら、マニュアル（https://docs.hatchery-works.com/）も直す。`README.md` は概要と画面の紹介だけで、仕様は書かない
+- 使い方が変わったら、マニュアル（https://docs.hatchery-works.com/）も直す。`README.md` は概要と画面の紹介だけで、仕様は書かない。構成・デプロイ・ローカル開発の手順を変えたら、同じ PR で `docs/operations.md` も直す
 
 ### Unit の分け方（Units Generation）
 

@@ -4,7 +4,7 @@
 
 - 入れた PR：https://github.com/itizawa/wiki/pull/503
 - 入れた版：AI-DLC v2.11.2（2026年10月時点の最新の安定版）
-- このプロジェクト向けの決まりは `aidlc/spaces/default/memory/project.md`
+- 使い方の手順は `docs/operations.md` の「AI-DLC」、このプロジェクト向けの決まりは `aidlc/spaces/default/memory/project.md`
 
 ---
 

@@ -29,13 +29,13 @@ bucket_name = "wiki-images"
 
 # ページに添付した音声（動画のナレーションなど、公開前の素材）。画像とは別のバケットで、公開の配信経路は無い。
 # 取り出せるのは、管理画面にログインした人と、MCP の list_page_audio が返す署名つきの URL（1時間だけ有効、`/audio/{id}`）だけ。
-# バケットは先に作る（README「デプロイ → 初回の準備」。`npx wrangler r2 bucket create wiki-audio`）
+# バケットは先に作る（docs/operations.md「デプロイ → 初回の準備」。`npx wrangler r2 bucket create wiki-audio`）
 [[r2_buckets]]
 binding = "AUDIO"
 bucket_name = "wiki-audio"
 
 # Cron ワーカー（wiki-worker）への「やることがある」の印（Workers KV）。API が書き、ワーカーが読む。
-# 名前空間を作ってから（README「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
+# 名前空間を作ってから（docs/operations.md「デプロイ → 初回の準備」。`npx wrangler kv namespace create wiki-cron-marks`）、
 # 下の3行のコメントを外し、出力された id を入れる。apps/worker/wrangler.toml にも同じ id で同じブロックを入れる。
 # id が実在しない名前空間のままコメントを外すと、wrangler deploy が失敗する。
 # コメントのあいだは印を書かない（ワーカーも、バインディングが無ければ今までどおり5分おきに API を呼ぶ）。

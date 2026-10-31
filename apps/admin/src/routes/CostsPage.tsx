@@ -90,7 +90,7 @@ function ServiceSection({ service, currentPeriod, previousPeriod }: { service: C
 
       {!service.configured ? (
         <Alert severity="info">
-          まだつないでいません。Neon のコンソールで API キーを作り、API の Worker のシークレットに <Mono>NEON_API_KEY</Mono> と、組織 ID の <Mono>NEON_ORG_ID</Mono> を登録すると、翌日の取得から出ます。手順は README の「運用コスト」にあります。
+          まだつないでいません。Neon のコンソールで API キーを作り、API の Worker のシークレットに <Mono>NEON_API_KEY</Mono> と、組織 ID の <Mono>NEON_ORG_ID</Mono> を登録すると、翌日の取得から出ます。手順は docs/operations.md の「運用コスト」にあります。
         </Alert>
       ) : (
         <Stack spacing={1}>

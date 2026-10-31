@@ -19,7 +19,7 @@ const textSx = { maxWidth: 680 } as const;
 
 /** サーバーの設定の案内（オーナーが読む「i」の中身）。環境変数の名前は、画面の本文ではなくここにだけ置く。 */
 const X_SERVER_SETUP =
-  "サーバーを運用するオーナー向け：X の開発者アプリの Client ID・Client Secret と、トークンを保管するための鍵を、API のシークレットに登録します（X_CLIENT_ID・X_CLIENT_SECRET・SNS_TOKEN_KEY）。手順は、リポジトリの README の「SNS 連携」にあります。";
+  "サーバーを運用するオーナー向け：X の開発者アプリの Client ID・Client Secret と、トークンを保管するための鍵を、API のシークレットに登録します（X_CLIENT_ID・X_CLIENT_SECRET・SNS_TOKEN_KEY）。手順は、リポジトリの docs/operations.md の「SNS 連携」にあります。";
 
 /** 連携できない（サーバーの設定が足りない）ときの案内。本文は読む人の言葉にして、くわしい手順は「i」に置く。 */
 function ServerSetupAlert({ children }: { children: string }) {
