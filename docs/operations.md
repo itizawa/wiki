@@ -107,15 +107,15 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
    | `CRON_TOKEN` | ランダム文字列（`openssl rand -hex 32`。`EXPORT_TOKEN` とは別の値）。`/internal/*` 用。`wiki-admin` と `wiki-worker` のシークレットになる。`wiki-site` には置かない |
    | `SITE_DEPLOY_HOOK_URL` | 手順5のデプロイフックURL |
    | `NOTIFY_WEBHOOK_URL` | 任意。予約の最終失敗と、公開ビルドの起動の失敗の通知を送る Slack 互換 Incoming Webhook |
-   | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は上の「アクセス解析 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
+   | `GOOGLE_SERVICE_ACCOUNT_JSON` | 任意。「アクセス解析」が Google Analytics とサーチコンソールの数字を読む、サービスアカウントの鍵（JSON の中身そのまま）。作り方は下の「アクセス解析」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
 
-   | `NEON_API_KEY` `NEON_ORG_ID` | 任意。「コスト」が Neon の使用量を読む API キーと組織 ID。作り方は上の「運用コスト → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
-   | `ROUTINE_TOKEN_KEY` | 任意。「全体の管理」の「Routine」のトークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上。`SNS_TOKEN_KEY` とは別の値）。作り方は上の「Routine → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**あとから変えない**（登録済みのトークンが使えなくなる） |
-   | `X_CLIENT_ID` `X_CLIENT_SECRET` `SNS_TOKEN_KEY` | 任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 の Client ID / Client Secret と、トークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上）。作り方は上の「SNS 連携 → 使えるようにする」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**`SNS_TOKEN_KEY` は、あとから変えない**（つないであるアカウントが使えなくなる） |
+   | `NEON_API_KEY` `NEON_ORG_ID` | 任意。「コスト」が Neon の使用量を読む API キーと組織 ID。作り方は下の「運用コスト」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
+   | `ROUTINE_TOKEN_KEY` | 任意。「全体の管理」の「Routine」のトークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上。`SNS_TOKEN_KEY` とは別の値）。作り方は下の「Routine」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**あとから変えない**（登録済みのトークンが使えなくなる） |
+   | `X_CLIENT_ID` `X_CLIENT_SECRET` `SNS_TOKEN_KEY` | 任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 の Client ID / Client Secret と、トークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上）。作り方は下の「SNS 連携」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**`SNS_TOKEN_KEY` は、あとから変えない**（つないであるアカウントが使えなくなる） |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
    - 管理画面は、検査のジョブがビルドしたものを、デプロイのジョブがそのまま使う（成果物 `admin-dist`。7日で消える）。それより前の実行の「デプロイのジョブだけ」をやり直すと、成果物が無くて止まるので、そのときは「Re-run all jobs」でやり直す
-8. 任意。管理画面の「アクセス解析」を使うなら、**Google のサービスアカウント**を作り、鍵を `GOOGLE_SERVICE_ACCOUNT_JSON` として登録する（Google Cloud で Google Analytics Data API と Google Search Console API を有効にする → サービスアカウントと鍵（JSON）を作る → 手順6の表のシークレットに登録する → 「Deploy」を実行する）。くわしくは上の「アクセス解析 → 使えるようにする」。あとから行ってもよい
+8. 任意。管理画面の「アクセス解析」を使うなら、**Google のサービスアカウント**を作り、鍵を `GOOGLE_SERVICE_ACCOUNT_JSON` として登録する（Google Cloud で Google Analytics Data API と Google Search Console API を有効にする → サービスアカウントと鍵（JSON）を作る → 手順6の表のシークレットに登録する → 「Deploy」を実行する）。くわしくは下の「アクセス解析」。あとから行ってもよい
 9. 任意。5分おきの Cron が、やることの無いときに DB を起こさないようにするなら、**Workers KV の名前空間**を作る（`npx wrangler kv namespace create wiki-cron-marks`）。出力された `id` を、`apps/api/wrangler.toml` と `apps/worker/wrangler.toml` の**両方**の `[[kv_namespaces]]`（コメントにしてある3行）に入れ、コメントを外す
    - ここに、Cron への印を置く（編集の無い時間帯は、API を呼ぶ前にこの印だけを見て、時刻の来た印が無ければそこで終わる。API を呼ぶと DB につながり、サーバーレスの PostgreSQL が自動で止まれなくなるため）
    - あとから行ってもよい。コメントのあいだは、Cron が5分おきに API を呼ぶ（動きは変わらず、DB が止まれないだけ）
