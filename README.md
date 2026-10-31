@@ -922,7 +922,7 @@ claude                                    # このリポジトリで Claude Code
 
 - よく使う流れ：`feature`（新しい機能。要件から運用まで）、`bugfix`（不具合）、`refactor`、`express`（小さな変更。既存コードの把握・要件・実装・テストだけ）、`classic`（既定。要件・設計・実装・テスト）。`/aidlc --scope bugfix ...` のように指定もできる。一覧は `.claude/scopes/`
 - 進み具合は `/aidlc --status`、使い方は `/aidlc --help`
-- **このプロジェクトの決まり**は `aidlc/spaces/default/memory/project.md` に書いてある（日本語で進める、PR に画面のスクリーンショットを載せる、一覧は `DataList` で作る、など。元は `CLAUDE.md` とこの README）。決まりを変えたら、こちらも直す。`team.md` は、最初のワークフローの Practices Discovery（チームのやり方の確認）で作られる
+- **このプロジェクトの決まり**は `aidlc/spaces/default/memory/project.md` に書いてある（日本語で進める、PR に画面のスクリーンショットを載せる、一覧は `DataList` で作る、など。元は `CLAUDE.md` とこの README）。Unit（実装の単位）はパッケージごとに分け、`packages/shared` を api・admin・site の契約として先に作る（同じファイルの「Unit の分け方」）。決まりを変えたら、こちらも直す。`team.md` は、最初のワークフローの Practices Discovery（チームのやり方の確認）で作られる
 - **コミットするもの**：`.claude/`（AI-DLC の道具・エージェント・フック・`settings.json`）と `aidlc/`（ルールと、作業ごとの記録）。一人ひとりの設定（`.claude/settings.local.json`、`aidlc.settings.local.json`）と作業中の一時ファイルは `.gitignore` の「AI-DLC: local working files」の節で外してある
 - `.claude/` と `aidlc/` だけを変えた PR では、CI もデプロイも動かない（`ci.yml` `deploy.yml` の `paths-ignore`、`scripts/ci-scope.sh`）
 - `.claude/` の AI-DLC のファイルは手で直さない（作業中は AI-DLC のフックが書き換えを止める）。版を上げるときは、[リリース](https://github.com/awslabs/aidlc-workflows/releases)の `aidlc-copy-runtime-X.Y.Z.tar.gz` を取ってきて `runtime/claude/` の中身をリポジトリの上に写すか、`aidlc` コマンドを入れて `aidlc config --harness claude` を流す（[Install and Lifecycle](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/18-install-and-lifecycle.md)）。`aidlc/spaces/default/memory/project.md` と `team.md` は上書きされない

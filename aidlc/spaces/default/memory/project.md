@@ -16,6 +16,24 @@
 - UI（画面の見た目や操作）を変えたら、変更後の画面のスクリーンショットを PR の説明文に載せる。変更前と比べないと伝わらない変更は、変更前のものも並べる（管理画面には PR ごとのプレビューが無いため）。撮るときは `pnpm dev` で立ち上げ、開発用ログイン（`DEV_LOGIN_EMAIL`）で入る
 - 仕様・画面・API・データの決まりを変えたら、同じ PR で `README.md` の該当する節も直す（README がこのリポジトリの仕様書を兼ねている）
 
+### Unit の分け方（Units Generation）
+
+- 要件・ストーリー・ドメイン設計・契約は、フロントエンドとバックエンドで分けず、INCEPTION で1つにまとめて作る。領域ごとの資料は CONSTRUCTION の Unit ごとの設計（Functional Design など）で作り、INCEPTION の資料を領域別に書き写さない
+- Unit は、パッケージ（デプロイ先）ごとに分ける。その intent が触るパッケージだけを Unit にする
+
+  | Unit | パッケージ | kind | 依存する Unit |
+  |---|---|---|---|
+  | shared | `packages/shared` | `library` | なし |
+  | api | `apps/api` | `service` | shared |
+  | admin | `apps/admin` | `ui` | shared（api の新しい経路を使うなら api も） |
+  | site | `apps/site` | `ui` | shared（公開用データ `/export/public` の形を変えるなら api も） |
+  | worker | `apps/worker` | `service` | なし（呼び出す `/internal/*` の経路を変えるなら api） |
+
+- **`packages/shared` が api・admin・site の契約になる**。リクエストとレスポンスの型、zod スキーマ、URL ルール、構造の適用・検証は shared に置き、api と admin（と site）は shared から読む。Contract Design で決めた API の約束は、shared の型とスキーマとして書く
+- shared を変える intent では、shared の Unit を最初に作る（依存の無い Unit）。api・admin・site は shared に依存させ、shared ができたあとは互いに並行して作れるようにする
+- Unit の名前は `u{n}-<上の Unit 名>`（例：`u1-shared`、`u2-api`、`u3-admin`）。PR は Unit ごとに分け、依存する Unit の PR がマージされてから次の PR をマージする
+- shared だけで済む小さな変更（型を1つ足すなど）は、shared の Unit を作らず、それを使う Unit に含めてよい
+
 ## Walking Skeleton
 
 - 置かない。デプロイの仕組み（`.github/workflows/deploy.yml`、Cloudflare Workers）はすでに動いているので、新しい機能はいまの構成に足していく
