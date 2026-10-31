@@ -15,3 +15,8 @@
   - 遷移先が無い一覧には `rowLink` を渡さない（押せない行を、押せるように見せない）
   - 件数が増える一覧は、API を続きから取れるようにし（`GET /pages` の `limit` と `cursor`）、`virtualized` と `useInfiniteQuery` の `hasNextPage` `isFetchingNextPage` `fetchNextPage` を渡す
   - 絞り込みと並べ替えは、表の上に共通コンポーネント `apps/admin/src/components/ListToolbar.tsx` を置いて作る（Notion のような、チップと「＋ フィルター」）。入力欄やセレクトをその場で並べない。続きから取る一覧では、条件と並びを API に渡す（クライアントで並べ替えない）。並べ替えた列には `DataListColumn` の `sort` も渡す
+
+## AI-DLC
+
+- `/aidlc` で始める AI-DLC（要件から実装までを段階と承認で進める）を入れてある。使い方は `README.md` の「AI-DLC」
+- AI-DLC が読むこのプロジェクトの決まりは `aidlc/spaces/default/memory/project.md`。このファイルや `README.md` の決まりを変えたら、そちらも合わせる

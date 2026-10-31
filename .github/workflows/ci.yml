@@ -5,9 +5,11 @@ on:
     # Draft の間は走らせない（下の check の if）。Draft を外したとき（ready_for_review）に走る。
     # 既定の種類（opened / synchronize / reopened）に ready_for_review を足している
     types: [opened, synchronize, reopened, ready_for_review]
-    # 文書だけの変更では走らせない
+    # 文書と、エージェント向けの設定（.claude）と、AI-DLC の記録（aidlc）だけの変更では走らせない（deploy.yml と同じ）
     paths-ignore:
       - "**/*.md"
+      - ".claude/**"
+      - "aidlc/**"
   # main への push では deploy.yml がこれを呼んでからデプロイする
   workflow_call:
     inputs:

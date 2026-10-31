@@ -906,6 +906,34 @@ pnpm --filter @wiki/e2e e2e                         # マイグレーション�
 - DB は実行をまたいで残る（テストはページのタイトルに時刻を入れて見分ける）
 - CI では、PR が管理画面か API に影響するときだけ走る（`ci.yml` の `e2e`）。管理画面を変えていない PR では、`main` でビルド済みの管理画面（Actions のキャッシュ `admin-dist-<sha>`。`main` への push の `check` が残す）を使い、ビルドを省く。マージ先との分かれ目のコミットから、管理画面に影響する変更の無い範囲をさかのぼって探し（`scripts/ci-admin-dist-keys.sh`）、見つからなければビルドする。どれを使ったかは実行の Summary に出る
 
+### AI-DLC（Claude Code で、要件から実装までを段階を踏んで進める）
+
+[AI-DLC](https://github.com/awslabs/aidlc-workflows)（AI-Driven Development Life Cycle、AWS が公開している手法と道具）を、Claude Code 用に入れてある（v2.11.2）。頼みごとを書くと、作業の大きさに合った流れ（scope）を選び、要件・設計・計画・実装・テストを段階（stage）ごとに進め、段階の終わりごとに人の承認を待つ。決めたことと成果物は `aidlc/` に残る。
+
+入れたときの経緯と、導入のときに出た疑問への答えは `docs/aidlc-introduction.md` にまとめてある。
+
+ふだんの頼みごと（issue の解消、`.claude/skills/` のスキルなど）は今までどおり使える。AI-DLC の流れは、`/aidlc` で始めたときだけ進む（フックは毎回動くが、流れの外では何も止めない）。
+
+**使う人が用意するもの**：`aidlc` コマンド（PATH にあること。Bun や Node.js は要らない）。AI-DLC のフックと道具は `aidlc` で動くので、無いと Claude Code のフックがエラーになり、AI-DLC のゲートと記録が動かない。[公式インストーラ](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/18-install-and-lifecycle.md)で `~/.local/bin` に入る（`sudo` は要らない）：
+
+```sh
+tmp="$(mktemp -d)" && curl -fsSL https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.sh -o "$tmp/install.sh" && sh "$tmp/install.sh"; rm -rf "$tmp"
+```
+
+```sh
+claude                                    # このリポジトリで Claude Code を開く（初回はフックの承認を求められる）
+/aidlc --doctor                           # 入り方を確かめる
+/aidlc 管理画面のタグ一覧に並べ替えを足す   # 頼みごとを書くと、流れを選んで計画を出す
+```
+
+- よく使う流れ：`feature`（新しい機能。要件から運用まで）、`bugfix`（不具合）、`refactor`、`express`（小さな変更。既存コードの把握・要件・実装・テストだけ）、`classic`（既定。要件・設計・実装・テスト）。`/aidlc --scope bugfix ...` のように指定もできる。一覧は `.claude/scopes/`
+- 進み具合は `/aidlc --status`、使い方は `/aidlc --help`
+- **このプロジェクトの決まり**は `aidlc/spaces/default/memory/project.md` に書いてある（日本語で進める、PR に画面のスクリーンショットを載せる、一覧は `DataList` で作る、など。元は `CLAUDE.md` とこの README）。Unit（実装の単位）はパッケージごとに分け、`packages/shared` を api・admin・site の契約として先に作る（同じファイルの「Unit の分け方」）。決まりを変えたら、こちらも直す。`team.md` は、最初のワークフローの Practices Discovery（チームのやり方の確認）で埋まる
+- **コミットするもの**：`.claude/`（AI-DLC の道具・エージェント・フック・`settings.json`）と `aidlc/`（ルールと、作業ごとの記録）。一人ひとりの設定（`.claude/settings.local.json`、`aidlc.settings.local.json`）と作業中の一時ファイルは `.gitignore` の「AI-DLC: local working files」の節で外してある
+- `.claude/` と `aidlc/` だけを変えた PR では、CI もデプロイも動かない（`ci.yml` `deploy.yml` の `paths-ignore`、`scripts/ci-scope.sh`）
+- `.claude/` の AI-DLC のファイルは手で直さない（作業中は AI-DLC のフックが書き換えを止める）。版を上げるときは、`aidlc update` のあと `aidlc config --harness claude` を流し、変わったファイルをコミットする（[Install and Lifecycle](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/18-install-and-lifecycle.md)）。`aidlc/spaces/default/memory/project.md` と `team.md` は上書きされない
+- MCP サーバー：AI-DLC が用意している MCP サーバー（context7 と AWS 向けの4つ）は入れていない（`.mcp.json` は wiki の MCP だけのまま）。このプロジェクトは AWS を使わない
+
 ## 既定として選んだこと（設計書の未決事項）
 
 - **API/DBのホスティング**：Hono を Cloudflare Workers + Hyperdrive で動かし、DBはマネージドPostgreSQL（Neon等）を想定。コードはランタイム非依存（`createApp(deps)`）にしてあり、ローカルはNode（`src/node.ts`）、本番は Workers（`src/worker.ts`）で動かす

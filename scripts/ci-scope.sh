@@ -3,6 +3,7 @@
 #   scripts/ci-scope.sh [BASE]
 # BASE（比べる先のコミット）からの差分で、変更したパッケージと、それに依存するパッケージを出す。
 # apps/ と packages/ の外（pnpm-lock.yaml、tsconfig.base.json、ワークフローなど）を変えたときと、BASE が空のときは全部。
+# 文書（*.md）、エージェント向けの設定（.claude/）、AI-DLC の記録（aidlc/）は、どのパッケージのビルドにもテストにも読まれないので数えない。
 # 出力は $GITHUB_OUTPUT にそのまま足せる形：
 #   filter=<pnpm に渡す絞り込み>
 #   affected=<パッケージ名を空白区切りで>
@@ -10,7 +11,7 @@
 set -eu
 
 base="${1:-}"
-if [ -z "$base" ] || git diff --name-only "$base...HEAD" | grep -qvE '^(apps|packages)/|\.md$'; then
+if [ -z "$base" ] || git diff --name-only "$base...HEAD" | grep -qvE '^(apps|packages|\.claude|aidlc)/|\.md$'; then
   filter="-r"
 else
   filter="--filter='...[$base]' --filter='!wiki'"
