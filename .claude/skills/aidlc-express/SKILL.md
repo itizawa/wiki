@@ -21,7 +21,7 @@ ahead of that run-stage. Adopt it for the whole run.
 
 ## The loop
 
-1. `directive = bun .claude/tools/aidlc-orchestrate.ts next --scope express $ARGUMENTS`
+1. `directive = aidlc engine orchestrate next --scope express $ARGUMENTS`
 2. Before acting on each directive, read
    `.claude/aidlc-common/protocols/stage-protocol.md` once per session,
    then read every
@@ -33,7 +33,7 @@ ahead of that run-stage. Adopt it for the whole run.
    brings a stage's rules in parts ahead of its `run-stage` (most stages on
    GitHub Copilot): apply `directive.rules_content` in array order and keep it
    as that stage's rules, adopt `conductor_persona` when the part carries it,
-   then run `bun .claude/tools/aidlc-orchestrate.ts continue <directive.receipt>`
+   then run `aidlc engine orchestrate continue <directive.receipt>`
    (copy the 8-character receipt printed at the top of the directive, never
    rebuild it) and act on the directive it returns. Never `report` a part or
    tell the user about it. Every engine `ask` carries `ask_type` and
@@ -61,9 +61,9 @@ ahead of that run-stage. Adopt it for the whole run.
    Legacy Plan Approval recovery keeps its explicit bare-`next` choice.
    Never use `report` as a fallback for an engine ask answer; a selected guard
    remedy may still explicitly name a stage report.
-3. `bun .claude/tools/aidlc-orchestrate.ts report --stage <directive.stage> --result <outcome> [--user-input "<text>"]` only after acting on a stage directive. A redo, jump, or start-fresh request on re-entry is the sole non-stage report round-trip and uses `report --result resumed --choice <redo|jump|fresh>`.
+3. `aidlc engine orchestrate report --stage <directive.stage> --result <outcome> [--user-input "<text>"]` only after acting on a stage directive. A redo, jump, or start-fresh request on re-entry is the sole non-stage report round-trip and uses `report --result resumed --choice <redo|jump|fresh>`.
 4. Pass `$ARGUMENTS` only to the first `next` in step 1: every later pass runs
-   bare `bun .claude/tools/aidlc-orchestrate.ts next`, with no `--scope` and no
+   bare `aidlc engine orchestrate next`, with no `--scope` and no
    `$ARGUMENTS` (repeating them would redo a jump or a setting the person
    already asked for). Keep going until `directive.kind == done`. A `done`
    without `directive.workflow_continues` is the real end: present the
@@ -71,7 +71,7 @@ ahead of that run-stage. Adopt it for the whole run.
    run that bare `next` at once and act on what it returns, with no completion
    summary. If the person's reply that led to that step also asked to stop the
    workflow there for now (not to pause on one decision inside the work), run
-   `bun .claude/tools/aidlc-orchestrate.ts park --person-asked` instead and act on its
+   `aidlc engine orchestrate park --person-asked` instead and act on its
    `parked` directive.
 
 On that first `next`, pass `$ARGUMENTS` through verbatim after `--scope express`; the engine parses
@@ -95,7 +95,7 @@ preserving any `--request` id rather than rebuilding the request.
 
 - Treat the input as new-work ONLY when it clearly
   names a distinct feature/bug/unit unrelated to the active intent's subject
-  (`bun .claude/tools/aidlc.ts engine intent list --json` gives its `slug` and
+  (`aidlc engine intent list --json` gives its `slug` and
   `status`).
 - **On genuine new-work, OFFER, never auto-create.** Surface an
   `AskUserQuestion` showing the active intent and the proposed new one, **including
@@ -109,7 +109,7 @@ preserving any `--request` id rather than rebuilding the request.
   new-work text:
 
   ```bash
-  bun .claude/tools/aidlc.ts engine orchestrate next --new-intent --scope <the confirmed scope> "<the new-work description>"
+  aidlc engine orchestrate next --new-intent --scope <the confirmed scope> "<the new-work description>"
   ```
 
   The engine returns a `print` directive naming the `intent-create` command

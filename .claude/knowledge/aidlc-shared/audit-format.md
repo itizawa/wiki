@@ -465,7 +465,7 @@ A note with no owning taxonomy event (an error worked around, a recovery, a
 mid-workflow change request) uses this command input:
 
 ```bash
-bun .claude/tools/aidlc.ts engine audit append-raw "Error: <brief>" "**Severity**: <level>\n**Description**: <what happened>\n**Resolution**: <action taken>"
+aidlc engine audit append-raw "Error: <brief>" "**Severity**: <level>\n**Description**: <what happened>\n**Resolution**: <action taken>"
 ```
 
 Use `Recovery: <brief>` or `Change Request: <brief>` for those notes. Pass the

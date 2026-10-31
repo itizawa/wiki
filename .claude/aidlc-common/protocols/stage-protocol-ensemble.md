@@ -32,7 +32,7 @@ On every topology, a reviewer NOT-READY (stage-protocol-reviewer.md §12a step 3
 
 When a subagent completes its work, it MUST return a structured summary to the orchestrator. This ensures no context is lost between subagent execution and orchestrator continuation.
 
-If the dispatch returns before that summary exists (a harness that runs agents in the background), do not write a shell loop or a sleep. Run `bun .claude/tools/aidlc.ts engine orchestrate wait --stage <directive.stage> --for collaborators` after dispatching support agents, or `--for artifacts` after dispatching the lead (add `--unit <directive.unit>` on a per-unit stage), and re-run that same command while it answers `status: waiting`. It returns within its bound and lists exactly what is still missing.
+If the dispatch returns before that summary exists (a harness that runs agents in the background), do not write a shell loop or a sleep. Run `aidlc engine orchestrate wait --stage <directive.stage> --for collaborators` after dispatching support agents, or `--for artifacts` after dispatching the lead (add `--unit <directive.unit>` on a per-unit stage), and re-run that same command while it answers `status: waiting`. It returns within its bound and lists exactly what is still missing.
 
 ### Required return format:
 ```markdown
@@ -76,7 +76,7 @@ If a Task tool call fails (timeout, error, or returns truncated/incomplete outpu
 2. If the retry also fails, **tell the user plainly what failed** and offer two options via a structured question:
    - "Run it here": do the stage's work in this conversation instead of handing it off; slower, but it sidesteps whatever is failing
    - "Skip and revisit": leave the stage unfinished, keep going, and come back to it later
-3. Record the failure and resolution with `bun .claude/tools/aidlc.ts engine audit append-raw "Error: <brief>" "<body>"` (the audit trail rules in section 4)
+3. Record the failure and resolution with `aidlc engine audit append-raw "Error: <brief>" "<body>"` (the audit trail rules in section 4)
 
 ---
 

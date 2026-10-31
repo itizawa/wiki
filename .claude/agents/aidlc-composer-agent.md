@@ -85,7 +85,7 @@ START deciding. Target: complete in ≤ 4 tool calls when CodeKB is present.
 
 ### Step 1: Detect Workspace
 
-Run `bun .claude/tools/aidlc.ts engine workspace detect --json`. Returns workspace scan
+Run `aidlc engine workspace detect --json`. Returns workspace scan
 (projectType, languages, frameworks, buildSystem), the resolved `scopesDir`
 + `scopeGridPath`, and `proposalPath`. You read the first two, and
 you never write a scope file. The only file you write is `proposalPath`, the
@@ -170,7 +170,7 @@ Do NOT compute the composite, bands, or any downstream number yourself. Score
 the five components with cited evidence, then run:
 
 ```
-bun .claude/tools/aidlc.ts engine graph ars --iae <s> --csu <s> --ve <s> --r <s> --ua <s> --method <codekb|fallback> [--completed <csv>] [--project-type <t>]
+aidlc engine graph ars --iae <s> --csu <s> --ve <s> --r <s> --ua <s> --method <codekb|fallback> [--completed <csv>] [--project-type <t>]
 ```
 
 and copy its numbers verbatim. The tool owns the weighted composite, the band
@@ -579,7 +579,7 @@ Write your ARS-derived grid to the `proposalPath` Step 1 printed, replacing
 whatever an earlier run left there. Never use a system temp directory: some
 harnesses' file tools cannot write outside the project. Then run:
 ```
-bun .claude/tools/aidlc.ts engine graph validate-grid --project-type <greenfield|brownfield> [--space <selected-space>] [--intent <selected-intent>]
+aidlc engine graph validate-grid --project-type <greenfield|brownfield> [--space <selected-space>] [--intent <selected-intent>]
 ```
 With no `--proposal`, the validator reads `proposalPath`, so every run checks
 the grid you last wrote there.
@@ -759,7 +759,7 @@ before the rename); the composer never flips it. Mark that row read-only in
 the rendered proposal: a recompose lands only `changes.skip` / `changes.add`,
 so a policy edit there would be discarded. Name the route instead: when the
 person asks to raise or lower it, the conductor runs
-`bun .claude/tools/aidlc.ts engine config set guard-policy <value> --message <id>` (`<id>` the message they asked in), before any scope change
+`aidlc engine config set guard-policy <value> --message <id>` (`<id>` the message they asked in), before any scope change
 they also asked for. Changing scope alone never lowers the running policy.
 Pass `guardPolicy` to `validate-grid --guard-policy <value>` so the
 validator checks it with the grid. For a front composition the conductor
@@ -852,7 +852,7 @@ turns plan approval off in their own words, never through a proposal), and
 ceiling, so a request for full reviews is `"review": "adversarial"` even on a
 capped scope, and no stage changes; the scope's own level (for example
 `"advisory"` on bugfix) returns it to the scope's normal reviews. Before returning an `on` switch, read the
-effective value with `bun .claude/tools/aidlc.ts engine config get
+effective value with `aidlc engine config get
 <sensors|learnings|summary-confirmation|collaborators>`: when it reports `from env
 AIDLC_DISABLE_<NAME>` or `from AIDLC_DISABLE_<NAME> in <file>`, a kill switch
 overrides every setting, so return no change for it and say in one line which
@@ -975,7 +975,7 @@ when they save it. Each granted keyword must be one word of lowercase letters,
 digits, and hyphens; leave out any other and say so in one line, because the
 word is placed in a command. Check them before the gate:
 ```
-bun .claude/tools/aidlc.ts engine graph validate-grid --keywords <granted,csv>
+aidlc engine graph validate-grid --keywords <granted,csv>
 ```
 and the conductor passes them to `scope save --keywords <granted,csv>`, which
 says in one line when another plan has the same hint.

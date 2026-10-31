@@ -23,7 +23,7 @@ that flag without this skill.
 1. Ask the engine for the single-stage directive:
 
    ```bash
-   bun .claude/tools/aidlc-orchestrate.ts next --stage functional-design --single
+   aidlc engine orchestrate next --stage functional-design --single
    ```
 
    The engine emits one `run-stage` directive for `functional-design` (carrying the
@@ -35,7 +35,7 @@ that flag without this skill.
    first instead. For each part, apply `directive.rules_content` in array
    order and keep it as this stage's rules, and adopt `conductor_persona` when
    the part carries it. Then run
-   `bun .claude/tools/aidlc-orchestrate.ts continue <directive.receipt>` (the
+   `aidlc engine orchestrate continue <directive.receipt>` (the
    receipt is the 8-character string printed at the top of the directive; copy
    it, never rebuild it) and act on the directive that comes back. Do not call
    `report` for a part or tell the user about it. Repeat until the
@@ -53,7 +53,7 @@ that flag without this skill.
 3. When the stage's work is done, commit the single-stage record:
 
    ```bash
-   bun .claude/tools/aidlc-orchestrate.ts report --single --stage functional-design --result completed
+   aidlc engine orchestrate report --single --stage functional-design --result completed
    ```
 
    This records a STAGE_STARTED / STAGE_COMPLETED pair under a synthetic workflow

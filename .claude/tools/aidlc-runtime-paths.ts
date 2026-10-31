@@ -96,7 +96,7 @@ dropDotenvNames();
 
 const MODULE_TOOLS_DIR = dirname(fileURLToPath(import.meta.url));
 const MODULE_HARNESS_ROOT = join(MODULE_TOOLS_DIR, "..");
-const PROJECTED_INVOKE = "bun .claude/tools/aidlc.ts";
+const PROJECTED_INVOKE = "aidlc";
 // Release version grammar: stable x.y.z, or a preview id
 // x.y.z-preview.YYYYMMDD.N. Literal of PREVIEW_CHANNEL / VERSION_ID in
 // aidlc-channel.ts, repeated here because hooks ship this module with a closed

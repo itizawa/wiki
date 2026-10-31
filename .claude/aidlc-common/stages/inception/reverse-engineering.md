@@ -68,10 +68,10 @@ Read `<record>/aidlc-state.md` to confirm:
 - Project type is brownfield
 
 If the project is not brownfield, run
-`bun .claude/tools/aidlc.ts engine orchestrate report --stage reverse-engineering --result skipped --reason "<reason>"`.
+`aidlc engine orchestrate report --stage reverse-engineering --result skipped --reason "<reason>"`.
 The engine records the skip and advances to the next in-scope stage. The
 project type is the person's call, not the scan's: when they have said this is
-existing code, do not skip; run `bun .claude/tools/aidlc.ts engine orchestrate next --project-type brownfield`
+existing code, do not skip; run `aidlc engine orchestrate next --project-type brownfield`
 and follow what it returns.
 
 #### Resolve the intent's repo set (multi-repo)
@@ -109,7 +109,7 @@ accumulates across intents. For every repo in the resolved set, run the
 read-only check:
 
 ```
-bun .claude/tools/aidlc.ts engine workspace codekb-scope-diff --repo <repo>
+aidlc engine workspace codekb-scope-diff --repo <repo>
 ```
 
 - **NO_STORE** - first scan for this repo. Proceed to Step 2; no question.
@@ -165,7 +165,7 @@ Immediately after each human reuse decision, record that repo's
 current-attempt exemption:
 
 ```
-bun .claude/tools/aidlc-state.ts reuse-artifact reverse-engineering --decision keep --artifacts "<codekb-path output>" [--repo <repo>] [--single]
+aidlc engine state reuse-artifact reverse-engineering --decision keep --artifacts "<codekb-path output>" [--repo <repo>] [--single]
 ```
 
 Use one row per reused registered repo. For an unrecorded single-repo workspace,
@@ -179,7 +179,7 @@ Immediately before Step 2, take one compare-and-swap snapshot for every repo
 selected for scanning:
 
 ```
-bun .claude/tools/aidlc-utility.ts codekb-snapshot --repo <repo> --paths <source paths> --json
+aidlc engine workspace codekb-snapshot --repo <repo> --paths <source paths> --json
 ```
 
 Choose `<source paths>` as follows:
@@ -203,7 +203,7 @@ Only after every repository decision has been resolved:
 
 - If every repo is reused on an ordinary workflow run, report the stage as
   skipped exactly once:
-  `bun .claude/tools/aidlc.ts engine orchestrate report --stage reverse-engineering --result skipped --reason "codekb reuse: all resolved stores CURRENT, human chose reuse"`.
+  `aidlc engine orchestrate report --stage reverse-engineering --result skipped --reason "codekb reuse: all resolved stores CURRENT, human chose reuse"`.
 - If every repo is reused on an isolated run (`directive.single === true`), do
   NOT call the main-workflow skipped report. Return the reused-repositories
   summary to the orchestrator's isolated stage-runner branch; the single-run
@@ -374,7 +374,7 @@ For the block's `fingerprint:` line, run the mint command with the final
 its output verbatim:
 
    ```
-   bun .claude/tools/aidlc.ts engine workspace codekb-scope-diff --repo <repo> --mint --paths <analyzed paths>
+   aidlc engine workspace codekb-scope-diff --repo <repo> --mint --paths <analyzed paths>
    ```
 
 Then have the architect check the staged timestamp and fix the block until it
@@ -382,7 +382,7 @@ prints `VALID`. If it says the fingerprint does not match the source now, mint
 it again; an unknown fingerprint (outside git) is left for publication to check:
 
    ```
-   bun .claude/tools/aidlc.ts engine workspace codekb-scope-diff --repo <repo> --check <record>/.aidlc-engine/codekb-stage-<repo>/reverse-engineering-timestamp.md
+   aidlc engine workspace codekb-scope-diff --repo <repo> --check <record>/.aidlc-engine/codekb-stage-<repo>/reverse-engineering-timestamp.md
    ```
 
 At Minimal depth, all nine artifacts and every required section above still
@@ -395,7 +395,7 @@ is the methodology's existing depth contract, not an output-length cap.
 yourself.** Run the read-only tool
 
 ```
-bun .claude/tools/aidlc.ts engine workspace codekb --repo <repo>
+aidlc engine workspace codekb --repo <repo>
 ```
 
 (omit `--repo` only for an unrecorded project-root repo; pass it for every
@@ -412,7 +412,7 @@ draft per repo; NOT the timestamp filename - record-dir placement checks key on
 the artifact stems) and run, as a command of its own,
 
 ```
-bun .claude/tools/aidlc.ts engine workspace codekb-scope-diff --repo <repo> --compare <record>/inception/reverse-engineering/scope-draft-<repo>.md
+aidlc engine workspace codekb-scope-diff --repo <repo> --compare <record>/inception/reverse-engineering/scope-draft-<repo>.md
 ```
 
 Keep the output keyed by `<repo>` for Step 5's completion summary. This is the
@@ -428,7 +428,7 @@ Publish the complete candidate through the compare-and-swap utility, using the
 exact snapshot values captured immediately before Step 2:
 
 ```
-bun .claude/tools/aidlc-utility.ts codekb-publish \
+aidlc engine workspace codekb-publish \
   --repo <repo> \
   --staged <record>/.aidlc-engine/codekb-stage-<repo>/ \
   --paths <snapshot paths> \
@@ -482,7 +482,7 @@ completion sequence in this order:
    step: when it has a question for the person, ask it and end the turn;
    continue once the answer is logged.
 3. Open the approval gate exactly once with
-   `bun .claude/tools/aidlc.ts engine orchestrate report --stage reverse-engineering --result awaiting-approval`.
+   `aidlc engine orchestrate report --stage reverse-engineering --result awaiting-approval`.
 4. Ask Step 5's approval question.
 
 The person's answer is reported afterwards as `approved` or `rejected`; an

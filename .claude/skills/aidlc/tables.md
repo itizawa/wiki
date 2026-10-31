@@ -6,9 +6,9 @@ Generated tables, kept beside the skill as human-readable data: the engine route
 
 The orchestration engine resolves scope-level stage routing internally (it reads the compiled scope grid the table below summarises). The summary table is kept here as human-readable data - not dispatch logic - and is regenerated, never hand-edited. (One carve-out: `scope save` adds a plan the human chose to keep to the runtime scope registry (the durable `aidlc/scopes/<name>.md` record, projected into `.claude/scopes/aidlc-<name>.md` and a `scope-grid.json` entry) - that is the sanctioned write path for saved scopes, not a hand-edit; this summary table itself stays generated.)
 
-Source of truth: one file per scope under `.claude/scopes/aidlc-<name>.md` (identity + keywords + description + skeleton default) plus each stage's `scopes:` frontmatter (membership), transposed into the compiled grid at `bun .claude/tools/aidlc.ts engine graph compile`. Adding a scope is the same muscle memory as authoring a sensor or agent — drop `.claude/scopes/aidlc-<name>.md`, tag the member stages' `scopes:` lists, recompile, then `bun .claude/tools/aidlc.ts engine gen scope-table` to regenerate the table below + commit. No prose edit required. CI runs `scope-table --check` to prevent drift.
+Source of truth: one file per scope under `.claude/scopes/aidlc-<name>.md` (identity + keywords + description + skeleton default) plus each stage's `scopes:` frontmatter (membership), transposed into the compiled grid at `aidlc engine graph compile`. Adding a scope is the same muscle memory as authoring a sensor or agent — drop `.claude/scopes/aidlc-<name>.md`, tag the member stages' `scopes:` lists, recompile, then `aidlc engine gen scope-table` to regenerate the table below + commit. No prose edit required. CI runs `scope-table --check` to prevent drift.
 
-<!-- BEGIN: compiled scope grid via `bun .claude/tools/aidlc.ts engine gen scope-table` - do NOT hand-edit -->
+<!-- BEGIN: compiled scope grid via `aidlc engine gen scope-table` - do NOT hand-edit -->
 
 | Scope          | Depth         | TestStrategy | EXECUTE / Total |
 |----------------|---------------|--------------|-----------------|
@@ -32,7 +32,7 @@ Source of truth: one file per scope under `.claude/scopes/aidlc-<name>.md` (iden
 
 The engine reads the compiled `data/stage-graph.json` directly for all routing; this table is the human-readable mirror of that graph (each compiled stage, its phase, execution mode, lead/support agents, and run mode) — data, not dispatch logic.
 
-<!-- BEGIN: compiled stage graph via `bun .claude/tools/aidlc.ts engine gen stage-table` - do NOT hand-edit -->
+<!-- BEGIN: compiled stage graph via `aidlc engine gen stage-table` - do NOT hand-edit -->
 
 | Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |
 |------|---|-------|-------|-----------|------------|----------------|------|

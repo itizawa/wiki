@@ -75,7 +75,7 @@ AI-DLC（AI-Driven Development Life Cycle）は、AWS が公開している「AI
 
 | 変えたところ | 中身 |
 |---|---|
-| `.claude/` | AI-DLC 本体（スキル、エージェント、段階の定義、フック、道具、`settings.json`）。公式のコピー用ランタイム（`aidlc-copy-runtime-2.11.2.tar.gz`）を SHA-256 で確かめてから写した |
+| `.claude/` | AI-DLC 本体（スキル、エージェント、段階の定義、フック、道具、`settings.json`）。公式インストーラで入れた `aidlc` コマンドの `aidlc config --harness claude --mcp none` で作った。フックと許可は `aidlc` を呼ぶ |
 | `aidlc/` | ルールと、作業ごとの記録の置き場所 |
 | `aidlc/spaces/default/memory/project.md` | このプロジェクトの決まり（下） |
 | `.gitignore` | AI-DLC の作業ファイルと個人設定を外す |
@@ -91,9 +91,10 @@ AI-DLC（AI-Driven Development Life Cycle）は、AWS が公開している「AI
 - AWS は使わないので、AWS 向けの段階と MCP サーバーは使わない
 - Unit の分け方（下の Q4・Q5）
 
-使い始め方：
+使い始め方（`aidlc` コマンドは各自の手元に1回入れる。PATH に `~/.local/bin` が無ければ足す）：
 
 ```sh
+tmp="$(mktemp -d)" && curl -fsSL https://github.com/awslabs/aidlc-workflows/releases/latest/download/install.sh -o "$tmp/install.sh" && sh "$tmp/install.sh"; rm -rf "$tmp"
 claude                                    # 初回はフックの承認を求められる。承認したら Claude Code を開き直す
 /aidlc --doctor                           # 入り方を確かめる
 /aidlc 管理画面のタグ一覧に並べ替えを足す   # 頼みごとを書くと、流れを選んで計画を出す
@@ -103,25 +104,23 @@ claude                                    # 初回はフックの承認を求め
 
 ## 4. 導入のときに出た疑問と答え
 
-### Q1. Bun はなぜ必要なのか
+### Q1. Bun は必要か
 
-**AI-DLC の道具が TypeScript で書かれていて、今回の入れ方ではそれを Bun で直接動かしているから。**
+**要らない。公式インストーラで入れた `aidlc` コマンドが、Bun を中に組み込んだ単体の実行ファイルだから。その代わり、使う人全員に `aidlc` が要る。**
 
-- `.claude/settings.json` のフックは、ツールを呼ぶたびや会話の始めと終わりに `bun .claude/tools/aidlc.ts engine hook ...` を実行する。承認前に成果物を書き換えさせない、段階ごとのルールを渡す、記録を残す、といった AI-DLC のゲートと監査ログは、このフックの上で動いている
-- `.claude/tools/` の `.ts` ファイル105本のうち29本が、Bun にしか無い API（`Bun.markdown`、`Bun.spawnSync`、`Bun.JSONC`、`Bun.TOML`、`Bun.semver` など）を使っている。成果物の Markdown を調べて、必要な節や承認のタグを確かめる処理も `Bun.markdown` を使う。そのため Node では置き換えられない（この点は、ドキュメントではなく、コードを調べて判断した）
-
-**Bun を入れずに済ませる方法**：公式インストーラで入れる `aidlc` コマンドは、Bun を中に組み込んだ単体の実行ファイル。各自が `aidlc` を入れて `aidlc config --harness claude` を流せば、Bun を別に入れる必要はない。ただしフックが `aidlc` を呼ぶ設定に書き換わり、今度は全員に `aidlc` が要る。今回は公式インストーラを動かせなかったため、Bun を使う「コピー方式」で入れた。
-
-- 使う人は **Bun 1.4.4 以上**を入れる（`curl -fsSL https://bun.sh/install | bash`）
-- `bun` が無いと、Claude Code のフックが毎回エラーを出す（作業は止まらない）
+- `.claude/settings.json` のフックは、ツールを呼ぶたびや会話の始めと終わりに `aidlc engine hook ...` を実行する。承認前に成果物を書き換えさせない、段階ごとのルールを渡す、記録を残す、といった AI-DLC のゲートと監査ログは、このフックの上で動いている
+- 道具は TypeScript で書かれていて、Bun にしか無い API（`Bun.markdown` など）を使うので、Node では動かせない。Bun を別に入れて直接動かす「コピー方式」もあるが、公式は実行ファイルを使えるなら `aidlc config` を勧めているので、こちらにした
+- `aidlc` が無いと、Claude Code のフックがエラーになり、AI-DLC のゲートと記録が動かない
+- ターミナルから `claude` を開くなら、そのターミナルの PATH がフックに渡る。デスクトップアプリなどから開いてフックが動かないときは、`/etc/paths.d` のファイルに `~/.local/bin` を足して開き直す（`aidlc doctor` の案内）
+- クラウドのセッションでも、環境のセットアップで `aidlc` を入れる。root で動く環境では、インストーラに `--allow-root` を付ける（クラウドのセッションではまだ試していない）
 
 ### Q2. そのことを示している公式ドキュメントはどこか
 
 | 書いてあること | 場所 |
 |---|---|
-| 公式インストーラで入れれば Bun は要らない。Bun が要るのはコピー方式だけ（「You do not need to install Bun or Node.js; a native install runs its hooks and commands through `aidlc` and does not call `bun`.」「The manual-copy path is the one place Bun is needed」） | [README › Install AI-DLC](https://github.com/awslabs/aidlc-workflows/blob/main/README.md#1-install-aidlc)、[Getting Started › Install AI-DLC](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/01-getting-started.md#1-install-ai-dlc) |
-| コピー方式では Bun 1.4.4 以上が要る。Markdown の解析に `Bun.markdown` を使う | [Install and Lifecycle › Copy Channel](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/18-install-and-lifecycle.md#copy-channel) |
-| フックと道具は `bun` で動く（「Framework commands run through `bun .claude/tools/aidlc.ts`」「All 17 hooks are TypeScript (`.ts`) and run via `bun`.」） | このリポジトリの `.claude/CLAUDE.md` の「Prerequisites」（AI-DLC が入れるファイル） |
+| 公式インストーラで入れれば Bun も Node.js も要らない（「The installed command and config path do not require Bun or Node.js.」） | [Install and Lifecycle](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/18-install-and-lifecycle.md) |
+| Bun が要るのはコピー方式で、実行ファイルを使えるなら `aidlc config` を勧める（「When native executables are permitted, prefer `aidlc config`.」） | [Install and Lifecycle › Copy Channel](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/18-install-and-lifecycle.md#copy-channel) |
+| フックと道具は `aidlc` で動く（「Framework commands run through `aidlc`」） | このリポジトリの `.claude/CLAUDE.md`（AI-DLC が入れるファイル） |
 
 ### Q3. CONSTRUCTION だけ cc-sdd を使うなど、一部だけ別の開発方式にできるか
 

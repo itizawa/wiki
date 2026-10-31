@@ -290,7 +290,7 @@ the Build and Test Summary with a successful readiness result.
 ### Step 10: Cross-Unit Final Coverage Gate
 
 This is a stage-level gate, not the Construction phase boundary. Run
-`bun .claude/tools/aidlc.ts engine sensor-traceability --stage build-and-test`: it prints every
+`aidlc engine sensor-traceability --stage build-and-test`: it prints every
 requirement and acceptance criterion this run traced, whether it is built or
 marked `N/A` with its reason, and the Units and files that build it. Write
 `<record>/construction/build-and-test/cross-unit-traceability.md` from that
@@ -301,7 +301,7 @@ that must be surfaced at the approval gate.
 ### Step 11: Completion Handoff
 
 Hand completion to `stage-protocol.md` via
-`bun .claude/tools/aidlc.ts engine orchestrate report --stage build-and-test --result <outcome>`.
+`aidlc engine orchestrate report --stage build-and-test --result <outcome>`.
 That `report` call owns every lifecycle transition and advancement; never perform one in prose, and never narrate this bookkeeping to the user.
 
 ### Step 12: Completion

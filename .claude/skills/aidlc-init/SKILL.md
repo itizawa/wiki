@@ -38,7 +38,7 @@ no standalone meaning.
    the full `--arguments` text is preserved separately in the audit + state:
 
    ```bash
-   bun .claude/tools/aidlc.ts engine intent create --scope <scope> --arguments "<description>" --label "<2-3 word essence>"
+   aidlc engine intent create --scope <scope> --arguments "<description>" --label "<2-3 word essence>"
    ```
 
    Print the tool's output and stop. This does not advance a stage; run
@@ -54,7 +54,7 @@ no standalone meaning.
    Work already in progress is left as it is:
 
    ```bash
-   bun .claude/tools/aidlc-orchestrate.ts next --new-intent $ARGUMENTS
+   aidlc engine orchestrate next --new-intent $ARGUMENTS
    ```
 
    Before acting on each directive, read

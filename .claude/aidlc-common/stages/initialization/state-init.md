@@ -49,15 +49,15 @@ from the compiled stage graph and scope grid:
   single-line preview to the state `Project` field
 - Project type (greenfield/brownfield from workspace-detection)
 - Workspace state (languages, frameworks, build system from workspace-detection)
-- Start date: the time `bun .claude/tools/aidlc.ts engine now` prints
+- Start date: the time `aidlc engine now` prints
 - Scope configuration (stages to execute/skip per scope routing)
 - Full stage progress checkboxes (all stages, with INITIALIZATION stages marked [x] for workspace-scaffold, workspace-detection)
 - Mark state-init as `[-]` in progress
 - Total Stages: count EXECUTE stages only (not SKIP). Authoritative counts come
   from the compiled scope grid (`.claude/tools/data/scope-grid.json`),
   transposed from each stage's `scopes:` frontmatter. Run
-  `bun .claude/tools/aidlc.ts engine gen scope-table` for the live scope
-  counts and `bun .claude/tools/aidlc.ts engine gen stage-table` for the
+  `aidlc engine gen scope-table` for the live scope
+  counts and `aidlc engine gen stage-table` for the
   live compiled stage list.
 - Completed: set to number of completed INITIALIZATION stages (typically 3)
 - In Progress: set to first post-initialization stage name

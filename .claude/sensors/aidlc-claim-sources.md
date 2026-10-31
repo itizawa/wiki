@@ -1,7 +1,7 @@
 ---
 id: claim-sources
 kind: deterministic
-command: bun .claude/tools/aidlc.ts engine sensor-claim-sources
+command: aidlc engine sensor-claim-sources
 default_severity: advisory
 fire_on: gate
 description: Checks Intent Capture claims carry source tags that resolve to the stage's confirmed source register and answers

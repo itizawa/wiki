@@ -23,7 +23,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bun \"$CLAUDE_PROJECT_DIR/.claude/tools/aidlc.ts\" engine statusline"
+    "command": "aidlc engine statusline"
   },
   "agentFinishRecorded": {
     "env": [
