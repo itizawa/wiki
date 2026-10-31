@@ -910,6 +910,8 @@ pnpm --filter @wiki/e2e e2e                         # マイグレーション�
 
 [AI-DLC](https://github.com/awslabs/aidlc-workflows)（AI-Driven Development Life Cycle、AWS が公開している手法と道具）を、Claude Code 用に入れてある（v2.11.2）。頼みごとを書くと、作業の大きさに合った流れ（scope）を選び、要件・設計・計画・実装・テストを段階（stage）ごとに進め、段階の終わりごとに人の承認を待つ。決めたことと成果物は `aidlc/` に残る。
 
+入れたときの経緯と、導入のときに出た疑問への答えは `docs/aidlc-introduction.md` にまとめてある。
+
 ふだんの頼みごと（issue の解消、`.claude/skills/` のスキルなど）は今までどおり使える。AI-DLC の流れは、`/aidlc` で始めたときだけ進む（フックは毎回動くが、流れの外では何も止めない）。
 
 **使う人が用意するもの**：[Bun](https://bun.sh/) 1.4.4 以上（`bun` が PATH にあること）。AI-DLC のフックと道具（`.claude/tools/*.ts`）は `bun` で動く。`bun` が無いと、Claude Code のフックが毎回エラーを出す（作業は止まらない）。
