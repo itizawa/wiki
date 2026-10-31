@@ -4,7 +4,7 @@
 
 - 入れた PR：https://github.com/itizawa/wiki/pull/503
 - 入れた版：AI-DLC v2.11.2（2026年10月時点の最新の安定版）
-- 使い方の手順は `README.md` の「AI-DLC」、このプロジェクト向けの決まりは `aidlc/spaces/default/memory/project.md`
+- このプロジェクト向けの決まりは `aidlc/spaces/default/memory/project.md`
 
 ---
 
@@ -82,10 +82,10 @@ AI-DLC（AI-Driven Development Life Cycle）は、AWS が公開している「AI
 | `.github/workflows/ci.yml`、`deploy.yml`、`scripts/ci-scope.sh` | `.claude/` と `aidlc/` だけの変更では CI もデプロイも動かさない |
 | `README.md`、`CLAUDE.md` | 使い方と案内 |
 
-`project.md` に書いた、このプロジェクトの決まり（元は `CLAUDE.md` と `README.md`）：
+`project.md` に書いた、このプロジェクトの決まり（元は `CLAUDE.md`）：
 
 - 会話と成果物は日本語で書く
-- UI を変えたら PR にスクリーンショットを載せる。仕様を変えたら README も同じ PR で直す
+- UI を変えたら PR にスクリーンショットを載せる。使い方が変わったらマニュアルも直す
 - テストは Vitest（API は PGlite）、管理画面の操作の流れは `apps/e2e`、公開サイトは `build:sample` の検査。テストを飛ばして通さない
 - 管理画面の一覧は `DataList`、絞り込みと並べ替えは `ListToolbar`
 - AWS は使わないので、AWS 向けの段階と MCP サーバーは使わない

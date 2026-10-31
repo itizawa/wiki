@@ -5,8 +5,8 @@
 > are rejected. Populated by practices-discovery and the self-learning loop.
 >
 > このファイルは itizawa/wiki 用に初期値を入れてある。リポジトリの決まりの元は
-> ルートの `CLAUDE.md` と `README.md` で、ここはそれを AI-DLC のステージが読む形に写したもの。
-> 食い違ったら `CLAUDE.md` と `README.md` を正とし、ここを直す。
+> ルートの `CLAUDE.md` で、ここはそれを AI-DLC のステージが読む形に写したもの。
+> 食い違ったら `CLAUDE.md` を正とし、ここを直す。
 
 ## Way of Working
 
@@ -14,7 +14,7 @@
 - 1つの intent は1つの PR にまとまる大きさにする。大きいものは Units Generation で分け、Unit ごとに PR にする
 - 作業はブランチで行い、`main` へ直接 push しない。変更は PR にしてマージする
 - UI（画面の見た目や操作）を変えたら、変更後の画面のスクリーンショットを PR の説明文に載せる。変更前と比べないと伝わらない変更は、変更前のものも並べる（管理画面には PR ごとのプレビューが無いため）。撮るときは `pnpm dev` で立ち上げ、開発用ログイン（`DEV_LOGIN_EMAIL`）で入る
-- 仕様・画面・API・データの決まりを変えたら、同じ PR で `README.md` の該当する節も直す（README がこのリポジトリの仕様書を兼ねている）
+- 使い方が変わったら、マニュアル（https://docs.hatchery-works.com/）も直す。`README.md` は概要と画面の紹介だけで、仕様は書かない
 
 ### Unit の分け方（Units Generation）
 

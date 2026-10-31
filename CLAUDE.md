@@ -1,6 +1,6 @@
 # wiki
 
-構成・デプロイ・ローカル開発の手順は `README.md` にある。
+使い方は[マニュアル](https://docs.hatchery-works.com/)にある。`README.md` は概要と画面の紹介だけにした。構成・デプロイ・ローカル開発の手順と、以前の詳しい仕様は、削る前の README（`git show 82787ba:README.md`）で読める。
 
 ## プルリクエスト
 
@@ -18,5 +18,5 @@
 
 ## AI-DLC
 
-- `/aidlc` で始める AI-DLC（要件から実装までを段階と承認で進める）を入れてある。使い方は `README.md` の「AI-DLC」
-- AI-DLC が読むこのプロジェクトの決まりは `aidlc/spaces/default/memory/project.md`。このファイルや `README.md` の決まりを変えたら、そちらも合わせる
+- `/aidlc` で始める AI-DLC（要件から実装までを段階と承認で進める）を入れてある。使い方は `docs/aidlc-introduction.md`
+- AI-DLC が読むこのプロジェクトの決まりは `aidlc/spaces/default/memory/project.md`。このファイルの決まりを変えたら、そちらも合わせる
