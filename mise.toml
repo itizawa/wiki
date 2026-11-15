@@ -1,0 +1,10 @@
+# 手元の Node と pnpm を mise で入れるための設定（README の「ローカル開発」）
+# 版はここに書かない。CI と同じく、Node は .nvmrc、pnpm は package.json の packageManager に従う
+
+[settings]
+# Node の版は .nvmrc から読む（mise は既定では .nvmrc を読まない）
+idiomatic_version_file_enable_tools = ["node"]
+
+[tools]
+# 入れるのは pnpm 10 系の何か。実際に動く版は pnpm 自身が packageManager の版へ切り替える
+pnpm = "10"

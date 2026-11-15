@@ -69,7 +69,7 @@
 
 ## Tech Stack
 
-- パッケージ管理：pnpm（`packageManager` のとおり）のワークスペース、Node 22（`.nvmrc`）
+- パッケージ管理：pnpm（`packageManager` のとおり）のワークスペース、Node 22（`.nvmrc`）。手元では mise（`mise.toml`）で入れられるが、版は `.nvmrc` と `packageManager` にだけ書き、`mise.toml` には書かない
 - `apps/admin`：React + MUI + TanStack Router / Query + dnd-kit、Vite
 - `apps/api`：Hono + Drizzle + PostgreSQL（本番は Cloudflare Workers + Hyperdrive）
 - `apps/worker`：Cloudflare Workers の Cron Triggers
