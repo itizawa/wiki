@@ -24,7 +24,7 @@
     "marked": "^16.4.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "shiki": "^3.23.0"
+    "shiki": "^4.6.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
