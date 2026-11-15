@@ -1,10 +1,14 @@
 // このテストはファイルを読む（node:fs）。Worker の本体は Node の型を読まない（tsconfig の types）ので、ここで読む
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { handleScheduled } from "./index";
 import { prune, PRUNE_CRON } from "./prune";
 import type { Env } from "./tick";
+
+// グローバルの URL は Workers の型で、Node の型の URL とは別物になる（Node 26 の型から）。fs には文字列のパスで渡す
+const here = (path: string) => fileURLToPath(new URL(path, import.meta.url).href);
 
 const env: Env = { API_ORIGIN: "https://api.test", CRON_TOKEN: "t", SITE_DEPLOY_HOOK_URL: "https://hooks.test/deploy" };
 const PRUNE_URL = "https://api.test/internal/versions/prune";
@@ -72,7 +76,7 @@ describe("scheduled", () => {
   it("binds the same KV namespace as the API (a binding on the worker alone would delay the work by up to an hour)", () => {
     // コメントになっている行は数えない。どちらにも無いか、どちらにも同じ id で在る
     const binding = (path: string) => {
-      const toml = readFileSync(new URL(path, import.meta.url), "utf8");
+      const toml = readFileSync(here(path), "utf8");
       const block = /^\[\[kv_namespaces\]\]\nbinding = "CRON_MARKS"\nid = "(.*)"$/m.exec(toml);
       return block ? block[1] : null;
     };
@@ -116,7 +120,7 @@ describe("scheduled", () => {
   });
 
   it("is registered in wrangler.toml with the same cron string, next to the 5-minute one", () => {
-    const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+    const toml = readFileSync(here("../wrangler.toml"), "utf8");
     const crons = /^crons = \[(.*)\]$/m.exec(toml)![1]!.split(",").map((s) => s.trim().replace(/"/g, ""));
     expect(crons).toEqual(["*/5 * * * *", PRUNE_CRON]);
   });

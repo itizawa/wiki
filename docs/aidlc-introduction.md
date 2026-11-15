@@ -18,7 +18,7 @@
 
 ### 構成
 
-pnpm のワークスペース（Node 22）。インフラは Cloudflare（Workers・静的アセット）で、AWS は使っていない。
+pnpm のワークスペース（Node 26）。インフラは Cloudflare（Workers・静的アセット）で、AWS は使っていない。
 
 | パッケージ | 中身 |
 |---|---|
