@@ -15,7 +15,7 @@
     "db:grant-owner": "tsx --env-file-if-exists=.env src/db/grant-owner.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.0",
+    "@hono/node-server": "^2.1.8",
     "@wiki/shared": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.18",
