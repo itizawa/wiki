@@ -13,21 +13,24 @@ export const pageOriginSchema = z.enum(["human", "ai_draft"]);
 export const authorTypeSchema = z.enum(["human", "ai"]);
 export type AuthorType = z.infer<typeof authorTypeSchema>;
 
-export const createPageInput = z
-  .object({
-    /** テンプレートから作るときは省略でき、テンプレートのタイトル（変数を置き換えたもの）になる */
-    title: z.string().trim().min(1).max(PAGE_TITLE_MAX).optional(),
-    bodyMd: z.string().max(500_000).default(""),
-    /** この下に置く親ページ。省略またはnullなら最上位。どちらも兄弟の末尾に置く。 */
-    parentPageId: z.string().min(1).max(64).nullable().optional(),
-    /** 本文をこのテンプレート（変数を置き換えたもの）で始める。bodyMd は使わない */
-    templateId: z.string().uuid().optional(),
-    /** アイコン（絵文字1つ）。省略または null なら付けない */
-    icon: pageIconSchema.nullable().optional(),
-    /** カバー画像（`/images/{name}` か用意した画像）。省略または null なら付けない */
-    cover: pageCoverSchema.nullable().optional(),
-  })
-  .refine((v) => v.title !== undefined || v.templateId !== undefined, { message: "title is required", path: ["title"] });
+/** ページを作るときの項目（タイトルとテンプレートの組み合わせの確認は、下の createPageInput がする） */
+export const createPageFields = z.object({
+  /** テンプレートから作るときは省略でき、テンプレートのタイトル（変数を置き換えたもの）になる */
+  title: z.string().trim().min(1).max(PAGE_TITLE_MAX).optional(),
+  bodyMd: z.string().max(500_000).default(""),
+  /** この下に置く親ページ。省略またはnullなら最上位。どちらも兄弟の末尾に置く。 */
+  parentPageId: z.string().min(1).max(64).nullable().optional(),
+  /** 本文をこのテンプレート（変数を置き換えたもの）で始める。bodyMd は使わない */
+  templateId: z.string().uuid().optional(),
+  /** アイコン（絵文字1つ）。省略または null なら付けない */
+  icon: pageIconSchema.nullable().optional(),
+  /** カバー画像（`/images/{name}` か用意した画像）。省略または null なら付けない */
+  cover: pageCoverSchema.nullable().optional(),
+});
+export const createPageInput = createPageFields.refine((v) => v.title !== undefined || v.templateId !== undefined, {
+  message: "title is required",
+  path: ["title"],
+});
 export type CreatePageInput = z.infer<typeof createPageInput>;
 
 /** 本文の保存。baseVersionIdが現在のheadと一致する場合のみ保存できる（楽観ロック）。 */
