@@ -55,10 +55,12 @@ describe("GET /admin/costs", () => {
 
   it("shows the saved usage of this month and last month, and does not leak the key", async () => {
     ctx = await setup({ config: NEON_CONFIG });
-    const months: Record<string, Record<string, number>> = { [PREVIOUS]: { compute_unit_seconds: 100 }, [CURRENT]: { compute_unit_seconds: 250, root_branch_bytes_month: 5 } };
-    await collectCosts(ctx.db, [source(async () => months)], new Date());
+    // 画面の API は実際の今月を返すので、ここでは固定の NOW ではなく、実際の今月と先月で使用量を作る
+    const now = new Date();
+    const months: Record<string, Record<string, number>> = { [costPeriod(now, 1)]: { compute_unit_seconds: 100 }, [costPeriod(now)]: { compute_unit_seconds: 250, root_branch_bytes_month: 5 } };
+    await collectCosts(ctx.db, [source(async () => months)], now);
     const res = await ctx.call("GET", "/admin/costs");
-    expect(res.body.currentPeriod).toBe(costPeriod(new Date()));
+    expect(res.body.currentPeriod).toBe(costPeriod(now));
     const neon = res.body.services[0];
     expect(neon).toMatchObject({ configured: true, current: { compute_unit_seconds: 250, root_branch_bytes_month: 5 }, previous: { compute_unit_seconds: 100 }, error: null });
     expect(neon.fetchedAt).not.toBeNull();
@@ -74,8 +76,12 @@ describe("collectCosts", () => {
     expect(await collectCosts(ctx.db, [usage(1)], NOW)).toEqual([{ service: "neon", ok: true }]);
     await collectCosts(ctx.db, [usage(10)], NOW);
     expect(asked[0]).toEqual({ from: new Date("2026-09-01T00:00:00Z"), to: new Date("2026-11-01T00:00:00Z") });
-    const { body } = await ctx.call("GET", "/admin/costs");
-    expect(body.services[0].previous).toEqual({ compute_unit_seconds: 10 });
+    // テストの現在時刻は固定なので、画面の API（実際の今月）ではなく、DB の行を直接確かめる
+    const rows = (await ctx.client.query("select period, usage from cost_snapshots order by period")).rows as any[];
+    expect(rows).toEqual([
+      { period: PREVIOUS, usage: { compute_unit_seconds: 10 } },
+      { period: CURRENT, usage: { compute_unit_seconds: 20 } },
+    ]);
   });
 
   it("keeps the usage of the earlier run and records the reason when the API fails", async () => {
