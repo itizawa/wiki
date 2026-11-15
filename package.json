@@ -16,7 +16,7 @@
     "db:grant-owner": "pnpm --filter @wiki/api db:grant-owner"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "wrangler": "4.162.0"
   },
   "pnpm": {

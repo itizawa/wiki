@@ -233,7 +233,7 @@ function NotConnected({ data }: { data: WikiAnalytics }) {
               この wiki の <SettingsLink /> で、GA のプロパティ ID を入れ、サービスアカウントを GA とサーチコンソールに足します。
             </li>
           </Box>
-          <Muted sx={{ ...textSx, mt: 1 }}>1〜3 は、この管理画面を運用している人が1回だけ行います（リポジトリの README「アクセス解析」に、くわしい手順があります）。</Muted>
+          <Muted sx={{ ...textSx, mt: 1 }}>1〜3 は、この管理画面を運用している人が1回だけ行います（リポジトリの docs/operations.md「アクセス解析」に、くわしい手順があります）。</Muted>
         </>
       )}
     </Section>
