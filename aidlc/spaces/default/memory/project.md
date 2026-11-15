@@ -69,7 +69,7 @@
 
 ## Tech Stack
 
-- パッケージ管理：pnpm（`packageManager` のとおり）のワークスペース、Node 22（`.nvmrc`）
+- パッケージ管理：pnpm（`packageManager` のとおり）のワークスペース、Node 26（`.nvmrc`）
 - `apps/admin`：React + MUI + TanStack Router / Query + dnd-kit、Vite
 - `apps/api`：Hono + Drizzle + PostgreSQL（本番は Cloudflare Workers + Hyperdrive）
 - `apps/worker`：Cloudflare Workers の Cron Triggers

@@ -859,7 +859,7 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 
 ## ローカル開発
 
-Node 22 と pnpm、PostgreSQL（拡張 pg_trgm を作れること。ふつうは contrib に入っている）が必要。
+Node 26 と pnpm、PostgreSQL（拡張 pg_trgm を作れること。ふつうは contrib に入っている）が必要。
 
 ```sh
 pnpm install
