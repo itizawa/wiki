@@ -23,9 +23,9 @@ Cloudflare Workers（Cron Triggers）。cron は3本ある（`wrangler.toml` の
 
 ## 1日1回（`0 18 * * *`。JST の午前3時）
 
-API の `/internal/versions/prune` で、自動でできた版を間引く（24時間以内はすべて残し、30日までは1日に1つ、その先は1か月に1つ。決まりはルートの README と `apps/api/src/pages/prune.ts`）。これだけを行い、5分おきの処理は呼ばない。消した数をログに出す。1回に消すのは1000件までで、残りは次の日に回る。失敗したらログに出すだけで、次の日にもう一度試す。
+API の `/internal/versions/prune` で、自動でできた版を間引く（24時間以内はすべて残し、30日までは1日に1つ、その先は1か月に1つ。決まりは `apps/api/src/pages/prune.ts`）。これだけを行い、5分おきの処理は呼ばない。消した数をログに出す。1回に消すのは1000件までで、残りは次の日に回る。失敗したらログに出すだけで、次の日にもう一度試す。
 
 ## 設定
 
-設定は `wrangler.toml` の `[vars]` と `[[kv_namespaces]]`（印を置く名前空間。API の `wrangler.toml` と同じ `id` にする。作り方はルートの README「デプロイ → 初回の準備」）、シークレットの `CRON_TOKEN`（API の `/internal/*` 用。`/export/public` は読めない） / `SITE_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL`（デプロイ時に GitHub Actions が入れる。手順はルートの README「デプロイ」）。
+設定は `wrangler.toml` の `[vars]` と `[[kv_namespaces]]`（印を置く名前空間。API の `wrangler.toml` と同じ `id` にする。作り方は`docs/operations.md`「デプロイ → 初回の準備」）、シークレットの `CRON_TOKEN`（API の `/internal/*` 用。`/export/public` は読めない） / `SITE_DEPLOY_HOOK_URL` / `NOTIFY_WEBHOOK_URL`（デプロイ時に GitHub Actions が入れる。手順は`docs/operations.md`「デプロイ」）。
 ローカルでは `pnpm dev` 後に `curl "http://localhost:8787/__scheduled"` で5分おきの1回分を実行できる。手元の API（Node）は印を書かないので、`pnpm dev` は `IGNORE_CRON_MARKS` を渡して、印を見ずに毎回 API を呼ぶ。間引きの方は `curl "http://localhost:8787/__scheduled?cron=0+18+*+*+*"`。

@@ -1,4 +1,4 @@
-# 手元の Node と pnpm を mise で入れるための設定（README の「ローカル開発」）
+# 手元の Node と pnpm を mise で入れるための設定（docs/operations.md の「ローカル開発」）
 # 版はここに書かない。CI と同じく、Node は .nvmrc、pnpm は package.json の packageManager に従う
 
 [settings]

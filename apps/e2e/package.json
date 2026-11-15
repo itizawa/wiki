@@ -12,6 +12,6 @@
     "@types/node": "^22.0.0",
     "@wiki/admin": "workspace:*",
     "@wiki/api": "workspace:*",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   }
 }
