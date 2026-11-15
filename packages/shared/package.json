@@ -13,7 +13,7 @@
   "dependencies": {
     "fractional-indexing": "^3.2.0",
     "nanoid": "^5.1.6",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "typescript": "5.9.3",

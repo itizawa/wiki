@@ -4,7 +4,7 @@ import {
   createEditRequestInput,
   createTagInput,
   createWikiInput,
-  createPageInput,
+  createPageFields,
   EDIT_REQUEST_ITEM_KINDS,
   EDIT_REQUEST_LIMITS,
   editRequestCommentInput,
@@ -514,7 +514,7 @@ export const TOOLS = [
     description: "ページを作る（非公開の下書きとして作られ、公開はしない）。parentPageId を省くと最上位の末尾に置く。",
     scope: "wiki.write",
     // テンプレートからの作成（templateId）は MCP では受け付けないので、タイトルは必須のまま
-    input: z.object({ wiki: wikiKey }).merge(createPageInput.innerType().omit({ templateId: true }).required({ title: true })),
+    input: z.object({ wiki: wikiKey }).merge(createPageFields.omit({ templateId: true }).required({ title: true })),
     inputSchema: schema(
       {
         ...WIKI_PROP,
