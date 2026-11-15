@@ -1,3 +1,5 @@
+// このテストはファイルを読む（node:fs）。Worker の本体は Node の型を読まない（tsconfig の types）ので、ここで読む
+/// <reference types="node" />
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { handleScheduled } from "./index";
