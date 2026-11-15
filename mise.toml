@@ -6,5 +6,5 @@
 idiomatic_version_file_enable_tools = ["node"]
 
 [tools]
-# 入れるのは pnpm 10 系の何か。実際に動く版は pnpm 自身が packageManager の版へ切り替える
-pnpm = "10"
+# 入れるのは pnpm 12 系の何か。実際に動く版は pnpm 自身が packageManager の版へ切り替える
+pnpm = "12"

@@ -180,7 +180,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 
 Node 26 と pnpm、PostgreSQL（拡張 pg_trgm を作れること。ふつうは contrib に入っている）が必要。
 
-Node と pnpm は [mise](https://mise.jdx.dev/) で入れられる（`mise.toml`）。版の決め手は CI と同じで、Node は `.nvmrc`、pnpm は `package.json` の `packageManager`。`mise.toml` に版は書いていない（2か所に書いて食い違わないように）。pnpm は 10 系を入れておけば、pnpm 自身が `packageManager` の版に切り替えて動く。
+Node と pnpm は [mise](https://mise.jdx.dev/) で入れられる（`mise.toml`）。版の決め手は CI と同じで、Node は `.nvmrc`、pnpm は `package.json` の `packageManager`。`mise.toml` に版は書いていない（2か所に書いて食い違わないように）。pnpm は 12 系を入れておけば、pnpm 自身が `packageManager` の版に切り替えて動く。
 
 ```sh
 mise trust && mise install               # 初回だけ。mise を使わないなら、Node 26 と pnpm を自分で入れる

@@ -1,3 +1,14 @@
 packages:
   - apps/*
   - packages/*
+
+# 入れるときにスクリプト（postinstall など）を走らせてよい依存。ここに無いものは走らせない
+allowBuilds:
+  esbuild: true
+  # pnpm 10 のときも走らせていなかった（無くても wrangler dev は動く）。走らせないと明示しておかないと pnpm install が止まる
+  workerd: false
+
+# pnpm 12 は、公開から1日経っていない版を入れない（乗っ取られた版を掴まないため）。
+# @cloudflare/workers-types は型定義だけで、ほぼ毎日新しい版が出るので、この待ちから外す
+minimumReleaseAgeExclude:
+  - "@cloudflare/workers-types"
