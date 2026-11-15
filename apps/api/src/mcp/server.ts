@@ -76,7 +76,7 @@ async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcReque
         instructions:
           "wiki のページを探して読み、作成・更新・移動できる。許可されていれば、公開・予約・削除もできる（使える道具は tools/list のとおり）。" +
           "本文の更新は get_page の headVersionId を渡す（楽観ロック）。" +
-          "本文を直接書き換える代わりに、箇所ごとの直し方を提案して人に採否を決めてもらうこともできる（create_edit_request。行は get_page の bodyMd を改行で区切って1から数える）。 +
+          "本文を直接書き換える代わりに、箇所ごとの直し方を提案して人に採否を決めてもらうこともできる（create_edit_request。行は get_page の bodyMd を改行で区切って1から数える）。" +
           "wiki の管理者なら、その wiki に設定した Search Console・GA4 の数字も読める（gsc_query・ga4_report）。",
       });
     }

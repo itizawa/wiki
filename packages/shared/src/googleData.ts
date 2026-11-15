@@ -103,7 +103,8 @@ export type GoogleDataProperties = {
 };
 
 /** 同意の画面から戻ってきた結果（`/google?google=`） */
-export type GoogleDataConnectResult = "connected" | "expired" | "denied" | "missing_scope" | "failed" | "forbidden";
+export const GOOGLE_DATA_CONNECT_RESULTS = ["connected", "expired", "denied", "missing_scope", "failed", "forbidden"] as const;
+export type GoogleDataConnectResult = (typeof GOOGLE_DATA_CONNECT_RESULTS)[number];
 
 // ---------------------------------------------------------------------------
 // MCP の道具の引数

@@ -46,6 +46,9 @@ import type {
   WikiRole,
   CreateRoutineInput,
   RoutineList,
+  GoogleDataProperties,
+  GoogleDataStatus,
+  UpdateWikiGooglePropertiesInput,
   RoutineSummary,
   RoutineTestResult,
   SnsPostResult,
@@ -335,6 +338,11 @@ export const api = {
 
   /** 「全体の管理」の「Routine」：ワークフローが呼ぶ Claude Routine の登録（オーナーだけ）。トークンは返ってこない */
   listRoutines: () => request<RoutineList>("GET", "/admin/routines"),
+  googleDataStatus: () => request<GoogleDataStatus>("GET", "/admin/google"),
+  connectGoogleData: () => request<{ url: string }>("POST", "/admin/google/connect"),
+  disconnectGoogleData: () => request<GoogleDataStatus>("POST", "/admin/google/disconnect"),
+  googleDataProperties: () => request<GoogleDataProperties>("GET", "/admin/google/properties"),
+  setWikiGoogleProperties: (key: string, input: UpdateWikiGooglePropertiesInput) => request<GoogleDataStatus>("PUT", `/admin/google/wikis/${encodeURIComponent(key)}`, input),
   createRoutine: (input: CreateRoutineInput) => request<RoutineSummary>("POST", "/admin/routines", input),
   /** token は入れたときだけ置き換わる */
   updateRoutine: (id: string, input: UpdateRoutineInput) => request<RoutineSummary>("PATCH", `/admin/routines/${id}`, input),
