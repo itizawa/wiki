@@ -178,7 +178,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 
 ## ローカル開発
 
-Node 22 と pnpm、PostgreSQL（拡張 pg_trgm を作れること。ふつうは contrib に入っている）が必要。
+Node 26 と pnpm、PostgreSQL（拡張 pg_trgm を作れること。ふつうは contrib に入っている）が必要。
 
 ```sh
 pnpm install
