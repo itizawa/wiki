@@ -8,7 +8,7 @@
     "typecheck": "tsc -p ."
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.65.1",
     "@types/node": "^22.0.0",
     "@wiki/admin": "workspace:*",
     "@wiki/api": "workspace:*",
