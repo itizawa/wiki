@@ -225,6 +225,7 @@ export function ListToolbar({ label, sortFields = [], sort, onSortChange, filter
           aria-label={`並べ替え：${sortChipLabel(sortField, sort.direction)}`}
           aria-haspopup="dialog"
           aria-expanded={opened?.type === "sort"}
+          sx={toolbarChipSx}
         />
       )}
       {sort && sortField && filterFields.length > 0 && <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />}
@@ -247,7 +248,7 @@ export function ListToolbar({ label, sortFields = [], sort, onSortChange, filter
             aria-label={applied ? `絞り込み：${text}` : `絞り込み：${field.label}（値を選んでいません）`}
             aria-haspopup="dialog"
             aria-expanded={opened?.type === "filter" && opened.key === f.key}
-            sx={{ maxWidth: 280 }}
+            sx={[toolbarChipSx, { maxWidth: 280 }]}
           />
         );
       })}
@@ -328,6 +329,15 @@ export function ListToolbar({ label, sortFields = [], sort, onSortChange, filter
 }
 
 /** チップの文字。長い値は省略し、右に「開く」印を添える */
+/**
+ * 並べ替え・絞り込みのチップの余白。MUI の小さいチップはアイコンの左が 2px しかなく、枠に詰まって見えるので、
+ * アイコンの左を 8px、文字の右を 10px にして、枠の左右の余白を揃える。
+ */
+const toolbarChipSx = {
+  "& .MuiChip-icon": { ml: 1 },
+  "& .MuiChip-label": { pr: 1.25 },
+} as const;
+
 function ChipText({ text }: { text: string }) {
   return (
     <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, maxWidth: "100%" }}>
