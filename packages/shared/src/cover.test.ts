@@ -1,3 +1,5 @@
+// このテストはファイルを読む（node:fs など）。TypeScript 6 から @types は自動では読まれないので、ここで読む
+/// <reference types="node" />
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
