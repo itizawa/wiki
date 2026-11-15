@@ -65,7 +65,7 @@ export const mcpRoutes = new Hono<AppEnv>()
   .delete("/", (c) => c.body(null, 405, { allow: "POST" }));
 
 async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcRequest) {
-  const { db, config, images, routineFetch, defer } = c.get("deps");
+  const { db, config, images, routineFetch, defer, googleFetch } = c.get("deps");
   switch (msg.method) {
     case "initialize": {
       const requested = msg.params?.protocolVersion;
@@ -76,7 +76,8 @@ async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcReque
         instructions:
           "wiki のページを探して読み、作成・更新・移動できる。許可されていれば、公開・予約・削除もできる（使える道具は tools/list のとおり）。" +
           "本文の更新は get_page の headVersionId を渡す（楽観ロック）。" +
-          "本文を直接書き換える代わりに、箇所ごとの直し方を提案して人に採否を決めてもらうこともできる（create_edit_request。行は get_page の bodyMd を改行で区切って1から数える）。",
+          "本文を直接書き換える代わりに、箇所ごとの直し方を提案して人に採否を決めてもらうこともできる（create_edit_request。行は get_page の bodyMd を改行で区切って1から数える）。" +
+          "wiki の管理者なら、その wiki に設定した Search Console・GA4 の数字も読める（gsc_query・ga4_report）。",
       });
     }
     case "ping":
@@ -89,7 +90,7 @@ async function handle(c: Context<AppEnv>, agent: AgentContext, msg: JsonRpcReque
       const name = msg.params?.name;
       if (typeof name !== "string") return rpcError(msg.id, -32602, "params.name is required");
       try {
-        const result = await callTool({ db, config, agent, images, routineFetch, defer }, name, msg.params?.arguments);
+        const result = await callTool({ db, config, agent, images, routineFetch, defer, googleFetch }, name, msg.params?.arguments);
         return rpcResult(msg.id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (err) {
         // 道具の失敗は、エージェントが読んでやり直せるように結果として返す

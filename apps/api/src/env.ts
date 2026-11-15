@@ -28,6 +28,8 @@ export type Deps = {
   x?: XClient | null;
   /** Routine を呼ぶ `fetch`。無ければ `fetch`。テストで差し替える */
   routineFetch?: typeof fetch | null;
+  /** 「全体の管理」の Google 連携が Google（OAuth・Search Console・GA4）を呼ぶ `fetch`。無ければ `fetch`。テストで差し替える */
+  googleFetch?: typeof fetch | null;
   /**
    * 応答を返したあとも続けたい処理を預ける（Workers の `ctx.waitUntil`）。無ければ、待たずに走らせる（手元の開発）。
    * 預けた処理は、DB の接続を閉じる前に終わらせてもらう（`worker.ts`）

@@ -1,6 +1,14 @@
 import Box from "@mui/material/Box";
 import { createRootRoute, createRoute, createRouter, redirect, useRouterState } from "@tanstack/react-router";
-import { DEFAULT_ANALYTICS_DAYS, isAnalyticsDays, X_CONNECT_RESULTS, type AnalyticsDays, type XConnectResult } from "@wiki/shared";
+import {
+  DEFAULT_ANALYTICS_DAYS,
+  GOOGLE_DATA_CONNECT_RESULTS,
+  isAnalyticsDays,
+  X_CONNECT_RESULTS,
+  type AnalyticsDays,
+  type GoogleDataConnectResult,
+  type XConnectResult,
+} from "@wiki/shared";
 import { useCallback, type ComponentType } from "react";
 import { PageBody, SkeletonEditor } from "./components/ui";
 import { AppearancePage } from "./routes/AppearancePage";
@@ -17,6 +25,7 @@ import { MembersPage } from "./routes/MembersPage";
 import { NotFoundPage } from "./routes/NotFoundPage";
 import { CostsPage } from "./routes/CostsPage";
 import { RoutinesPage } from "./routes/RoutinesPage";
+import { GoogleDataPage } from "./routes/GoogleDataPage";
 import { OwnersPage } from "./routes/OwnersPage";
 import { PagesPage } from "./routes/PagesPage";
 import { validatePagesSearch } from "./lib/pagesSearch";
@@ -86,6 +95,21 @@ const auditAllRoute = createRoute({ getParentRoute: () => globalAdminRoute, path
 const costsRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/costs", component: CostsPage });
 // Routine（ワークフローが呼ぶ Claude Routine の登録。オーナーだけ）
 const routinesRoute = createRoute({ getParentRoute: () => globalAdminRoute, path: "/routines", component: RoutinesPage });
+// Google（Search Console・GA4）との接続。Google の同意の画面から戻ってきたときは、結果が `?google=` に付く
+const googleDataRoute = createRoute({
+  getParentRoute: () => globalAdminRoute,
+  path: "/google",
+  validateSearch: (search: Record<string, unknown>): { google?: GoogleDataConnectResult } => {
+    const google = GOOGLE_DATA_CONNECT_RESULTS.find((r) => r === search.google);
+    return google ? { google } : {};
+  },
+  component: function GoogleDataScreen() {
+    const { google } = googleDataRoute.useSearch();
+    const navigate = googleDataRoute.useNavigate();
+    const clear = useCallback(() => void navigate({ search: {}, replace: true }), [navigate]);
+    return <GoogleDataPage result={google} onResultRead={clear} />;
+  },
+});
 // 招待リンク（/invite#{値}）。ログインしていなくても開ける（Root がログインの確認を飛ばす）。
 // 値はフラグメントに置き、サーバーへのリクエストの URL に載せない（アクセスログに残さない）
 const inviteRoute = createRoute({
@@ -289,7 +313,7 @@ const legacyScreen = (path: "/calendar", to: `/w/$wikiKey${typeof path}`) =>
 const routeTree = rootRoute.addChildren([
   homeRoute,
   loginRoute,
-  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute, routinesRoute, costsRoute]),
+  globalAdminRoute.addChildren([wikisRoute, ownersRoute, auditAllRoute, routinesRoute, googleDataRoute, costsRoute]),
   inviteRoute,
   consentRoute,
   connectionsRoute,

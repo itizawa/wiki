@@ -17,6 +17,7 @@ const TABS = [
   { to: "/owners", label: "オーナー" },
   { to: "/audit", label: "監査ログ" },
   { to: "/routines", label: "Routine" },
+  { to: "/google", label: "Google" },
   { to: "/costs", label: "コスト" },
 ] as const;
 

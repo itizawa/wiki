@@ -40,6 +40,7 @@ export const testConfig: AppConfig = {
   neon: null,
   x: null,
   routineTokenKey: null,
+  googleData: null,
 };
 
 /** 最初の wiki（マイグレーションが作る）の経路。wiki の内容を扱う API はこの下にある。 */
@@ -101,6 +102,7 @@ export async function setup(
     cronMarks?: CronMarkStore | null;
     costSources?: CostSource[];
     routineFetch?: typeof fetch;
+    googleFetch?: typeof fetch;
   } = {},
 ) {
   const client = new PGlite({ loadDataDir: await migratedDataDir(), extensions: pgliteExtensions });
@@ -126,6 +128,7 @@ export async function setup(
     cronMarks: opts.cronMarks ?? null,
     costSources: opts.costSources ?? null,
     routineFetch: opts.routineFetch ?? null,
+    googleFetch: opts.googleFetch ?? null,
   });
   const [owner] = await db.insert(users).values({ googleSub: "test:owner", email: ADMIN, name: "オーナー", isOwner: true }).returning();
 

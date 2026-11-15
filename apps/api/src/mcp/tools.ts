@@ -1,6 +1,11 @@
 import {
   bodyLines,
   COVER_UPLOAD_TYPES,
+  ga4ReportInput,
+  GSC_DIMENSIONS,
+  GSC_ROW_LIMIT_DEFAULT,
+  GSC_ROW_LIMIT_MAX,
+  gscQueryInput,
   createEditRequestInput,
   createTagInput,
   createWikiInput,
@@ -62,6 +67,8 @@ import { attachTagAndEnqueue } from "../workflows/enqueue";
 import { runAfterResponse, type RunDeps } from "../workflows/run";
 import { roleIn, rolesByWiki } from "../users/service";
 import { createWiki, findOpenWiki, listWikis, updateHome } from "../wikis/service";
+import { ga4Report, gscQuery } from "../googleData/service";
+import { googleDataDeps } from "../routes/google";
 
 /**
  * MCP の道具。どれも Cookie の API と同じ処理（楽観ロック・構造のコミット・公開の記録）を通る。
@@ -78,6 +85,8 @@ type ToolContext = {
   /** タグを付けて積んだワークフローの実行を、応答のあとに動かすためのもの */
   routineFetch?: RunDeps["routineFetch"];
   defer?: ((promise: Promise<unknown>) => void) | null;
+  /** Google（Search Console・GA4）を呼ぶ `fetch`。無ければ `fetch`。テストで差し替える */
+  googleFetch?: typeof fetch | null;
 };
 
 type Tool<S extends z.ZodTypeAny> = {
@@ -932,6 +941,67 @@ export const TOOLS = [
     },
   }),
   tool({
+    name: "gsc_query",
+    description:
+      "その wiki に設定した Search Console のプロパティから、検索の数字（Search Analytics の searchAnalytics.query）を取る（その wiki の管理者だけ）。" +
+      "期間は太平洋時間の日付で、直近の2〜3日はまだ数字が出ていないことがある。順位とクエリはこの道具から取る（GA4 からは取れない）。" +
+      "返り値は rows（keys は dimensions の順、clicks・impressions・ctr・position）と、使ったプロパティと期間。" +
+      "Google につないでいない・トークンが切れた・プロパティを選んでいないときは、理由の分かるエラー（google_not_connected・google_token_expired・search_console_property_unset など）を返す。",
+    scope: "wiki.read",
+    input: gscQueryInput,
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        startDate: str("始まりの日（YYYY-MM-DD）"),
+        endDate: str("終わりの日（YYYY-MM-DD。この日を含む）"),
+        dimensions: { type: "array", items: { type: "string", enum: [...GSC_DIMENSIONS] }, description: "行を分ける軸。省略なら期間全体の合計を1行で返す" },
+        filters: {
+          type: "array",
+          description: "絞り込み（すべて満たす行だけ）",
+          items: schema(
+            {
+              dimension: str("絞り込む軸", { enum: [...GSC_DIMENSIONS] }),
+              operator: str("比べ方", { enum: ["equals", "contains", "notContains"] }),
+              expression: str("比べる値（page なら URL 全体）"),
+            },
+            ["dimension", "operator", "expression"],
+          ),
+        },
+        rowLimit: { type: "integer", minimum: 1, maximum: GSC_ROW_LIMIT_MAX, description: `返す行の上限（既定 ${GSC_ROW_LIMIT_DEFAULT}）` },
+      },
+      ["wiki", "startDate", "endDate"],
+    ),
+    async run({ db, config, agent, googleFetch }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      return gscQuery(db, googleDataDeps({ config, googleFetch }), wiki, input);
+    },
+  }),
+  tool({
+    name: "ga4_report",
+    description:
+      "その wiki に設定した GA4 のプロパティで、レポート（GA4 Data API の runReport）を作る（その wiki の管理者だけ）。流入した後にどう読まれたか（PV・エンゲージメント率など）を見るためのもの。" +
+      "GA4 にリンクした Search Console のクエリは取れないので、順位とクエリは gsc_query を使う。" +
+      "返り値は dimensionHeaders・metricHeaders と、rows（dimensionValues・metricValues はヘッダーの順。数字は数値）、rowCount。",
+    scope: "wiki.read",
+    input: ga4ReportInput,
+    inputSchema: schema(
+      {
+        ...WIKI_PROP,
+        startDate: str("始まりの日（YYYY-MM-DD）"),
+        endDate: str("終わりの日（YYYY-MM-DD。この日を含む）"),
+        dimensions: { type: "array", items: { type: "string" }, description: "例：pagePath, sessionDefaultChannelGroup" },
+        metrics: { type: "array", items: { type: "string" }, minItems: 1, description: "例：screenPageViews, averageSessionDuration, engagementRate" },
+        dimensionFilter: { type: "object", description: "GA4 Data API の FilterExpression（省略可）" },
+        limit: { type: "integer", minimum: 1, description: "返す行の上限（省略可）" },
+      },
+      ["wiki", "startDate", "endDate", "metrics"],
+    ),
+    async run({ db, config, agent, googleFetch }, input) {
+      const wiki = await adminWiki(db, agent, input.wiki);
+      return ga4Report(db, googleDataDeps({ config, googleFetch }), wiki, input);
+    },
+  }),
+  tool({
     name: "create_edit_request",
     description:
       "ページの本文に、箇所ごとの「こう直す」を提案する（編集リクエスト）。本文は変えず、人が管理画面で1件ずつ採用・却下を決める。" +
@@ -1364,6 +1434,7 @@ export const TOOLS = [
       return updateHome(db, wiki.id, { introMd: input.introMd, blocks: input.blocks }, agentActor(agent));
     },
   }),
+
 
 ];
 

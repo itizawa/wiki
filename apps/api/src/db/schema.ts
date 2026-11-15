@@ -883,6 +883,44 @@ export const wikiSnsAccounts = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Google 連携（「全体の管理」）：Search Console・GA4 を OAuth で読む。つなぐのはオーナーで、全体で1つ
+// ---------------------------------------------------------------------------
+
+export const googleConnections = pgTable("google_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** つないだ Google アカウントのメールアドレス（画面に出すだけ） */
+  email: text("email"),
+  /** 更新用のトークン（`GOOGLE_DATA_TOKEN_KEY` で暗号化。context は `google:{id}`）。画面・MCP・ログには出さない */
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  /** Google が認めたスコープ（空白区切り） */
+  scopes: text("scopes").notNull(),
+  connectedBy: uuid("connected_by").references(() => users.id),
+  /** つないだ人の名前（無ければメールアドレス）。その時点の値 */
+  connectedByLabel: text("connected_by_label").notNull(),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  /** 最後に Google から数字を取れた日時 */
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  /** 最後に、接続そのもの（トークン）の理由で取れなかった日時と理由（`GoogleDataFailure`） */
+  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+  lastFailureReason: text("last_failure_reason"),
+});
+
+/** wiki ごとに読む Google のプロパティ。行が無ければ、どちらも選んでいない */
+export const wikiGoogleProperties = pgTable("wiki_google_properties", {
+  wikiId: text("wiki_id")
+    .primaryKey()
+    .references(() => wikis.id),
+  /** Search Console のプロパティ（`sc-domain:example.com` か `https://example.com/`） */
+  searchConsoleSite: text("search_console_site"),
+  /** GA4 のプロパティ ID（数字だけ） */
+  gaPropertyId: text("ga_property_id"),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastFailureAt: timestamp("last_failure_at", { withTimezone: true }),
+  lastFailureReason: text("last_failure_reason"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // 監査ログ（誰が・いつ・何をしたか）。追記だけ。直す・消す API は無い
 // ---------------------------------------------------------------------------
 
