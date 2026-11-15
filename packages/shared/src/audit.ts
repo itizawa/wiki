@@ -75,6 +75,9 @@ export const AUDIT_ACTIONS = {
   routine_update: "settings",
   routine_delete: "settings",
   routine_test: "settings",
+  google_connect: "settings",
+  google_disconnect: "settings",
+  google_property_update: "settings",
   workflow_create: "settings",
   workflow_rename: "settings",
   workflow_delete: "settings",
@@ -97,7 +100,7 @@ export function actionsIn(category: AuditCategory): AuditAction[] {
 export const AUDIT_ACTOR_TYPES = ["user", "system"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine", "workflow", "workflow_block"] as const;
+export const AUDIT_TARGET_TYPES = ["page", "user", "invite", "wiki", "tag", "routine", "workflow", "workflow_block", "google_account"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 /** 予約を入れたのは誰か（予約の実行に残す）。 */
@@ -195,6 +198,12 @@ export type AuditDetailMap = {
   routine_update: { name?: { from: string; to: string }; url?: boolean; token?: boolean };
   routine_delete: Record<string, never>;
   routine_test: { ok: true } | { ok: false; reason: RoutineFailureReason };
+
+  /** Google 連携（全体）をつないだ・外した。トークンの値は入れない。対象名はつないだアカウントのメールアドレス */
+  google_connect: Record<string, never>;
+  google_disconnect: Record<string, never>;
+  /** wiki ごとに読む Google のプロパティを変えた（対象は wiki）。変えた項目だけ入れる */
+  google_property_update: { searchConsoleSite?: { from: string | null; to: string | null }; gaPropertyId?: { from: string | null; to: string | null } };
 
   wiki_create: { key: string };
   wiki_archive: { key: string };
@@ -443,6 +452,19 @@ export function describeAudit(entry: AuditLogEntry): AuditSentence {
         ...quoted(t),
         { text: entry.detail.ok ? " をテスト実行しました（成功）" : ` をテスト実行しました（失敗：${ROUTINE_FAILURE_MESSAGES[entry.detail.reason]}）` },
       ];
+
+    case "google_connect":
+      return [{ text: "Google のアカウント " }, ...quoted(t), { text: " をつなぎました（Search Console・GA4 の読み取り）" }];
+    case "google_disconnect":
+      return [{ text: "Google のアカウント " }, ...quoted(t), { text: " の接続を外しました" }];
+    case "google_property_update": {
+      const d = entry.detail;
+      const show = (v: string | null) => v ?? "なし";
+      const parts: string[] = [];
+      if (d.searchConsoleSite) parts.push(`Search Console：${show(d.searchConsoleSite.from)} → ${show(d.searchConsoleSite.to)}`);
+      if (d.gaPropertyId) parts.push(`GA4：${show(d.gaPropertyId.from)} → ${show(d.gaPropertyId.to)}`);
+      return [{ text: "wiki " }, ...quoted(t), { text: ` の Google のプロパティを変更しました${parts.length ? `（${parts.join("、")}）` : ""}` }];
+    }
 
     case "wiki_create":
       return [{ text: "wiki " }, ...quoted(t), { text: `を作成しました（${entry.detail.key}）` }];

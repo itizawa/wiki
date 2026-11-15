@@ -23,6 +23,7 @@ import { snsRoutes, xCallbackRoutes } from "./routes/sns";
 import { searchRoutes } from "./routes/search";
 import { starRoutes } from "./routes/stars";
 import { routineRoutes } from "./routes/routines";
+import { googleDataCallbackRoutes, googleDataRoutes } from "./routes/google";
 import { pageTagRoutes, tagRoutes } from "./routes/tags";
 import { routineChoiceRoutes, workflowRoutes } from "./routes/workflow";
 import { taskRoutes } from "./routes/tasks";
@@ -90,6 +91,7 @@ export function createApp(deps: Deps) {
   app.get("/health", (c) => c.json({ ok: true }));
   app.route("/auth", authRoutes);
   app.route("/auth/x", xCallbackRoutes);
+  app.route("/auth/google-data", googleDataCallbackRoutes);
   app.route("/export", exportRoutes);
   app.route("/internal", internalRoutes);
   app.route("/images", imageServeRoutes);
@@ -119,6 +121,7 @@ export function createApp(deps: Deps) {
   admin.route("/audit-logs", globalAuditRoutes);
   admin.route("/costs", costRoutes);
   admin.route("/routines", routineRoutes);
+  admin.route("/google", googleDataRoutes);
   admin.route("/oauth", oauthAdminRoutes);
 
   const wiki = new Hono<AppEnv>();

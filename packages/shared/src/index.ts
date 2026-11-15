@@ -25,6 +25,7 @@ export * from "./theme";
 export * from "./home";
 export * from "./oauth";
 export * from "./analytics";
+export * from "./googleData";
 export * from "./costs";
 export * from "./sns";
 export * from "./editRequest";

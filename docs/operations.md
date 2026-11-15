@@ -111,6 +111,7 @@ packages/shared  型、zodスキーマ（構造操作）、URLルール、構造
 
    | `NEON_API_KEY` `NEON_ORG_ID` | 任意。「コスト」が Neon の使用量を読む API キーと組織 ID。作り方は下の「運用コスト」。未登録でもデプロイは通り、その機能だけが「未設定」になる |
    | `ROUTINE_TOKEN_KEY` | 任意。「全体の管理」の「Routine」のトークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上。`SNS_TOKEN_KEY` とは別の値）。作り方は下の「Routine」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**あとから変えない**（登録済みのトークンが使えなくなる） |
+   | `GOOGLE_DATA_TOKEN_KEY` | 任意。「全体の管理」の「Google」（Search Console・GA4 を OAuth で読み、MCP の `gsc_query`・`ga4_report` で返す）の更新用のトークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上。ほかの鍵とは別の値）。OAuth クライアントはログインと同じ `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` を使う。作り方は下の「Google 連携（Search Console・GA4）」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**あとから変えない**（つなぎ直しが要る） |
    | `X_CLIENT_ID` `X_CLIENT_SECRET` `SNS_TOKEN_KEY` | 任意。「SNS 連携」用：X の開発者アプリの OAuth 2.0 の Client ID / Client Secret と、トークンを暗号化する鍵（`openssl rand -base64 48`。32文字以上）。作り方は下の「SNS 連携」。未登録でもデプロイは通り、その機能だけが「未設定」になる。**`SNS_TOKEN_KEY` は、あとから変えない**（つないであるアカウントが使えなくなる） |
 
 7. リポジトリ変数（Variables）`DEPLOY_ENABLED` を `true` にする。これが無い間はデプロイのジョブは動かない（検査だけ走る）
@@ -297,6 +298,20 @@ X の開発者アプリ（OAuth 2.0 のクライアント）を、この管理�
 4. 次の取得（JST の午前3時）のあとで、「コスト」タブに出る。すぐ見たいときは、`wiki-admin` の Cron ワーカーのログで確かめるか、`POST /internal/costs/collect` を `CRON_TOKEN` で呼ぶ
 
 2つのうち1つでも無いと、未設定として扱う。手元で試すときは、`apps/api/.env` に同じ2つを入れる。
+
+## Google 連携（Search Console・GA4）
+
+「全体の管理」の「Google」で、オーナーが Google アカウントにつなぎ、wiki ごとに読む Search Console・GA4 のプロパティを選ぶ。Routine などの MCP クライアントは `gsc_query`・`ga4_report` で数字を取る（その wiki の管理者として許可したものだけ）。サービスアカウントの鍵を Routine に渡さずに済む。「アクセス解析」（サービスアカウント）とは別の仕組み。
+
+1. Google Cloud（ログインの OAuth クライアントがあるプロジェクト）で、次の API を有効にする：Google Search Console API、Google Analytics Data API、Google Analytics Admin API（プロパティの一覧に使う）
+2. 「OAuth 同意画面」（Google Auth Platform）の「データアクセス」に、`https://www.googleapis.com/auth/webmasters.readonly` と `https://www.googleapis.com/auth/analytics.readonly` を足す
+   - 公開ステータスが「外部・テスト中」だと、**更新用のトークンが7日で切れる**（毎日の取得が止まる）。「本番環境」にするか、Google Workspace の「内部」にする。未確認のアプリのままでも、オーナー自身はつなげる（警告の画面を進む）
+3. 同じ OAuth クライアントの「承認済みのリダイレクト URI」に `https://wiki-admin.hatchery-works.com/api/auth/google-data/callback` を足す（手元では `http://localhost:5173/api/auth/google-data/callback`）
+4. GitHub の Settings → Secrets and variables → Actions に、`GOOGLE_DATA_TOKEN_KEY`（`openssl rand -base64 48`。32文字以上。ほかの鍵とは別の値）を登録し、Actions の「Deploy」を実行する。手元で試すときは、`apps/api/.env` に入れる
+5. 「全体の管理」の「Google」で「Google につなぐ」を押し、Search Console と GA4 を読めるアカウントで許可する（2つのチェックを外すとつながらない）
+6. 同じ画面で、wiki ごとに Search Console のプロパティ（`sc-domain:example.com` など）と GA4 のプロパティを選ぶ
+
+更新用のトークンは `GOOGLE_DATA_TOKEN_KEY` で暗号化して DB に置き、画面・MCP の返り値・ログには出さない。取れなかったときは、画面に最後に取れた日時と理由（許可の取り消し・権限が無い・API が無効など）が出る。
 
 ## Routine
 
