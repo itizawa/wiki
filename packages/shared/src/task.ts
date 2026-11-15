@@ -41,7 +41,7 @@ export const TASK_ASSIGNEE_NONE = "none";
 export const TASKS_LIMIT_DEFAULT = 50;
 export const TASKS_LIMIT_MAX = 100;
 
-const csv = <T extends z.ZodTypeAny>(item: T, max: number) =>
+const csv = <T extends z.ZodType<unknown, string>>(item: T, max: number) =>
   z
     .string()
     .transform((s) => s.split(",").filter((x) => x !== ""))

@@ -31,6 +31,11 @@ const MUI_PACKAGES = /^(@mui\/.+|@emotion\/.+|@popperjs\/core|stylis|react-trans
 // use-sync-external-store は、エディタ（@tiptap/react）も、最初に読む側（TanStack）も使う。どこにも入れないと editor に寄せられ、最初に editor を読むことになる
 const REACT_PACKAGES = /^(react|react-dom|scheduler|use-sync-external-store)$/;
 
+/** モジュールのパスから、node_modules のパッケージ名を取り出す（アプリのコードなら undefined） */
+function packageOf(id: string): string | undefined {
+  return id.match(/.*\/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1];
+}
+
 export default defineConfig({
   plugins: [
     react(),
@@ -91,17 +96,19 @@ export default defineConfig({
     }),
   ],
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         // ライブラリを、アプリのコードとは別のファイルに分ける。アプリだけを直した版では、ライブラリのファイルは名前（ハッシュ）が変わらず、取り直さずに済む。
         // editor は、エディタを使う画面を開くときだけ読む（最初に読む JS に入ると、上の wiki:first-load がビルドを止める）。
-        // react を分けるのは、mui が react を使うため（アプリ本体に残すと、本体と mui が互いを読み合う形になる）
-        manualChunks(id) {
-          const name = id.match(/.*\/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1];
-          if (!name) return;
-          if (EDITOR_PACKAGES.test(name)) return "editor";
-          if (MUI_PACKAGES.test(name)) return "mui";
-          if (REACT_PACKAGES.test(name)) return "react";
+        // react を分けるのは、mui が react を使うため（アプリ本体に残すと、本体と mui が互いを読み合う形になる）。
+        // グループは、取り込んだモジュールが使うモジュールも一緒に取り込む（includeDependenciesRecursively）。
+        // 優先度（priority）の高いグループが先に取るので、react → mui → editor の順にする。逆にすると editor が react まで取り込み、最初に読む JS が editor を読むことになる
+        codeSplitting: {
+          groups: [
+            { name: "react", test: (id) => REACT_PACKAGES.test(packageOf(id) ?? ""), priority: 30 },
+            { name: "mui", test: (id) => MUI_PACKAGES.test(packageOf(id) ?? ""), priority: 20 },
+            { name: "editor", test: (id) => EDITOR_PACKAGES.test(packageOf(id) ?? ""), priority: 10 },
+          ],
         },
       },
     },
