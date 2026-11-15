@@ -159,6 +159,6 @@ wiki ごとのサブドメイン（`https://{key}.hatchery-works.com`）の下�
 
 ## デプロイ
 
-デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`EXPORT_TOKEN`（`/export/public` だけを読めるトークン）`SITE_BASE_DOMAIN`（`hatchery-works.com`）。Worker の実行時のシークレットは無い。手順はルートの README「デプロイ」。
+デプロイは Cloudflare の Workers Builds（Git 連携）：ルート `apps/site`、ビルドコマンド `pnpm install --frozen-lockfile && pnpm build`、デプロイコマンド `npx wrangler deploy`、ビルドの環境変数 `API_ORIGIN`（管理画面+API の Worker のオリジン）`EXPORT_TOKEN`（`/export/public` だけを読めるトークン）`SITE_BASE_DOMAIN`（`hatchery-works.com`）。Worker の実行時のシークレットは無い。手順は`docs/operations.md`「デプロイ」。
 
 `pnpm preview` で、ビルド結果を Workers のランタイムで確認できる。そのままだと `wrangler.toml` の `routes` のホスト（本番）へ問い合わせてしまうので、`pnpm preview --port 4321 --local-upstream localhost:4321` のように、手元を指す `--local-upstream` を付ける。Worker を通ったかどうかは、応答の `x-frame-options`（Worker が付ける）の有無で見分けられる。

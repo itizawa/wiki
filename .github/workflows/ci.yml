@@ -94,7 +94,7 @@ jobs:
     concurrency:
       group: e2e-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-    # DB は CI の Postgres サービスコンテナ。wrangler dev の Hyperdrive は TCP の PostgreSQL にしかつなげない（PGlite は使えない）ので、手元の開発（README「ローカル開発」）と同じ PostgreSQL にそろえる
+    # DB は CI の Postgres サービスコンテナ。wrangler dev の Hyperdrive は TCP の PostgreSQL にしかつなげない（PGlite は使えない）ので、手元の開発（docs/operations.md「ローカル開発」）と同じ PostgreSQL にそろえる
     services:
       postgres:
         image: postgres:16
