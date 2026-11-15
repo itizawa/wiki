@@ -143,7 +143,7 @@ importers:
         version: link:../../packages/shared
       drizzle-orm:
         specifier: ^0.45.4
-        version: 0.45.4(@cloudflare/workers-types@5.20261115.1)(@electric-sql/pglite@0.3.16)(postgres@4.1.1)
+        version: 0.45.4(@cloudflare/workers-types@5.20261115.1)(@electric-sql/pglite@0.5.16)(postgres@4.1.1)
       hono:
         specifier: ^4.13.18
         version: 4.13.18
@@ -158,8 +158,8 @@ importers:
         version: 3.25.76
     devDependencies:
       '@electric-sql/pglite':
-        specifier: ^0.3.0
-        version: 0.3.16
+        specifier: ^0.5.16
+        version: 0.5.16
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
@@ -1117,8 +1117,8 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@electric-sql/pglite@0.3.16':
-    resolution: {integrity: sha512-mZkZfOd9OqTMHsK+1cje8OSzfAQcpD7JmILXTl5ahdempjUDdmg4euf1biDex5/LfQIDJ3gvCu6qDgdnDxfJmA==}
+  '@electric-sql/pglite@0.5.16':
+    resolution: {integrity: sha512-Nj8KcIsJL748W408U2N8q4+9IlONdpRIU8MJypIAAINMJ5nqKyqpX7Mgg/5XKkXiAib3AoZGR6hnJFlrlLBrcg==}
 
   '@emmetio/abbreviation@2.3.3':
     resolution: {integrity: sha512-mgv58UrU3rh4YgbE/TzgLQwJ3pFsHHhCLqY20aJq+9comytTXUDNGG/SMtSeMJdkpxgXSXunBGLD8Boka3JyVA==}
@@ -6170,7 +6170,7 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@electric-sql/pglite@0.3.16': {}
+  '@electric-sql/pglite@0.5.16': {}
 
   '@emmetio/abbreviation@2.3.3':
     dependencies:
@@ -8006,10 +8006,10 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.15
 
-  drizzle-orm@0.45.4(@cloudflare/workers-types@5.20261115.1)(@electric-sql/pglite@0.3.16)(postgres@4.1.1):
+  drizzle-orm@0.45.4(@cloudflare/workers-types@5.20261115.1)(@electric-sql/pglite@0.5.16)(postgres@4.1.1):
     optionalDependencies:
       '@cloudflare/workers-types': 5.20261115.1
-      '@electric-sql/pglite': 0.3.16
+      '@electric-sql/pglite': 0.5.16
       postgres: 4.1.1
 
   dset@3.1.4: {}
