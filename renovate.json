@@ -11,6 +11,12 @@
       "description": "マイナー・パッチはまとめて1本の PR にする。メジャーは1つずつ",
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "minor-and-patch"
+    },
+    {
+      "description": "apps/site の TypeScript は 6 に留める。astro check（@astrojs/check）が TypeScript 7.0 に対応していないため",
+      "matchFileNames": ["apps/site/package.json"],
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
     }
   ]
 }
